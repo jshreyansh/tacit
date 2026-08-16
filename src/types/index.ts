@@ -668,6 +668,8 @@ export interface TermCanvasAPI {
         terminalId: string;
         cli: string | null;
         canvasId: string | null;
+        sessionId?: string | null;
+        sessionFile?: string | null;
       } | null,
     ) => void;
     listSessions: () => Promise<ManagerSessionRow[]>;

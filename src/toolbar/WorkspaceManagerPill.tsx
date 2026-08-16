@@ -243,6 +243,32 @@ export function WorkspaceManagerPill() {
     if (height !== "rest") inputRef.current?.focus();
   }, [height]);
 
+  /**
+   * Report whoever currently holds the role, not just changes to it.
+   *
+   * The tenure log only ever learned about handovers, so a manager assigned
+   * before the log existed had no tenure and never appeared in history — and it
+   * never would have, because no SessionStart fires for an agent that is
+   * already running. Sending the session we already know closes that gap.
+   * `setRole` dedupes by terminal, so this is a no-op once a tenure is open.
+   */
+  useEffect(() => {
+    if (!managerTerminal) return;
+    window.termcanvas.managerRole?.set({
+      terminalId: managerTerminal.id,
+      cli: managerTerminal.type,
+      canvasId: activeCanvas?.id ?? null,
+      sessionId: managerTerminal.sessionId ?? null,
+      sessionFile: managerSessionFile,
+    });
+  }, [
+    managerTerminal?.id,
+    managerTerminal?.type,
+    managerTerminal?.sessionId,
+    managerSessionFile,
+    activeCanvas?.id,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     void window.termcanvas.managerRole
@@ -256,7 +282,7 @@ export function WorkspaceManagerPill() {
     return () => {
       cancelled = true;
     };
-  }, [managerTerminal?.id, managerSessionFile]);
+  }, [managerTerminal?.id, managerTerminal?.sessionId, managerSessionFile]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -461,9 +487,12 @@ export function WorkspaceManagerPill() {
     >
       <div
         ref={managerWrapperRef}
-        className={`pointer-events-auto relative mx-auto flex flex-col overflow-hidden ${
-          isFull || showChat ? "rounded-xl" : "rounded-xl"
-        } ${PILL_GLASS}`}
+        // No overflow-hidden: the assign and history menus are absolutely
+        // positioned children, and clipping them to the control's rounded box
+        // made them vanish entirely rather than merely crop. The scrolling
+        // conversation does its own clipping, which is the only child that
+        // needed it.
+        className={`pointer-events-auto relative mx-auto flex flex-col rounded-xl ${PILL_GLASS}`}
         style={{
           width: showChat ? "min(34rem, calc(100vw - 2rem))" : undefined,
           maxHeight: isFull ? "min(30rem, 55vh)" : undefined,
@@ -663,11 +692,37 @@ export function WorkspaceManagerPill() {
             ref={managerPopoverRef}
             role="menu"
             aria-label={t.project_chat_assign}
-            className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[220px] rounded-md py-1 ${PILL_GLASS}`}
+            // Anchored to whichever trigger opened it. At rest that is the
+            // pill, so the menu rises above it; at full height the trigger sits
+            // in the config row at the TOP of a tall panel, where rising would
+            // put the menu off the top of the screen.
+            className={`absolute z-20 min-w-[220px] rounded-md py-1 ${
+              isFull
+                ? "left-2 top-11"
+                : "bottom-full left-1/2 -translate-x-1/2 mb-2"
+            } ${PILL_GLASS}`}
           >
-            {eligibleManagerTerminals.length > 0 && (
+            {(managerTerminal || eligibleManagerTerminals.length > 0) && (
               <div className="tc-eyebrow tc-mono px-3 pb-1 pt-1.5">
                 {t.project_chat_running_now}
+              </div>
+            )}
+            {/* The current holder, listed but not selectable — picking it would
+                be a no-op, and leaving it out of the list made the menu read as
+                if it were offering the only options that exist. */}
+            {managerTerminal && (
+              <div className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-[12px] text-[var(--text-primary)]">
+                <span className="flex min-w-0 items-center gap-2">
+                  <img
+                    src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
+                    alt=""
+                    className="h-4 w-4 shrink-0 rounded object-cover"
+                  />
+                  <span className="truncate">{managerLabel}</span>
+                </span>
+                <span className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                  {t.project_chat_holding}
+                </span>
               </div>
             )}
             {eligibleManagerTerminals.map((term) => (

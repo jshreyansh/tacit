@@ -52,17 +52,46 @@ export class ManagerRoleLog {
    * was removed outright.
    */
   setRole(
-    input: { terminalId: string; cli: string | null; canvasId: string | null } | null,
+    input: {
+      terminalId: string;
+      cli: string | null;
+      canvasId: string | null;
+      /**
+       * The conversation, when the caller already knows it. The renderer does
+       * for a manager that was assigned before this log existed — no
+       * SessionStart will ever fire for an agent that is already running, so
+       * without this its tenure would sit with a null session forever and
+       * never appear in history.
+       */
+      sessionId?: string | null;
+      sessionFile?: string | null;
+    } | null,
     now = new Date(),
   ): void {
     if (this.current && this.current.terminalId === input?.terminalId) {
-      // Re-assigning the terminal that already holds it is a no-op, not a new
-      // tenure — the pill re-runs this on some paths.
+      // Same holder — not a new tenure. But if the conversation is only now
+      // being reported, record it, so re-running this on mount is what fills
+      // in a tenure that opened before its session was known.
+      if (input?.sessionId && this.current.sessionId !== input.sessionId) {
+        this.noteSessionStart(
+          input.terminalId,
+          input.sessionId,
+          input.sessionFile ?? null,
+          now,
+        );
+      }
       return;
     }
     this.close(input ? "reassigned" : "unassigned", now);
     if (!input) return;
-    this.open(input.terminalId, null, null, input.cli, input.canvasId, now);
+    this.open(
+      input.terminalId,
+      input.sessionId ?? null,
+      input.sessionFile ?? null,
+      input.cli,
+      input.canvasId,
+      now,
+    );
   }
 
   /**

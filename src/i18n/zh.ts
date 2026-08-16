@@ -19,6 +19,7 @@ export const zh = {
   project_chat_history: "历史",
   project_chat_now: "当前",
   project_chat_change: "更换",
+  project_chat_holding: "当前",
   project_chat_expand: "展开对话",
   project_chat_collapse: "只保留输入框",
   project_chat_running_now: "正在运行",

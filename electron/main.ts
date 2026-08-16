@@ -1514,7 +1514,13 @@ function setupIpc() {
     "manager-role:set",
     (
       _event,
-      input: { terminalId: string; cli: string | null; canvasId: string | null } | null,
+      input: {
+        terminalId: string;
+        cli: string | null;
+        canvasId: string | null;
+        sessionId?: string | null;
+        sessionFile?: string | null;
+      } | null,
     ) => {
       managerRoleLog.setRole(input);
     },

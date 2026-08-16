@@ -19,6 +19,7 @@ export const en = {
   project_chat_history: "History",
   project_chat_now: "now",
   project_chat_change: "change",
+  project_chat_holding: "holding",
   project_chat_expand: "Show the conversation",
   project_chat_collapse: "Just the message box",
   project_chat_running_now: "Running now",

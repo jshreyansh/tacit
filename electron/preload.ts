@@ -179,7 +179,13 @@ contextBridge.exposeInMainWorld("termcanvas", {
   managerRole: {
     /** Fire-and-forget, like capture — assignment must not wait on a disk write. */
     set: (
-      input: { terminalId: string; cli: string | null; canvasId: string | null } | null,
+      input: {
+        terminalId: string;
+        cli: string | null;
+        canvasId: string | null;
+        sessionId?: string | null;
+        sessionFile?: string | null;
+      } | null,
     ) => ipcRenderer.send("manager-role:set", input),
     listSessions: () =>
       ipcRenderer.invoke("manager-role:list-sessions") as Promise<
