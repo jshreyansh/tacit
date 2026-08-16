@@ -11,6 +11,7 @@ import type {
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
 import type { CaptureEvent, CaptureHealth } from "../../shared/capture";
+import type { ManagerSessionRow, ManagerTenure } from "../../shared/manager-role";
 import type {
   Pin,
   PinLink,
@@ -660,6 +661,17 @@ export interface TermCanvasAPI {
     record: (entry: CaptureEvent) => void;
     setCanvas: (canvasId: string | null) => void;
     getHealth: () => Promise<CaptureHealth>;
+  };
+  managerRole: {
+    set: (
+      input: {
+        terminalId: string;
+        cli: string | null;
+        canvasId: string | null;
+      } | null,
+    ) => void;
+    listSessions: () => Promise<ManagerSessionRow[]>;
+    getCurrent: () => Promise<ManagerTenure | null>;
   };
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) => Promise<void>;

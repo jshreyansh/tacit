@@ -7,6 +7,7 @@ import {
   parseSessionTelemetryLine,
   type SessionType,
 } from "./session-watcher.ts";
+import { isFailedToolResult } from "../shared/sessions.ts";
 import type {
   SessionInfo,
   TimelineEvent,
@@ -398,6 +399,12 @@ export class SessionScanner {
           filePath: toolFilePath,
           textPreview,
           tokenDelta: ev.token_total,
+          // Only meaningful on results; a tool_use hasn't succeeded or failed
+          // yet, and flagging one on the way in would paint every call red.
+          ...(timelineType === "tool_result" &&
+          isFailedToolResult({ text: textPreview })
+            ? { isError: true as const }
+            : {}),
         });
 
         if (

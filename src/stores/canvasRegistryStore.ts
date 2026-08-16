@@ -10,6 +10,7 @@
  * is opt-in via the create command.
  */
 import { create } from "zustand";
+import { recordManagerRoleChange } from "../managerRole";
 import {
   applyCanvasSceneToLive,
   captureLiveCanvasScene,
@@ -205,6 +206,8 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
     setWorkspaceManager: (id, terminalId) => {
       const { canvases } = get();
       if (!canvases.some((c) => c.id === id)) return;
+      const previous =
+        canvases.find((c) => c.id === id)?.workspaceManagerTerminalId ?? null;
       set({
         canvases: canvases.map((c) =>
           c.id === id
@@ -213,6 +216,14 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
         ),
       });
       markDirty();
+
+      // Recorded here, not at the call sites: the pill and the __tcApi surface
+      // both land on this action, and only the latter used to record — so
+      // assigning the role the normal way (through the pill) left no trace at
+      // all. One choke point is the whole reason both now do.
+      if (previous !== terminalId) {
+        recordManagerRoleChange(id, terminalId);
+      }
     },
   }),
 );

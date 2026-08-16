@@ -804,12 +804,9 @@ export function App() {
 
       setWorkspaceManager: (terminalId: string | null) => {
         const canvasId = getActiveCanvas().id;
+        // Recording lives inside the store action — see the note there. Doing
+        // it here as well would double-log every assignment made this way.
         useCanvasRegistryStore.getState().setWorkspaceManager(canvasId, terminalId);
-        recordDecision({
-          kind: "manager",
-          node: terminalId ? `terminal:${terminalId}` : null,
-          by: "user",
-        });
         return { canvasId, terminalId };
       },
 

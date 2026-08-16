@@ -4,6 +4,7 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../shared/render-diagnostics";
 import type { CaptureEvent, CaptureHealth } from "../shared/capture";
+import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 
@@ -174,6 +175,18 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ipcRenderer.send("capture:set-canvas", canvasId),
     getHealth: () =>
       ipcRenderer.invoke("capture:get-health") as Promise<CaptureHealth>,
+  },
+  managerRole: {
+    /** Fire-and-forget, like capture — assignment must not wait on a disk write. */
+    set: (
+      input: { terminalId: string; cli: string | null; canvasId: string | null } | null,
+    ) => ipcRenderer.send("manager-role:set", input),
+    listSessions: () =>
+      ipcRenderer.invoke("manager-role:list-sessions") as Promise<
+        ManagerSessionRow[]
+      >,
+    getCurrent: () =>
+      ipcRenderer.invoke("manager-role:get-current") as Promise<ManagerTenure | null>,
   },
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) =>

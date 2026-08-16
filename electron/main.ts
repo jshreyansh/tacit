@@ -161,6 +161,7 @@ import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
 import { CaptureService, getCaptureDir } from "./capture-service";
 import type { CaptureEvent } from "../shared/capture";
+import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
 import { WorkspaceSavePathRegistry } from "./workspace-save-path";
 import {
@@ -288,6 +289,8 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
 const captureService = new CaptureService(getCaptureDir(TERMCANVAS_DIR));
+const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TERMCANVAS_DIR));
+managerRoleLog.load();
 /**
  * Which canvas entries are attributed to. Main has no view of the canvas
  * registry, so the renderer reports it (see the capture:set-canvas handler) and
@@ -327,6 +330,10 @@ const hookReceiver = new HookReceiver((event) => {
   }
 
   if (event.hook_event_name === "SessionStart" && event.session_id) {
+    // Only acts when this terminal currently holds the manager role — that is
+    // the join main is uniquely able to make, since the role lives in the
+    // renderer and the session id arrives here on the hook socket.
+    managerRoleLog.noteSessionStart(event.terminal_id, event.session_id);
     sendToWindow(mainWindow, "hook:session-started", {
       terminalId: event.terminal_id,
       sessionId: event.session_id,
@@ -1498,6 +1505,22 @@ function setupIpc() {
   });
 
   ipcMain.handle("capture:get-health", () => captureService.getHealth());
+
+  ipcMain.on(
+    "manager-role:set",
+    (
+      _event,
+      input: { terminalId: string; cli: string | null; canvasId: string | null } | null,
+    ) => {
+      managerRoleLog.setRole(input);
+    },
+  );
+
+  ipcMain.handle("manager-role:list-sessions", () =>
+    managerRoleLog.listSessions(),
+  );
+
+  ipcMain.handle("manager-role:get-current", () => managerRoleLog.getCurrent());
 
   ipcMain.handle("hook:get-socket-path", () => hookSocketPath);
   ipcMain.handle("hook:get-health", () => hookReceiver.getHealth());

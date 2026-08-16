@@ -218,11 +218,24 @@ function buildAssistantNodes(events: TimelineEvent[]): AssistantNode[] {
   return nodes;
 }
 
-function toolVerb(toolName: string | undefined): string {
+/**
+ * Display label for a tool call.
+ *
+ * Claude tool names come Pascal-cased ("Read", "Edit", "Bash") and codex as
+ * snake_case function names — both are already readable and pass through
+ * untouched.
+ *
+ * MCP tools do not: they arrive as `mcp__<server>__<tool>`, so a canvas call
+ * renders as `mcp__termcanvas-bridge__spawn_browser`. That is unreadable as a
+ * tag, and it is exactly the set of tools that matters most when reading a
+ * workspace manager's work — every spawn and wire it made. The server name is
+ * dropped rather than shortened because it is noise at a glance; the full
+ * identifier is still shown on the expanded call.
+ */
+export function toolVerb(toolName: string | undefined): string {
   if (!toolName) return "Tool";
-  // Claude tool names come Pascal-cased ("Read", "Edit", "Bash"),
-  // codex as snake_case function names. Normalize lightly for display
-  // without losing the identifier meaning.
+  const mcp = /^mcp__[^_]+(?:_[^_]+)*?__(.+)$/.exec(toolName);
+  if (mcp?.[1]) return mcp[1];
   return toolName;
 }
 
@@ -769,6 +782,7 @@ function ToolSubItem({
 }) {
   const verb = toolVerb(item.tool.toolName);
   const subject = toolSubjectHint(item.tool);
+  const failed = item.result?.isError === true;
   // Sub-items live inside an already-indented tool group. They get one
   // more notch of indent (pl-3) and no fill — current-state is implied
   // by the parent group's rail. Eyebrows survive only on input/output:
@@ -792,10 +806,15 @@ function ToolSubItem({
         </span>
         <span
           className="shrink-0 tc-mono"
+          title={item.tool.toolName}
           style={{
             fontSize: "var(--text-xs)",
             fontWeight: "var(--weight-medium)",
-            color: isCurrent ? "var(--text-primary)" : "var(--text-secondary)",
+            color: failed
+              ? "var(--red)"
+              : isCurrent
+                ? "var(--text-primary)"
+                : "var(--text-secondary)",
           }}
         >
           {verb}
@@ -869,6 +888,7 @@ function ToolGroup({
     (it) => it.tool.index === currentIndex || it.result?.index === currentIndex,
   );
   const count = items.length;
+  const failedCount = items.filter((it) => it.result?.isError).length;
   const summary =
     count === 1
       ? `${toolVerb(items[0].tool.toolName)}${
@@ -922,6 +942,17 @@ function ToolGroup({
         >
           {summary}
         </span>
+        {/* Carried on the collapsed header on purpose: a failure inside a
+            folded run is invisible otherwise, and folding away the one thing
+            worth reading defeats showing tool calls at all. */}
+        {failedCount > 0 && (
+          <span
+            className="shrink-0 tc-mono tabular-nums"
+            style={{ fontSize: "var(--text-xs)", color: "var(--red)" }}
+          >
+            {failedCount === 1 ? "failed" : `${failedCount} failed`}
+          </span>
+        )}
       </button>
       {expanded && (
         <div className="mt-0.5 mb-1 space-y-0.5">
@@ -979,6 +1010,18 @@ function nodeContainsIndex(node: AssistantNode, idx: number): boolean {
   return node.index === idx;
 }
 
+/** Failed calls anywhere inside a folded working slice, for its header. */
+function countFoldFailures(nodes: AssistantNode[]): number {
+  let failed = 0;
+  for (const node of nodes) {
+    if (node.type !== "tool_group" || !node.items) continue;
+    for (const item of node.items) {
+      if (item.result?.isError) failed += 1;
+    }
+  }
+  return failed;
+}
+
 function collectFoldToolSummary(nodes: AssistantNode[]): string {
   const items: ToolGroupItem[] = [];
   for (const n of nodes) {
@@ -1022,6 +1065,7 @@ function WorkingFold({
   stepCount,
   toolSummary,
   duration,
+  failedCount,
   expanded,
   onToggle,
   children,
@@ -1029,6 +1073,13 @@ function WorkingFold({
   stepCount: number;
   toolSummary: string;
   duration: string;
+  /**
+   * Failures inside the folded slice. Shown on the header rather than forcing
+   * the fold open: the reader still sees that something broke, but keeps
+   * control of whether to look — force-expanding would take that away on every
+   * turn that ever had a retry.
+   */
+  failedCount: number;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -1065,6 +1116,14 @@ function WorkingFold({
             <>
               <span style={{ color: "var(--text-faint)" }}> · </span>
               <span className="tabular-nums">{duration}</span>
+            </>
+          )}
+          {failedCount > 0 && (
+            <>
+              <span style={{ color: "var(--text-faint)" }}> · </span>
+              <span className="tabular-nums" style={{ color: "var(--red)" }}>
+                {failedCount} failed
+              </span>
             </>
           )}
         </span>
@@ -1452,12 +1511,20 @@ export function SessionReplayView() {
                 );
                 const attachRef = (el: HTMLElement | null) =>
                   assignCurrentRef(el, isCurrent);
+                // A run containing a failure opens by default — folding away
+                // the one call worth reading is the failure mode this whole
+                // treatment exists to avoid. `expandedGroups` is read as
+                // "differs from the default" rather than "is open", so a
+                // single set still drives the toggle in both directions.
+                const openByDefault = (node.items ?? []).some(
+                  (it) => it.result?.isError,
+                );
                 return (
                   <div key={node.index} ref={attachRef}>
                     <ToolGroup
                       node={node}
                       currentIndex={currentIndex}
-                      expanded={expandedGroups.has(node.index)}
+                      expanded={expandedGroups.has(node.index) !== openByDefault}
                       onToggle={() => toggleGroup(node.index)}
                       expandedItems={expandedTools}
                       onToggleItem={toggleTool}
@@ -1580,6 +1647,7 @@ export function SessionReplayView() {
                         stepCount={working.length}
                         toolSummary={collectFoldToolSummary(working)}
                         duration={duration}
+                        failedCount={countFoldFailures(working)}
                         expanded={foldExpanded}
                         onToggle={() => toggleFold(foldKey)}
                       >
