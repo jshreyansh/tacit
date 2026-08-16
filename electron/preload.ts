@@ -188,6 +188,23 @@ contextBridge.exposeInMainWorld("termcanvas", {
     getCurrent: () =>
       ipcRenderer.invoke("manager-role:get-current") as Promise<ManagerTenure | null>,
   },
+  managerChat: {
+    /** A message the user typed and sent — submits, unlike injected notices. */
+    send: (
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: string;
+        worktreePath: string;
+      },
+      message: string,
+    ) =>
+      ipcRenderer.invoke("manager-chat:send", target, message) as Promise<{
+        ok: boolean;
+        error?: string;
+        detail?: string;
+      }>,
+  },
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) =>
       ipcRenderer.invoke(

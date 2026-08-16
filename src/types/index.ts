@@ -673,6 +673,17 @@ export interface TermCanvasAPI {
     listSessions: () => Promise<ManagerSessionRow[]>;
     getCurrent: () => Promise<ManagerTenure | null>;
   };
+  managerChat: {
+    send: (
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: string;
+        worktreePath: string;
+      },
+      message: string,
+    ) => Promise<{ ok: boolean; error?: string; detail?: string }>;
+  };
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) => Promise<void>;
     getRenderLogInfo: () => Promise<RenderDiagnosticsLogInfo>;

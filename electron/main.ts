@@ -333,7 +333,11 @@ const hookReceiver = new HookReceiver((event) => {
     // Only acts when this terminal currently holds the manager role — that is
     // the join main is uniquely able to make, since the role lives in the
     // renderer and the session id arrives here on the hook socket.
-    managerRoleLog.noteSessionStart(event.terminal_id, event.session_id);
+    managerRoleLog.noteSessionStart(
+      event.terminal_id,
+      event.session_id,
+      typeof event.transcript_path === "string" ? event.transcript_path : null,
+    );
     sendToWindow(mainWindow, "hook:session-started", {
       terminalId: event.terminal_id,
       sessionId: event.session_id,
@@ -1521,6 +1525,73 @@ function setupIpc() {
   );
 
   ipcMain.handle("manager-role:get-current", () => managerRoleLog.getCurrent());
+
+  /**
+   * A message the user typed in the Project Chat panel.
+   *
+   * Deliberately not the `browser:notify-wired` channel, even though the
+   * plumbing is identical: that one is paste-only on purpose, because it
+   * carries notices the app decided to send. This carries something the user
+   * wrote and pressed Enter on, so it submits. Two channels rather than a flag
+   * keeps a future edit from silently making notices auto-send again.
+   */
+  ipcMain.handle(
+    "manager-chat:send",
+    async (
+      _event,
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: ComposerSupportedTerminalType;
+        worktreePath: string;
+      },
+      message: string,
+    ) => {
+      if (!ptyManager.getPid(target.ptyId)) {
+        return {
+          ok: false,
+          code: "target-not-running" as const,
+          stage: "target" as const,
+          error: "The workspace manager's terminal is not running.",
+          detail: "The workspace manager's terminal is not running.",
+        };
+      }
+
+      try {
+        return await submitComposerRequest(
+          {
+            terminalId: target.terminalId,
+            ptyId: target.ptyId,
+            terminalType: target.terminalType,
+            worktreePath: target.worktreePath,
+            text: message,
+            images: [],
+            submit: true,
+          },
+          createDefaultComposerSubmitDeps(
+            process.platform as "darwin" | "win32" | "linux",
+            dataUrlToPngBuffer,
+            (ptyId: number, data: string) => {
+              ptyManager.write(ptyId, data);
+            },
+          ),
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error("[ProjectChat] send crashed:", {
+          terminalId: target.terminalId,
+          detail,
+        });
+        return {
+          ok: false,
+          code: "internal-error" as const,
+          stage: "submit" as const,
+          error: detail,
+          detail,
+        };
+      }
+    },
+  );
 
   ipcMain.handle("hook:get-socket-path", () => hookSocketPath);
   ipcMain.handle("hook:get-health", () => hookReceiver.getHealth());

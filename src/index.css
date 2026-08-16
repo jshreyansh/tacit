@@ -1380,9 +1380,28 @@ a.tc-kbd[data-dragover="true"] {
   background: var(--accent);
 }
 
+/* Live indicator on the Project Chat panel's running step. The pulse is the
+   only thing distinguishing "this tool is running now" from "this tool ran",
+   so under reduced motion it settles to a solid dot rather than disappearing —
+   the state still has to be readable, just not animated. */
+@keyframes tc-live-pip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.tc-live-pip {
+  animation: tc-live-pip-pulse 1.4s ease-in-out infinite;
+}
+
 /* Respect reduced-motion: collapse all entrance animations and long
    transitions. Everything still works, just without the parallax. */
 @media (prefers-reduced-motion: reduce) {
+  .tc-live-pip,
   .tc-enter-fade,
   .tc-enter-fade-quick,
   .tc-enter-fade-up,

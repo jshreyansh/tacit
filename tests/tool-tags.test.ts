@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { isFailedToolResult } from "../shared/sessions";
-import { toolVerb } from "../src/components/SessionReplayView";
+import { toolVerb } from "../src/components/transcriptModel";
 
 /**
  * The two pure pieces behind the tool tags: what a tag is called, and whether

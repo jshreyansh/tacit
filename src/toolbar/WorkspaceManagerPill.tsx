@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projectStore";
+import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
+import { ProjectChatPanel } from "./ProjectChatPanel";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { waitForTerminalReady } from "../actions/sceneConnectionActions";
@@ -124,6 +126,23 @@ export function WorkspaceManagerPill() {
     return list;
   }, [projects, workspaceManagerTerminalId]);
 
+  const [chatOpen, setChatOpen] = useState(false);
+  // Read from telemetry rather than the terminal record: the transcript path is
+  // discovered after the agent starts, and telemetry is where that discovery
+  // lands. Null until then, which the panel renders as "nothing said yet".
+  const managerSessionFile = useTerminalRuntimeStore(
+    (s) =>
+      (managerTerminal
+        ? s.terminals[managerTerminal.id]?.telemetry?.session_file
+        : null) ?? null,
+  );
+
+  // Closing the panel when the role is removed avoids leaving a conversation on
+  // screen that is no longer anybody's.
+  useEffect(() => {
+    if (!managerTerminal) setChatOpen(false);
+  }, [managerTerminal]);
+
   const [managerMenuOpen, setManagerMenuOpen] = useState(false);
   const managerWrapperRef = useRef<HTMLDivElement>(null);
   const managerPopoverRef = useRef<HTMLDivElement>(null);
@@ -144,6 +163,20 @@ export function WorkspaceManagerPill() {
       (workspaceManagerTerminalId ? 1 : 0),
     close: closeManagerMenu,
   });
+
+  /** Terminal record by id, across every project — used for the handover notice. */
+  const findTerminalById = useCallback(
+    (terminalId: string) => {
+      for (const project of projects) {
+        for (const worktree of project.worktrees) {
+          const terminal = worktree.terminals.find((x) => x.id === terminalId);
+          if (terminal) return terminal;
+        }
+      }
+      return null;
+    },
+    [projects],
+  );
 
   const sendWorkspaceManagerBriefing = useCallback(
     async (terminalId: string) => {
@@ -182,15 +215,38 @@ export function WorkspaceManagerPill() {
   const assignWorkspaceManager = useCallback(
     (terminalId: string | null) => {
       if (!activeCanvas) return;
+      const outgoing = managerTerminal;
       useCanvasRegistryStore
         .getState()
         .setWorkspaceManager(activeCanvas.id, terminalId);
       closeManagerMenu();
       if (terminalId) {
+        // Say plainly whether the conversation survives the handover. Two
+        // agents of the same CLI read the same transcript format, so it does;
+        // across CLIs it cannot, and the new holder picks up from the journal
+        // instead. Silence here would leave the user to discover which of the
+        // two they got by noticing the new agent knows nothing.
+        const incoming = findTerminalById(terminalId);
+        if (outgoing && incoming && outgoing.id !== incoming.id) {
+          const carries = outgoing.type === incoming.type;
+          useNotificationStore
+            .getState()
+            .notify(
+              "info",
+              carries
+                ? t.project_chat_handover_keeps
+                : t.project_chat_handover_drops(
+                    AGENT_DISPLAY_NAME[outgoing.type as WorkspaceManagerAgentType] ??
+                      outgoing.type,
+                    AGENT_DISPLAY_NAME[incoming.type as WorkspaceManagerAgentType] ??
+                      incoming.type,
+                  ),
+            );
+        }
         void sendWorkspaceManagerBriefing(terminalId);
       }
     },
-    [activeCanvas, closeManagerMenu, sendWorkspaceManagerBriefing],
+    [activeCanvas, closeManagerMenu, sendWorkspaceManagerBriefing, managerTerminal, t],
   );
 
   const spawnAndAssignManager = useCallback(
@@ -247,6 +303,22 @@ export function WorkspaceManagerPill() {
         bottom: `calc(${bottomOffset} + ${ADD_NODE_DOCK_HEIGHT_PX + PILL_GAP_ABOVE_DOCK_PX}px)`,
       }}
     >
+      {/* Above the pill, not over the canvas centre: the conversation reads as
+          belonging to the pill it expands from, and the canvas stays visible
+          behind it. Sized in vh so a long conversation scrolls inside the panel
+          rather than growing past the top of the window. */}
+      {chatOpen && managerTerminal && (
+        <div
+          className="pointer-events-auto mx-auto mb-2 w-[min(34rem,calc(100vw-2rem))]"
+          style={{ maxHeight: "min(30rem, 55vh)", display: "flex" }}
+        >
+          <ProjectChatPanel
+            terminalId={managerTerminal.id}
+            sessionFilePath={managerSessionFile}
+            onClose={() => setChatOpen(false)}
+          />
+        </div>
+      )}
       <div
         className={`pointer-events-auto relative inline-flex items-center gap-1 rounded-xl px-1.5 py-1.5 ${PILL_GLASS}`}
         ref={managerWrapperRef}
@@ -298,6 +370,23 @@ export function WorkspaceManagerPill() {
             <span className="text-[18px] leading-none font-normal">+</span>
           )}
         </button>
+        {/* Separate control from the reassign chevron above: one changes who
+            holds the role, this one only changes whether you can see what they
+            said. Collapsing them into a single button would make reading the
+            conversation feel like it might reassign something. */}
+        {managerTerminal && (
+          <button
+            className={triggerButtonCls}
+            onClick={() => setChatOpen((open) => !open)}
+            aria-expanded={chatOpen}
+            title={chatOpen ? t.project_chat_hide : t.project_chat_show}
+            aria-label={chatOpen ? t.project_chat_hide : t.project_chat_show}
+          >
+            <span className="text-[11px] leading-none">
+              {chatOpen ? "▾" : "▴"}
+            </span>
+          </button>
+        )}
         {managerMenuOpen && (
           <div
             ref={managerPopoverRef}

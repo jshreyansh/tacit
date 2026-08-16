@@ -42,7 +42,7 @@ test("assigning the role opens a tenure with no session yet", () => {
 test("the session id arrives later and completes the tenure", () => {
   const { log, file } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
 
   const rows = log.listSessions();
   assert.equal(rows.length, 1);
@@ -55,7 +55,7 @@ test("the session id arrives later and completes the tenure", () => {
 test("a session start in some other terminal is ignored", () => {
   const { log } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-other", "sess-x", at(1));
+  log.noteSessionStart("t-other", "sess-x", null, at(1));
 
   assert.equal(log.getCurrent()?.sessionId, null);
   assert.equal(log.listSessions().length, 0);
@@ -67,8 +67,8 @@ test("a session start in some other terminal is ignored", () => {
 test("a new session under the same terminal starts a new tenure", () => {
   const { log } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
-  log.noteSessionStart("t-pm", "sess-b", at(5));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
+  log.noteSessionStart("t-pm", "sess-b", "/tmp/sess-b.jsonl", at(5));
 
   const rows = log.listSessions();
   assert.equal(rows.length, 2);
@@ -85,9 +85,9 @@ test("a new session under the same terminal starts a new tenure", () => {
 test("handing the role to another terminal closes the previous tenure", () => {
   const { log } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
   log.setRole({ terminalId: "t-two", cli: "codex", canvasId: "c1" }, at(9));
-  log.noteSessionStart("t-two", "sess-b", at(10));
+  log.noteSessionStart("t-two", "sess-b", "/tmp/sess-b.jsonl", at(10));
 
   const rows = log.listSessions();
   assert.equal(rows.length, 2);
@@ -109,7 +109,7 @@ test("re-assigning the terminal that already holds it is a no-op", () => {
 test("removing the role closes the tenure and leaves none current", () => {
   const { log } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
   log.setRole(null, at(4));
 
   assert.equal(log.getCurrent(), null);
@@ -123,7 +123,7 @@ test("removing the role closes the tenure and leaves none current", () => {
 test("an open tenure survives a restart", () => {
   const { log, file } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
 
   const reopened = new ManagerRoleLog(file);
   reopened.load();
@@ -136,7 +136,7 @@ test("an open tenure survives a restart", () => {
 test("a truncated line does not cost the rest of the history", () => {
   const { log, file } = tempLog();
   log.setRole(PM, at(0));
-  log.noteSessionStart("t-pm", "sess-a", at(1));
+  log.noteSessionStart("t-pm", "sess-a", "/tmp/sess-a.jsonl", at(1));
   fs.appendFileSync(file, '{"terminalId":"t-pm","sess\n');
 
   assert.equal(log.listSessions().length, 1);
@@ -148,6 +148,7 @@ test("tenures with no session never become history rows", () => {
       schema_version: 1,
       terminalId: "t-pm",
       sessionId: null,
+      sessionFile: null,
       cli: "claude",
       canvasId: "c1",
       startedAt: at(0).toISOString(),
@@ -162,6 +163,7 @@ test("the same conversation held twice merges into one row", () => {
     schema_version: 1 as const,
     terminalId: "t-pm",
     sessionId: "sess-a",
+    sessionFile: "/tmp/sess-a.jsonl",
     cli: "claude",
     canvasId: "c1",
   };

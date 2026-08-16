@@ -3,6 +3,16 @@ import { useSessionStore } from "../stores/sessionStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useT } from "../i18n/useT";
 import type { TimelineEvent } from "../../shared/sessions";
+import {
+  buildAssistantNodes,
+  buildTurns,
+  countFailures,
+  summarizeToolNames,
+  toolSubjectHint,
+  toolVerb,
+  type AssistantNode,
+  type ToolGroupItem,
+} from "./transcriptModel";
 import { useProjectStore } from "../stores/projectStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
@@ -105,158 +115,6 @@ function buildResumeCommand(
  * A single conversation turn. `userEvent` may be null for events
  * before the first user message (session headers, system setup).
  */
-interface Turn {
-  startIndex: number;
-  userEvent: TimelineEvent | null;
-  assistantEvents: TimelineEvent[];
-}
-
-/**
- * Logical assistant block — what we actually render in-flow inside a
- * turn.
- *
- * Tool runs are collected into a single group: Claude and Codex
- * typically emit N tool_use events followed by N tool_result events
- * (the agent batches calls, the harness returns them in order). An
- * earlier rendering emitted one "pill" per tool and one row per
- * result, which flooded the transcript with low-signal chrome and
- * buried the actual prose. The reader usually only cares that the
- * agent "did some lookups" — the specific tools are noise unless they
- * want to dig in. So we collapse the whole run into one block with a
- * count, and let the reader expand it to see individual calls (and
- * expand each call further to see input / output).
- *
- * Pairing tool_use → tool_result is done by position within the run
- * rather than by call_id because the existing TimelineEvent shape
- * doesn't carry call_ids; the interleaved pattern is stable enough
- * in practice that index-pairing yields the right grouping.
- */
-interface ToolGroupItem {
-  tool: TimelineEvent;
-  result?: TimelineEvent;
-}
-
-interface AssistantNode {
-  type: "text" | "thinking" | "tool_group" | "error";
-  index: number;
-  primary: TimelineEvent;
-  items?: ToolGroupItem[];
-}
-
-function buildTurns(events: TimelineEvent[]): Turn[] {
-  const turns: Turn[] = [];
-  let current: Turn | null = null;
-  for (const event of events) {
-    if (event.type === "user_prompt") {
-      if (current) turns.push(current);
-      current = {
-        startIndex: event.index,
-        userEvent: event,
-        assistantEvents: [],
-      };
-    } else {
-      if (!current) {
-        current = {
-          startIndex: event.index,
-          userEvent: null,
-          assistantEvents: [],
-        };
-      }
-      current.assistantEvents.push(event);
-    }
-  }
-  if (current) turns.push(current);
-  return turns;
-}
-
-function buildAssistantNodes(events: TimelineEvent[]): AssistantNode[] {
-  const nodes: AssistantNode[] = [];
-  let i = 0;
-  while (i < events.length) {
-    const ev = events[i];
-
-    if (ev.type === "tool_use" || ev.type === "tool_result") {
-      // Greedily consume the contiguous tool run (any mix of
-      // tool_use / tool_result events) into one group node. Pair the
-      // k-th tool_use with the k-th tool_result within the run.
-      const tools: TimelineEvent[] = [];
-      const results: TimelineEvent[] = [];
-      let j = i;
-      while (j < events.length) {
-        const e = events[j];
-        if (e.type === "tool_use") tools.push(e);
-        else if (e.type === "tool_result") results.push(e);
-        else break;
-        j += 1;
-      }
-      if (tools.length > 0) {
-        const items: ToolGroupItem[] = tools.map((tool, k) => ({
-          tool,
-          result: results[k],
-        }));
-        nodes.push({
-          type: "tool_group",
-          index: tools[0].index,
-          primary: tools[0],
-          items,
-        });
-      }
-      i = j;
-      continue;
-    }
-
-    if (ev.type === "assistant_text") {
-      nodes.push({ type: "text", index: ev.index, primary: ev });
-    } else if (ev.type === "thinking") {
-      nodes.push({ type: "thinking", index: ev.index, primary: ev });
-    } else if (ev.type === "error") {
-      nodes.push({ type: "error", index: ev.index, primary: ev });
-    }
-    // turn_complete is metadata, not content — dropped.
-    i += 1;
-  }
-  return nodes;
-}
-
-/**
- * Display label for a tool call.
- *
- * Claude tool names come Pascal-cased ("Read", "Edit", "Bash") and codex as
- * snake_case function names — both are already readable and pass through
- * untouched.
- *
- * MCP tools do not: they arrive as `mcp__<server>__<tool>`, so a canvas call
- * renders as `mcp__termcanvas-bridge__spawn_browser`. That is unreadable as a
- * tag, and it is exactly the set of tools that matters most when reading a
- * workspace manager's work — every spawn and wire it made. The server name is
- * dropped rather than shortened because it is noise at a glance; the full
- * identifier is still shown on the expanded call.
- */
-export function toolVerb(toolName: string | undefined): string {
-  if (!toolName) return "Tool";
-  const mcp = /^mcp__[^_]+(?:_[^_]+)*?__(.+)$/.exec(toolName);
-  if (mcp?.[1]) return mcp[1];
-  return toolName;
-}
-
-function toolSubjectHint(event: TimelineEvent): string {
-  // Prefer the detected file path (most user-recognisable anchor),
-  // fall back to the first line of the tool input preview.
-  if (event.filePath) {
-    return (
-      event.filePath.split(/[\\/]/).filter(Boolean).pop() ?? event.filePath
-    );
-  }
-  if (event.textPreview) {
-    const firstLine = event.textPreview.split("\n", 1)[0].trim();
-    if (firstLine.length > 80) return firstLine.slice(0, 80) + "…";
-    return firstLine;
-  }
-  return "";
-}
-
-/* ------------ Layer-1: topic header ------------------------------- */
-
 function TopicHeader({
   topic,
   project,
@@ -747,26 +605,6 @@ function ThinkingRow({
   );
 }
 
-function summarizeToolNames(items: ToolGroupItem[]): string {
-  // Build a "Read · Grep · Edit" style summary, collapsing duplicates
-  // with a count. Cap at three distinct names to keep the pill header
-  // on one line; the rest get folded into "+N more".
-  const counts = new Map<string, number>();
-  const order: string[] = [];
-  for (const item of items) {
-    const name = toolVerb(item.tool.toolName);
-    if (!counts.has(name)) order.push(name);
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  const first = order.slice(0, 3).map((name) => {
-    const c = counts.get(name) ?? 1;
-    return c > 1 ? `${name} ×${c}` : name;
-  });
-  const rest = order.length - 3;
-  if (rest > 0) first.push(`+${rest} more`);
-  return first.join(" · ");
-}
-
 function ToolSubItem({
   item,
   isCurrent,
@@ -1008,18 +846,6 @@ function nodeContainsIndex(node: AssistantNode, idx: number): boolean {
     );
   }
   return node.index === idx;
-}
-
-/** Failed calls anywhere inside a folded working slice, for its header. */
-function countFoldFailures(nodes: AssistantNode[]): number {
-  let failed = 0;
-  for (const node of nodes) {
-    if (node.type !== "tool_group" || !node.items) continue;
-    for (const item of node.items) {
-      if (item.result?.isError) failed += 1;
-    }
-  }
-  return failed;
 }
 
 function collectFoldToolSummary(nodes: AssistantNode[]): string {
@@ -1647,7 +1473,7 @@ export function SessionReplayView() {
                         stepCount={working.length}
                         toolSummary={collectFoldToolSummary(working)}
                         duration={duration}
-                        failedCount={countFoldFailures(working)}
+                        failedCount={countFailures(working)}
                         expanded={foldExpanded}
                         onToggle={() => toggleFold(foldKey)}
                       >

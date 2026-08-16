@@ -62,7 +62,7 @@ export class ManagerRoleLog {
     }
     this.close(input ? "reassigned" : "unassigned", now);
     if (!input) return;
-    this.open(input.terminalId, null, input.cli, input.canvasId, now);
+    this.open(input.terminalId, null, null, input.cli, input.canvasId, now);
   }
 
   /**
@@ -70,7 +70,12 @@ export class ManagerRoleLog {
    * terminal currently holding the role: either it is the session the tenure
    * was waiting for, or the conversation was replaced underneath it.
    */
-  noteSessionStart(terminalId: string, sessionId: string, now = new Date()): void {
+  noteSessionStart(
+    terminalId: string,
+    sessionId: string,
+    sessionFile: string | null,
+    now = new Date(),
+  ): void {
     const current = this.current;
     if (!current || current.terminalId !== terminalId) return;
     if (current.sessionId === sessionId) return;
@@ -81,13 +86,13 @@ export class ManagerRoleLog {
       // line — the file is append-only, and a reader that saw the first line
       // must still be able to reach the same conclusion.
       this.close("cleared", now);
-      this.open(terminalId, sessionId, current.cli, current.canvasId, now);
+      this.open(terminalId, sessionId, sessionFile, current.cli, current.canvasId, now);
       return;
     }
 
     // Same terminal, different conversation — a /clear or a compact restart.
     this.close("cleared", now);
-    this.open(terminalId, sessionId, current.cli, current.canvasId, now);
+    this.open(terminalId, sessionId, sessionFile, current.cli, current.canvasId, now);
   }
 
   /** Rows for the history dropdown, newest first. */
@@ -106,6 +111,7 @@ export class ManagerRoleLog {
   private open(
     terminalId: string,
     sessionId: string | null,
+    sessionFile: string | null,
     cli: string | null,
     canvasId: string | null,
     now: Date,
@@ -114,6 +120,7 @@ export class ManagerRoleLog {
       schema_version: MANAGER_ROLE_SCHEMA_VERSION,
       terminalId,
       sessionId,
+      sessionFile,
       cli,
       canvasId,
       startedAt: now.toISOString(),
