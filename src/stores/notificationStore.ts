@@ -35,7 +35,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
         : type === "warn"
           ? console.warn
           : console.info;
-    logFn(`[TermCanvas] ${message}`);
+    logFn(`[Tacit] ${message}`);
 
     set((state) => ({
       notifications: [...state.notifications, notification],

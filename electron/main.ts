@@ -193,7 +193,7 @@ if (isDev) {
 // not upload anywhere — dumps live under app.getPath('crashDumps') for users
 // (or us) to attach to bug reports manually.
 crashReporter.start({
-  productName: "TermCanvas",
+  productName: "Tacit",
   uploadToServer: false,
   compress: true,
 });
@@ -2806,7 +2806,12 @@ function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
 
   const config = {
     mcpServers: {
-      "termcanvas-bridge": {
+      // The key becomes the prefix on every tool name the agent sees
+      // (mcp__tacit__spawn_browser). Deliberately renamed while the workspace
+      // directory stays `termcanvas-bridge` — the packaged resource path and
+      // extraResources entry are keyed on that directory name, and renaming it
+      // is filesystem churn that buys nothing an agent or a user can see.
+      tacit: {
         type: "stdio",
         command: process.execPath,
         args: [serverPath],

@@ -1,11 +1,11 @@
 {
-  "name": "termcanvas",
+  "name": "tacit",
   "version": "0.39.10",
   "packageManager": "pnpm@10.33.0",
   "description": "An infinite canvas desktop app for visually managing terminals",
   "main": "dist-electron/main.js",
   "bin": {
-    "termcanvas": "./dist-cli/termcanvas.js",
+    "tacit": "./dist-cli/tacit.js",
     "hydra": "./dist-cli/hydra.js",
     "browse": "./dist-cli/browse.js"
   },

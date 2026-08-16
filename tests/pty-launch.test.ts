@@ -107,7 +107,7 @@ test("sanitizeEnv strips inherited TermCanvas runtime identity", () => {
       TERMCANVAS_TERMINAL_ID: "prod-terminal",
       TERMCANVAS_TERMINAL_TYPE: "codex",
       TERMCANVAS_INSTANCE: "prod",
-      TERMCANVAS_PORT_FILE: "/Users/test/.termcanvas/port",
+      TERMCANVAS_PORT_FILE: "/Users/test/.tacit/port",
     },
     createDeps(),
   );
@@ -289,7 +289,7 @@ test("buildLaunchSpec injects TermCanvas instance routing into the PTY environme
     assert.equal(launch.env.TERMCANVAS_INSTANCE, "dev");
     assert.equal(
       launch.env.TERMCANVAS_PORT_FILE,
-      path.join(os.homedir(), ".termcanvas-dev", "port"),
+      path.join(os.homedir(), ".tacit-dev", "port"),
     );
   } finally {
     if (previousDevServerUrl === undefined) {

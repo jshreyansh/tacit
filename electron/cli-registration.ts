@@ -5,7 +5,7 @@ import path from "path";
 
 import { ensureCliLauncher } from "./cli-launchers.ts";
 
-const CLI_NAMES = ["termcanvas", "hydra", "browse"] as const;
+const CLI_NAMES = ["tacit", "hydra", "browse"] as const;
 const WINDOWS_PATH_KEY = "HKCU\\Environment";
 const WINDOWS_PATH_VALUE = "Path";
 
@@ -259,7 +259,7 @@ export function isCliRegistered(
   }
 
   if (deps.platform === "linux") {
-    const target = path.join(deps.homedir(), ".local", "bin", "termcanvas");
+    const target = path.join(deps.homedir(), ".local", "bin", "tacit");
     try {
       deps.lstatSync(target);
       return true;

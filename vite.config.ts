@@ -44,7 +44,7 @@ function cliSymlinkPlugin(outfile: string): EsbuildPlugin {
 }
 
 function buildCli(): Plugin {
-  const outfile = "dist-cli/termcanvas.js";
+  const outfile = "dist-cli/tacit.js";
   const opts = {
     entryPoints: ["cli/termcanvas.ts"],
     outfile,

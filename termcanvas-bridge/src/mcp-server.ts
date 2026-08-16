@@ -46,7 +46,7 @@ async function driveBrowser(action: string, params: Record<string, unknown>) {
 }
 
 export function createTermcanvasBridgeServer(): McpServer {
-  const server = new McpServer({ name: "termcanvas-bridge", version: "0.1.0" });
+  const server = new McpServer({ name: "tacit", version: "0.1.0" });
 
   server.registerTool(
     "browser_navigate",

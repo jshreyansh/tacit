@@ -123,7 +123,7 @@ test("registerCli writes the CLI dir into the Windows user PATH and preserves ty
     state.launcherCalls,
     [
       {
-        jsPath: path.win32.join(CLI_DIR, "termcanvas.js"),
+        jsPath: path.win32.join(CLI_DIR, "tacit.js"),
         platform: "win32",
       },
       {

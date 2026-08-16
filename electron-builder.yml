@@ -1,11 +1,11 @@
-appId: com.blueberrycongee.termcanvas
-productName: TermCanvas
+appId: com.jshreyansh.tacit
+productName: Tacit
 copyright: Copyright © 2026 blueberrycongee
 
 publish:
   provider: github
-  owner: blueberrycongee
-  repo: termcanvas
+  owner: jshreyansh
+  repo: tacit
 
 directories:
   output: out

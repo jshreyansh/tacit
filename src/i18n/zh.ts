@@ -401,7 +401,7 @@ export const zh = {
     "实验性功能。在画布上使用双指横向滑动，在聚焦终端和全景视图之间切换",
   quit_on_last_window_closed_toggle: "关闭最后一个窗口时退出",
   quit_on_last_window_closed_toggle_desc:
-    "默认关闭。关闭最后一个窗口时，TermCanvas 仍保留在 Dock 中，点击 Dock 图标可打开新窗口。开启则直接退出应用。",
+    "默认关闭。关闭最后一个窗口时，Tacit 仍保留在 Dock 中，点击 Dock 图标可打开新窗口。开启则直接退出应用。",
   summary_toggle: "终端自动摘要",
   summary_toggle_desc:
     "实验性功能。为 CLI 终端自动生成一行 AI 摘要，可能增加 token 用量",
@@ -435,7 +435,7 @@ export const zh = {
   update_up_to_date: "已是最新",
   update_restart_short: "重启并更新",
   update_location_warning:
-    "自动更新已禁用：请将 TermCanvas 移动到 /Applications 目录以接收更新。",
+    "自动更新已禁用：请将 Tacit 移动到 /Applications 目录以接收更新。",
 
   agent_provider: "Agent 提供商",
   agent_model: "Agent 模型",

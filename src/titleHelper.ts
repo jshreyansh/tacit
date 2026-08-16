@@ -9,6 +9,6 @@ export function getWorkspaceBaseName(workspacePath: string | null) {
 export function updateWindowTitle() {
   const { workspacePath, dirty } = useWorkspaceStore.getState();
   const name = getWorkspaceBaseName(workspacePath) ?? "Untitled";
-  const title = `${dirty ? "* " : ""}${name} — TermCanvas`;
+  const title = `${dirty ? "* " : ""}${name} — Tacit`;
   void window.termcanvas?.workspace.setTitle(title);
 }

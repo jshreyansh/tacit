@@ -129,12 +129,12 @@ test("location warnings notify in the active locale and cleanup unsubscribes lis
   const cleanup = initUpdaterListeners();
 
   try {
-    bridge.listeners.locationWarning?.({ bundlePath: "/Applications/TermCanvas.app" });
+    bridge.listeners.locationWarning?.({ bundlePath: "/Applications/Tacit.app" });
     const [notification] = useNotificationStore.getState().notifications;
     assert.equal(notification?.type, "warn");
     assert.equal(
       notification?.message,
-      "自动更新已禁用：请将 TermCanvas 移动到 /Applications 目录以接收更新。",
+      "自动更新已禁用：请将 Tacit 移动到 /Applications 目录以接收更新。",
     );
 
     bridge.listeners.error?.({ message: "download failed" });
