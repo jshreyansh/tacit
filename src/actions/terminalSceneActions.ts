@@ -13,6 +13,8 @@ import { pickPlacement } from "../canvas/terminalPlacement";
 import { useCanvasStore } from "../stores/canvasStore";
 import { usePinStore } from "../stores/pinStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
+import { createConnectionInScene } from "./sceneConnectionActions";
+import { recordDecision } from "../capture";
 
 interface CreateTerminalInSceneOptions {
   projectId: string;
@@ -177,7 +179,37 @@ export function createTerminalInScene({
     }
   }
 
-  return addTerminalToScene(projectId, worktreeId, placedTerminal);
+  const created = addTerminalToScene(projectId, worktreeId, placedTerminal);
+
+  // Spawn lineage is a real connection now, not a separately-drawn overlay
+  // derived from parentTerminalId — so the line an agent's sub-agent gets is
+  // the same object as a hand-drawn wire, with the same persistence and the
+  // same live-activity pulse. No-op for user-created terminals, which have
+  // no parent.
+  if (parentTerminalId) {
+    createConnectionInScene(
+      { kind: "terminal", id: parentTerminalId },
+      { kind: "terminal", id: created.id },
+      { origin: "spawn", by: `terminal:${parentTerminalId}` },
+    );
+  }
+
+  // Recorded here rather than at the MCP call site so both paths are covered by
+  // one choke point — a terminal you open from the dock is as much a decision
+  // as one an agent delegates. `origin` is what tells them apart, and the
+  // initial prompt is the interesting half of a delegation: it is the agent's
+  // own framing of the subtask, which is judgement rather than activity.
+  recordDecision({
+    kind: "spawn",
+    node: `terminal:${created.id}`,
+    by: origin === "agent" && parentTerminalId
+      ? `terminal:${parentTerminalId}`
+      : "user",
+    parent: parentTerminalId ? `terminal:${parentTerminalId}` : null,
+    detail: initialPrompt ?? null,
+  });
+
+  return created;
 }
 
 export function focusTerminalInScene(
@@ -205,6 +237,9 @@ export function closeTerminalInScene(
     reason: "close_terminal",
   });
   useProjectStore.getState().removeTerminal(projectId, worktreeId, terminalId);
+  // A closed agent is a decision — often the abandoned half of a delegation
+  // whose spawn entry is already in the record.
+  recordDecision({ kind: "close", node: `terminal:${terminalId}`, by: "user" });
 }
 
 export function updateTerminalCustomTitleInScene(
@@ -216,6 +251,14 @@ export function updateTerminalCustomTitleInScene(
   useProjectStore
     .getState()
     .updateTerminalCustomTitle(projectId, worktreeId, terminalId, customTitle);
+  // Naming a tile is judgement — it's you saying what this agent is for, in
+  // your own words, which is often more precise than the prompt that started it.
+  recordDecision({
+    kind: "rename",
+    node: `terminal:${terminalId}`,
+    title: customTitle,
+    by: "user",
+  });
 }
 
 export function toggleTerminalStarredInScene(

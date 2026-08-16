@@ -9,10 +9,12 @@ import {
   safeStorage,
   protocol,
   net,
+  session,
 } from "electron";
 import https from "https";
 import path from "path";
 import fs from "fs";
+import { randomUUID } from "node:crypto";
 import AdmZip from "adm-zip";
 import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -157,7 +159,9 @@ import { TelemetryService } from "./telemetry-service";
 import { createRenderDiagnosticsLogger } from "./render-diagnostics";
 import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
-import { isSafeExternalUrl } from "./external-url";
+import { CaptureService, getCaptureDir } from "./capture-service";
+import type { CaptureEvent } from "../shared/capture";
+import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
 import { WorkspaceSavePathRegistry } from "./workspace-save-path";
 import {
   findBestClaudeSession,
@@ -283,8 +287,44 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 );
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
+const captureService = new CaptureService(getCaptureDir(TERMCANVAS_DIR));
+/**
+ * Which canvas entries are attributed to. Main has no view of the canvas
+ * registry, so the renderer reports it (see the capture:set-canvas handler) and
+ * hook-driven entries — which arrive here, not there — can still be attributed.
+ * Null until the renderer has booted, which is correct rather than a default:
+ * an entry recorded before then genuinely has no known canvas.
+ */
+let captureCanvasId: string | null = null;
+
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
+
+  // The one hook that is a choice point: the words the user actually typed.
+  // Everything else the hooks deliver (tool calls, turn boundaries) is
+  // activity, and belongs in telemetry, not the record.
+  if (event.hook_event_name === "UserPromptSubmit") {
+    const prompt = (event as { prompt?: unknown }).prompt;
+    const hasText = typeof prompt === "string";
+    captureService.record(
+      {
+        kind: "prompt",
+        actor: `terminal:${event.terminal_id}`,
+        session: event.session_id ?? null,
+        text: hasText ? prompt : null,
+        // If Claude Code ever renames this field, the record says so on the
+        // first prompt instead of quietly filling with nulls.
+        ...(hasText
+          ? {}
+          : {
+              unexpected_keys: Object.keys(event).filter(
+                (key) => key !== "terminal_id" && key !== "hook_event_name",
+              ),
+            }),
+      },
+      captureCanvasId,
+    );
+  }
 
   if (event.hook_event_name === "SessionStart" && event.session_id) {
     sendToWindow(mainWindow, "hook:session-started", {
@@ -325,6 +365,7 @@ const apiServer = new ApiServer({
   projectScanner,
   telemetryService,
   taskStore,
+  dataUrlToPngBuffer,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -380,7 +421,11 @@ function createWindow() {
     width: 1400,
     height: 900,
     show: false,
-    backgroundColor: "#101010",
+    // Transparent on mac lets the canvas background opacity preference
+    // (Settings > Appearance) show the desktop through, like a terminal's
+    // window opacity. Other platforms keep an opaque window — Electron's
+    // transparent-window support is inconsistent on Windows/Linux.
+    ...(isMac ? { transparent: true } : { backgroundColor: "#101010" }),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -440,6 +485,11 @@ function createWindow() {
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
   });
+  if (isDev) {
+    mainWindow.webContents.on("console-message", (_e, level, message) => {
+      if (level >= 2) console.log("[renderer]", message);
+    });
+  }
   mainWindow.on("closed", () => {
     renderDiagnostics.recordMainEvent("browser_window_closed", {
       window_id: windowId,
@@ -586,6 +636,17 @@ function setupIpc() {
         `terminal:create shell=${options.shell ?? "(default)"} args=${JSON.stringify(options.args)} cwd=${options.cwd}`,
       );
       const cliDir = getCliDir();
+
+      if (options.terminalType === "claude" && options.terminalId) {
+        const mcpArgs = buildClaudeTermcanvasBridgeArgs(options.terminalId);
+        if (mcpArgs.length > 0) {
+          options.args = spliceArgsBeforeDoubleDash(
+            options.args ?? [],
+            mcpArgs,
+          );
+        }
+      }
+
       const ptyId = await ptyManager.create({
         ...options,
         extraPathEntries: getTerminalExtraPathEntries(
@@ -1425,6 +1486,19 @@ function setupIpc() {
     return renderDiagnostics.getLogInfo();
   });
 
+  // Fire-and-forget (`on`, not `handle`): the renderer records decisions from
+  // inside user interactions, and must never wait on a disk append — nor be
+  // able to reject one. See CaptureService for why loss is preferred to noise.
+  ipcMain.on("capture:record", (_event, entry: CaptureEvent) => {
+    captureService.record(entry, captureCanvasId);
+  });
+
+  ipcMain.on("capture:set-canvas", (_event, canvasId: string | null) => {
+    captureCanvasId = canvasId;
+  });
+
+  ipcMain.handle("capture:get-health", () => captureService.getHealth());
+
   ipcMain.handle("hook:get-socket-path", () => hookSocketPath);
   ipcMain.handle("hook:get-health", () => hookReceiver.getHealth());
 
@@ -1511,6 +1585,48 @@ function setupIpc() {
     unwatchMemoryDir(memDir);
   });
 
+  // Parallel to the memory:scan/watch/unwatch trio above, but for the
+  // workspace-manager's own continuity journal (see
+  // docs/workspace_project_manager.md) — a canvas-wide scope, not tied to
+  // any one worktree. Kept as separate channels rather than overloading
+  // the existing ones so no existing call site needs to change.
+  ipcMain.handle("memory:scanWorkspace", async (_event, canvasId: string) => {
+    const { getMemoryDirForWorkspace, scanMemoryDir } =
+      await import("./memory-service.js");
+    const memDir = getMemoryDirForWorkspace(canvasId);
+    return scanMemoryDir(memDir);
+  });
+
+  ipcMain.handle("memory:watchWorkspace", async (_event, canvasId: string) => {
+    const { getMemoryDirForWorkspace, watchMemoryDir, scanMemoryDir } =
+      await import("./memory-service.js");
+    const { generateEnhancedIndex, MemoryIndexCache } =
+      await import("./memory-index-generator.js");
+    const memDir = getMemoryDirForWorkspace(canvasId);
+    const cache = new MemoryIndexCache(TERMCANVAS_DIR);
+
+    const initialGraph = scanMemoryDir(memDir);
+    cache.update(generateEnhancedIndex(initialGraph.nodes));
+
+    watchMemoryDir(memDir, () => {
+      try {
+        const graph = scanMemoryDir(memDir);
+        sendToWindow(mainWindow, "memory:changed", graph);
+        cache.update(generateEnhancedIndex(graph.nodes));
+      } catch {}
+    });
+  });
+
+  ipcMain.handle(
+    "memory:unwatchWorkspace",
+    async (_event, canvasId: string) => {
+      const { getMemoryDirForWorkspace, unwatchMemoryDir } =
+        await import("./memory-service.js");
+      const memDir = getMemoryDirForWorkspace(canvasId);
+      unwatchMemoryDir(memDir);
+    },
+  );
+
   ipcMain.handle("workspace:save", async (_event, data: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: "Save Workspace",
@@ -1545,6 +1661,58 @@ function setupIpc() {
     if (result.canceled || result.filePaths.length === 0) return null;
     return fs.readFileSync(result.filePaths[0], "utf-8");
   });
+
+  // Lets the user pick a local image as the canvas background (Settings >
+  // Appearance). The file is copied into a managed directory rather than
+  // referenced by its original path — so it survives the source file being
+  // moved/deleted, and (like pin attachments) is servable through the
+  // already-proven tc-attachment:// protocol rather than a raw file:// URL,
+  // which this app's CSP blocks for other local resources (see the font
+  // load warnings this same restriction produces elsewhere).
+  ipcMain.handle("canvas:pick-background-image", async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: "Choose Canvas Background",
+      filters: [
+        {
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+        },
+      ],
+      properties: ["openFile"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const sourcePath = result.filePaths[0];
+    const ext = path.extname(sourcePath).toLowerCase();
+    const backgroundsDir = path.join(TERMCANVAS_DIR, "canvas-backgrounds");
+    fs.mkdirSync(backgroundsDir, { recursive: true });
+    const destPath = path.join(backgroundsDir, `${randomUUID()}${ext}`);
+    fs.copyFileSync(sourcePath, destPath);
+
+    // Match pin-store.ts's populateAttachmentsUrl exactly: pathToFileURL's
+    // pathname is already correctly percent-encoded per-segment (spaces,
+    // unicode, etc.) without touching the "/" separators the way a blind
+    // encodeURIComponent(destPath) would — that would double-encode the
+    // path's own slashes and corrupt it once the protocol handler runs
+    // decodeURIComponent on the other end.
+    const fileUrl = pathToFileURL(destPath);
+    return `tc-attachment://local${fileUrl.pathname}`;
+  });
+
+  // Browser identities are just named session partitions (see
+  // src/stores/identityStore.ts's `partitionForIdentity`). Deleting one
+  // should actually log the user out, not just forget its name — the
+  // prefix check keeps this from ever being pointed at an unrelated
+  // partition by a bug elsewhere in the renderer.
+  ipcMain.handle(
+    "browser-identity:clear-data",
+    async (_event, partitionName: string) => {
+      if (typeof partitionName !== "string" || !partitionName.startsWith("persist:identity-")) {
+        throw new Error(`refused to clear non-identity partition: ${partitionName}`);
+      }
+      await session.fromPartition(partitionName).clearStorageData();
+    },
+  );
 
   const IMAGE_EXTS_FS = new Set([
     ".png",
@@ -2159,6 +2327,10 @@ function setupIpc() {
     }
   });
 
+  ipcMain.on("app:flush-before-quit-done", () => {
+    resolvePendingFlush?.();
+  });
+
   ipcMain.handle(
     "agent:send",
     async (
@@ -2376,12 +2548,195 @@ function setupIpc() {
       }
     },
   );
+
+  // Notifies a terminal that a browser tile has just been wired to it (see
+  // src/canvas/ConnectionLayer.tsx's drag-to-connect +
+  // src/actions/sceneConnectionActions.ts). Reuses the exact same
+  // composer-submit pipeline as pin:dispatch-to-terminal — real injected
+  // user-turn text, auto-submitted (unlike the pin flow, which pastes only)
+  // so the agent picks it up on its own without the user pressing Enter.
+  ipcMain.handle(
+    "browser:notify-wired",
+    async (
+      _event,
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: ComposerSupportedTerminalType;
+        worktreePath: string;
+      },
+      message: string,
+    ) => {
+      if (!ptyManager.getPid(target.ptyId)) {
+        return {
+          ok: false,
+          code: "target-not-running" as const,
+          stage: "target" as const,
+          error: "Target terminal is not running.",
+          detail: "Target terminal is not running.",
+        };
+      }
+
+      const request: ComposerSubmitRequest = {
+        terminalId: target.terminalId,
+        ptyId: target.ptyId,
+        terminalType: target.terminalType,
+        worktreePath: target.worktreePath,
+        text: message,
+        images: [],
+        // Paste-only, same convention as pin dispatch above: this is a
+        // notice the app decided to send, not something the user asked for,
+        // so it must never spend the agent's turn on its own. It waits in
+        // the input until the user actually wants it sent. Agent-to-agent
+        // handoff (emit_event, electron/api-server.ts) deliberately still
+        // auto-submits — delegation is supposed to run unattended.
+        submit: false,
+      };
+
+      try {
+        const result = await submitComposerRequest(
+          request,
+          createDefaultComposerSubmitDeps(
+            process.platform as "darwin" | "win32" | "linux",
+            dataUrlToPngBuffer,
+            (ptyId: number, data: string) => {
+              ptyManager.write(ptyId, data);
+            },
+          ),
+        );
+        if (!result.ok) {
+          console.error("[Browser] Wire notification failed:", {
+            terminalId: target.terminalId,
+            ptyId: target.ptyId,
+            terminalType: target.terminalType,
+            stage: result.stage,
+            code: result.code,
+            detail: result.detail ?? result.error,
+          });
+        }
+        return result;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error("[Browser] Wire notification crashed:", {
+          terminalId: target.terminalId,
+          detail,
+        });
+        return {
+          ok: false,
+          code: "internal-error" as const,
+          stage: "submit" as const,
+          error: detail,
+          detail,
+        };
+      }
+    },
+  );
 }
 
 function getCliDir(): string {
   const prodDir = path.join(process.resourcesPath, "cli");
   if (fs.existsSync(prodDir)) return prodDir;
   return path.resolve(__dirname, "..", "dist-cli");
+}
+
+function getTermcanvasBridgeCliPath(): string | null {
+  const prodPath = path.join(
+    process.resourcesPath,
+    "termcanvas-bridge",
+    "termcanvas-bridge.js",
+  );
+  if (fs.existsSync(prodPath)) return prodPath;
+  const devPath = path.resolve(
+    __dirname,
+    "..",
+    "termcanvas-bridge",
+    "dist",
+    "termcanvas-bridge.js",
+  );
+  return fs.existsSync(devPath) ? devPath : null;
+}
+
+/**
+ * `--mcp-config` (like other Claude variadic options) otherwise consumes
+ * whatever positional value follows it — including a `--` separated
+ * initial-prompt arg (see getTerminalPromptArgs in
+ * src/terminal/cliConfig.ts) — so it must land strictly before any `--`
+ * in argv, never after.
+ */
+function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
+  if (extra.length === 0) return args;
+  const separatorIndex = args.indexOf("--");
+  if (separatorIndex === -1) return [...args, ...extra];
+  return [
+    ...args.slice(0, separatorIndex),
+    ...extra,
+    ...args.slice(separatorIndex),
+  ];
+}
+
+/**
+ * Grants a native "claude"-typed terminal (the one actually created via the
+ * canvas's dock/context menu/command palette — see terminalRuntimeStore.ts's
+ * spawnPty) access to termcanvas-bridge, scoped to just this one terminal
+ * via a per-terminal MCP config file rather than a global ~/.claude.json
+ * registration — see the removed "Computer Use MCP" (electron/skill-manager.ts
+ * history, commit 44640b24 -> 8c9d1eb1) for why that global-mutation pattern
+ * was abandoned.
+ *
+ * This is a SEPARATE injection point from cli/agent-shims/run.ts's own copy
+ * of this same idea: that shim only fires when a user manually types
+ * `claude`/`codex` inside a plain Shell-type terminal (PATH-intercepted —
+ * see getTerminalExtraPathEntries, which only prepends the shim dir for
+ * terminalType === "shell"). TermCanvas's own native "claude" terminal type
+ * launches the real `claude` binary directly via cliConfig.ts's launch
+ * config, never touching that shim at all — so without this second
+ * injection point, every terminal created from the dock/context menu/
+ * command palette (i.e. the terminal type actually shown in this app's UI)
+ * would silently never get termcanvas-bridge tools.
+ *
+ * Claude-only today (guarded by terminalType === "claude" at the call site)
+ * — Codex/Gemini terminals get no MCP wiring at all yet, native or shimmed.
+ * That means those two can't actually hold the workspace-manager role with
+ * working tools until this gets extended; tracked as a known gap, not fixed
+ * here.
+ */
+function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
+  const serverPath = getTermcanvasBridgeCliPath();
+  if (!serverPath) return [];
+
+  const config = {
+    mcpServers: {
+      "termcanvas-bridge": {
+        type: "stdio",
+        command: process.execPath,
+        args: [serverPath],
+        env: {
+          TERMCANVAS_TERMINAL_ID: terminalId,
+          TERMCANVAS_PORT_FILE: PORT_FILE,
+          // `process.execPath` is the Electron binary, and a PACKAGED Electron
+          // app ignores an app path in argv — it always boots its own bundled
+          // asar. So without this, every terminal launch would silently start
+          // a second copy of TermCanvas instead of the MCP server, and the
+          // agent would sit there with no tools. Unpackaged Electron happens
+          // to honour argv[1], which is why dev never caught it. Running as
+          // plain node is also what the bridge actually needs (no Electron
+          // APIs), and it skips booting a GPU and network process per server.
+          ELECTRON_RUN_AS_NODE: "1",
+        },
+      },
+    },
+  };
+
+  try {
+    const configPath = path.join(
+      os.tmpdir(),
+      `termcanvas-mcp-${terminalId}.json`,
+    );
+    fs.writeFileSync(configPath, JSON.stringify(config), "utf-8");
+    return ["--mcp-config", configPath];
+  } catch {
+    return [];
+  }
 }
 
 function dataUrlToPngBuffer(dataUrl: string): Buffer {
@@ -2452,20 +2807,23 @@ app.whenReady().then(async () => {
     user_data_path: app.getPath("userData"),
   });
 
-  // Serve pin attachment images. Path-traversal guard: resolved disk path
-  // must stay under TERMCANVAS_DIR/pins/. Renderer constructs URLs as
-  // tc-attachment://local/<abs-path>; handler decodes pathname back to a
-  // real path and streams the file via Electron's net.fetch.
+  // Serve pin attachments and canvas background images from disk.
+  // Path-traversal guard: resolved disk path must stay under one of these
+  // roots. Renderer constructs URLs as tc-attachment://local/<abs-path>;
+  // handler decodes pathname back to a real path and streams the file via
+  // Electron's net.fetch.
   const ATTACHMENTS_ROOT = path.join(TERMCANVAS_DIR, "pins");
+  const CANVAS_BACKGROUNDS_ROOT = path.join(TERMCANVAS_DIR, "canvas-backgrounds");
+  const LOCAL_MEDIA_ROOTS = [ATTACHMENTS_ROOT, CANVAS_BACKGROUNDS_ROOT];
   protocol.handle("tc-attachment", async (request) => {
     try {
       const url = new URL(request.url);
       const requestedPath = decodeURIComponent(url.pathname);
       const resolved = path.resolve(requestedPath);
-      if (
-        resolved !== ATTACHMENTS_ROOT &&
-        !resolved.startsWith(ATTACHMENTS_ROOT + path.sep)
-      ) {
+      const allowed = LOCAL_MEDIA_ROOTS.some(
+        (root) => resolved === root || resolved.startsWith(root + path.sep),
+      );
+      if (!allowed) {
         return new Response("forbidden", { status: 403 });
       }
       return await net.fetch(pathToFileURL(resolved).toString());
@@ -2477,18 +2835,46 @@ app.whenReady().then(async () => {
 
   app.on("web-contents-created", (_event, contents) => {
     if (contents.getType() === "webview") {
-      contents.setWindowOpenHandler(({ url }) => {
-        if (isSafeExternalUrl(url)) {
-          void shell.openExternal(url);
-        }
-        return { action: "deny" };
-      });
       // Strip Electron/app identifiers from UA to avoid being blocked by sites
       const ua = contents
         .getUserAgent()
         .replace(/\s*Electron\/\S+/, "")
         .replace(/\s*termcanvas\/\S+/i, "");
       contents.setUserAgent(ua);
+
+      // Google/Microsoft/Apple-style sign-in refuses to complete inside any
+      // embedded browser control, no matter the UA or session partition —
+      // it's an intentional anti-phishing check on their end. Redirect
+      // those navigations to the user's real browser instead of letting
+      // the webview hit a dead-end "couldn't sign in" page. (A cookie-
+      // capture workaround to bring the resulting session back into the
+      // card was tried and removed — see external-url.ts's comment on
+      // EMBEDDED_AUTH_BLOCKED_HOSTS for why.)
+      const redirectAuthToSystemBrowser = (url: string): boolean => {
+        if (!isEmbeddedAuthBlockedUrl(url)) return false;
+        if (isSafeExternalUrl(url)) {
+          void shell.openExternal(url);
+          sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
+        }
+        return true;
+      };
+      contents.on("will-navigate", (event, url) => {
+        if (redirectAuthToSystemBrowser(url)) event.preventDefault();
+      });
+      contents.on("will-redirect", (event, url) => {
+        if (redirectAuthToSystemBrowser(url)) event.preventDefault();
+      });
+      // Some sites open sign-in in a popup rather than a top-level
+      // redirect — this needs the same auth-domain check, or those
+      // popups silently land in the user's real browser with no
+      // explanation. Anything else keeps opening externally as before.
+      contents.setWindowOpenHandler(({ url }) => {
+        redirectAuthToSystemBrowser(url);
+        if (!isEmbeddedAuthBlockedUrl(url) && isSafeExternalUrl(url)) {
+          void shell.openExternal(url);
+        }
+        return { action: "deny" };
+      });
     }
   });
 
@@ -2582,6 +2968,37 @@ app.whenReady().then(async () => {
   });
 });
 
+let resolvePendingFlush: (() => void) | undefined;
+const FLUSH_BEFORE_QUIT_TIMEOUT_MS = 3000;
+
+/**
+ * Waits for the renderer to run one last state.save() before any PTYs get
+ * destroyed. Autosave alone (5s debounce, 60s backstop — see App.tsx's
+ * useAutoSave) leaves a real window where a quit shortly after a change
+ * loses that change even on a clean, graceful quit — this closes that gap
+ * for the actual quit path specifically. Bounded by a timeout so a
+ * stuck/crashed renderer can never prevent the app from quitting; this is a
+ * best-effort improvement, not an ironclad guarantee (a hard kill, e.g.
+ * SIGKILL, still bypasses this entirely — nothing running in-process can
+ * intercept that).
+ */
+function requestFinalFlushAndWait(win: BrowserWindow | null): Promise<void> {
+  if (!sendToWindow(win, "app:flush-before-quit")) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolvePendingFlush = undefined;
+      resolve();
+    }, FLUSH_BEFORE_QUIT_TIMEOUT_MS);
+    resolvePendingFlush = () => {
+      clearTimeout(timer);
+      resolvePendingFlush = undefined;
+      resolve();
+    };
+  });
+}
+
 let isQuitting = false;
 app.on("will-quit", (event) => {
   if (isQuitting) return;
@@ -2591,6 +3008,7 @@ app.on("will-quit", (event) => {
     platform: process.platform,
   });
   void (async () => {
+    await requestFinalFlushAndWait(mainWindow);
     outputBatcher.dispose();
     await ptyManager.destroyAll();
     gitWatcher.unwatchAll();

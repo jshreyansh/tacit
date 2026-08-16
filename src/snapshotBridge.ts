@@ -9,8 +9,16 @@ import type {
   TerminalType,
 } from "./types";
 import type { SceneDocument } from "./types/scene";
-import type { WorkspaceCanvas, WorkspaceDocument } from "./types/workspace";
-import { DEFAULT_CANVAS_NAME } from "./types/workspace";
+import type {
+  BrowserIdentity,
+  WorkspaceCanvas,
+  WorkspaceDocument,
+} from "./types/workspace";
+import {
+  DEFAULT_CANVAS_NAME,
+  DEFAULT_IDENTITY_ID,
+  DEFAULT_IDENTITY_NAME,
+} from "./types/workspace";
 import type { useProjectStore } from "./stores/projectStore";
 import type { useCanvasStore } from "./stores/canvasStore";
 import type { useDrawingStore } from "./stores/drawingStore";
@@ -619,6 +627,10 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
       record.browserCards && typeof record.browserCards === "object"
         ? (record.browserCards as SceneDocument["browserCards"])
         : {},
+    connections:
+      record.connections && typeof record.connections === "object"
+        ? (record.connections as SceneDocument["connections"])
+        : {},
     annotations,
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),
   };
@@ -658,7 +670,60 @@ function coerceWorkspaceCanvas(value: unknown): WorkspaceCanvas | null {
     typeof value.createdAt === "number" ? value.createdAt : Date.now();
   const scene = coerceSceneDocument(value.scene);
   if (!id || !name || !scene) return null;
-  return { id, name, createdAt, scene };
+  const workspaceManagerTerminalId =
+    typeof value.workspaceManagerTerminalId === "string"
+      ? value.workspaceManagerTerminalId
+      : null;
+  return { id, name, createdAt, scene, workspaceManagerTerminalId };
+}
+
+function coerceBrowserIdentity(value: unknown): BrowserIdentity | null {
+  if (!isRecord(value)) return null;
+  const id = typeof value.id === "string" ? value.id : null;
+  const name = typeof value.name === "string" ? value.name : null;
+  const createdAt =
+    typeof value.createdAt === "number" ? value.createdAt : Date.now();
+  if (!id || !name) return null;
+  return { id, name, createdAt };
+}
+
+function defaultIdentities(): {
+  identities: BrowserIdentity[];
+  activeIdentityId: string;
+} {
+  return {
+    identities: [
+      { id: DEFAULT_IDENTITY_ID, name: DEFAULT_IDENTITY_NAME, createdAt: Date.now() },
+    ],
+    activeIdentityId: DEFAULT_IDENTITY_ID,
+  };
+}
+
+/**
+ * Parses `identities`/`activeIdentityId` if present (a save from after this
+ * feature shipped), otherwise seeds a single "Default" identity — so a save
+ * from before browser identities existed still loads instead of crashing.
+ */
+function coerceIdentities(value: Record<string, unknown>): {
+  identities: BrowserIdentity[];
+  activeIdentityId: string;
+} {
+  const rawIdentities = Array.isArray(value.identities)
+    ? value.identities
+    : null;
+  const identities = rawIdentities
+    ? rawIdentities
+        .map(coerceBrowserIdentity)
+        .filter((i): i is BrowserIdentity => i !== null)
+    : [];
+  if (identities.length === 0) return defaultIdentities();
+  const requestedActive =
+    typeof value.activeIdentityId === "string" ? value.activeIdentityId : null;
+  const activeIdentityId =
+    requestedActive && identities.some((i) => i.id === requestedActive)
+      ? requestedActive
+      : identities[0].id;
+  return { identities, activeIdentityId };
 }
 
 function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
@@ -675,7 +740,8 @@ function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
     requestedActive && canvases.some((c) => c.id === requestedActive)
       ? requestedActive
       : canvases[0].id;
-  return { version: 3, activeCanvasId, canvases };
+  const { identities, activeIdentityId } = coerceIdentities(value);
+  return { version: 3, activeCanvasId, canvases, identities, activeIdentityId };
 }
 
 function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {
@@ -691,6 +757,7 @@ function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {
         scene,
       },
     ],
+    ...defaultIdentities(),
   };
 }
 

@@ -1,5 +1,6 @@
 import type { PersistedProjectData, PersistedStashedTerminal } from "./index";
 import type { BrowserCardData } from "../stores/browserCardStore";
+import type { ConnectionData } from "../stores/connectionStore";
 
 export interface ScenePoint {
   x: number;
@@ -102,6 +103,7 @@ export interface SceneDocument {
   camera: SceneCamera;
   projects: PersistedProjectData[];
   browserCards: Record<string, BrowserCardData>;
+  connections?: Record<string, ConnectionData>;
   annotations: AnnotationElement[];
   stashedTerminals?: PersistedStashedTerminal[];
 }

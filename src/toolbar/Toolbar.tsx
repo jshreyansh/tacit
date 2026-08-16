@@ -143,22 +143,6 @@ export function Toolbar() {
           >
             <SettingsIcon />
           </button>
-
-          <button
-            type="button"
-            className={iconButtonClass}
-            style={ICON_BUTTON_TRANSITION}
-            onClick={() =>
-              window.open(
-                "https://github.com/blueberrycongee/termcanvas",
-                "_blank",
-              )
-            }
-            title="Star on GitHub"
-            aria-label="Star on GitHub"
-          >
-            <StarIcon />
-          </button>
         </div>
       </div>
 
@@ -357,19 +341,6 @@ function SpinnerIcon({ className }: { className?: string }) {
         stroke="currentColor"
         strokeWidth="1.3"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 1l1.76 3.57L12.5 5.27 10.25 8.14l.43 3.86L7 10.73l-3.68 1.27.43-3.86L1.5 5.27l3.74-.7L7 1Z"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
       />
     </svg>
   );

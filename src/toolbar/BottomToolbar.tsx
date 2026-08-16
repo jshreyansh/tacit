@@ -27,18 +27,28 @@ const COMPOSER_BOTTOM_INSET = 16;
 const COMPOSER_FALLBACK_HEIGHT = 120;
 const BOTTOM_OFFSET_PLAIN = 20;
 
-const PILL_BG =
-  "bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] backdrop-blur-md";
-const PILL_BORDER = "border border-[var(--border)]";
-const PILL_SHADOW =
-  "shadow-[0_8px_24px_-12px_color-mix(in_srgb,var(--shadow-color)_36%,transparent),0_2px_6px_-2px_color-mix(in_srgb,var(--shadow-color)_24%,transparent)]";
+// Liquid-glass recipe: a low-opacity theme-aware tint (so the app's own
+// palette shows through, not a generic gray) behind a heavy blur+saturate
+// boost — saturate is what actually sells "glass" over a plain frosted
+// panel, since it makes whatever's behind visibly richer, not just soft.
+// The inset highlight is intentionally a fixed light rgba rather than a
+// theme token: real glass/metal catches a light highlight along its top
+// edge in both light and dark rooms, so this doesn't flip with the theme
+// the way a color token would.
+export const PILL_GLASS =
+  "bg-[color-mix(in_srgb,var(--surface)_58%,transparent)] " +
+  "[backdrop-filter:blur(28px)_saturate(1.7)] [-webkit-backdrop-filter:blur(28px)_saturate(1.7)] " +
+  "border border-[color-mix(in_srgb,var(--border)_45%,transparent)] " +
+  "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_0_0_1px_rgba(255,255,255,0.04)," +
+  "0_12px_36px_-10px_color-mix(in_srgb,var(--shadow-color)_45%,transparent)," +
+  "0_2px_8px_-2px_color-mix(in_srgb,var(--shadow-color)_30%,transparent)]";
 
 const groupBase = "flex items-center";
-const dividerCls =
+export const dividerCls =
   "h-4 w-px bg-[color-mix(in_srgb,var(--border)_72%,transparent)] mx-0.5";
-const buttonBase =
+export const buttonBase =
   "inline-flex h-8 items-center justify-center rounded-md text-[12px] font-medium text-[var(--text-muted)] transition-[color,background-color,transform] duration-quick hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] active:scale-[0.97] focus-visible:outline-none motion-reduce:transition-none";
-const iconButton = `${buttonBase} w-8`;
+export const iconButton = `${buttonBase} w-8`;
 const zoomReadout =
   "min-w-[3.25rem] h-8 inline-flex items-center justify-center text-[11px] text-[var(--text-muted)] tabular-nums rounded-md hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] transition-colors";
 
@@ -65,7 +75,47 @@ const ZOOM_PRESETS: ZoomPreset[] = [
   { scale: 2, label: "200%" },
 ];
 
-function useCloseOnOutsideClick(
+export // Corner-bracket "fit to screen" glyph — the same viewfinder metaphor
+// October's own zoom pill uses for its expand icon, in place of a text
+// label.
+function FitIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 15 15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    >
+      <path d="M1.5 5V2.5a1 1 0 0 1 1-1H5" />
+      <path d="M10 1.5h2.5a1 1 0 0 1 1 1V5" />
+      <path d="M13.5 10v2.5a1 1 0 0 1-1 1H10" />
+      <path d="M5 13.5H2.5a1 1 0 0 1-1-1V10" />
+    </svg>
+  );
+}
+
+// Target/crosshair glyph for Focus view — "bring one thing into focus" is
+// a camera-focus metaphor, reads clearly at icon size unlike a text label.
+function FocusIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 15 15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    >
+      <circle cx="7.5" cy="7.5" r="5.25" />
+      <circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function useCloseOnOutsideClick(
   open: boolean,
   ref: React.RefObject<HTMLElement | null>,
   close: () => void,
@@ -90,7 +140,7 @@ function useCloseOnOutsideClick(
 // Roving-focus keyboard nav for popover menus. Caller passes a ref to
 // the popover container, the trigger button (so we can return focus
 // when Esc closes the menu), and an item count for arrow-key wrap.
-function usePopoverKeyboardNav({
+export function usePopoverKeyboardNav({
   open,
   popoverRef,
   triggerRef,
@@ -147,10 +197,23 @@ function usePopoverKeyboardNav({
   }, [open, popoverRef, triggerRef, itemCount, initialIndex, close]);
 }
 
+/**
+ * Shared by every floating bottom-center pill (this toolbar, AddNodeDock)
+ * so they all sit consistently just above ComposerBar's measured height
+ * (published as `--composer-height`) instead of each hard-coding its own
+ * guess, or drifting out of sync if the composer's layout ever changes.
+ */
+export function useComposerBottomOffset(): string {
+  const composerEnabled = usePreferencesStore((s) => s.composerEnabled);
+  return composerEnabled
+    ? `calc(${COMPOSER_BOTTOM_INSET}px + var(--composer-height, ${COMPOSER_FALLBACK_HEIGHT}px) + ${COMPOSER_GAP}px)`
+    : `${BOTTOM_OFFSET_PLAIN}px`;
+}
+
 export function BottomToolbar() {
   const t = useT();
   const viewport = useCanvasStore((s) => s.viewport);
-  const composerEnabled = usePreferencesStore((s) => s.composerEnabled);
+  const focusModeActive = useCanvasStore((s) => s.focusMode.active);
 
   const [presetOpen, setPresetOpen] = useState(false);
   const presetWrapperRef = useRef<HTMLDivElement>(null);
@@ -209,21 +272,15 @@ export function BottomToolbar() {
   }, []);
 
   const zoomPercent = Math.round(viewport.scale * 100);
-
-  // When composer is enabled, sit just above its measured height
-  // (published as `--composer-height`). The fallback covers the brief
-  // moment between mount and first ResizeObserver tick.
-  const bottomOffset = composerEnabled
-    ? `calc(${COMPOSER_BOTTOM_INSET}px + var(--composer-height, ${COMPOSER_FALLBACK_HEIGHT}px) + ${COMPOSER_GAP}px)`
-    : `${BOTTOM_OFFSET_PLAIN}px`;
+  const bottomOffset = useComposerBottomOffset();
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[95] pointer-events-none"
+      className="fixed right-4 z-[95] pointer-events-none"
       style={{ bottom: bottomOffset }}
     >
       <div
-        className={`pointer-events-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 ${PILL_BG} ${PILL_BORDER} ${PILL_SHADOW}`}
+        className={`pointer-events-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 ${PILL_GLASS}`}
       >
         <div className={groupBase}>
           <button
@@ -252,7 +309,7 @@ export function BottomToolbar() {
                 ref={presetPopoverRef}
                 role="menu"
                 aria-label={t.canvas_zoom_to}
-                className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[140px] rounded-md py-1 ${PILL_BG} ${PILL_BORDER} ${PILL_SHADOW}`}
+                className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[140px] rounded-md py-1 ${PILL_GLASS}`}
               >
                 {ZOOM_PRESETS.map((preset) => (
                   <button
@@ -302,12 +359,33 @@ export function BottomToolbar() {
         <div aria-hidden="true" className={dividerCls} />
 
         <button
-          className={`${buttonBase} px-2.5`}
+          className={iconButton}
           onClick={fitAllProjects}
           title={`${t.fit} (${KEY_HINT.fit})`}
           aria-label={t.fit}
         >
-          {t.fit}
+          <FitIcon />
+        </button>
+
+        <button
+          className={`${iconButton} ${
+            focusModeActive
+              ? "bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] text-[var(--text-primary)]"
+              : ""
+          }`}
+          onClick={() => {
+            const store = useCanvasStore.getState();
+            if (store.focusMode.active) {
+              store.exitFocusMode();
+            } else {
+              store.enterFocusMode();
+            }
+          }}
+          title={focusModeActive ? t.exit_focus_view : t.focus_view}
+          aria-label={focusModeActive ? t.exit_focus_view : t.focus_view}
+          aria-pressed={focusModeActive}
+        >
+          <FocusIcon />
         </button>
       </div>
     </div>

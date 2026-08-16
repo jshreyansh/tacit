@@ -18,6 +18,24 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("[ErrorBoundary]", error, info.componentStack);
+    // Reaching THIS boundary means the crash happened outside every scoped
+    // LayerErrorBoundary, so the whole window really is gone — worth writing
+    // to render-diagnostics.jsonl with its own kind, so an app-wide blackout
+    // is distinguishable from a single overlay failing when reading the log
+    // back from a machine I can't inspect live.
+    void window.termcanvas?.diagnostics
+      ?.recordRenderEvent?.({
+        kind: "app-error",
+        data: {
+          message: error.message,
+          stack: error.stack?.split("\n").slice(0, 8).join("\n"),
+          componentStack: info.componentStack
+            ?.split("\n")
+            .slice(0, 8)
+            .join("\n"),
+        },
+      })
+      .catch(() => {});
   }
 
   private handleReload = (): void => {

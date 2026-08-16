@@ -147,6 +147,9 @@ export function useBoxSelect() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (shouldIgnoreBoxSelectTarget(e.target)) return;
+    // Canvas-navigation gestures (including marquee select) are inert while
+    // focus view is active — the camera only moves via swipe/Cmd+Arrow.
+    if (useCanvasStore.getState().focusMode.active) return;
 
     // Don't activate in drawing mode
     if (useDrawingStore.getState().tool !== "select") return;

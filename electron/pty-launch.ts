@@ -64,6 +64,18 @@ const TERMCANVAS_RUNTIME_ENV_BLOCKLIST = new Set([
   "TERMCANVAS_TERMINAL_TYPE",
   "TERMCANVAS_INSTANCE",
   "TERMCANVAS_PORT_FILE",
+  // Claude Code sets this on processes it spawns, and switches transcript
+  // saving OFF when it sees it inherited — a nested agent shouldn't litter
+  // the user's session history. Launch TermCanvas from inside a Claude Code
+  // session (or from any agent-spawned shell) and the whole app inherits the
+  // marker, so every terminal it opens silently stops writing a transcript.
+  // That breaks resume specifically: the session id is still captured and
+  // still passed to `claude --resume`, but the transcript it points at was
+  // never written, so there is nothing to restore and the agent comes back
+  // as a fresh session. Terminals TermCanvas opens are top-level user
+  // sessions, not children of whatever launched the app, so the marker must
+  // not carry into them.
+  "CLAUDE_CODE_CHILD_SESSION",
 ]);
 
 function getEnvVarCaseInsensitive(

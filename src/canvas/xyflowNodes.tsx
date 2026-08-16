@@ -1,10 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  type Node,
-  type NodeProps,
-  type NodeTypes,
-  NodeResizer,
-} from "@xyflow/react";
+import { type NodeProps, type NodeTypes, NodeResizer } from "@xyflow/react";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { usePinStore } from "../stores/pinStore";
@@ -17,7 +12,8 @@ import {
   useTerminalRuntimeStore,
 } from "../terminal/terminalRuntimeStore";
 import { panToTerminal } from "../utils/panToTerminal";
-import { type TerminalNodeData, type CanvasFlowNode } from "./nodeProjection";
+import { type TerminalFlowNode, type CanvasFlowNode } from "./nodeProjection";
+import { PinNode } from "./PinNode";
 import { rectIntersectsCanvasViewport } from "./viewportBounds";
 import { resolveCollisions } from "./collisionResolver";
 
@@ -26,8 +22,6 @@ const SNAP_GRID = 10;
 function snapTo(value: number, grid: number): number {
   return Math.round(value / grid) * grid;
 }
-
-type TerminalFlowNode = Node<TerminalNodeData, "terminal">;
 
 function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   const [hovered, setHovered] = useState(false);
@@ -241,6 +235,8 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   return (
     <div
       className="h-full w-full"
+      data-connect-kind="terminal"
+      data-connect-id={data.terminalId}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -273,6 +269,8 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
+  pin: PinNode,
 } satisfies NodeTypes;
 
-export type { CanvasFlowNode, TerminalNodeData };
+export type { CanvasFlowNode };
+export type { TerminalNodeData, PinNodeData } from "./nodeProjection";

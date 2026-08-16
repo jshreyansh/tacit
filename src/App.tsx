@@ -3,7 +3,10 @@ import { CanvasRoot } from "./canvas/CanvasRoot";
 import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
 import { Toolbar } from "./toolbar/Toolbar";
 import { BottomToolbar } from "./toolbar/BottomToolbar";
+import { AddNodeDock } from "./toolbar/AddNodeDock";
+import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
+import { useNotificationStore } from "./stores/notificationStore";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
@@ -18,6 +21,10 @@ import { DiscoveryCue } from "./components/DiscoveryCue";
 import { StatusDigest } from "./components/StatusDigest";
 import { CompletionGlow } from "./components/CompletionGlow";
 import { initSessionStoreIPC } from "./stores/sessionStore";
+import {
+  initBridgeActivityIPC,
+  initCanvasBridgeEventIPC,
+} from "./stores/bridgeActivityStore";
 import { SearchModal } from "./components/SearchModal";
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { UsageOverlay } from "./components/UsageOverlay";
@@ -28,6 +35,28 @@ import {
   updateTerminalCustomTitleInScene,
 } from "./actions/terminalSceneActions";
 import { useProjectStore, generateId } from "./stores/projectStore";
+import { useBrowserCardStore } from "./stores/browserCardStore";
+import {
+  addBrowserCardToScene,
+  updateBrowserCardInScene,
+  removeBrowserCardFromScene,
+} from "./actions/sceneCardActions";
+import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
+import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
+import { getBrowserWebview } from "./canvas/browserWebviewRegistry";
+import { usePinStore } from "./stores/pinStore";
+import {
+  useCanvasRegistryStore,
+  getActiveCanvas,
+  getWorkspaceManagerTerminalId,
+} from "./stores/canvasRegistryStore";
+import { createNoteInScene, updatePinInScene } from "./actions/scenePinActions";
+import {
+  createConnectionInScene,
+  wireSpawnedBrowser,
+} from "./actions/sceneConnectionActions";
+import type { ConnectionEndpoint } from "./stores/connectionStore";
+import type { TerminalType } from "./types";
 import { addScannedProjectAndFocus } from "./projects/projectCreation";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePinPreloader } from "./hooks/usePinPreloader";
@@ -42,18 +71,30 @@ import {
   readWorkspaceSnapshot,
   restoreWorkspaceSnapshot,
   snapshotState,
+  snapshotStateWithRefresh,
   type SkipRestoreSnapshot,
 } from "./snapshotState";
 import { appendSnapshotToHistory } from "./snapshotHistory";
+import { recordDecision, setCaptureCanvas } from "./capture";
+import { recordTopologyCheckpoint } from "./captureTopology";
 import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { IdentityManagerModal } from "./components/IdentityManagerModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
+
+// The canvas opacity/blur preference (Settings > Appearance) needs the real
+// window to show through, which means every opaque layer stacked above it
+// has to get out of the way — not just CanvasRoot's own background. This
+// root div is one of those layers: Toolbar/LeftPanel/RightPanel/CanvasRoot
+// already tile the full viewport with their own opaque backgrounds, so
+// dropping this one is safe on mac and never visible on other platforms.
+const IS_MAC = (window.termcanvas?.app.platform ?? "darwin") === "darwin";
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -179,6 +220,8 @@ function useAutoSave() {
         // MIN_HISTORY_INTERVAL_MS in snapshotHistory.ts. Awaiting the autosave
         // first guarantees state.json and the history slot agree.
         void appendSnapshotToHistory();
+        // Same heartbeat, its own (longer) throttle — see captureTopology.ts.
+        recordTopologyCheckpoint();
       } catch (err) {
         console.error("[useAutoSave] failed to save recovery snapshot:", err);
       } finally {
@@ -211,8 +254,37 @@ function useAutoSave() {
       }
     }, 60_000);
 
+    // Closes the gap where a quit shortly after a change loses that change
+    // even on a clean quit — see requestFinalFlushAndWait in
+    // electron/main.ts's "will-quit" handler, which pushes this event and
+    // waits (with a timeout) for the ack below before destroying any PTYs.
+    const unsubscribeFlush = window.termcanvas.state.onFlushBeforeQuit(() => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      // Uses the refreshing variant (not plain saveSnapshot/snapshotState)
+      // per its own doc comment: close-time saves should re-read live
+      // Claude session state from disk first, so a /resume switch or
+      // permission-mode change from moments ago is actually captured, not
+      // just whatever was already cached at the last debounced autosave.
+      snapshotStateWithRefresh()
+        .then((snap) => window.termcanvas.state.save(snap))
+        .then(() => {
+          useWorkspaceStore.setState((state) => ({
+            ...state,
+            lastSavedAt: Date.now(),
+          }));
+        })
+        .catch((err) => {
+          console.error("[useAutoSave] failed to flush before quit:", err);
+        })
+        .finally(() => window.termcanvas.state.notifyFlushComplete());
+    });
+
     return () => {
       unsubscribe();
+      unsubscribeFlush();
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }
@@ -274,6 +346,18 @@ export function App() {
   }, [summaryEnabled]);
 
   useEffect(() => initUpdaterListeners(), []);
+  // Keeps main's view of the active canvas current, so prompt entries — which
+  // arrive from the hook socket in main, not here — get attributed to the right
+  // canvas. Subscribing rather than reading once: switching canvases has to
+  // move subsequent entries with it.
+  useEffect(() => {
+    setCaptureCanvas(useCanvasRegistryStore.getState().activeCanvasId);
+    return useCanvasRegistryStore.subscribe((state, prev) => {
+      if (state.activeCanvasId !== prev.activeCanvasId) {
+        setCaptureCanvas(state.activeCanvasId);
+      }
+    });
+  }, []);
   useEffect(() => {
     void useSnapshotHistoryStore.getState().refresh();
   }, []);
@@ -284,7 +368,31 @@ export function App() {
     if (!window.termcanvas?.sessions) return;
     return initSessionStoreIPC();
   }, []);
-
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onBridgeCall) return;
+    return initBridgeActivityIPC();
+  }, []);
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onCanvasBridgeEvent) return;
+    return initCanvasBridgeEventIPC();
+  }, []);
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onExternalAuthRedirect) return;
+    return window.termcanvas.browser.onExternalAuthRedirect(({ url }) => {
+      let host = url;
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        // keep raw url as fallback
+      }
+      useNotificationStore
+        .getState()
+        .notify(
+          "info",
+          `Opened ${host} in your browser to sign in — the embedded browser can't complete Google/Microsoft-style sign-in.`,
+        );
+    });
+  }, []);
   useEffect(() => {
     if (!window.termcanvas?.menu) return;
     const removeOpenFolderListener = window.termcanvas.menu.onOpenFolder(
@@ -444,6 +552,422 @@ export function App() {
         }
         throw new Error("Terminal not found");
       },
+
+      listBrowserCards: () => {
+        return JSON.parse(
+          JSON.stringify(Object.values(useBrowserCardStore.getState().cards)),
+        );
+      },
+
+      addBrowserCard: (url: string, x?: number, y?: number) => {
+        const position =
+          typeof x === "number" && typeof y === "number" ? { x, y } : undefined;
+        return addBrowserCardToScene(position, url);
+      },
+
+      updateBrowserCard: (id: string, patch: Record<string, unknown>) => {
+        if (!useBrowserCardStore.getState().cards[id]) {
+          throw new Error(`Browser card not found: ${id}`);
+        }
+        updateBrowserCardInScene(id, patch);
+        return true;
+      },
+
+      removeBrowserCard: (id: string) => {
+        if (!useBrowserCardStore.getState().cards[id]) {
+          throw new Error(`Browser card not found: ${id}`);
+        }
+        removeBrowserCardFromScene(id);
+        return true;
+      },
+
+      // Backs the termcanvas-bridge MCP server's gating check
+      // (termcanvas-bridge/src/mcp-server.ts): a terminal's browser tools stay inert until this
+      // resolves to a real id. "Most recently connected wins" if a terminal
+      // somehow ends up wired to more than one browser tile.
+      getBrowserBindingForTerminal: (terminalId: string) => {
+        const connections = connectionsInvolving(
+          useConnectionStore.getState().connections,
+          "terminal",
+          terminalId,
+        );
+        let mostRecent: { id: string; createdAt: number } | null = null;
+        for (const connection of connections) {
+          const other =
+            connection.from.kind === "browser" ? connection.from : connection.to;
+          if (other.kind !== "browser") continue;
+          if (!mostRecent || connection.createdAt > mostRecent.createdAt) {
+            mostRecent = { id: other.id, createdAt: connection.createdAt };
+          }
+        }
+        return { browserId: mostRecent?.id ?? null };
+      },
+
+      // Backs the remember MCP tool (termcanvas-bridge/src/mcp-server.ts via
+      // electron/api-server.ts's /terminal/:id/remember route). Returns the
+      // exact same worktree.path string src/components/RightPanel/
+      // MemoryContent.tsx already uses to call window.termcanvas.memory.*
+      // — not a re-derived path — so a note written for this terminal lands
+      // in the same memory directory the Memory tab is already watching.
+      getWorktreePathForTerminal: (terminalId: string) => {
+        const found = findTerminal(terminalId);
+        return { worktreePath: found?.worktree.path ?? null };
+      },
+
+      // Backs the emit_event MCP tool (termcanvas-bridge/src/mcp-server.ts via
+      // electron/api-server.ts's /node/:kind/:id/emit route). Unlike
+      // getBrowserBindingForTerminal above (which deliberately picks only
+      // the most-recently-connected browser for the narrower drive tools),
+      // this fans out to *every* connected endpoint — the actual
+      // graph-not-point-to-point behavior emit_event is for.
+      getConnectionsForNode: (kind: ConnectionEndpoint["kind"], id: string) => {
+        const connections = connectionsInvolving(
+          useConnectionStore.getState().connections,
+          kind,
+          id,
+        );
+        return connections.map((connection) => {
+          const other =
+            connection.from.kind === kind && connection.from.id === id
+              ? connection.to
+              : connection.from;
+          if (other.kind === "terminal") {
+            const found = findTerminal(other.id);
+            return {
+              kind: "terminal" as const,
+              id: other.id,
+              ptyId: getLivePtyId(other.id),
+              terminalType: found?.terminal.type ?? null,
+              worktreePath: found?.worktree.path ?? null,
+            };
+          }
+          if (other.kind === "note") {
+            // Reported so callers can see the note is connected, but it has
+            // no reaction — nodeEmit (electron/api-server.ts) skips notes
+            // rather than treating them as a drivable endpoint.
+            return { kind: "note" as const, id: other.id };
+          }
+          return { kind: "browser" as const, id: other.id };
+        });
+      },
+
+      // Backs the workspace-manager query tools (list_nodes/get_node_state/
+      // get_workspace_summary in termcanvas-bridge/src/mcp-server.ts via
+      // electron/api-server.ts). Flat across all three node kinds — no
+      // project/worktree nesting — since the PM reasons about the canvas as
+      // one flat space, same as focusableNodes.ts's collector does for
+      // focus view. Pins without x/y (list/drawer-only, never placed on the
+      // canvas) are excluded, same as focusableNodes.ts excludes them.
+      listWorkspaceNodes: () => {
+        const nodes: Array<{
+          kind: "terminal" | "browser" | "pin";
+          id: string;
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          type: string | null;
+          status: string | null;
+          title: string | null;
+        }> = [];
+
+        const { projects } = useProjectStore.getState();
+        for (const project of projects) {
+          for (const worktree of project.worktrees) {
+            for (const terminal of worktree.terminals) {
+              if (terminal.stashed) continue;
+              const live = resolveTerminalWithRuntimeState(terminal);
+              nodes.push({
+                kind: "terminal",
+                id: live.id,
+                x: live.x,
+                y: live.y,
+                w: live.width,
+                h: live.height,
+                type: live.type,
+                status: live.status,
+                title: live.customTitle || live.title || null,
+              });
+            }
+          }
+        }
+
+        const { cards } = useBrowserCardStore.getState();
+        for (const card of Object.values(cards)) {
+          nodes.push({
+            kind: "browser",
+            id: card.id,
+            x: card.x,
+            y: card.y,
+            w: card.w,
+            h: card.h,
+            type: null,
+            status: null,
+            title: card.title || card.url || null,
+          });
+        }
+
+        const { pinsByProject } = usePinStore.getState();
+        for (const pin of Object.values(pinsByProject).flat()) {
+          if (pin.x == null || pin.y == null) continue;
+          nodes.push({
+            kind: "pin",
+            id: pin.id,
+            x: pin.x,
+            y: pin.y,
+            w: pin.w ?? 280,
+            h: pin.h ?? 220,
+            type: null,
+            status: pin.status,
+            title: pin.title || null,
+          });
+        }
+
+        return JSON.parse(JSON.stringify(nodes));
+      },
+
+      getNodeState: (kind: "terminal" | "browser" | "pin", id: string) => {
+        if (kind === "terminal") {
+          const found = findTerminal(id);
+          if (!found) return null;
+          const live = resolveTerminalWithRuntimeState(found.terminal);
+          return JSON.parse(
+            JSON.stringify({
+              kind: "terminal",
+              id: live.id,
+              type: live.type,
+              status: live.status,
+              title: live.customTitle || live.title || null,
+              x: live.x,
+              y: live.y,
+              w: live.width,
+              h: live.height,
+              worktreePath: found.worktree.path,
+            }),
+          );
+        }
+        if (kind === "browser") {
+          const card = useBrowserCardStore.getState().cards[id];
+          if (!card) return null;
+          return JSON.parse(JSON.stringify(card));
+        }
+        if (kind === "pin") {
+          const { pinsByProject } = usePinStore.getState();
+          const pin = Object.values(pinsByProject)
+            .flat()
+            .find((p) => p.id === id);
+          if (!pin) return null;
+          return JSON.parse(JSON.stringify(pin));
+        }
+        return null;
+      },
+
+      getWorkspaceLiveSummary: () => {
+        const { projects } = useProjectStore.getState();
+        let terminalCount = 0;
+        const statusCounts: Record<string, number> = {};
+        for (const project of projects) {
+          for (const worktree of project.worktrees) {
+            for (const terminal of worktree.terminals) {
+              if (terminal.stashed) continue;
+              terminalCount++;
+              const live = resolveTerminalWithRuntimeState(terminal);
+              statusCounts[live.status] = (statusCounts[live.status] ?? 0) + 1;
+            }
+          }
+        }
+        const browserCount = Object.keys(
+          useBrowserCardStore.getState().cards,
+        ).length;
+        const pinCount = Object.values(usePinStore.getState().pinsByProject)
+          .flat()
+          .filter((p) => p.x != null && p.y != null).length;
+        const connectionCount = useConnectionStore.getState().connections.length;
+        return {
+          terminalCount,
+          browserCount,
+          pinCount,
+          connectionCount,
+          statusCounts,
+        };
+      },
+
+      // Live gating check for PM-only routes — compares against the
+      // *active* canvas's assignment (see docs/workspace_project_manager.md:
+      // Phase 1 scopes "workspace" to the active canvas, not true
+      // simultaneous multi-canvas). Checked fresh per call, not cached.
+      isWorkspaceManager: (terminalId: string) => {
+        return getWorkspaceManagerTerminalId() === terminalId;
+      },
+
+      getActiveCanvasId: () => getActiveCanvas().id,
+
+      setWorkspaceManager: (terminalId: string | null) => {
+        const canvasId = getActiveCanvas().id;
+        useCanvasRegistryStore.getState().setWorkspaceManager(canvasId, terminalId);
+        recordDecision({
+          kind: "manager",
+          node: terminalId ? `terminal:${terminalId}` : null,
+          by: "user",
+        });
+        return { canvasId, terminalId };
+      },
+
+      // Backs the spawn_terminal MCP tool. requesterTerminalId (always the
+      // PM itself, per the gating check in electron/api-server.ts) becomes
+      // parentTerminalId, which drives auto-placement (pickPlacement in
+      // terminalPlacement.ts anchors next to a parent) and, via
+      // createTerminalInScene, the spawn-origin connection back to the PM.
+      // connectTo is an additional, optional wire to some *other* node —
+      // omit it for a plain spawn; the parent link is automatic.
+      spawnTerminal: (opts: {
+        requesterTerminalId: string;
+        type?: string;
+        prompt?: string;
+        position?: { x: number; y: number };
+        connectTo?: ConnectionEndpoint;
+      }) => {
+        const found = findTerminal(opts.requesterTerminalId);
+        if (!found) return { ok: false, reason: "requester terminal not found" };
+        const terminal = createTerminalInScene({
+          projectId: found.project.id,
+          worktreeId: found.worktree.id,
+          type: (opts.type as TerminalType | undefined) ?? "shell",
+          initialPrompt: opts.prompt,
+          origin: "agent",
+          parentTerminalId: opts.requesterTerminalId,
+          position: opts.position,
+        });
+        // No recordDecision here: createTerminalInScene already recorded the
+        // spawn, so doing it again would double-count every delegation.
+        if (opts.connectTo) {
+          createConnectionInScene(
+            { kind: "terminal", id: terminal.id },
+            opts.connectTo,
+            { by: `terminal:${opts.requesterTerminalId}` },
+          );
+        }
+        return { ok: true, id: terminal.id, x: terminal.x, y: terminal.y };
+      },
+
+      // Backs the spawn_browser MCP tool.
+      spawnBrowser: (opts: {
+        requesterTerminalId: string;
+        url: string;
+        position?: { x: number; y: number };
+        connectTo?: ConnectionEndpoint;
+      }) => {
+        const id = addBrowserCardToScene(opts.position, opts.url);
+        recordDecision({
+          kind: "spawn",
+          node: `browser:${id}`,
+          by: `terminal:${opts.requesterTerminalId}`,
+          parent: `terminal:${opts.requesterTerminalId}`,
+          detail: opts.url,
+        });
+        if (opts.connectTo) {
+          createConnectionInScene({ kind: "browser", id }, opts.connectTo, {
+            origin: "spawn",
+            by: `terminal:${opts.requesterTerminalId}`,
+          });
+        } else {
+          // No explicit target means "for me" — wire it straight to the
+          // agent that asked, so the browser_* drive tools work immediately
+          // instead of returning "Not wired to a browser yet" until a
+          // separate connect_nodes call lands. Replaces that agent's
+          // previous browser wire; see wireSpawnedBrowser.
+          wireSpawnedBrowser(opts.requesterTerminalId, id);
+        }
+        return { ok: true, id };
+      },
+
+      spawnNote: async (opts: {
+        requesterTerminalId: string;
+        body: string;
+        position?: { x: number; y: number };
+      }) => {
+        const found = findTerminal(opts.requesterTerminalId);
+        if (!found) return { ok: false, reason: "requester terminal not found" };
+        const pin = await createNoteInScene(found.project.path, opts.position);
+        updatePinInScene(found.project.path, pin.id, { body: opts.body });
+        recordDecision({
+          kind: "spawn",
+          node: `note:${pin.id}`,
+          by: `terminal:${opts.requesterTerminalId}`,
+          parent: `terminal:${opts.requesterTerminalId}`,
+        });
+        // Notes are connectable purely so their provenance is visible — a
+        // note wire grants nothing, and nodeEmit (electron/api-server.ts)
+        // deliberately applies no reaction to a note target.
+        createConnectionInScene(
+          { kind: "terminal", id: opts.requesterTerminalId },
+          { kind: "note", id: pin.id },
+          { origin: "spawn", by: `terminal:${opts.requesterTerminalId}` },
+        );
+        return { ok: true, id: pin.id };
+      },
+
+      // Backs the connect_nodes MCP tool. A manual wire is a real capability
+      // grant, not just a drawn line: it is what browser-bridge resolves
+      // terminal→browser control from, and what emit_event fans out along.
+      connectNodes: (
+        source: ConnectionEndpoint,
+        target: ConnectionEndpoint,
+        requesterTerminalId?: string,
+      ) => {
+        const id = createConnectionInScene(source, target, {
+          by: requesterTerminalId ? `terminal:${requesterTerminalId}` : "user",
+        });
+        return { ok: id !== null, id };
+      },
+
+      // Drives a live browser tile's <webview> on behalf of the MCP server
+      // (see electron/api-server.ts's /browser/:id/action route, which
+      // reaches this via execRenderer since the webview instance only
+      // exists here in the renderer).
+      driveBrowserCard: async (
+        id: string,
+        action: string,
+        params: Record<string, unknown> = {},
+      ) => {
+        const webview = getBrowserWebview(id);
+        if (!webview) {
+          throw new Error(`Browser tile not found or not mounted: ${id}`);
+        }
+        switch (action) {
+          case "navigate": {
+            const url = params.url as string | undefined;
+            if (!url) throw new Error("navigate requires a url");
+            await webview.loadURL(url);
+            return { url: webview.getURL(), title: webview.getTitle() };
+          }
+          case "read": {
+            const text = await webview.executeJavaScript(
+              "document.body ? document.body.innerText : ''",
+            );
+            return { url: webview.getURL(), title: webview.getTitle(), text };
+          }
+          case "click": {
+            const selector = params.selector as string | undefined;
+            if (!selector) throw new Error("click requires a selector");
+            const clicked = await webview.executeJavaScript(
+              `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
+            );
+            if (!clicked) {
+              throw new Error(`No element matched selector: ${selector}`);
+            }
+            return { ok: true };
+          }
+          case "eval": {
+            const script = params.script as string | undefined;
+            if (!script) throw new Error("eval requires a script");
+            const result = await webview.executeJavaScript(script);
+            return { result };
+          }
+          default:
+            throw new Error(`Unknown browser action: ${action}`);
+        }
+      },
     };
 
     (window as any).__tcApi = api;
@@ -453,12 +977,18 @@ export function App() {
   }, []);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--text-primary)]">
+    <div
+      className={`h-screen w-screen overflow-hidden text-[var(--text-primary)] ${
+        IS_MAC ? "" : "bg-[var(--bg)]"
+      }`}
+    >
       <Toolbar />
       <LeftPanel />
       <RightPanel />
       <CanvasRoot />
       <BottomToolbar />
+      <AddNodeDock />
+      <WorkspaceManagerPill />
       {drawingEnabled && <DrawingPanel />}
       {completionGlowEnabled && <CompletionGlow />}
       <ShortcutHints />
@@ -476,6 +1006,7 @@ export function App() {
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />
+      <IdentityManagerModal />
     </div>
   );
 }

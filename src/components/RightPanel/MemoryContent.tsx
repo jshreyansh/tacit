@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useMemoryStore, positionKey } from "../../stores/memoryStore";
+import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useT } from "../../i18n/useT";
 
 const themeCache = { theme: "", vars: {} as Record<string, string> };
@@ -587,14 +588,42 @@ interface Props {
   onFileClick: (filePath: string) => void;
 }
 
+type MemoryScope = "worktree" | "workspace";
+
 export function MemoryContent({ worktreePath, onFileClick }: Props) {
   const t = useT();
   const { graph, selectedNode, loading, setGraph, setSelectedNode, setLoading } =
     useMemoryStore();
+  const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
+  const [scope, setScope] = useState<MemoryScope>("worktree");
 
   useEffect(() => {
-    if (!worktreePath) return;
     let cancelled = false;
+
+    if (scope === "workspace") {
+      setLoading(true);
+      window.termcanvas.memory.scanWorkspace(activeCanvasId).then((result) => {
+        if (!cancelled) {
+          setGraph(result);
+          setLoading(false);
+        }
+      }).catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+      window.termcanvas.memory.watchWorkspace(activeCanvasId);
+      const unsubscribe = window.termcanvas.memory.onChanged((updatedGraph) => {
+        if (!cancelled) setGraph(updatedGraph);
+      });
+
+      return () => {
+        cancelled = true;
+        window.termcanvas.memory.unwatchWorkspace(activeCanvasId);
+        unsubscribe();
+      };
+    }
+
+    if (!worktreePath) return;
 
     setLoading(true);
     window.termcanvas.memory.scan(worktreePath).then((result) => {
@@ -616,35 +645,63 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
       window.termcanvas.memory.unwatch(worktreePath);
       unsubscribe();
     };
-  }, [worktreePath, setGraph, setLoading]);
+  }, [scope, worktreePath, activeCanvasId, setGraph, setLoading]);
 
-  if (!worktreePath) {
+  const scopeTabs = (
+    <div className="flex items-center gap-1 px-2 pt-2 pb-1 shrink-0">
+      {(["worktree", "workspace"] as const).map((s) => (
+        <button
+          key={s}
+          onClick={() => setScope(s)}
+          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+            scope === s
+              ? "bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] text-[var(--text-primary)]"
+              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          {s === "worktree" ? t.memory_scope_worktree : t.memory_scope_workspace}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (scope === "worktree" && !worktreePath) {
     return (
-      <div className="tc-label flex-1 flex items-center justify-center">
-        {t.no_worktree_selected}
+      <div className="flex-1 flex flex-col min-h-0">
+        {scopeTabs}
+        <div className="tc-label flex-1 flex items-center justify-center">
+          {t.no_worktree_selected}
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="tc-label flex-1 flex items-center justify-center">
-        {t.memory_loading}
+      <div className="flex-1 flex flex-col min-h-0">
+        {scopeTabs}
+        <div className="tc-label flex-1 flex items-center justify-center">
+          {t.memory_loading}
+        </div>
       </div>
     );
   }
 
   if (graph.nodes.length === 0) {
     return (
-      <div className="tc-label flex-1 flex flex-col items-center justify-center px-4 text-center leading-relaxed">
-        <span>{t.memory_empty}</span>
-        <span>{t.memory_empty_hint}</span>
+      <div className="flex-1 flex flex-col min-h-0">
+        {scopeTabs}
+        <div className="tc-label flex-1 flex flex-col items-center justify-center px-4 text-center leading-relaxed">
+          <span>{t.memory_empty}</span>
+          <span>{t.memory_empty_hint}</span>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {scopeTabs}
       <MemoryGraph
         graph={graph}
         selectedNode={selectedNode}

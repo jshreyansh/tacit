@@ -11,6 +11,7 @@ const DEFAULT_BLUR = 0;
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_MIN_CONTRAST = 1;
 const LEGACY_ENABLED_BLUR = 1.5;
+const DEFAULT_CANVAS_OPACITY = 50;
 
 export type TerminalRendererMode = "dom" | "webgl";
 
@@ -28,6 +29,10 @@ export interface StoredTerminalSize {
 
 interface PreferencesStore {
   animationBlur: number;
+  /** Canvas background transparency, 0-100 (100 = fully opaque). macOS only — see setCanvasOpacity. */
+  canvasOpacity: number;
+  /** tc-attachment:// URL of a user-picked local image shown behind the canvas, or null for none. */
+  canvasBackgroundImage: string | null;
   terminalFontSize: number;
   terminalFontFamily: string;
   terminalRenderer: TerminalRendererMode;
@@ -68,6 +73,8 @@ interface PreferencesStore {
   seenHints: Record<string, true>;
 
   setAnimationBlur: (value: number) => void;
+  setCanvasOpacity: (value: number) => void;
+  setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
   setTerminalFontSize: (value: number) => void;
   setTerminalFontFamily: (fontId: string) => void;
@@ -98,6 +105,8 @@ const PLAINTEXT_FALLBACK_PREFIX = "plain:";
 
 interface SavedPrefs {
   animationBlur: number;
+  canvasOpacity: number;
+  canvasBackgroundImage: string | null;
   terminalFontSize: number;
   terminalFontFamily: string;
   terminalRenderer: TerminalRendererMode;
@@ -198,6 +207,15 @@ function loadPreferences(): SavedPrefs {
       else if (v === false) blur = 0;
       else if (typeof v === "number" && v >= 0 && v <= 3) blur = v;
 
+      let canvasOpacity = DEFAULT_CANVAS_OPACITY;
+      const co = parsed.canvasOpacity;
+      if (typeof co === "number" && co >= 0 && co <= 100) canvasOpacity = co;
+
+      let canvasBackgroundImage: string | null = null;
+      if (typeof parsed.canvasBackgroundImage === "string") {
+        canvasBackgroundImage = parsed.canvasBackgroundImage;
+      }
+
       let fontSize = DEFAULT_FONT_SIZE;
       const f = parsed.terminalFontSize;
       if (typeof f === "number" && f >= 6 && f <= 24) fontSize = f;
@@ -274,6 +292,8 @@ function loadPreferences(): SavedPrefs {
 
       return {
         animationBlur: blur,
+        canvasOpacity,
+        canvasBackgroundImage,
         terminalFontSize: fontSize,
         terminalFontFamily: fontFamily,
         terminalRenderer,
@@ -301,6 +321,8 @@ function loadPreferences(): SavedPrefs {
   }
   return {
     animationBlur: DEFAULT_BLUR,
+    canvasOpacity: DEFAULT_CANVAS_OPACITY,
+    canvasBackgroundImage: null,
     terminalFontSize: DEFAULT_FONT_SIZE,
     terminalFontFamily: "geist-mono",
     terminalRenderer: "webgl",
@@ -408,6 +430,8 @@ function readLegacyApiKey(): string {
 function getSaveState(state: PreferencesStore): SavedPrefs {
   return {
     animationBlur: state.animationBlur,
+    canvasOpacity: state.canvasOpacity,
+    canvasBackgroundImage: state.canvasBackgroundImage,
     terminalFontSize: state.terminalFontSize,
     terminalFontFamily: state.terminalFontFamily,
     terminalRenderer: state.terminalRenderer,
@@ -436,6 +460,8 @@ const initialPrefs = loadPreferences();
 
 export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   animationBlur: initialPrefs.animationBlur,
+  canvasOpacity: initialPrefs.canvasOpacity,
+  canvasBackgroundImage: initialPrefs.canvasBackgroundImage,
   terminalFontSize: initialPrefs.terminalFontSize,
   terminalFontFamily: initialPrefs.terminalFontFamily,
   terminalRenderer: initialPrefs.terminalRenderer,
@@ -463,6 +489,15 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
     const clamped = Math.round(Math.max(0, Math.min(3, value)) * 10) / 10;
     set({ animationBlur: clamped });
     savePreferences(getSaveState({ ...get(), animationBlur: clamped }));
+  },
+  setCanvasOpacity: (value) => {
+    const clamped = Math.round(Math.max(0, Math.min(100, value)));
+    set({ canvasOpacity: clamped });
+    savePreferences(getSaveState({ ...get(), canvasOpacity: clamped }));
+  },
+  setCanvasBackgroundImage: (url) => {
+    set({ canvasBackgroundImage: url });
+    savePreferences(getSaveState({ ...get(), canvasBackgroundImage: url }));
   },
   setMinimumContrastRatio: (value) => {
     const clamped = Math.round(Math.max(1, Math.min(7, value)) * 10) / 10;
@@ -578,4 +613,18 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
 // also imported in Node-based unit tests where `window` is not defined.
 if (typeof window !== "undefined") {
   window.termcanvas?.app.setQuitOnLastWindowClosed?.(initialPrefs.quitOnLastWindowClosed);
+
+  // Mac windows are created transparent so the canvas opacity/blur
+  // preference can show the desktop through (see index.css
+  // .tc-mac-transparent-window). Marking this on body at startup, not just
+  // when the preference is active, keeps App.tsx/index.css simple — every
+  // other layer already paints its own opaque background, so an always-
+  // transparent body/root is safe and .canvas-bg's own background-color is
+  // what actually renders solid at 100% opacity.
+  if (
+    typeof document !== "undefined" &&
+    (window.termcanvas?.app.platform ?? "darwin") === "darwin"
+  ) {
+    document.body.classList.add("tc-mac-transparent-window");
+  }
 }

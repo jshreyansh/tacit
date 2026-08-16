@@ -214,6 +214,9 @@ export function TerminalTile({
   const copiedNonce = useTerminalRuntimeStore(
     (s) => s.terminals[terminal.id]?.copiedNonce ?? 0,
   );
+  const runtimeEpoch = useTerminalRuntimeStore(
+    (s) => s.terminals[terminal.id]?.epoch ?? 0,
+  );
   const mountNonceRef = useRef(copiedNonce);
   const previewText = useTerminalRuntimeStore(
     (s) => s.terminals[terminal.id]?.previewText ?? "",
@@ -376,6 +379,14 @@ export function TerminalTile({
     [terminal.id, useAgentRenderer],
   );
 
+  // runtimeEpoch is in the deps on purpose. Only attachTerminalContainer
+  // ever builds the xterm surface, and paths like applyCanvasSceneToLive
+  // (canvasSceneIO.ts) tear every runtime down via destroyAllTerminalRuntimes
+  // and build fresh ones — which happens during the boot snapshot restore,
+  // right after tiles have already mounted and attached. Without watching
+  // the epoch, none of this effect's other deps change, so the tile never
+  // re-attaches, no xterm is ever recreated, and the tile stays blank for
+  // the rest of the session even though the PTY and scrollback are fine.
   useEffect(() => {
     if (lodMode !== "live" || !containerEl || useAgentRenderer) {
       return;
@@ -393,7 +404,7 @@ export function TerminalTile({
         reason: "terminal_tile_live_effect_cleanup",
       });
     };
-  }, [lodMode, terminal.id, useAgentRenderer, containerEl]);
+  }, [lodMode, terminal.id, useAgentRenderer, containerEl, runtimeEpoch]);
 
   useEffect(() => {
     if (!useAgentRenderer) return;

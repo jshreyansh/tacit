@@ -736,6 +736,10 @@ async function main() {
           body: pinBody,
           status,
           links,
+          x: pinNumberFlag("--x"),
+          y: pinNumberFlag("--y"),
+          w: pinNumberFlag("--w"),
+          h: pinNumberFlag("--h"),
         });
         if (jsonFlag) console.log(JSON.stringify(result, null, 2));
         else console.log(`${result.pin.id}  ${result.pin.title}`);
@@ -822,6 +826,14 @@ async function main() {
         if (newStatus !== undefined) payload.status = newStatus;
         const newBody = pinOptionalFlag("--body");
         if (newBody !== undefined) payload.body = newBody;
+        const newX = pinNumberFlag("--x");
+        if (newX !== undefined) payload.x = newX;
+        const newY = pinNumberFlag("--y");
+        if (newY !== undefined) payload.y = newY;
+        const newW = pinNumberFlag("--w");
+        if (newW !== undefined) payload.w = newW;
+        const newH = pinNumberFlag("--h");
+        if (newH !== undefined) payload.h = newH;
         const result = await request(
           "PUT",
           `/pin/${encodeURIComponent(id)}`,
@@ -841,12 +853,82 @@ async function main() {
       } else {
         console.log(
           "Usage: termcanvas pin <add|list|show|render|update|rm> [args]\n" +
-          "  pin add --title <t> [--body <b>] [--status open|done|dropped] [--link <url>] [--link-type <type>] [--repo <path>]\n" +
+          "  pin add --title <t> [--body <b>] [--status open|done|dropped] [--link <url>] [--link-type <type>] [--repo <path>] [--x N] [--y N] [--w N] [--h N]\n" +
           "  pin list [--status open|done|dropped] [--repo <path>]\n" +
           "  pin show <id> [--repo <path>]\n" +
           "  pin render <id> [--repo <path>] [--out <png>] [--width N] [--height N] [--wait-ms N] [--full-page]\n" +
-          "  pin update <id> [--title <t>] [--status <s>] [--body <b>] [--repo <path>]\n" +
+          "  pin update <id> [--title <t>] [--status <s>] [--body <b>] [--x N] [--y N] [--w N] [--h N] [--repo <path>]\n" +
           "  pin rm <id> [--repo <path>]",
+        );
+      }
+    } else if (group === "browser") {
+      const browserOptionalFlag = (flag: string): string | undefined => {
+        const idx = rest.indexOf(flag);
+        return idx >= 0 && idx + 1 < rest.length ? rest[idx + 1] : undefined;
+      };
+      const browserNumberFlag = (flag: string): number | undefined => {
+        const value = browserOptionalFlag(flag);
+        if (value === undefined) return undefined;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) {
+          console.error(`${flag} must be a number`);
+          process.exit(1);
+        }
+        return parsed;
+      };
+
+      if (command === "add") {
+        const url = rest[0];
+        if (!url) {
+          console.error("browser add requires a url");
+          process.exit(1);
+        }
+        const x = browserNumberFlag("--x");
+        const y = browserNumberFlag("--y");
+        const result = await request("POST", "/browser/create", { url, x, y });
+        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
+        else console.log(result.id);
+      } else if (command === "list") {
+        const result = await request("GET", "/browser/list");
+        if (jsonFlag) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        if (result.cards.length === 0) {
+          console.log("No browser tiles.");
+          return;
+        }
+        for (const c of result.cards) {
+          console.log(`${c.id}  ${c.title || c.url}`);
+        }
+      } else if (command === "update" && rest[0]) {
+        const id = rest[0];
+        const payload: Record<string, unknown> = {};
+        const newUrl = browserOptionalFlag("--url");
+        if (newUrl !== undefined) payload.url = newUrl;
+        const x = browserNumberFlag("--x");
+        if (x !== undefined) payload.x = x;
+        const y = browserNumberFlag("--y");
+        if (y !== undefined) payload.y = y;
+        const w = browserNumberFlag("--w");
+        if (w !== undefined) payload.w = w;
+        const h = browserNumberFlag("--h");
+        if (h !== undefined) payload.h = h;
+        const result = await request("PUT", `/browser/${encodeURIComponent(id)}`, payload);
+        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
+        else console.log(`Updated ${id}`);
+      } else if ((command === "rm" || command === "remove") && rest[0]) {
+        const id = rest[0];
+        const result = await request("DELETE", `/browser/${encodeURIComponent(id)}`);
+        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
+        else console.log(`Removed ${id}`);
+      } else {
+        console.log(
+          "Usage: termcanvas browser <add|list|update|rm> [args]\n" +
+          "  browser add <url> [--x N] [--y N]\n" +
+          "  browser list\n" +
+          "  browser update <id> [--url <u>] [--x N] [--y N] [--w N] [--h N]\n" +
+          "  browser rm <id>",
         );
       }
     } else if (group === "state") {
@@ -854,7 +936,7 @@ async function main() {
       console.log(JSON.stringify(state, null, 2));
     } else {
       console.log(
-        "Usage: termcanvas <project|workflow|worktree|terminal|telemetry|pin|diff|state> <command> [args]",
+        "Usage: termcanvas <project|workflow|worktree|terminal|telemetry|pin|browser|diff|state> <command> [args]",
       );
       console.log("");
       console.log("Commands:");
@@ -968,6 +1050,18 @@ async function main() {
       );
       console.log(
         "  pin rm <id>                                Delete a pin",
+      );
+      console.log(
+        "  browser add <url> [--x N] [--y N]          Add a browser tile to the canvas",
+      );
+      console.log(
+        "  browser list                               List browser tiles",
+      );
+      console.log(
+        "  browser update <id> [--url|--x|--y|--w|--h] Edit a browser tile",
+      );
+      console.log(
+        "  browser rm <id>                            Remove a browser tile",
       );
       console.log(
         "  state                                       Full canvas state",

@@ -299,6 +299,16 @@ body {
   color: var(--text-primary);
 }
 
+/* Mac windows are created transparent (electron/main.ts createWindow) so the
+   canvas opacity/blur preference can show the desktop through. body's own
+   opaque fill would otherwise sit directly behind .canvas-bg and mask that
+   transparency no matter how low the canvas opacity goes — Toolbar,
+   LeftPanel, RightPanel and .canvas-bg itself already paint every pixel of
+   the viewport with their own opaque backgrounds, so this is safe. */
+body.tc-mac-transparent-window {
+  background: transparent;
+}
+
 /* ───────────────────────────────────────────────────────────
    Semantic typography roles
    Each role defines size + weight + tracking + leading + color.

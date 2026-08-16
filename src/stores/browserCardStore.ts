@@ -10,11 +10,17 @@ export interface BrowserCardData {
   y: number;
   w: number;
   h: number;
+  /** Which BrowserIdentity's session partition this card's webview uses. */
+  identityId: string;
 }
 
 interface BrowserCardStore {
   cards: Record<string, BrowserCardData>;
-  addCard: (url: string, position?: { x: number; y: number }) => string;
+  addCard: (
+    url: string,
+    identityId: string,
+    position?: { x: number; y: number },
+  ) => string;
   removeCard: (id: string) => void;
   updateCard: (id: string, patch: Partial<BrowserCardData>) => void;
 }
@@ -28,7 +34,7 @@ function markDirty() {
 export const useBrowserCardStore = create<BrowserCardStore>((set) => ({
   cards: {},
 
-  addCard: (url, position) => {
+  addCard: (url, identityId, position) => {
     const id = `browser-${Date.now()}-${++counter}`;
     const card: BrowserCardData = {
       id,
@@ -38,6 +44,7 @@ export const useBrowserCardStore = create<BrowserCardStore>((set) => ({
       y: position?.y ?? window.innerHeight / 2 - 300,
       w: 800,
       h: 600,
+      identityId,
     };
     set((state) => ({ cards: { ...state.cards, [id]: card } }));
     markDirty();

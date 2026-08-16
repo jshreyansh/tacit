@@ -3,6 +3,21 @@ import type { Viewport } from "../types";
 import { useWorkspaceStore } from "./workspaceStore";
 
 export type FocusLevel = "terminal" | "starred" | "worktree";
+
+/**
+ * "Focus view" — a swipeable, one-node-at-a-time camera mode, distinct from
+ * FocusLevel above (which is about canvas zoom/detail level, not this).
+ * Purely a camera overlay: never persisted, never mutates any node's
+ * x/y/w/h. `currentKey` is `${kind}:${id}` (matches ConnectionEndpoint's
+ * shape) or null while active but not yet resolved to a starting node —
+ * XyFlowCanvas.tsx (the component with the live node list) is what
+ * actually resolves it, since that data comes from React Flow's own hooks,
+ * not something a zustand store can read outside a component.
+ */
+export interface FocusModeState {
+  active: boolean;
+  currentKey: string | null;
+}
 /**
  * Tabs shown in the RIGHT panel — the code-navigation surface
  * (Files / Diff / Git / Memory). Previously these lived in the LEFT
@@ -73,6 +88,10 @@ interface CanvasStore {
   resetViewport: () => void;
   setFocusLevel: (level: FocusLevel) => void;
   cycleFocusLevel: () => void;
+  focusMode: FocusModeState;
+  enterFocusMode: () => void;
+  exitFocusMode: () => void;
+  setFocusModeCurrentKey: (key: string | null) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelActiveTab: (tab: RightPanelTab) => void;
   setRightPanelWidth: (width: number) => void;
@@ -129,6 +148,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   viewport: { ...DEFAULT_VIEWPORT },
   isAnimating: false,
   focusLevel: "terminal" as FocusLevel,
+  focusMode: { active: false, currentKey: null },
   rightPanelCollapsed: true,
   rightPanelActiveTab: "files" as RightPanelTab,
   rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH,
@@ -166,6 +186,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const next = order[(order.indexOf(current) + 1) % order.length];
     set({ focusLevel: next });
   },
+
+  enterFocusMode: () => set({ focusMode: { active: true, currentKey: null } }),
+  exitFocusMode: () => set({ focusMode: { active: false, currentKey: null } }),
+  setFocusModeCurrentKey: (key) =>
+    set((state) => ({ focusMode: { ...state.focusMode, currentKey: key } })),
   setRightPanelCollapsed: (collapsed) => {
     set({ rightPanelCollapsed: collapsed });
     markDirty();

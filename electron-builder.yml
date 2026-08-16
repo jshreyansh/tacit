@@ -24,6 +24,15 @@ extraResources:
     to: skills
     filter:
       - "**/*"
+  # The MCP server every Claude terminal is handed via --mcp-config. The path
+  # here must stay in step with getTermcanvasBridgeCliPath() in
+  # electron/main.ts, which looks for
+  # <resources>/termcanvas-bridge/termcanvas-bridge.js and returns null — no
+  # error, no tools — when it is absent.
+  - from: termcanvas-bridge/dist
+    to: termcanvas-bridge
+    filter:
+      - "**/*"
 asarUnpack:
   - node_modules/node-pty/**/*
 

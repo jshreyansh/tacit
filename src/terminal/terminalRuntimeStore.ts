@@ -90,6 +90,10 @@ interface TerminalRuntimeMeta {
 
 interface TerminalRuntimeSnapshot {
   copiedNonce: number;
+  // Bumped every time a fresh runtime object is built for this terminal.
+  // Tiles watch it so they can re-attach when the runtime they were bound
+  // to is torn down underneath them — see the note on attachTerminalContainer.
+  epoch: number;
   mode: TerminalMountMode;
   previewText: string;
   telemetry: TerminalTelemetrySnapshot | null;
@@ -133,6 +137,8 @@ interface ManagedTerminalRuntime {
   ptyId: number | null;
   ptyPromise: Promise<void> | null;
   previewAnsi: string;
+  previewReplayedToRenderer: boolean;
+  previewReplayInFlight: boolean;
   rendererMode: TerminalRendererMode;
   hookFallbackTimer: ReturnType<typeof setTimeout> | null;
   lastPushAt: number;
@@ -180,6 +186,7 @@ function nextSpawnDelay(): number {
   return spawnStaggerCount * SPAWN_STAGGER_MS;
 }
 const runtimeRegistry = new Map<string, ManagedTerminalRuntime>();
+let runtimeEpochCounter = 0;
 const xtermRuntimeModule = xtermModule as XtermRuntimeModule;
 const XtermTerminalConstructor = (xtermRuntimeModule.Terminal ??
   xtermRuntimeModule.default?.Terminal) as XtermTerminalConstructor;
@@ -210,6 +217,7 @@ function updateRuntimeSnapshot(
   useTerminalRuntimeStore.setState((state) => {
     const current = state.terminals[terminalId] ?? {
       copiedNonce: 0,
+      epoch: 0,
       mode: "parked" as TerminalMountMode,
       previewText: "",
       telemetry: null,
@@ -218,6 +226,7 @@ function updateRuntimeSnapshot(
 
     if (
       next.copiedNonce === current.copiedNonce &&
+      next.epoch === current.epoch &&
       next.mode === current.mode &&
       next.previewText === current.previewText &&
       sameTelemetrySnapshot(next.telemetry, current.telemetry)
@@ -288,10 +297,63 @@ function appendPreview(runtime: ManagedTerminalRuntime, chunk: string) {
   pushPreview(runtime, runtime.previewAnsi + chunk);
 }
 
+// createTerminalRenderer's own scrollback replay only fires once, at the
+// exact moment the xterm instance is created — if previewAnsi was still
+// empty then (the async app-boot snapshot race: terminal tiles mount once
+// with default/empty store data before the real restored snapshot lands),
+// the xterm surface is created blank and stays blank forever, even though
+// ensureTerminalRuntime/updateTerminalRuntime correctly backfill
+// runtime.previewAnsi moments later — pushPreview only updates the LOD
+// preview-pane text, it never touches an already-created xterm instance.
+// Call this right after any backfill so a late-arriving scrollback still
+// reaches the live renderer, exactly once.
+function replayPreviewIntoRenderer(runtime: ManagedTerminalRuntime) {
+  if (
+    !runtime.xterm ||
+    runtime.previewReplayedToRenderer ||
+    !runtime.previewAnsi
+  ) {
+    return;
+  }
+  const xterm = runtime.xterm;
+  runtime.previewReplayedToRenderer = true;
+  // xterm.write is asynchronous — the buffer stays empty until the parser
+  // drains this chunk. Anything that serializes the buffer before the
+  // callback fires reads a nearly-empty terminal, so flag the window and
+  // let captureRuntimePreview refuse to overwrite previewAnsi while it's
+  // open. See the comment there for what that used to destroy.
+  runtime.previewReplayInFlight = true;
+  xterm.write(runtime.previewAnsi, () => {
+    runtime.previewReplayInFlight = false;
+    if (!runtime.disposed && runtime.xterm === xterm) {
+      xterm.scrollToBottom();
+    }
+  });
+}
+
+// Park/detach snapshot the live buffer back into previewAnsi so the next
+// mount can restore it. That is only safe once the terminal actually holds
+// the content: xterm.write() is async, so a teardown landing in the same
+// tick as a restore replay would serialize a still-empty buffer and
+// overwrite the real scrollback with a ~2KB stub — which then got persisted
+// to disk on the next autosave, shredding the history a bit more on every
+// restart and leaving the tile blank. While a replay is in flight the
+// existing previewAnsi is by definition the better copy, so keep it.
+function captureRuntimePreview(runtime: ManagedTerminalRuntime) {
+  if (runtime.previewReplayInFlight) {
+    return;
+  }
+  const serialized = runtime.serializeAddon?.serialize();
+  if (serialized) {
+    pushPreview(runtime, serialized);
+  }
+}
+
 function bumpCopiedNonce(terminalId: string) {
   useTerminalRuntimeStore.setState((state) => {
     const current = state.terminals[terminalId] ?? {
       copiedNonce: 0,
+      epoch: 0,
       mode: "parked" as TerminalMountMode,
       previewText: "",
       telemetry: null,
@@ -958,10 +1020,7 @@ function detachTerminalRenderer(
     return;
   }
 
-  const serialized = runtime.serializeAddon?.serialize();
-  if (serialized) {
-    pushPreview(runtime, serialized);
-  }
+  captureRuntimePreview(runtime);
 
   disposeRendererBindings(runtime);
   unregisterTerminal(runtime.meta.terminal.id);
@@ -988,10 +1047,7 @@ function parkTerminalRenderer(
   }
 
   runtime.xterm.blur();
-  const serialized = runtime.serializeAddon?.serialize();
-  if (serialized) {
-    pushPreview(runtime, serialized);
-  }
+  captureRuntimePreview(runtime);
 
   disposeRendererBindings(runtime);
   releaseWebGL(runtime.meta.terminal.id);
@@ -1204,13 +1260,7 @@ function createTerminalRenderer(
   syncRuntimeRenderer(runtime);
 
   registerTerminal(runtime.meta.terminal.id, xterm, serializeAddon);
-  if (runtime.previewAnsi) {
-    xterm.write(runtime.previewAnsi, () => {
-      if (!runtime.disposed && runtime.xterm) {
-        xterm.scrollToBottom();
-      }
-    });
-  }
+  replayPreviewIntoRenderer(runtime);
 
   wireRendererBindings(runtime, host);
   scheduleRuntimeRefresh(() => {
@@ -1500,6 +1550,8 @@ function buildTerminalRuntime(
     ptyId: resolvedMeta.terminal.ptyId,
     ptyPromise: null,
     previewAnsi: clampPreviewAnsi(resolvedMeta.terminal.scrollback ?? ""),
+    previewReplayedToRenderer: false,
+    previewReplayInFlight: false,
     rendererMode: usePreferencesStore.getState().terminalRenderer,
     hookFallbackTimer: null,
     lastPushAt: 0,
@@ -1534,6 +1586,7 @@ function buildTerminalRuntime(
   };
 
   updateRuntimeSnapshot(resolvedMeta.terminal.id, {
+    epoch: ++runtimeEpochCounter,
     mode,
     previewText: toPreviewText(runtime.previewAnsi),
     telemetry: null,
@@ -1956,6 +2009,7 @@ export function ensureTerminalRuntime(meta: TerminalRuntimeMeta) {
     if (!existing.previewAnsi && resolvedMeta.terminal.scrollback) {
       pushPreview(existing, resolvedMeta.terminal.scrollback);
     }
+    replayPreviewIntoRenderer(existing);
     startTerminalRuntime(existing);
     return existing;
   }
@@ -1977,6 +2031,7 @@ export function updateTerminalRuntime(meta: TerminalRuntimeMeta) {
   if (!runtime.previewAnsi && resolvedMeta.terminal.scrollback) {
     pushPreview(runtime, resolvedMeta.terminal.scrollback);
   }
+  replayPreviewIntoRenderer(runtime);
 }
 
 export function setTerminalRuntimeMode(
@@ -2129,8 +2184,15 @@ export function serializeAllTerminalRuntimeBuffers(): Record<string, string> {
   const serialized: Record<string, string> = {};
 
   for (const [terminalId, runtime] of runtimeRegistry) {
-    const liveSerialized = serializeTerminal(terminalId);
-    serialized[terminalId] = liveSerialized ?? runtime.previewAnsi;
+    // Same hazard captureRuntimePreview guards against, on the save path:
+    // an autosave landing while a restore replay is still draining would
+    // serialize an empty buffer and persist that over the real scrollback.
+    // An empty serialize is never worth saving either — `??` alone lets ""
+    // through, so test the content, not just null.
+    const liveSerialized = runtime.previewReplayInFlight
+      ? null
+      : serializeTerminal(terminalId);
+    serialized[terminalId] = liveSerialized || runtime.previewAnsi;
   }
 
   return serialized;

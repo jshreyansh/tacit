@@ -147,6 +147,22 @@ export function getMemoryDirForWorktree(worktreePath: string): string {
   return path.join(homeDir, ".claude", "projects", projectId, "memory");
 }
 
+/** Workspace-level memory scope for the workspace-manager role — distinct
+ * from the per-worktree scope above, since the manager's job spans every
+ * project/worktree on a canvas, not one of them. Keyed by canvas id, not
+ * a filesystem path, so it has no relationship to getMemoryDirForWorktree's
+ * sanitization scheme beyond sharing the same ~/.claude/projects/ root. */
+export function getMemoryDirForWorkspace(canvasId: string): string {
+  const homeDir = os.homedir();
+  return path.join(
+    homeDir,
+    ".claude",
+    "projects",
+    `workspace-${canvasId}`,
+    "memory",
+  );
+}
+
 const watchers = new Map<
   string,
   { watcher: FSWatcher; timer: ReturnType<typeof setTimeout> | null }

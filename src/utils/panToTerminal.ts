@@ -25,6 +25,65 @@ interface PanToTerminalOptions {
   easing?: (t: number) => number;
 }
 
+export interface FlyToBoundsOptions {
+  immediate?: boolean;
+  preserveScale?: boolean;
+  duration?: number;
+  easing?: (t: number) => number;
+}
+
+/**
+ * The actual center-and-zoom-to-fill camera math, extracted from
+ * panToTerminal below so anything with world-space bounds (a browser card,
+ * a note, not just a terminal) can fly the camera to it — used by focus
+ * view. Never touches the bounds themselves, only the viewport.
+ */
+export function flyToBounds(
+  absX: number,
+  absY: number,
+  absW: number,
+  absH: number,
+  opts?: FlyToBoundsOptions,
+): { scale: number; x: number; y: number } {
+  const canvasState = useCanvasStore.getState();
+  const {
+    rightPanelCollapsed,
+    rightPanelWidth,
+    leftPanelCollapsed,
+    leftPanelWidth,
+    viewport,
+  } = canvasState;
+  const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
+  const leftOffset = getCanvasLeftInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    usePinStore.getState().openProjectPath !== null,
+  );
+  const padding = 40;
+  const topInset = 56;
+  const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
+  const viewH = window.innerHeight - padding * 2;
+
+  const scale = opts?.preserveScale
+    ? clampScale(viewport.scale)
+    : clampScale(Math.min(viewW / absW, viewH / absH) * 0.9);
+
+  const centerX = clampCenterX(absX, absW, scale, leftOffset, rightOffset);
+  const centerY =
+    -(absY + absH / 2) * scale + (topInset + window.innerHeight) / 2;
+
+  if (opts?.immediate) {
+    useCanvasStore.getState().setViewport({ x: centerX, y: centerY, scale });
+  } else {
+    useCanvasStore.getState().animateTo(centerX, centerY, scale, {
+      duration: opts?.duration,
+      easing: opts?.easing,
+    });
+  }
+
+  return { scale, x: centerX, y: centerY };
+}
+
 function findTerminal(terminalId: string) {
   const { projects } = useProjectStore.getState();
   for (const p of projects) {
@@ -76,34 +135,9 @@ export function panToTerminal(
   const absY = terminal.y;
   const absW = terminal.width;
   const absH = terminal.height;
-
-  const canvasState = useCanvasStore.getState();
-  const {
-    rightPanelCollapsed,
-    rightPanelWidth,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    viewport,
-  } = canvasState;
-  const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
-  );
-  const padding = 40;
-  const topInset = 56;
-  const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
-  const viewH = window.innerHeight - padding * 2;
-
-  const scale = opts?.preserveScale
-    ? clampScale(viewport.scale)
-    : clampScale(Math.min(viewW / absW, viewH / absH) * 0.9);
-
-  const centerX = clampCenterX(absX, absW, scale, leftOffset, rightOffset);
-  const centerY =
-    -(absY + absH / 2) * scale + (topInset + window.innerHeight) / 2;
   const shouldFocusTerminal = !isAlreadyFocused(terminalId);
+
+  const target = flyToBounds(absX, absY, absW, absH, opts);
 
   recordRenderDiagnostic({
     kind: "pan_to_terminal",
@@ -113,11 +147,7 @@ export function panToTerminal(
       preserve_scale: opts?.preserveScale ?? false,
       project_id: projectId,
       should_focus_terminal: shouldFocusTerminal,
-      target_viewport: {
-        scale,
-        x: centerX,
-        y: centerY,
-      },
+      target_viewport: target,
       terminal_rect: {
         height: absH,
         width: absW,
@@ -127,15 +157,6 @@ export function panToTerminal(
       worktree_id: worktreeId,
     },
   });
-
-  if (opts?.immediate) {
-    useCanvasStore.getState().setViewport({ x: centerX, y: centerY, scale });
-  } else {
-    useCanvasStore.getState().animateTo(centerX, centerY, scale, {
-      duration: opts?.duration,
-      easing: opts?.easing,
-    });
-  }
 
   if (shouldFocusTerminal) {
     focusTerminalInScene(terminalId);

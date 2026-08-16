@@ -392,6 +392,7 @@ test("restoreWorkspaceSnapshot clears existing terminal runtimes before applying
       y: 20,
       w: 320,
       h: 240,
+      identityId: "identity-default",
     },
   });
 });

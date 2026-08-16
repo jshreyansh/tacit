@@ -1,0 +1,21 @@
+{
+  "name": "@termcanvas/termcanvas-bridge",
+  "version": "0.1.0",
+  "description": "MCP server exposing canvas-native tools to a terminal's agent: driving a wired browser tile (see src/canvas/ConnectionLayer.tsx), emitting events to connected nodes, saving durable memory notes, and (workspace manager only) querying/spawning/wiring canvas nodes",
+  "type": "module",
+  "bin": {
+    "termcanvas-bridge": "./dist/termcanvas-bridge.js"
+  },
+  "scripts": {
+    "build": "node --experimental-strip-types build.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.3"
+  }
+}

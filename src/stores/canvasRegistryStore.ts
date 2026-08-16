@@ -71,6 +71,9 @@ interface CanvasRegistryActions {
   /** Switch to canvas `id`. Captures live state into the previous canvas first. */
   switchCanvas: (id: string) => void;
   cycleCanvas: (direction: 1 | -1) => void;
+  /** Assign (or clear, with `null`) which terminal holds the workspace
+   * manager role for canvas `id`. See docs/workspace_project_manager.md. */
+  setWorkspaceManager: (id: string, terminalId: string | null) => void;
 }
 
 export type CanvasRegistryStore = CanvasRegistryState & CanvasRegistryActions;
@@ -198,6 +201,19 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
         (idx + direction + canvases.length) % canvases.length;
       get().switchCanvas(canvases[nextIdx].id);
     },
+
+    setWorkspaceManager: (id, terminalId) => {
+      const { canvases } = get();
+      if (!canvases.some((c) => c.id === id)) return;
+      set({
+        canvases: canvases.map((c) =>
+          c.id === id
+            ? { ...c, workspaceManagerTerminalId: terminalId }
+            : c,
+        ),
+      });
+      markDirty();
+    },
   }),
 );
 
@@ -205,5 +221,26 @@ export function getActiveCanvas(): WorkspaceCanvas {
   const { canvases, activeCanvasId } = useCanvasRegistryStore.getState();
   return (
     canvases.find((c) => c.id === activeCanvasId) ?? canvases[0]
+  );
+}
+
+/** Terminal id currently holding the workspace manager role for a canvas
+ * (defaults to the active canvas), or null if unassigned. */
+export function getWorkspaceManagerTerminalId(canvasId?: string): string | null {
+  const { canvases, activeCanvasId } = useCanvasRegistryStore.getState();
+  const targetId = canvasId ?? activeCanvasId;
+  const canvas = canvases.find((c) => c.id === targetId);
+  return canvas?.workspaceManagerTerminalId ?? null;
+}
+
+/** The canvas (if any) whose workspace manager is `terminalId`. Used to
+ * gate PM-only API routes without the caller having to know which canvas
+ * it belongs to. */
+export function findCanvasByWorkspaceManager(
+  terminalId: string,
+): WorkspaceCanvas | null {
+  const { canvases } = useCanvasRegistryStore.getState();
+  return (
+    canvases.find((c) => c.workspaceManagerTerminalId === terminalId) ?? null
   );
 }

@@ -19,7 +19,8 @@ import {
   fitAllProjects,
   setZoomToHundred,
 } from "../../canvas/zoomActions";
-import { createBrowserCardInScene } from "../../actions/sceneCardActions";
+import { addBrowserCardToScene } from "../../actions/sceneCardActions";
+import { createNoteInScene } from "../../actions/scenePinActions";
 import {
   stashTerminalInScene,
   toggleTerminalStarredInScene,
@@ -42,6 +43,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { useHubStore } from "../../stores/hubStore";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useCanvasManagerStore } from "../../stores/canvasManagerStore";
+import { useIdentityManagerStore } from "../../stores/identityManagerStore";
 import { resetWebGL } from "../../terminal/webglContextPool";
 import { refreshRegisteredTerminalViewports } from "../../terminal/terminalRegistry";
 import {
@@ -384,17 +386,29 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
     },
   ];
 
-  if (prefs.browserEnabled) {
-    list.push({
-      id: "open-browser-card",
-      section: "action",
-      title: t["palette.cmd.add_browser"],
-      keywords: ["web", "open browser", "internet"],
-      perform: () => {
-        createBrowserCardInScene("https://google.com");
-      },
-    });
-  }
+  list.push({
+    id: "open-browser-card",
+    section: "action",
+    title: t["palette.cmd.add_browser"],
+    keywords: ["web", "open browser", "internet"],
+    perform: () => {
+      addBrowserCardToScene();
+    },
+  });
+
+  list.push({
+    id: "add-note",
+    section: "action",
+    title: t.dock_add_note,
+    keywords: ["pin", "sticky", "memo"],
+    perform: () => {
+      const { focusedProjectId, projects } = useProjectStore.getState();
+      const project =
+        projects.find((p) => p.id === focusedProjectId) ?? projects[0];
+      if (!project) return;
+      void createNoteInScene(project.path);
+    },
+  });
 
   if (prefs.terminalRenderer === "webgl") {
     list.push({
@@ -466,6 +480,24 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     hint: shortcutHint("openCanvasManager", isMac),
     perform: () => {
       useCanvasManagerStore.getState().openManager();
+    },
+  });
+
+  list.push({
+    id: "identity:manage",
+    section: "canvas",
+    title: ctx.t["identity.command.manage"],
+    keywords: [
+      "browser",
+      "identity",
+      "login",
+      "session",
+      "cookie",
+      "account",
+      "manage",
+    ],
+    perform: () => {
+      useIdentityManagerStore.getState().openManager();
     },
   });
 

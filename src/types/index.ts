@@ -10,6 +10,7 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
+import type { CaptureEvent, CaptureHealth } from "../../shared/capture";
 import type {
   Pin,
   PinLink,
@@ -61,6 +62,41 @@ export type TerminalStatus =
   | "idle";
 
 export type ComposerSupportedTerminalType = TerminalType;
+
+/**
+ * Fired by electron/api-server.ts's browserAction handler around every
+ * browser-bridge MCP tool call (browser_navigate/read/click/eval), so the
+ * canvas can visually pulse the connection for the call's real duration —
+ * see src/stores/bridgeActivityStore.ts and src/canvas/ConnectionLayer.tsx.
+ */
+export interface BrowserBridgeCallEvent {
+  phase: "start" | "end";
+  requestId: string;
+  browserId: string;
+  action: string;
+  ok?: boolean;
+  error?: string;
+}
+
+/**
+ * Fired by electron/api-server.ts's nodeEmit handler around each connected
+ * endpoint an emit_event call notifies, one event per (source, target) pair
+ * — so the canvas can pulse any connection an event travels across, not
+ * just ones with an active browser-bridge call. See
+ * src/stores/bridgeActivityStore.ts's activeConnectionEvents and
+ * src/canvas/ConnectionLayer.tsx.
+ */
+export interface CanvasBridgeEvent {
+  phase: "start" | "end";
+  requestId: string;
+  sourceKind: "terminal" | "browser";
+  sourceId: string;
+  targetKind: "terminal" | "browser";
+  targetId: string;
+  type: string;
+  ok?: boolean;
+  error?: string;
+}
 
 export interface ComposerImageAttachment {
   id: string;
@@ -619,6 +655,12 @@ export interface TermCanvasAPI {
       }) => void,
     ) => () => void;
   };
+  capture: {
+    /** Returns void, not a promise — nothing awaits a decision record. */
+    record: (entry: CaptureEvent) => void;
+    setCanvas: (canvasId: string | null) => void;
+    getHealth: () => Promise<CaptureHealth>;
+  };
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) => Promise<void>;
     getRenderLogInfo: () => Promise<RenderDiagnosticsLogInfo>;
@@ -839,6 +881,8 @@ export interface TermCanvasAPI {
   state: {
     load: () => Promise<PersistedCanvasState | null>;
     save: (state: unknown) => Promise<void>;
+    onFlushBeforeQuit: (callback: () => void) => () => void;
+    notifyFlushComplete: () => void;
   };
   snapshots: {
     list: () => Promise<
@@ -870,6 +914,12 @@ export interface TermCanvasAPI {
     open: () => Promise<string | null>;
     saveToPath: (filePath: string, data: string) => Promise<void>;
     setTitle: (title: string) => Promise<void>;
+  };
+  canvas: {
+    pickBackgroundImage: () => Promise<string | null>;
+  };
+  browserIdentity: {
+    clearData: (partitionName: string) => Promise<void>;
   };
   fs: {
     listDir: (
@@ -931,6 +981,26 @@ export interface TermCanvasAPI {
     }>;
     watch: (worktreePath: string) => Promise<void>;
     unwatch: (worktreePath: string) => Promise<void>;
+    scanWorkspace: (canvasId: string) => Promise<{
+      nodes: Array<{
+        fileName: string;
+        filePath: string;
+        name: string;
+        description: string;
+        type: string;
+        body: string;
+        mtime: number;
+        ctime: number;
+      }>;
+      edges: Array<{
+        source: string;
+        target: string;
+        label: string;
+      }>;
+      dirPath: string;
+    }>;
+    watchWorkspace: (canvasId: string) => Promise<void>;
+    unwatchWorkspace: (canvasId: string) => Promise<void>;
     onChanged: (
       callback: (graph: {
         nodes: Array<{
@@ -1066,6 +1136,26 @@ export interface TermCanvasAPI {
     ) => Promise<void>;
     onEvent: (
       callback: (sessionId: string, event: AgentStreamEvent) => void,
+    ) => () => void;
+  };
+  browser: {
+    notifyWired: (
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: ComposerSupportedTerminalType;
+        worktreePath: string;
+      },
+      message: string,
+    ) => Promise<ComposerSubmitResult>;
+    onBridgeCall: (
+      callback: (payload: BrowserBridgeCallEvent) => void,
+    ) => () => void;
+    onCanvasBridgeEvent: (
+      callback: (payload: CanvasBridgeEvent) => void,
+    ) => () => void;
+    onExternalAuthRedirect: (
+      callback: (payload: { url: string }) => void,
     ) => () => void;
   };
   app: {

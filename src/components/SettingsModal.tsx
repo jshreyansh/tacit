@@ -631,6 +631,10 @@ export function SettingsModal({ onClose }: Props) {
   const {
     animationBlur,
     setAnimationBlur,
+    canvasOpacity,
+    setCanvasOpacity,
+    canvasBackgroundImage,
+    setCanvasBackgroundImage,
     terminalFontSize,
     setTerminalFontSize,
     terminalFontFamily,
@@ -1238,6 +1242,61 @@ export function SettingsModal({ onClose }: Props) {
                       onChange={setMinimumContrastRatio}
                       format={(v) => (v <= 1 ? t.setting_off : v.toFixed(1))}
                     />
+                  </SettingsRow>
+
+                  {isMac && (
+                    <SettingsRow
+                      label={t.canvas_opacity}
+                      description={t.canvas_opacity_desc}
+                      align="start"
+                    >
+                      <SliderControl
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={canvasOpacity}
+                        onChange={setCanvasOpacity}
+                        format={(v) => `${Math.round(v)}%`}
+                      />
+                    </SettingsRow>
+                  )}
+
+                  <SettingsRow
+                    label={t.canvas_background_image}
+                    description={t.canvas_background_image_desc}
+                    align="start"
+                  >
+                    <div className="flex items-center gap-2">
+                      {canvasBackgroundImage && (
+                        <img
+                          src={canvasBackgroundImage}
+                          alt=""
+                          className="h-8 w-8 rounded-md object-cover border border-[var(--border)]"
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className="rounded-md px-2.5 py-1 text-[12px] bg-[var(--surface)] text-[var(--accent)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors duration-quick"
+                        onClick={async () => {
+                          const url =
+                            await window.termcanvas.canvas.pickBackgroundImage();
+                          if (url) setCanvasBackgroundImage(url);
+                        }}
+                      >
+                        {canvasBackgroundImage
+                          ? t.canvas_background_image_change
+                          : t.canvas_background_image_choose}
+                      </button>
+                      {canvasBackgroundImage && (
+                        <button
+                          type="button"
+                          className="rounded-md px-2.5 py-1 text-[12px] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors duration-quick"
+                          onClick={() => setCanvasBackgroundImage(null)}
+                        >
+                          {t.canvas_background_image_clear}
+                        </button>
+                      )}
+                    </div>
                   </SettingsRow>
                 </div>
               </section>

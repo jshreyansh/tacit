@@ -14,6 +14,7 @@ import { GhosttyCore } from "@wterm/ghostty";
 import type { TerminalData } from "../types";
 import { useResolvedTerminalRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { getTerminalRuntimePreviewAnsi } from "./terminalRuntimeStore";
+import { clampPreviewAnsi } from "./terminalRuntimePolicy";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import { buildFontFamily } from "./fontRegistry";
@@ -21,20 +22,6 @@ import type { CSSProperties } from "react";
 
 const TERMINAL_LINE_HEIGHT = 1.4;
 const SCROLLBACK_LIMIT = 50_000;
-
-let coreLoadPromise: Promise<TerminalCore> | null = null;
-
-function getGhosttyCore(): Promise<TerminalCore> {
-  if (!coreLoadPromise) {
-    coreLoadPromise = GhosttyCore.load({
-      scrollbackLimit: SCROLLBACK_LIMIT,
-    }).catch((err) => {
-      coreLoadPromise = null;
-      throw err;
-    });
-  }
-  return coreLoadPromise;
-}
 
 // xterm's ITheme exposes 16 ANSI colors via separate fields. wterm reads
 // them off CSS vars. Bridge the two so the wterm path inherits the same
@@ -84,7 +71,16 @@ export function WtermTile({ terminal }: Props) {
 
   useEffect(() => {
     let mounted = true;
-    getGhosttyCore()
+    // GhosttyCore holds one mutable termPtr into its own WASM instance —
+    // its own docs pair one core with exactly one WTerm ("const core =
+    // await GhosttyCore.load(); const term = new WTerm(el, { core })").
+    // A single shared core across tiles meant every terminal's init()
+    // overwrote that one termPtr, orphaning every earlier tile's state —
+    // the real cause of terminals rendering blank whenever more than one
+    // mounted around the same time (e.g. every app restart). Loading a
+    // fresh instance per tile costs one local WASM instantiate (~420KB,
+    // no network) but keeps each terminal's VT state independent.
+    GhosttyCore.load({ scrollbackLimit: SCROLLBACK_LIMIT })
       .then((c) => {
         if (mounted) setCore(c);
       })
@@ -98,21 +94,48 @@ export function WtermTile({ terminal }: Props) {
     };
   }, []);
 
+  // Separate from the output-listener effect below on purpose: this one
+  // needs to react to terminal.scrollback arriving/growing (so a first
+  // attempt that finds nothing yet gets another chance the moment real
+  // data shows up), but re-running *this* effect is cheap — it's a no-op
+  // once replayedRef.current is true. Folding it into the listener effect
+  // would mean tearing down/re-adding the onOutput subscription on every
+  // scrollback change, which does matter for an actively-streaming
+  // terminal.
   useEffect(() => {
-    if (!core || ptyId === null) return;
-
+    if (!core || ptyId === null || replayedRef.current) return;
     const handle = handleRef.current;
-    if (handle && !replayedRef.current) {
-      const preview = getTerminalRuntimePreviewAnsi(terminal.id);
-      if (preview) handle.write(preview);
+    if (!handle) return;
+
+    // Prefer the runtime registry's live preview, but fall back to the
+    // terminal's own persisted scrollback prop — always correct from the
+    // very first render, unlike the registry entry, which can still be
+    // empty here if this effect fires before ensureTerminalRuntime's own
+    // backfill (terminalRuntimeStore.ts) has run for this terminal (a
+    // real, deterministic ordering gap on restore, not just a rare race).
+    // Only mark replayed once something was actually written — marking it
+    // unconditionally was the original bug: an empty first attempt
+    // permanently gave up the one replay shot, even though real scrollback
+    // existed and would arrive a moment later, leaving the tile blank
+    // despite the PTY and its data both being perfectly fine. Depending on
+    // terminal.scrollback here (not just core/ptyId) is what actually
+    // guarantees a retry if the very first attempt finds nothing.
+    const preview =
+      getTerminalRuntimePreviewAnsi(terminal.id) ||
+      (terminal.scrollback ? clampPreviewAnsi(terminal.scrollback) : null);
+    if (preview) {
+      handle.write(preview);
       replayedRef.current = true;
     }
+  }, [core, ptyId, terminal.id, terminal.scrollback]);
 
+  useEffect(() => {
+    if (ptyId === null) return;
     return window.termcanvas.terminal.onOutput((id, data) => {
       if (id !== ptyId) return;
       handleRef.current?.write(data);
     });
-  }, [core, ptyId, terminal.id]);
+  }, [ptyId]);
 
   useEffect(() => {
     if (terminal.focused) {

@@ -1,3 +1,4 @@
+import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
@@ -34,6 +35,7 @@ import { useT } from "../i18n/useT";
 import { FamilyTreeOverlay } from "../components/FamilyTreeOverlay";
 import { FocusCaretOverlay } from "../components/FocusCaretOverlay";
 import { BoxSelectOverlay } from "./BoxSelectOverlay";
+import { LayerErrorBoundary } from "../components/LayerErrorBoundary";
 import { CanvasCardLayer } from "./CanvasCardLayer";
 import { DrawingLayer } from "./DrawingLayer";
 import { PetOverlay } from "../pet/PetOverlay";
@@ -50,26 +52,52 @@ import {
   updateTerminalRuntime,
 } from "../terminal/terminalRuntimeStore";
 import { fromFlowViewport, toFlowViewport } from "./viewportAdapter";
-import { buildCanvasFlowNodes } from "./nodeProjection";
+import { buildCanvasFlowNodes, buildPinFlowNodes } from "./nodeProjection";
 import { xyflowNodeTypes, type CanvasFlowNode } from "./xyflowNodes";
 import {
   getCanvasLeftInset,
+  getVisibleCanvasWorldRect,
   rectIntersectsCanvasViewport,
 } from "./viewportBounds";
 import { clampScale, zoomAtClientPoint } from "./viewportZoom";
+import { useBrowserCardStore } from "../stores/browserCardStore";
+import {
+  collectFocusableNodes,
+  closestFocusableNode,
+  focusableNodeKey,
+  type FocusableNode,
+} from "./focusableNodes";
+import { flyToBounds } from "../utils/panToTerminal";
+import { createSwipeDetector } from "./swipeDetector";
 import { resolveCollisions } from "./collisionResolver";
 import { WorktreeLabelLayer } from "./WorktreeLabelLayer";
-import { ClusterLinkLayer } from "./ClusterLinkLayer";
+import { ConnectionLayer } from "./ConnectionLayer";
 import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
 import { ContextMenu } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
-import type { TerminalType } from "../types";
+import { addBrowserCardToScene } from "../actions/sceneCardActions";
+import { createNoteInScene, updatePinInScene } from "../actions/scenePinActions";
+import type { TerminalType, Pin } from "../types";
 
 const EMPTY_EDGES: never[] = [];
 const WHEEL_ZOOM_SENSITIVITY = 0.005;
 const SNAP_GRID: [number, number] = [10, 10];
+const CONTEXT_MENU_TERMINAL_TYPES: { label: string; type: TerminalType }[] = [
+  { label: "New Shell", type: "shell" },
+  { label: "New Claude", type: "claude" },
+  { label: "New Codex", type: "codex" },
+  { label: "New Gemini", type: "gemini" },
+  { label: "New Lazygit", type: "lazygit" },
+];
+// Canvas opacity only does anything on mac, where the window is created
+// transparent (electron/main.ts createWindow). Elsewhere the window is
+// opaque, so applying alpha here would just fade to black.
+const IS_MAC = (window.termcanvas?.app.platform ?? "darwin") === "darwin";
 
-function normalizeWheelDelta(event: React.WheelEvent): number {
+function normalizeWheelDelta(event: {
+  deltaMode: number;
+  deltaY: number;
+}): number {
   switch (event.deltaMode) {
     case WheelEvent.DOM_DELTA_LINE:
       return event.deltaY * 16;
@@ -108,6 +136,16 @@ function buildLayoutKey(
       ].join("|"),
     )
     .join("||");
+}
+
+/** Same rebuild-avoidance idea as buildLayoutKey, for note (pin) nodes:
+ * only x/y/w/h changes should force the node array to rebuild — a body/title
+ * edit changes the Pin object's identity in the store but shouldn't. */
+function buildPinLayoutKey(pins: Pin[]): string {
+  return pins
+    .filter((pin) => pin.x != null && pin.y != null)
+    .map((pin) => `${pin.id}:${pin.x},${pin.y},${pin.w ?? ""}x${pin.h ?? ""}`)
+    .join(",");
 }
 
 function TerminalRuntimeLayer({
@@ -302,6 +340,7 @@ function XyFlowCanvasInner() {
   const taskDrawerOpen = usePinStore(
     (state) => state.openProjectPath !== null,
   );
+  const pinsByProject = usePinStore((state) => state.pinsByProject);
   const projects = useProjectStore((state) => state.projects);
   const drawingEnabled = usePreferencesStore((state) => state.drawingEnabled);
   const petEnabled = usePreferencesStore((state) => state.petEnabled);
@@ -309,11 +348,20 @@ function XyFlowCanvasInner() {
     (state) => state.activityHeatmapEnabled,
   );
   const animationBlur = usePreferencesStore((state) => state.animationBlur);
+  const canvasOpacity = usePreferencesStore((state) => state.canvasOpacity);
+  const canvasBackgroundImage = usePreferencesStore(
+    (state) => state.canvasBackgroundImage,
+  );
   const drawingTool = useDrawingStore((state) => state.tool);
   const canvasTool = useCanvasToolStore((state) => state.tool);
   const spaceHeld = useCanvasToolStore((state) => state.spaceHeld);
   const { handleMouseDown: handleBoxSelectMouseDown } = useBoxSelect();
   const layoutKey = useMemo(() => buildLayoutKey(projects), [projects]);
+  const allPins = useMemo(
+    () => Object.values(pinsByProject).flat(),
+    [pinsByProject],
+  );
+  const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
   const leftOffset = getCanvasLeftInset(
     leftPanelCollapsed,
     leftPanelWidth,
@@ -326,6 +374,11 @@ function XyFlowCanvasInner() {
   const previousAnimatingRef = useRef(isAnimating);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   useTrackpadSwipeFocus(canvasContainerRef);
+
+  const focusMode = useCanvasStore((state) => state.focusMode);
+  const browserCardMap = useBrowserCardStore((state) => state.cards);
+  const focusSwipeDetectorRef = useRef(createSwipeDetector());
+  const previousFocusableListRef = useRef<FocusableNode[]>([]);
 
   const reactFlow = useReactFlow();
   const [contextMenu, setContextMenu] = useState<{
@@ -381,9 +434,28 @@ function XyFlowCanvasInner() {
     [contextMenu],
   );
 
+  const handleAddBrowserFromMenu = useCallback(() => {
+    if (!contextMenu) return;
+    addBrowserCardToScene({ x: contextMenu.flowX, y: contextMenu.flowY });
+  }, [contextMenu]);
+
+  const handleAddNoteFromMenu = useCallback(() => {
+    if (!contextMenu) return;
+    const { focusedProjectId, projects: currentProjects } =
+      useProjectStore.getState();
+    const project =
+      currentProjects.find((p) => p.id === focusedProjectId) ??
+      currentProjects[0];
+    if (!project) return;
+    void createNoteInScene(project.path, {
+      x: contextMenu.flowX,
+      y: contextMenu.flowY,
+    });
+  }, [contextMenu]);
+
   const projectedNodes = useMemo(
-    () => buildCanvasFlowNodes(projects),
-    [layoutKey],
+    () => [...buildCanvasFlowNodes(projects), ...buildPinFlowNodes(allPins)],
+    [layoutKey, pinLayoutKey],
   );
   const [nodes, setNodes, onNodesChange] =
     useNodesState<CanvasFlowNode>(projectedNodes);
@@ -398,6 +470,131 @@ function XyFlowCanvasInner() {
     },
     [],
   );
+
+  const focusableList = useMemo(
+    () => collectFocusableNodes(nodes, browserCardMap),
+    [nodes, browserCardMap],
+  );
+
+  const goToOffset = useCallback(
+    (direction: 1 | -1) => {
+      const state = useCanvasStore.getState();
+      if (!state.focusMode.active) return;
+      const list = focusableList;
+      if (list.length === 0) return;
+      const currentIndex = list.findIndex(
+        (n) => focusableNodeKey(n.kind, n.id) === state.focusMode.currentKey,
+      );
+      const nextIndex = Math.min(
+        Math.max(currentIndex + direction, 0),
+        list.length - 1,
+      );
+      if (nextIndex === currentIndex) return;
+      const target = list[nextIndex];
+      flyToBounds(target.x, target.y, target.w, target.h);
+      state.setFocusModeCurrentKey(focusableNodeKey(target.kind, target.id));
+    },
+    [focusableList],
+  );
+
+  // Resolve the entry node on activation, follow node create/delete while
+  // focused, and exit gracefully if the canvas becomes empty — the only
+  // ways `focusMode.currentKey` should change outside of an explicit swipe.
+  useEffect(() => {
+    if (!focusMode.active) {
+      previousFocusableListRef.current = focusableList;
+      return;
+    }
+
+    if (focusableList.length === 0) {
+      useCanvasStore.getState().exitFocusMode();
+      previousFocusableListRef.current = focusableList;
+      return;
+    }
+
+    const currentStillExists =
+      focusMode.currentKey !== null &&
+      focusableList.some(
+        (n) => focusableNodeKey(n.kind, n.id) === focusMode.currentKey,
+      );
+
+    if (focusMode.currentKey === null) {
+      const visibleRect = getVisibleCanvasWorldRect(
+        viewport,
+        rightPanelCollapsed,
+        leftPanelCollapsed,
+        leftPanelWidth,
+        rightPanelWidth,
+        taskDrawerOpen,
+      );
+      const centerPoint = {
+        x: visibleRect.x + visibleRect.w / 2,
+        y: visibleRect.y + visibleRect.h / 2,
+      };
+      const closest = closestFocusableNode(focusableList, centerPoint);
+      if (closest) {
+        flyToBounds(closest.x, closest.y, closest.w, closest.h);
+        useCanvasStore
+          .getState()
+          .setFocusModeCurrentKey(focusableNodeKey(closest.kind, closest.id));
+      }
+    } else if (!currentStillExists) {
+      const previousList = previousFocusableListRef.current;
+      const previousIndex = previousList.findIndex(
+        (n) => focusableNodeKey(n.kind, n.id) === focusMode.currentKey,
+      );
+      const fallbackIndex = Math.min(
+        Math.max(previousIndex, 0),
+        focusableList.length - 1,
+      );
+      const fallback = focusableList[fallbackIndex];
+      if (fallback) {
+        flyToBounds(fallback.x, fallback.y, fallback.w, fallback.h);
+        useCanvasStore
+          .getState()
+          .setFocusModeCurrentKey(
+            focusableNodeKey(fallback.kind, fallback.id),
+          );
+      }
+    } else if (
+      previousFocusableListRef.current.length > 0 &&
+      focusableList.length > previousFocusableListRef.current.length
+    ) {
+      const previousKeys = new Set(
+        previousFocusableListRef.current.map((n) =>
+          focusableNodeKey(n.kind, n.id),
+        ),
+      );
+      const created = focusableList.find(
+        (n) => !previousKeys.has(focusableNodeKey(n.kind, n.id)),
+      );
+      if (created) {
+        flyToBounds(created.x, created.y, created.w, created.h);
+        useCanvasStore
+          .getState()
+          .setFocusModeCurrentKey(focusableNodeKey(created.kind, created.id));
+      }
+    }
+
+    previousFocusableListRef.current = focusableList;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusableList, focusMode.active, focusMode.currentKey]);
+
+  useEffect(() => {
+    if (!focusMode.active) return;
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToOffset(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goToOffset(1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusMode.active, goToOffset]);
 
   const handleInit = useCallback(
     (reactFlow: ReactFlowInstance<CanvasFlowNode>) => {
@@ -475,6 +672,7 @@ function XyFlowCanvasInner() {
       // this distinction the now-default Hand tool can't focus a
       // worktree by clicking, which made the canvas feel inert.
       if (spaceHeld) return;
+      if (node.type !== "terminal") return;
       const { projectId, worktreeId } = node.data;
       useProjectStore.getState().setFocusedWorktree(projectId, worktreeId);
     },
@@ -487,6 +685,14 @@ function XyFlowCanvasInner() {
 
   const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
     (_event, node) => {
+      if (node.type === "pin") {
+        const { pinId, projectPath } = node.data;
+        const snappedX = Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
+        const snappedY = Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
+        updatePinInScene(projectPath, pinId, { x: snappedX, y: snappedY });
+        return;
+      }
+
       // Write terminal position back to store
       const { projectId, worktreeId, terminalId } = node.data;
       const snappedX =
@@ -566,7 +772,42 @@ function XyFlowCanvasInner() {
   }, [t]);
 
   const handleWheelCapture = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
+    (event: WheelEvent) => {
+      if (useCanvasStore.getState().focusMode.active) {
+        // Focus view owns the wheel entirely: pinch/pan do nothing, only a
+        // quick 2-finger horizontal flick pages to the next/previous node.
+        // Only exempt genuinely vertical-dominant gestures (real scrollback
+        // intent) to the focused terminal's own scroll — a horizontal swipe
+        // must always reach the pager below, even while the cursor sits on
+        // top of the focused node's content (which it will, immediately
+        // after the very first page, since focus view zooms that node to
+        // fill the screen). Gating only on vertical/horizontal dominance,
+        // not on hovering, is what keeps back-to-back swipes working
+        // without needing to nudge the cursor between them.
+        const isVerticalDominant =
+          Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+        if (isVerticalDominant) {
+          const target = event.target;
+          if (target instanceof Element) {
+            const xtermHost = target.closest(".tc-xterm-host");
+            const tile = xtermHost?.closest("[data-handoff-terminal-id]");
+            if (tile?.getAttribute("data-focused") === "true") {
+              return;
+            }
+          }
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const { triggered, direction } =
+          focusSwipeDetectorRef.current.handleWheel(event);
+        if (triggered && direction) {
+          goToOffset(direction);
+        }
+        return;
+      }
+
       const isPinch = event.ctrlKey || event.metaKey;
 
       // Pinch (Cmd/Ctrl + wheel, or trackpad pinch which Chromium
@@ -630,8 +871,29 @@ function XyFlowCanvasInner() {
         y: Math.round(current.y - event.deltaY * PAN_SPEED),
       });
     },
-    [leftPanelCollapsed, leftPanelWidth, taskDrawerOpen, viewport],
+    [leftPanelCollapsed, leftPanelWidth, taskDrawerOpen, viewport, goToOffset],
   );
+
+  // Attached as a real native listener (not JSX onWheelCapture) because
+  // React registers onWheel/onWheelCapture as passive by default, which
+  // silently no-ops preventDefault() — fine for plain pan/zoom (nothing
+  // else competes for the gesture) but fatal for focus view's swipe-to-
+  // page, which must actually suppress the browser/OS's native 2-finger
+  // "swipe = back/forward navigation" gesture it's repurposing. Mirrors
+  // trackpadSwipeFocus.ts's own listener for the same reason.
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    container.addEventListener("wheel", handleWheelCapture, {
+      passive: false,
+      capture: true,
+    });
+    return () => {
+      container.removeEventListener("wheel", handleWheelCapture, {
+        capture: true,
+      });
+    };
+  }, [handleWheelCapture]);
 
   const handleContainerMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -682,6 +944,26 @@ function XyFlowCanvasInner() {
     };
   }, [isPanMode, isPanning]);
 
+  const canvasBgStyle: React.CSSProperties = {
+    ...(IS_MAC && canvasOpacity < 100
+      ? {
+          backgroundColor: `color-mix(in srgb, var(--bg) ${canvasOpacity}%, transparent)`,
+        }
+      : {}),
+    // A user-picked background image sits above the opacity tint (which
+    // exists to fade the canvas to the desktop behind a transparent
+    // window) — the two features aren't meant to combine, an image
+    // means there's no "desktop showing through" to fade to.
+    ...(canvasBackgroundImage
+      ? {
+          backgroundImage: `url("${canvasBackgroundImage}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }
+      : {}),
+  };
+
   return (
     <div
       ref={canvasContainerRef}
@@ -692,9 +974,9 @@ function XyFlowCanvasInner() {
         transition: sidebarDragging
           ? undefined
           : `left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`,
+        ...canvasBgStyle,
       }}
       onMouseDownCapture={handleContainerMouseDown}
-      onWheelCapture={handleWheelCapture}
       onDragEnter={dragOverHandlers.onDragEnter}
       onDragOver={dragOverHandlers.onDragOver}
       onDragLeave={dragOverHandlers.onDragLeave}
@@ -733,7 +1015,7 @@ function XyFlowCanvasInner() {
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         nodesConnectable={false}
-        nodesDraggable={!isPanMode}
+        nodesDraggable={!isPanMode && !focusMode.active}
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={false}
@@ -771,43 +1053,59 @@ function XyFlowCanvasInner() {
               },
             },
             { type: "separator" },
+            ...CONTEXT_MENU_TERMINAL_TYPES.map(({ label, type }) => ({
+              label,
+              onClick: () => handleContextMenuPick(type),
+            })),
             {
-              label: "New Shell",
-              onClick: () => handleContextMenuPick("shell"),
+              label: "New Browser",
+              onClick: handleAddBrowserFromMenu,
             },
             {
-              label: "New Claude",
-              onClick: () => handleContextMenuPick("claude"),
-            },
-            {
-              label: "New Codex",
-              onClick: () => handleContextMenuPick("codex"),
-            },
-            {
-              label: "New Gemini",
-              onClick: () => handleContextMenuPick("gemini"),
-            },
-            {
-              label: "New Lazygit",
-              onClick: () => handleContextMenuPick("lazygit"),
+              label: "New Note",
+              onClick: handleAddNoteFromMenu,
             },
           ]}
           onClose={() => setContextMenu(null)}
         />
       )}
 
-      <ClusterLinkLayer />
+      {/* One boundary per overlay, not one around the group: sharing a
+          boundary would mean a crash in any of them takes out all of them,
+          which is the same failure mode at a smaller scale. The terminals
+          themselves are NOT wrapped here — they live in TerminalRuntimeLayer
+          above, and a boundary around that would unmount live PTY views. */}
+      <LayerErrorBoundary name="Selection">
+        <BoxSelectOverlay />
+      </LayerErrorBoundary>
+      <LayerErrorBoundary name="Browser cards">
+        <CanvasCardLayer />
+      </LayerErrorBoundary>
+      <LayerErrorBoundary name="Connections">
+        <ConnectionLayer />
+      </LayerErrorBoundary>
+      {drawingEnabled && (
+        <LayerErrorBoundary name="Drawings">
+          <DrawingLayer />
+        </LayerErrorBoundary>
+      )}
+      {petEnabled && (
+        <LayerErrorBoundary name="Pet">
+          <PetOverlay />
+        </LayerErrorBoundary>
+      )}
 
-      <BoxSelectOverlay />
-      <CanvasCardLayer />
-      {drawingEnabled && <DrawingLayer />}
-      {petEnabled && <PetOverlay />}
+      <LayerErrorBoundary name="Worktree labels">
+        <WorktreeLabelLayer />
+      </LayerErrorBoundary>
 
-      <WorktreeLabelLayer />
+      <LayerErrorBoundary name="Waypoints">
+        <SpatialWaypointsLayer />
+      </LayerErrorBoundary>
 
-      <SpatialWaypointsLayer />
-
-      <FamilyTreeOverlay />
+      <LayerErrorBoundary name="Agent tree">
+        <FamilyTreeOverlay />
+      </LayerErrorBoundary>
 
       <CanvasDragoverCue
         active={dragOverState.isDragOver}

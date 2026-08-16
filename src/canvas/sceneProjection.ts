@@ -5,6 +5,7 @@ import type {
   Viewport,
 } from "../types";
 import type { BrowserCardData } from "../stores/browserCardStore";
+import type { ConnectionData } from "../stores/connectionStore";
 import type {
   AnnotationElement,
   AnnotationAnchor,
@@ -25,6 +26,7 @@ interface LegacySceneState {
   projects?: PersistedProjectData[] | null;
   drawings?: DrawingElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
+  connections?: Record<string, ConnectionData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
 }
 
@@ -35,6 +37,7 @@ interface SceneDocumentState {
   annotations?: AnnotationElement[] | null;
   drawings?: DrawingElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
+  connections?: Record<string, ConnectionData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
 }
 
@@ -251,6 +254,7 @@ export function buildSceneDocumentFromLegacyState(
     projects: state.projects,
     drawings: state.drawings,
     browserCards: state.browserCards,
+    connections: state.connections,
     stashedTerminals: state.stashedTerminals,
   });
 }
@@ -263,6 +267,7 @@ export function buildSceneDocument(
     camera: state.camera ?? viewportToSceneCamera(state.viewport),
     projects: state.projects ?? [],
     browserCards: state.browserCards ?? {},
+    connections: state.connections ?? {},
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),
     stashedTerminals: state.stashedTerminals ?? undefined,
@@ -276,6 +281,7 @@ export function sceneDocumentToLegacyState(
   projects: ProjectData[];
   drawings: DrawingElement[];
   browserCards: Record<string, BrowserCardData>;
+  connections: Record<string, ConnectionData>;
   stashedTerminals: ReturnType<typeof restorePersistedStashedTerminal>[];
 } {
   return {
@@ -283,6 +289,7 @@ export function sceneDocumentToLegacyState(
     projects: scene.projects.map(restorePersistedProjectData),
     drawings: scene.annotations.map(annotationToDrawing),
     browserCards: scene.browserCards,
+    connections: scene.connections ?? {},
     stashedTerminals: (scene.stashedTerminals ?? []).map(
       restorePersistedStashedTerminal,
     ),

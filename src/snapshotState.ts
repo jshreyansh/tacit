@@ -1,6 +1,8 @@
 import { useCanvasRegistryStore } from "./stores/canvasRegistryStore";
+import { useIdentityStore } from "./stores/identityStore";
 import { applyCanvasSceneToLive } from "./canvas/canvasSceneIO";
 import { logSlowRendererPath } from "./utils/devPerf";
+import { DEFAULT_IDENTITY_ID, DEFAULT_IDENTITY_NAME } from "./types/workspace";
 import {
   readWorkspaceSnapshot,
   type RestoredWorkspaceSnapshot,
@@ -20,6 +22,9 @@ export function restoreWorkspaceSnapshot(
   useCanvasRegistryStore
     .getState()
     .hydrate(workspace.canvases, workspace.activeCanvasId);
+  useIdentityStore
+    .getState()
+    .hydrate(workspace.identities, workspace.activeIdentityId);
   applyCanvasSceneToLive(snapshot.scene);
 }
 
@@ -38,6 +43,14 @@ function wrapSceneAsDefaultWorkspace(
         scene,
       },
     ],
+    identities: [
+      {
+        id: DEFAULT_IDENTITY_ID,
+        name: DEFAULT_IDENTITY_NAME,
+        createdAt: Date.now(),
+      },
+    ],
+    activeIdentityId: DEFAULT_IDENTITY_ID,
   };
 }
 
@@ -66,12 +79,16 @@ function buildMultiCanvasSnapshot(): MultiCanvasWorkspaceSnapshot {
     },
   });
 
+  const { identities, activeIdentityId } = useIdentityStore.getState();
+
   return {
     version: 3,
     workspace: {
       version: 3,
       activeCanvasId: active.id,
       canvases,
+      identities: Object.values(identities),
+      activeIdentityId,
     },
     scene: active.scene,
   };

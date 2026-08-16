@@ -5,6 +5,13 @@ export const en = {
   settings: "Settings",
   reset: "Reset",
   fit: "Fit",
+  focus_view: "Focus",
+  exit_focus_view: "Exit focus",
+  project_chat_label: "Project chat",
+  project_chat_unassigned: "Assign workspace manager",
+  project_chat_assign: "Assign workspace manager",
+  project_chat_go_to: "Go to workspace manager",
+  project_chat_remove: "Remove assignment",
   switch_to_light: "Switch to light",
   switch_to_dark: "Switch to dark",
   language: "Language",
@@ -84,6 +91,8 @@ export const en = {
   memory_loading: "Loading memories...",
   memory_empty: "No memory files found.",
   memory_empty_hint: "Claude Code stores memories in ~/.claude/projects/",
+  memory_scope_worktree: "Worktree",
+  memory_scope_workspace: "Workspace",
   no_file_selected: "No file selected",
   preview_source: "View source",
   preview_rendered: "View rendered",
@@ -266,6 +275,9 @@ export const en = {
   canvas_tool_hand: "Hand",
   canvas_zoom_to: "Zoom to",
 
+  dock_add_browser: "Add Browser",
+  dock_add_note: "Add Note",
+
   shortcut_add_project: "Add project folder…",
   shortcut_cycle_focus_level: "Cycle focus level",
   shortcut_toggle_sidebar: "Toggle sidebar",
@@ -345,6 +357,15 @@ export const en = {
   setting_on: "On",
   setting_off: "Off",
   animation_blur: "Focus animation blur",
+  canvas_opacity: "Canvas background opacity",
+  canvas_opacity_desc:
+    "Requires a transparent window (macOS only). Fades the empty canvas so your desktop shows through, like a terminal's window opacity.",
+  canvas_background_image: "Canvas background image",
+  canvas_background_image_desc:
+    "Show a picture from your computer behind the canvas grid.",
+  canvas_background_image_choose: "Choose…",
+  canvas_background_image_change: "Change…",
+  canvas_background_image_clear: "Clear",
   minimum_contrast: "Minimum contrast ratio",
   composer_toggle: "Composer input bar",
   composer_toggle_desc:
@@ -658,6 +679,20 @@ export const en = {
   stash_clear_all_dialog_body:
     "Permanently delete all stashed terminals?",
   context_menu_aria_label: "Context menu",
+  connection_remove: "Remove connection",
+  connection_remove_dialog_title: "Remove connection",
+  connection_remove_confirm: "Remove",
+  // Formatted with the two endpoint names — see describeEndpoint in
+  // src/canvas/connectionLabels.ts.
+  connection_remove_dialog_body: "This will delete the connection between {a} and {b}.",
+  connection_remove_effect_browser:
+    "The agent will lose access to this browser until you connect them again.",
+  connection_remove_effect_spawn:
+    "This link records that one agent spawned the other, so it will be drawn again the next time this canvas loads.",
+  connection_endpoint_workspace_manager: "the workspace manager",
+  connection_endpoint_unknown_terminal: "a terminal that no longer exists",
+  connection_endpoint_unknown_browser: "a browser that no longer exists",
+  connection_endpoint_unknown_note: "a note that no longer exists",
 
   canvas_empty_eyebrow: "Empty Canvas",
   canvas_empty_line_lead: "An empty canvas.",
@@ -1022,6 +1057,26 @@ export const en = {
   "canvas.command.next": "Switch to next canvas",
   "canvas.command.prev": "Switch to previous canvas",
   "canvas.command.switchTo": (name: string) => `Switch to canvas: ${name}`,
+  "hub.identities.manage": "Manage browser identities",
+  "identity.manager.title": "Browser identities",
+  "identity.manager.subtitle": (n: number) =>
+    `${n} identit${n === 1 ? "y" : "ies"}`,
+  "identity.manager.setDefaultTooltip": "Set as default for new browser cards",
+  "identity.manager.rename": "Rename identity",
+  "identity.manager.delete": "Delete identity",
+  "identity.manager.deleteLastDisabled": "At least one identity must remain",
+  "identity.manager.newIdentity": "New identity",
+  "identity.manager.newIdentityHint": "separate login",
+  "identity.manager.setDefaultHint": "Click a name to set it as default",
+  "identity.delete.title": "Delete identity?",
+  "identity.delete.body": (name: string) =>
+    `"${name}" will be removed and its saved logins/cookies erased. Any browser cards using it fall back to the default identity. This cannot be undone.`,
+  "identity.delete.confirm": "Delete identity",
+  "identity.delete.confirming": "Deleting…",
+  "identity.command.manage": "Manage browser identities…",
+  browser_identity_picker_title: "Browser identity (session/cookies)",
+  browser_identity_unknown: "Identity",
+  browser_identity_manage: "Manage identities…",
   "canvas.command.switchSubtitle": (n: number) =>
     `${n} project${n === 1 ? "" : "s"} on that canvas`,
   shortcut_next_canvas: "Next canvas",

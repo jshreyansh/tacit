@@ -12,6 +12,13 @@ import {
 import { useCardLayoutStore } from "../stores/cardLayoutStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSelectionStore } from "../stores/selectionStore";
+import { useIdentityStore, partitionForIdentity } from "../stores/identityStore";
+import { useIdentityManagerStore } from "../stores/identityManagerStore";
+import { useT } from "../i18n/useT";
+import {
+  registerBrowserWebview,
+  unregisterBrowserWebview,
+} from "../canvas/browserWebviewRegistry";
 
 declare global {
   namespace JSX {
@@ -63,6 +70,33 @@ export function BrowserCard({ card }: Props) {
   }, [card.h, card.w, card.x, card.y, cardId, register, unregister]);
 
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const t = useT();
+  const identities = useIdentityStore((s) => s.identities);
+  const currentIdentity = identities[card.identityId];
+  const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
+  const identityMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!identityMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        identityMenuRef.current &&
+        !identityMenuRef.current.contains(e.target as Node)
+      ) {
+        setIdentityMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [identityMenuOpen]);
+
+  useEffect(() => {
+    const wv = webviewRef.current;
+    if (!wv) return;
+    registerBrowserWebview(card.id, wv);
+    return () => unregisterBrowserWebview(card.id);
+  }, [card.id]);
 
   useEffect(() => {
     const wv = webviewRef.current;
@@ -138,10 +172,9 @@ export function BrowserCard({ card }: Props) {
       };
       const handleMove = (ev: MouseEvent) => {
         if (!resizeRef.current) return;
-        updateBrowserCardInScene(card.id, {
-          w: Math.max(400, resizeRef.current.origW + (ev.clientX - resizeRef.current.startX) / scale),
-          h: Math.max(200, resizeRef.current.origH + (ev.clientY - resizeRef.current.startY) / scale),
-        });
+        const nextW = Math.max(400, resizeRef.current.origW + (ev.clientX - resizeRef.current.startX) / scale);
+        const nextH = Math.max(200, resizeRef.current.origH + (ev.clientY - resizeRef.current.startY) / scale);
+        updateBrowserCardInScene(card.id, { w: nextW, h: nextH });
       };
       const handleUp = () => {
         resizeRef.current = null;
@@ -165,6 +198,8 @@ export function BrowserCard({ card }: Props) {
   return (
     <div
       data-scene-box-select-block
+      data-connect-kind="browser"
+      data-connect-id={card.id}
       className="absolute rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-col overflow-hidden"
       style={{
         left: card.x,
@@ -175,9 +210,31 @@ export function BrowserCard({ card }: Props) {
         outline: isSelected ? "2px solid var(--accent)" : undefined,
         outlineOffset: isSelected ? -2 : undefined,
       }}
-      onMouseDownCapture={(e) => {
+      // Bubble phase, not capture: a capture-phase stop here would block
+      // the event from ever reaching descendants' own onMouseDown
+      // handlers (header drag-start, corner resize-start) — this way
+      // those run first, and this only stops it from reaching the
+      // canvas's box-select listener afterward (which in any case
+      // already ignores this card independently via the
+      // data-scene-box-select-block attribute above).
+      onMouseDown={(e) => {
         e.stopPropagation();
         activateCardInScene(cardId);
+      }}
+      // Lets ConnectionLayer light this card's wires from the browser end, the
+      // same way hovering a terminal tile lights its own. Without it a
+      // hand-drawn terminal↔browser wire only highlights from one side.
+      onMouseEnter={() => {
+        window.dispatchEvent(
+          new CustomEvent("termcanvas:node-hover", {
+            detail: { kind: "browser", id: card.id },
+          }),
+        );
+      }}
+      onMouseLeave={() => {
+        window.dispatchEvent(
+          new CustomEvent("termcanvas:node-hover", { detail: null }),
+        );
       }}
     >
       <div
@@ -220,6 +277,56 @@ export function BrowserCard({ card }: Props) {
           onMouseDown={(e) => e.stopPropagation()}
         />
 
+        <div className="relative" ref={identityMenuRef}>
+          <button
+            type="button"
+            className="tc-meta px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] max-w-[100px] truncate"
+            title={t.browser_identity_picker_title}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setIdentityMenuOpen((v) => !v)}
+          >
+            {currentIdentity?.name ?? t.browser_identity_unknown}
+          </button>
+          {identityMenuOpen && (
+            <div
+              className="absolute right-0 top-full mt-1 w-[160px] max-h-52 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-lg z-20 tc-enter-fade-quick"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {Object.values(identities).map((identity) => (
+                <button
+                  key={identity.id}
+                  type="button"
+                  className={`w-full text-left px-2.5 py-1.5 tc-meta truncate transition-colors duration-quick ${
+                    identity.id === card.identityId
+                      ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                  }`}
+                  onClick={() => {
+                    updateBrowserCardInScene(card.id, {
+                      identityId: identity.id,
+                    });
+                    setIdentityMenuOpen(false);
+                  }}
+                >
+                  {identity.name}
+                </button>
+              ))}
+              <div className="border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  className="w-full text-left px-2.5 py-1.5 tc-meta text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors duration-quick"
+                  onClick={() => {
+                    setIdentityMenuOpen(false);
+                    useIdentityManagerStore.getState().openManager();
+                  }}
+                >
+                  {t.browser_identity_manage}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           onClick={() => removeBrowserCardFromScene(card.id)}
@@ -232,9 +339,13 @@ export function BrowserCard({ card }: Props) {
 
       <div className="flex-1 min-h-0 relative">
         <webview
+          // Electron only honors `partition` at first mount — changing it
+          // on a live element does not re-partition it — so keying on the
+          // identity forces a remount when the user switches identities.
+          key={card.identityId}
           ref={webviewRef as React.Ref<HTMLElement>}
           src={card.url}
-          partition="persist:browser"
+          partition={partitionForIdentity(card.identityId)}
           allowpopups
           className="w-full h-full"
           style={{ border: "none" }}

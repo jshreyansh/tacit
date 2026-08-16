@@ -3,6 +3,7 @@ import type {
   RenderDiagnosticEventInput,
   RenderDiagnosticsLogInfo,
 } from "../shared/render-diagnostics";
+import type { CaptureEvent, CaptureHealth } from "../shared/capture";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 
@@ -165,6 +166,14 @@ contextBridge.exposeInMainWorld("termcanvas", {
       return () =>
         ipcRenderer.removeListener("telemetry:snapshot-changed", listener);
     },
+  },
+  capture: {
+    /** Deliberately `send`, not `invoke` — nothing awaits the record. */
+    record: (entry: CaptureEvent) => ipcRenderer.send("capture:record", entry),
+    setCanvas: (canvasId: string | null) =>
+      ipcRenderer.send("capture:set-canvas", canvasId),
+    getHealth: () =>
+      ipcRenderer.invoke("capture:get-health") as Promise<CaptureHealth>,
   },
   diagnostics: {
     recordRenderEvent: (input: RenderDiagnosticEventInput) =>
@@ -547,6 +556,18 @@ contextBridge.exposeInMainWorld("termcanvas", {
   state: {
     load: () => ipcRenderer.invoke("state:load"),
     save: (state: unknown) => ipcRenderer.invoke("state:save", state),
+    // Backs the final-flush-before-quit fix in electron/main.ts's
+    // "will-quit" handler: normal autosave is debounced (5s) or a 60s
+    // backstop, so quitting shortly after a change could otherwise lose it
+    // even on a clean quit, not just a forceful kill. Main pushes this
+    // right before destroying any PTYs; the renderer does one last
+    // synchronous save and acks so main knows it's safe to proceed.
+    onFlushBeforeQuit: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on("app:flush-before-quit", listener);
+      return () => ipcRenderer.removeListener("app:flush-before-quit", listener);
+    },
+    notifyFlushComplete: () => ipcRenderer.send("app:flush-before-quit-done"),
   },
   snapshots: {
     list: () => ipcRenderer.invoke("snapshots:list"),
@@ -571,6 +592,19 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ) as Promise<void>,
     setTitle: (title: string) =>
       ipcRenderer.invoke("workspace:set-title", title) as Promise<void>,
+  },
+  canvas: {
+    pickBackgroundImage: () =>
+      ipcRenderer.invoke("canvas:pick-background-image") as Promise<
+        string | null
+      >,
+  },
+  browserIdentity: {
+    clearData: (partitionName: string) =>
+      ipcRenderer.invoke(
+        "browser-identity:clear-data",
+        partitionName,
+      ) as Promise<void>,
   },
   fs: {
     listDir: (dirPath: string) =>
@@ -632,6 +666,12 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ipcRenderer.invoke("memory:watch", worktreePath),
     unwatch: (worktreePath: string) =>
       ipcRenderer.invoke("memory:unwatch", worktreePath),
+    scanWorkspace: (canvasId: string) =>
+      ipcRenderer.invoke("memory:scanWorkspace", canvasId),
+    watchWorkspace: (canvasId: string) =>
+      ipcRenderer.invoke("memory:watchWorkspace", canvasId),
+    unwatchWorkspace: (canvasId: string) =>
+      ipcRenderer.invoke("memory:unwatchWorkspace", canvasId),
     onChanged: (callback: (graph: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, graph: unknown) =>
         callback(graph);
@@ -821,6 +861,57 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ) => callback(sessionId, agentEvent);
       ipcRenderer.on("agent:event", listener);
       return () => ipcRenderer.removeListener("agent:event", listener);
+    },
+  },
+  browser: {
+    notifyWired: (
+      target: {
+        terminalId: string;
+        ptyId: number;
+        terminalType: string;
+        worktreePath: string;
+      },
+      message: string,
+    ) =>
+      ipcRenderer.invoke(
+        "browser:notify-wired",
+        target,
+        message,
+      ) as Promise<import("../src/types").ComposerSubmitResult>,
+    onBridgeCall: (
+      callback: (
+        payload: import("../src/types").BrowserBridgeCallEvent,
+      ) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").BrowserBridgeCallEvent,
+      ) => callback(payload);
+      ipcRenderer.on("browser-bridge:call", listener);
+      return () => ipcRenderer.removeListener("browser-bridge:call", listener);
+    },
+    onCanvasBridgeEvent: (
+      callback: (
+        payload: import("../src/types").CanvasBridgeEvent,
+      ) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").CanvasBridgeEvent,
+      ) => callback(payload);
+      ipcRenderer.on("canvas-bridge:event", listener);
+      return () => ipcRenderer.removeListener("canvas-bridge:event", listener);
+    },
+    onExternalAuthRedirect: (
+      callback: (payload: { url: string }) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { url: string },
+      ) => callback(payload);
+      ipcRenderer.on("browser:external-auth-redirect", listener);
+      return () =>
+        ipcRenderer.removeListener("browser:external-auth-redirect", listener);
     },
   },
   app: {

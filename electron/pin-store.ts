@@ -84,6 +84,10 @@ export class PinStore extends EventEmitter {
       links: input.links ?? [],
       created: now,
       updated: now,
+      x: input.x,
+      y: input.y,
+      w: input.w,
+      h: input.h,
     };
     this.writeFile(this.pinPath(repo, id), pin);
     this.populateAttachmentsUrl(pin);
@@ -111,6 +115,10 @@ export class PinStore extends EventEmitter {
           ? normalizePinBodyInput(patch.body)
           : existing.body,
       links: patch.links ?? existing.links,
+      x: patch.x ?? existing.x,
+      y: patch.y ?? existing.y,
+      w: patch.w ?? existing.w,
+      h: patch.h ?? existing.h,
       updated: new Date().toISOString(),
     };
     this.writeFile(this.pinPath(repo, id), next);
@@ -251,6 +259,7 @@ export class PinStore extends EventEmitter {
         links: parseLinks(meta.links),
         created: meta.created,
         updated: meta.updated,
+        ...parseSpatialFields(meta),
       };
     } catch {
       return null;
@@ -268,6 +277,7 @@ export class PinStore extends EventEmitter {
       `links: ${JSON.stringify(pin.links)}`,
       `created: ${pin.created}`,
       `updated: ${pin.updated}`,
+      ...spatialFrontmatterLines(pin),
     ].join("\n");
     const content = `---\n${frontmatter}\n---\n\n${pin.body}\n`;
     const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -350,6 +360,38 @@ function parseLinks(raw: string | undefined): PinLink[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * x/y/w/h are optional (see shared/pin.ts's doc comment on Pin) — a pin
+ * with no spatial data is list/drawer-only, exactly as before this field
+ * existed. Only emit/parse them when actually present so old pin files
+ * round-trip unchanged.
+ */
+function spatialFrontmatterLines(
+  pin: Pick<Pin, "x" | "y" | "w" | "h">,
+): string[] {
+  const lines: string[] = [];
+  if (pin.x !== undefined) lines.push(`x: ${pin.x}`);
+  if (pin.y !== undefined) lines.push(`y: ${pin.y}`);
+  if (pin.w !== undefined) lines.push(`w: ${pin.w}`);
+  if (pin.h !== undefined) lines.push(`h: ${pin.h}`);
+  return lines;
+}
+
+function parseSpatialFields(
+  meta: Record<string, string>,
+): Pick<Pin, "x" | "y" | "w" | "h"> {
+  const result: Pick<Pin, "x" | "y" | "w" | "h"> = {};
+  const x = Number(meta.x);
+  const y = Number(meta.y);
+  const w = Number(meta.w);
+  const h = Number(meta.h);
+  if (meta.x !== undefined && Number.isFinite(x)) result.x = x;
+  if (meta.y !== undefined && Number.isFinite(y)) result.y = y;
+  if (meta.w !== undefined && Number.isFinite(w)) result.w = w;
+  if (meta.h !== undefined && Number.isFinite(h)) result.h = h;
+  return result;
 }
 
 function escapeYamlString(s: string): string {

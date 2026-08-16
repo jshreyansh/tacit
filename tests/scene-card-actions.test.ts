@@ -91,6 +91,7 @@ test("scene card actions create, update, remove, and clear stale card selection"
       y: 120,
       w: 480,
       h: 600,
+      identityId: "identity-default",
     });
 
     removeBrowserCardFromScene(cardId);

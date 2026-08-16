@@ -21,6 +21,16 @@ export interface Pin {
    * frontmatter.
    */
   attachmentsUrl?: string;
+  /**
+   * Canvas position/size, in flow coordinates — optional so existing
+   * file-backed pins with no spatial data keep working exactly as before
+   * (list/drawer-only). A pin with x/y set renders as a draggable note on
+   * the canvas (see src/canvas/PinNode.tsx); one without them doesn't.
+   */
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 export interface CreatePinInput {
@@ -29,6 +39,10 @@ export interface CreatePinInput {
   body?: string;
   status?: PinStatus;
   links?: PinLink[];
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 export interface UpdatePinInput {
@@ -36,6 +50,10 @@ export interface UpdatePinInput {
   status?: PinStatus;
   body?: string;
   links?: PinLink[];
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 export function normalizePinBodyInput(body: string): string {

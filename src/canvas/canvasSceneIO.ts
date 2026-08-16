@@ -17,7 +17,12 @@
  */
 import { clearSceneSelection } from "../actions/sceneSelectionActions";
 import { restoreBrowserCardsInScene } from "../actions/sceneCardActions";
+import {
+  backfillLineageConnections,
+  restoreConnectionsInScene,
+} from "../actions/sceneConnectionActions";
 import { useBrowserCardStore } from "../stores/browserCardStore";
+import { useConnectionStore } from "../stores/connectionStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -128,6 +133,7 @@ export function captureLiveCanvasScene(): SceneDocument {
     projects,
     drawings: useDrawingStore.getState().elements,
     browserCards: useBrowserCardStore.getState().cards,
+    connections: useConnectionStore.getState().connections,
   });
 }
 
@@ -150,6 +156,11 @@ export function applyCanvasSceneToLive(scene: SceneDocument) {
   useProjectStore.setState(normalizeProjectsFocus(restoredProjects));
   useDrawingStore.setState({ elements: restored.drawings });
   restoreBrowserCardsInScene(restored.browserCards);
+  restoreConnectionsInScene(restored.connections);
+  // Must run after both the projects and the connections are in place: it
+  // reads terminals from projectStore and writes into connectionStore.
+  // Idempotent, so canvases saved after this shipped just no-op through it.
+  backfillLineageConnections();
   useStashStore
     .getState()
     .setItems(deriveStashItemsFromProjects(restoredProjects));

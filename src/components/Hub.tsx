@@ -13,6 +13,7 @@ import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
+import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import {
   formatShortcut,
   useShortcutStore,
@@ -1027,6 +1028,41 @@ export function Hub() {
                 </button>
               </li>
             )}
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  useIdentityManagerStore.getState().openManager();
+                  closeHub();
+                }}
+                className="tc-row-hover flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+              >
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-faint)]"
+                  aria-hidden
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="8" cy="8" r="2.4" />
+                    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
+                  </svg>
+                </span>
+                <span
+                  className="tc-meta flex-1"
+                  style={{ color: "var(--text-faint)" }}
+                >
+                  {t["hub.identities.manage"]}
+                </span>
+              </button>
+            </li>
           </ul>
         </SectionShell>
 

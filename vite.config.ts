@@ -116,6 +116,41 @@ function buildBrowse(): Plugin {
   };
 }
 
+/**
+ * The termcanvas-bridge MCP server. It has its own `pnpm build` in
+ * termcanvas-bridge/build.ts, but nothing invoked it from the root build, so a
+ * clean checkout packaged an app whose bridge binary didn't exist — and
+ * main.ts's getTermcanvasBridgeCliPath() fails soft, leaving every Claude
+ * terminal with no termcanvas-bridge tools and no error. Building it here, in
+ * the same place as the CLIs, means `pnpm build` alone is enough for
+ * electron-builder to find everything it copies.
+ *
+ * No cliSymlinkPlugin: this is never on PATH, it's spawned by absolute path.
+ * Nothing external either — see the note in termcanvas-bridge/build.ts.
+ */
+function buildTermcanvasBridge(): Plugin {
+  const opts = {
+    entryPoints: ["termcanvas-bridge/src/cli.ts"],
+    outfile: "termcanvas-bridge/dist/termcanvas-bridge.js",
+    format: "esm" as const,
+    platform: "node" as const,
+    bundle: true,
+    target: "node20",
+    banner: { js: "#!/usr/bin/env node" },
+  };
+  return {
+    name: "build-termcanvas-bridge",
+    async buildStart() {
+      if (this.meta.watchMode) {
+        const ctx = await esbuildCtx(opts);
+        await ctx.watch();
+      } else {
+        await esbuild(opts);
+      }
+    },
+  };
+}
+
 function buildAgentShims(): Plugin {
   const shimNames = ["codex", "claude"] as const;
   const buildOptions = shimNames.map((name) => {
@@ -155,6 +190,7 @@ export default defineConfig({
     buildCli(),
     buildHydra(),
     buildBrowse(),
+    buildTermcanvasBridge(),
     buildAgentShims(),
     electron([
       {
