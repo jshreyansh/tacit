@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
-import { ProjectChatPanel } from "./ProjectChatPanel";
+import {
+  ConversationBody,
+  PeekLine,
+  useManagerConversation,
+} from "./ProjectChatPanel";
+import type { ManagerSessionRow } from "../../shared/manager-role";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { waitForTerminalReady } from "../actions/sceneConnectionActions";
@@ -23,6 +28,15 @@ import geminiIcon from "../assets/dock-icons/gemini.png";
 // Gap above AddNodeDock, matching the visual spacing between October's
 // "Project chat" pill and its dock beneath it.
 const PILL_GAP_ABOVE_DOCK_PX = 10;
+
+/** Time for today's rows, date for older ones — a history list reads as "when". */
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 // Sized larger than BottomToolbar's own buttonBase/iconButton (h-8) —
 // deliberately local, not shared, since this pill is the one prominent
@@ -118,6 +132,8 @@ export function WorkspaceManagerPill() {
           list.push({
             id: terminal.id,
             type: terminal.type as WorkspaceManagerAgentType,
+            // Qualified below via labelFor — kept raw here only as a fallback
+            // for a terminal that has since disappeared from the store.
             label: terminal.customTitle || terminal.title || terminal.type,
           });
         }
@@ -126,10 +142,28 @@ export function WorkspaceManagerPill() {
     return list;
   }, [projects, workspaceManagerTerminalId]);
 
-  const [chatOpen, setChatOpen] = useState(false);
+  /**
+   * The pill sits directly above the dock, in the path the pointer takes all
+   * day, so opening on a bare hover would flicker constantly. The delay is what
+   * makes hover usable at all. Closing is immediate — a control that lingers
+   * after you've left is worse than one that is slow to arrive.
+   */
+  const HOVER_OPEN_DELAY_MS = 220;
+
+  const [managerMenuOpen, setManagerMenuOpen] = useState(false);
+  const [height, setHeight] = useState<"rest" | "composer" | "full">("rest");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [history, setHistory] = useState<ManagerSessionRow[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [viewing, setViewing] = useState<ManagerSessionRow | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
   // Read from telemetry rather than the terminal record: the transcript path is
-  // discovered after the agent starts, and telemetry is where that discovery
-  // lands. Null until then, which the panel renders as "nothing said yet".
+  // discovered after the agent starts, and telemetry is where that lands. Null
+  // until then, which reads as "nothing said yet".
   const managerSessionFile = useTerminalRuntimeStore(
     (s) =>
       (managerTerminal
@@ -137,13 +171,124 @@ export function WorkspaceManagerPill() {
         : null) ?? null,
   );
 
-  // Closing the panel when the role is removed avoids leaving a conversation on
-  // screen that is no longer anybody's.
-  useEffect(() => {
-    if (!managerTerminal) setChatOpen(false);
+  const isLive = viewing === null;
+  const conversation = useManagerConversation(
+    managerTerminal?.id ?? "",
+    isLive ? managerSessionFile : (viewing?.sessionFile ?? null),
+    isLive,
+  );
+
+  /**
+   * Terminal label that means something. `title` is the CLI name, so two
+   * claude terminals both read "claude" — the ambiguity that made the assign
+   * menu unreadable. A renamed terminal uses its own name; an unrenamed one is
+   * qualified by its worktree, exactly as connectionLabels does for the
+   * disconnect dialog.
+   */
+  const labelFor = useCallback(
+    (terminalId: string) => {
+      for (const project of projects) {
+        for (const worktree of project.worktrees) {
+          const terminal = worktree.terminals.find((x) => x.id === terminalId);
+          if (!terminal) continue;
+          if (terminal.customTitle) return terminal.customTitle;
+          const base = terminal.title || terminal.type;
+          return worktree.name ? `${base} · ${worktree.name}` : base;
+        }
+      }
+      return "";
+    },
+    [projects],
+  );
+
+  const managerLabel = managerTerminal ? labelFor(managerTerminal.id) : "";
+
+  const openOnHover = useCallback(() => {
+    if (!managerTerminal) return;
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      setHeight((h) => (h === "rest" ? "composer" : h));
+    }, HOVER_OPEN_DELAY_MS);
   }, [managerTerminal]);
 
-  const [managerMenuOpen, setManagerMenuOpen] = useState(false);
+  const closeOnLeave = useCallback(() => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    // Never collapse out from under work in progress: a half-typed message, a
+    // focused input, an open menu, or the deliberately-opened full height all
+    // mean the control is still in use.
+    setHeight((h) => {
+      if (h !== "composer") return h;
+      if (draft.trim() || inputFocused || managerMenuOpen) return h;
+      return "rest";
+    });
+  }, [draft, inputFocused, managerMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    };
+  }, []);
+
+  // A role that no longer exists shouldn't leave a conversation on screen.
+  useEffect(() => {
+    if (!managerTerminal) setHeight("rest");
+  }, [managerTerminal]);
+
+  // Focus the input as soon as the control opens, so hovering and typing works
+  // without an extra click.
+  useEffect(() => {
+    if (height !== "rest") inputRef.current?.focus();
+  }, [height]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.termcanvas.managerRole
+      .listSessions()
+      .then((rows) => {
+        if (!cancelled) setHistory(rows);
+      })
+      .catch(() => {
+        // An unreadable history is an empty menu, not a broken control.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [managerTerminal?.id, managerSessionFile]);
+
+  const send = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || sending || !managerTerminal) return;
+    const ptyId = getLivePtyId(managerTerminal.id);
+    const found = await waitForTerminalReady(managerTerminal.id);
+    if (!found || ptyId == null) {
+      useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await window.termcanvas.managerChat.send(
+        {
+          terminalId: managerTerminal.id,
+          ptyId,
+          terminalType: found.terminal.type,
+          worktreePath: found.worktree.path,
+        },
+        text,
+      );
+      if (result.ok) setDraft("");
+      else {
+        useNotificationStore
+          .getState()
+          .notify("warn", result.detail ?? result.error ?? t.project_chat_send_failed);
+      }
+    } finally {
+      setSending(false);
+    }
+  }, [draft, sending, managerTerminal, t]);
+
   const managerWrapperRef = useRef<HTMLDivElement>(null);
   const managerPopoverRef = useRef<HTMLDivElement>(null);
   const managerTriggerRef = useRef<HTMLButtonElement>(null);
@@ -295,6 +440,17 @@ export function WorkspaceManagerPill() {
       managerTerminal.height,
     );
   }, [managerTerminal]);
+  /**
+   * One control, three heights — see docs and the redesign proposal.
+   *
+   * Before this, the conversation was a detached box floating above a separate
+   * pill: two objects for one thing, with two identical-looking chevrons where
+   * one reassigned the agent and the other opened the conversation. Now the
+   * pill IS the control and only ever grows upward from the same spot, so it
+   * reads as the thing you were already looking at, opening.
+   */
+  const showChat = managerTerminal !== null && height !== "rest";
+  const isFull = showChat && height === "full";
 
   return (
     <div
@@ -303,97 +459,217 @@ export function WorkspaceManagerPill() {
         bottom: `calc(${bottomOffset} + ${ADD_NODE_DOCK_HEIGHT_PX + PILL_GAP_ABOVE_DOCK_PX}px)`,
       }}
     >
-      {/* Above the pill, not over the canvas centre: the conversation reads as
-          belonging to the pill it expands from, and the canvas stays visible
-          behind it. Sized in vh so a long conversation scrolls inside the panel
-          rather than growing past the top of the window. */}
-      {chatOpen && managerTerminal && (
-        <div
-          className="pointer-events-auto mx-auto mb-2 w-[min(34rem,calc(100vw-2rem))]"
-          style={{ maxHeight: "min(30rem, 55vh)", display: "flex" }}
-        >
-          <ProjectChatPanel
-            terminalId={managerTerminal.id}
-            sessionFilePath={managerSessionFile}
-            onClose={() => setChatOpen(false)}
-          />
-        </div>
-      )}
       <div
-        className={`pointer-events-auto relative inline-flex items-center gap-1 rounded-xl px-1.5 py-1.5 ${PILL_GLASS}`}
         ref={managerWrapperRef}
-      >
-        <button
-          className={labelButtonCls}
-          onClick={flyToManager}
-          disabled={!managerTerminal}
-          title={
-            managerTerminal ? t.project_chat_go_to : t.project_chat_unassigned
+        className={`pointer-events-auto relative mx-auto flex flex-col overflow-hidden ${
+          isFull || showChat ? "rounded-xl" : "rounded-xl"
+        } ${PILL_GLASS}`}
+        style={{
+          width: showChat ? "min(34rem, calc(100vw - 2rem))" : undefined,
+          maxHeight: isFull ? "min(30rem, 55vh)" : undefined,
+        }}
+        onMouseEnter={openOnHover}
+        onMouseLeave={closeOnLeave}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && height !== "rest") {
+            e.stopPropagation();
+            setHeight("rest");
           }
-        >
-          {managerTerminal && (
+          // ⌘↑ / ⌘↓ walk the ladder, so one shortcut covers the whole range.
+          if (e.metaKey && e.key === "ArrowUp") {
+            e.preventDefault();
+            setHeight(height === "full" ? "full" : "full");
+          }
+          if (e.metaKey && e.key === "ArrowDown") {
+            e.preventDefault();
+            setHeight(height === "full" ? "composer" : "rest");
+          }
+        }}
+      >
+        {/* Config row — only at full height. The agent picker lives here now
+            rather than as a second chevron beside the label, where it was
+            indistinguishable from the one that opened the conversation. */}
+        {isFull && managerTerminal && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-2 py-1.5">
             <img
-              src={
-                AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]
-              }
+              src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
               alt=""
-              className="h-5 w-5 rounded object-cover"
+              className="h-4 w-4 shrink-0 rounded object-cover"
             />
-          )}
-          <span>
-            {managerTerminal
-              ? `${t.project_chat_label} · ${
-                  AGENT_DISPLAY_NAME[
-                    managerTerminal.type as WorkspaceManagerAgentType
-                  ] ?? managerTerminal.type
-                }`
-              : t.project_chat_unassigned}
-          </span>
-        </button>
-        <button
-          ref={managerTriggerRef}
-          className={triggerButtonCls}
-          onClick={toggleManagerMenu}
-          aria-haspopup="menu"
-          aria-expanded={managerMenuOpen}
-          title={t.project_chat_assign}
-          aria-label={t.project_chat_assign}
-        >
-          {managerTerminal ? (
-            // Assigned: a real choice to make (reassign to another agent,
-            // or unassign) — the dropdown chevron is the right affordance.
-            <span className="text-[11px] leading-none">▾</span>
-          ) : (
-            // Unassigned: there's nothing to "drop down" to yet — a plus
-            // reads as "create/assign one" far more intuitively than an
-            // empty-feeling chevron.
-            <span className="text-[18px] leading-none font-normal">+</span>
-          )}
-        </button>
-        {/* Separate control from the reassign chevron above: one changes who
-            holds the role, this one only changes whether you can see what they
-            said. Collapsing them into a single button would make reading the
-            conversation feel like it might reassign something. */}
-        {managerTerminal && (
-          <button
-            className={triggerButtonCls}
-            onClick={() => setChatOpen((open) => !open)}
-            aria-expanded={chatOpen}
-            title={chatOpen ? t.project_chat_hide : t.project_chat_show}
-            aria-label={chatOpen ? t.project_chat_hide : t.project_chat_show}
-          >
-            <span className="text-[11px] leading-none">
-              {chatOpen ? "▾" : "▴"}
-            </span>
-          </button>
+            <button
+              className="tc-mono truncate text-left text-[var(--text-primary)] hover:underline"
+              style={{ fontSize: "var(--text-xs)" }}
+              onClick={flyToManager}
+              title={t.project_chat_go_to}
+            >
+              {managerLabel}
+            </button>
+            <button
+              ref={managerTriggerRef}
+              className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              style={{ fontSize: "var(--text-xs)" }}
+              onClick={toggleManagerMenu}
+              aria-haspopup="menu"
+              aria-expanded={managerMenuOpen}
+            >
+              {t.project_chat_change} ▾
+            </button>
+            <span className="flex-1" />
+            {history.length > 0 && (
+              <button
+                className="tc-mono shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                style={{ fontSize: "var(--text-xs)" }}
+                onClick={() => setHistoryOpen((v) => !v)}
+                aria-expanded={historyOpen}
+              >
+                {t.project_chat_history} ▾
+              </button>
+            )}
+            <button
+              className="shrink-0 text-[var(--text-faint)] hover:text-[var(--text-primary)]"
+              onClick={() => setHeight("rest")}
+              aria-label={t.close}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         )}
+
+        {isFull && conversation && (
+          <ConversationBody conversation={conversation} isLive={viewing === null} />
+        )}
+
+        {/* Peek — the one line that makes the composer height usable alone.
+            Hidden at full height, where the conversation says the same thing
+            with more room. */}
+        {showChat && !isFull && conversation && (
+          <PeekLine conversation={conversation} />
+        )}
+
+        {/* The resting pill. Its own row so the label keeps its position as the
+            control grows — nothing jumps when a height changes. */}
+        {!showChat && (
+          <div className="flex items-center">
+            <button
+              className={labelButtonCls}
+              onClick={() => (managerTerminal ? setHeight("composer") : toggleManagerMenu())}
+              title={managerTerminal ? t.project_chat_show : t.project_chat_unassigned}
+            >
+              {managerTerminal && (
+                <img
+                  src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
+                  alt=""
+                  className="h-5 w-5 rounded object-cover"
+                />
+              )}
+              <span>
+                {managerTerminal
+                  ? `${t.project_chat_label} · ${managerLabel}`
+                  : t.project_chat_unassigned}
+              </span>
+            </button>
+            {!managerTerminal && (
+              <button
+                ref={managerTriggerRef}
+                className={triggerButtonCls}
+                onClick={toggleManagerMenu}
+                aria-haspopup="menu"
+                aria-expanded={managerMenuOpen}
+                title={t.project_chat_assign}
+                aria-label={t.project_chat_assign}
+              >
+                <span className="text-[18px] leading-none font-normal">+</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Input — rendered in the same slot at both heights so switching
+            between them never unmounts it and loses a half-typed message. */}
+        {showChat && (
+          <div className="flex shrink-0 items-end gap-2 border-t border-[var(--border)] px-3 py-2">
+            <span
+              className="tc-mono shrink-0 pb-1"
+              style={{ fontSize: "var(--text-xs)", color: "var(--cyan)" }}
+            >
+              ›
+            </span>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={draft}
+              disabled={sending}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+                // The canvas listens globally for single-key shortcuts.
+                e.stopPropagation();
+              }}
+              placeholder={t.project_chat_placeholder}
+              className="max-h-24 min-h-[1.5rem] flex-1 resize-none bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
+              style={{ fontSize: "var(--text-sm)" }}
+            />
+            <button
+              className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              style={{ fontSize: "var(--text-xs)" }}
+              onClick={() => setHeight(isFull ? "composer" : "full")}
+              title={isFull ? t.project_chat_collapse : t.project_chat_expand}
+              aria-label={isFull ? t.project_chat_collapse : t.project_chat_expand}
+            >
+              {isFull ? "⌘↓" : "⌘↑"}
+            </button>
+          </div>
+        )}
+
+        {/* History — only conversations that held the role, which is what the
+            tenure log exists to make knowable. */}
+        {historyOpen && isFull && (
+          <div className="absolute right-2 top-10 z-10 max-h-64 w-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+            {history.map((row) => (
+              <button
+                key={row.sessionId}
+                type="button"
+                disabled={!row.sessionFile}
+                onClick={() => {
+                  setViewing(row.isCurrent ? null : row);
+                  setHistoryOpen(false);
+                }}
+                className="flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface-hover)] disabled:opacity-40"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                <span className="tc-mono truncate text-[var(--text-secondary)]">
+                  {row.cli ?? "agent"}
+                  {row.isCurrent && (
+                    <span style={{ color: "var(--cyan)" }}> · {t.project_chat_now}</span>
+                  )}
+                </span>
+                <span className="tc-mono shrink-0 tabular-nums text-[var(--text-faint)]">
+                  {formatWhen(row.startedAt)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {managerMenuOpen && (
           <div
             ref={managerPopoverRef}
             role="menu"
             aria-label={t.project_chat_assign}
-            className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[200px] rounded-md py-1 ${PILL_GLASS}`}
+            className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[220px] rounded-md py-1 ${PILL_GLASS}`}
           >
+            {eligibleManagerTerminals.length > 0 && (
+              <div className="tc-eyebrow tc-mono px-3 pb-1 pt-1.5">
+                {t.project_chat_running_now}
+              </div>
+            )}
             {eligibleManagerTerminals.map((term) => (
               <button
                 key={term.id}
@@ -404,12 +680,8 @@ export function WorkspaceManagerPill() {
                 onClick={() => assignWorkspaceManager(term.id)}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <img
-                    src={AGENT_ICON[term.type]}
-                    alt=""
-                    className="h-4 w-4 shrink-0 rounded object-cover"
-                  />
-                  <span className="truncate">{term.label}</span>
+                  <img src={AGENT_ICON[term.type]} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
+                  <span className="truncate">{labelFor(term.id) || term.label}</span>
                 </span>
                 <span className="text-[10px] text-[var(--text-muted)]">
                   {AGENT_DISPLAY_NAME[term.type]}
@@ -419,6 +691,9 @@ export function WorkspaceManagerPill() {
             {eligibleManagerTerminals.length > 0 && (
               <div className="my-1 h-px bg-[var(--border)] opacity-60" />
             )}
+            <div className="tc-eyebrow tc-mono px-3 pb-1">
+              {t.project_chat_start_new}
+            </div>
             {WORKSPACE_MANAGER_AGENT_TYPES.map((type) => (
               <button
                 key={type}
@@ -428,15 +703,11 @@ export function WorkspaceManagerPill() {
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] focus:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] focus:text-[var(--text-primary)] focus:outline-none"
                 onClick={() => spawnAndAssignManager(type)}
               >
-                <img
-                  src={AGENT_ICON[type]}
-                  alt=""
-                  className="h-4 w-4 shrink-0 rounded object-cover"
-                />
-                <span>+ New {AGENT_DISPLAY_NAME[type]}</span>
+                <img src={AGENT_ICON[type]} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
+                <span>{AGENT_DISPLAY_NAME[type]}</span>
               </button>
             ))}
-            {workspaceManagerTerminalId && (
+            {managerTerminal && (
               <>
                 <div className="my-1 h-px bg-[var(--border)] opacity-60" />
                 <button
