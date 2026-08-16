@@ -26,7 +26,7 @@ const SCROLLBACK_LIMIT = 50_000;
 // xterm's ITheme exposes 16 ANSI colors via separate fields. wterm reads
 // them off CSS vars. Bridge the two so the wterm path inherits the same
 // palette we ship for xterm — otherwise wterm falls back to its built-in
-// VS Code blue/purple defaults and TermCanvas turns into two visually
+// VS Code blue/purple defaults and Tacit turns into two visually
 // disjoint terminals depending on which engine is on.
 function buildPaletteVars(themeName: "dark" | "light"): CSSProperties {
   const t = XTERM_THEMES[themeName];

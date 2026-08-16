@@ -16,7 +16,7 @@ const inputSchema = z.object({
 
 export const telemetryTool: Tool<typeof inputSchema.shape> = {
   name: "Telemetry",
-  description: "Get terminal or workflow telemetry snapshots and event history from TermCanvas.",
+  description: "Get terminal or workflow telemetry snapshots and event history from Tacit.",
   inputSchema,
   isReadOnly: true,
 

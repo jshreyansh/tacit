@@ -18,8 +18,8 @@ test("checkTerminalAlive returns false when telemetry reports pty_alive=false", 
   assert.equal(result, false);
 });
 
-test("checkTerminalAlive returns null when TermCanvas is not running", () => {
-  // Without TermCanvas there is no authoritative source of PTY state. The
+test("checkTerminalAlive returns null when Tacit is not running", () => {
+  // Without Tacit there is no authoritative source of PTY state. The
   // watch loop must keep polling rather than assume the PTY is dead — an
   // app restart should not cascade into a spurious timeout of the live
   // worker that survived it.
@@ -32,7 +32,7 @@ test("checkTerminalAlive returns null when TermCanvas is not running", () => {
     },
   });
   assert.equal(result, null);
-  assert.equal(probed, false, "must not probe telemetry when TermCanvas is down");
+  assert.equal(probed, false, "must not probe telemetry when Tacit is down");
 });
 
 test("checkTerminalAlive returns null when telemetry snapshot is unavailable", () => {

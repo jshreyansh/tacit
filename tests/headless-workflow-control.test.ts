@@ -34,7 +34,7 @@ function initRepo(repoPath: string): void {
     cwd: repoPath,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.name", "TermCanvas Test"], {
+  execFileSync("git", ["config", "user.name", "Tacit Test"], {
     cwd: repoPath,
     stdio: "pipe",
   });

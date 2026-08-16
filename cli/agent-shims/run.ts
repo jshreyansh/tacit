@@ -76,7 +76,7 @@ function resolveTermcanvasBridgeCliPath(): string | null {
  * "Computer Use MCP" in electron/skill-manager.ts / CHANGELOG for why that
  * pattern was abandoned: it applied to every session forever and needed
  * careful cleanup). Returns the extra args to splice in, or [] if
- * termcanvas-bridge isn't available or this isn't a terminal TermCanvas
+ * termcanvas-bridge isn't available or this isn't a terminal Tacit
  * spawned (no TERMCANVAS_TERMINAL_ID set — e.g. a plain shell use of `claude`).
  */
 function buildClaudeMcpArgs(): string[] {
@@ -132,7 +132,7 @@ function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
 export function runAgentShim(provider: AgentShimProvider): never {
   const realCommand = resolveRealCommand(provider);
   if (!realCommand) {
-    console.error(`TermCanvas could not find the real ${provider} executable in PATH.`);
+    console.error(`Tacit could not find the real ${provider} executable in PATH.`);
     process.exit(127);
   }
 

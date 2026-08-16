@@ -6,7 +6,7 @@ import { resolveTermCanvasPortFile } from "../../shared/termcanvas-instance.ts";
  * TERMCANVAS_PORT_FILE in its environment — see electron/pty-launch.ts's
  * buildLaunchSpec. This mirrors cli/termcanvas.ts's own port-file discovery
  * so this MCP server (run via cli/agent-shims/run.ts's --mcp-config
- * injection) talks to whichever TermCanvas instance actually spawned it.
+ * injection) talks to whichever Tacit instance actually spawned it.
  */
 function resolveBaseUrl(): string {
   const envUrl = process.env.TERMCANVAS_URL?.trim();
@@ -34,7 +34,7 @@ export async function apiRequest<T = unknown>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`TermCanvas API ${method} ${path} failed: ${res.status} ${text}`);
+    throw new Error(`Tacit API ${method} ${path} failed: ${res.status} ${text}`);
   }
   return (await res.json()) as T;
 }

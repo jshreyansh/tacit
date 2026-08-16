@@ -4,7 +4,7 @@ import path from "node:path";
 import { resolveCanvasProjectRoot } from "../electron/pin-project-resolver.ts";
 
 const GATE_MSG =
-  "This repo is not on the TermCanvas canvas. Add it as a project first.";
+  "This repo is not on the Tacit canvas. Add it as a project first.";
 
 function makeProject(projectPath: string, worktreePaths: string[] = []) {
   return {

@@ -1,12 +1,12 @@
-# TermCanvas Headless Cloud Deployment
+# Tacit Headless Cloud Deployment
 
-This guide covers the docker-compose deployment path for the TermCanvas headless runtime introduced across the cloud rollout rounds.
+This guide covers the docker-compose deployment path for the Tacit headless runtime introduced across the cloud rollout rounds.
 
 ## What This Stack Provides
 
-- A remotely reachable TermCanvas headless API on `TERMCANVAS_PORT`
+- A remotely reachable Tacit headless API on `TERMCANVAS_PORT`
 - Authenticated project, terminal, workflow, worktree, telemetry, and diff control
-- Persistent TermCanvas state under the container user home
+- Persistent Tacit state under the container user home
 - A bind-mounted workspace root at `/workspace` for repos and Hydra worktrees
 - Optional lifecycle webhooks and optional heartbeat callbacks
 
@@ -57,7 +57,7 @@ docker compose up --build -d
 The compose file mounts:
 
 - `termcanvas-data:/home/termcanvas/.termcanvas`
-  Persistent TermCanvas state, including the runtime port file and saved canvas/project state.
+  Persistent Tacit state, including the runtime port file and saved canvas/project state.
 - `${HOST_WORKSPACE_DIR}:${WORKSPACE_DIR}`
   Your repo/worktree root. Hydra-created worktrees appear under this mount.
 

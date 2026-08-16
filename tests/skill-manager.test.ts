@@ -643,7 +643,7 @@ test("installSkillLinks preserves unrelated global MCP servers", () => {
   assert.doesNotMatch(codexConfig, /\[mcp_servers\.computer-use\]/);
 });
 
-test("installSkillLinks preserves non-TermCanvas Codex computer-use MCP table", () => {
+test("installSkillLinks preserves non-Tacit Codex computer-use MCP table", () => {
   const { home, sourceDir } = makeTempEnv();
   const codexDir = path.join(home, ".codex");
   fs.mkdirSync(codexDir, { recursive: true });
@@ -679,7 +679,7 @@ test("installSkillLinks removes legacy Codex computer-use dotted keys", () => {
   const codexDir = path.join(home, ".codex");
   fs.mkdirSync(codexDir, { recursive: true });
   const stalePath =
-    "/Applications/TermCanvas.app/Contents/Resources/mcp-computer-use-server/index.js";
+    "/Applications/Tacit.app/Contents/Resources/mcp-computer-use-server/index.js";
   fs.writeFileSync(
     path.join(codexDir, "config.toml"),
     [
@@ -705,7 +705,7 @@ test("installSkillLinks removes legacy Codex computer-use dotted keys", () => {
   assert.match(codexConfig, /\[mcp_servers\.mempalace\]/);
 });
 
-test("installSkillLinks preserves non-TermCanvas Codex computer-use dotted keys", () => {
+test("installSkillLinks preserves non-Tacit Codex computer-use dotted keys", () => {
   const { home, sourceDir } = makeTempEnv();
   const codexDir = path.join(home, ".codex");
   fs.mkdirSync(codexDir, { recursive: true });
@@ -784,7 +784,7 @@ test("installSkillLinks heals legacy orphan computer-use keys in codex config.to
   fs.mkdirSync(codexDir, { recursive: true });
 
   const stalePath =
-    "/Applications/TermCanvas.app/Contents/Resources/mcp-computer-use-server/index.js";
+    "/Applications/Tacit.app/Contents/Resources/mcp-computer-use-server/index.js";
   const polluted = [
     'model = "gpt-4"',
     "",

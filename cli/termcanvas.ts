@@ -74,7 +74,7 @@ function getConnection(): ConnectionTarget {
         process.kill(pid, 0); // probe: throws if process is dead
       } catch {
         try { fs.unlinkSync(portFile); } catch {}
-        console.error(`TermCanvas is not running (stale port file removed from ${portFile}).`);
+        console.error(`Tacit is not running (stale port file removed from ${portFile}).`);
         process.exit(1);
       }
     }
@@ -86,7 +86,7 @@ function getConnection(): ConnectionTarget {
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    console.error(`TermCanvas is not running (no port file found at ${portFile}).`);
+    console.error(`Tacit is not running (no port file found at ${portFile}).`);
     process.exit(1);
   }
 }
@@ -171,7 +171,7 @@ async function request(
   }
   const { protocol, hostname, port, basePath } = getConnection();
   console.error(
-    `Failed to connect to TermCanvas at ${protocol}//${hostname}:${port}${basePath} after ${MAX_RETRIES + 1} attempts.\n` +
+    `Failed to connect to Tacit at ${protocol}//${hostname}:${port}${basePath} after ${MAX_RETRIES + 1} attempts.\n` +
     `Check that the server is running and the host/port are correct.`,
   );
   throw lastError;

@@ -1,8 +1,8 @@
-# TermCanvas User Guide
+# Tacit User Guide
 
 **A hands-on walkthrough of the app, the interactions that aren't obvious, and every keyboard shortcut worth memorising.**
 
-This guide assumes TermCanvas is already installed. For download links and `termcanvas` / `hydra` CLI registration, see the [README](../README.md) Quick Start.
+This guide assumes Tacit is already installed. For download links and `termcanvas` / `hydra` CLI registration, see the [README](../README.md) Quick Start.
 
 - 中文版 → [`user-guide.zh.md`](./user-guide.zh.md)
 
@@ -10,7 +10,7 @@ This guide assumes TermCanvas is already installed. For download links and `term
 
 ## Table of contents
 
-1. [What TermCanvas is](#what-termcanvas-is)
+1. [What Tacit is](#what-termcanvas-is)
 2. [Your first five minutes](#your-first-five-minutes)
 3. [The three-column layout](#the-three-column-layout)
 4. [Moving around the canvas](#moving-around-the-canvas)
@@ -29,13 +29,13 @@ This guide assumes TermCanvas is already installed. For download links and `term
 17. [Keyboard shortcuts cheatsheet](#keyboard-shortcuts-cheatsheet)
 18. [Troubleshooting](#troubleshooting)
 
-On macOS this guide uses `⌘`. On Linux / Windows, substitute `Ctrl` — TermCanvas binds every shortcut against the platform modifier.
+On macOS this guide uses `⌘`. On Linux / Windows, substitute `Ctrl` — Tacit binds every shortcut against the platform modifier.
 
 ---
 
-## What TermCanvas is
+## What Tacit is
 
-TermCanvas is an **infinite canvas for AI agents**. Each tile on the canvas is a real PTY — typically `claude`, `codex`, `gemini`, `lazygit`, or a plain shell — and you arrange them the way you'd arrange sticky notes on a whiteboard. You can run a dozen Claude sessions in parallel across a dozen worktrees, glance across all of them at once by zooming out, zoom into the one you're actively driving, and replay any past session as easily as you'd scroll back through a chat thread.
+Tacit is an **infinite canvas for AI agents**. Each tile on the canvas is a real PTY — typically `claude`, `codex`, `gemini`, `lazygit`, or a plain shell — and you arrange them the way you'd arrange sticky notes on a whiteboard. You can run a dozen Claude sessions in parallel across a dozen worktrees, glance across all of them at once by zooming out, zoom into the one you're actively driving, and replay any past session as easily as you'd scroll back through a chat thread.
 
 The surrounding UI is there so you don't have to leave the canvas for the usual side quests:
 
@@ -63,7 +63,7 @@ The surrounding UI is there so you don't have to leave the canvas for the usual 
 
 ## The three-column layout
 
-TermCanvas always has the same shape:
+Tacit always has the same shape:
 
 ```
 ┌───────────┬────────────────────────────┬───────────┐
@@ -191,7 +191,7 @@ The left panel's **History** section lists every past Claude + Codex session in 
 Two things to know:
 
 - If the CLI's own session store has evicted the conversation (Claude's session cache has a TTL), the resume terminal will print `[Session expired, starting fresh...]` and start a fresh session automatically. You didn't do anything wrong; the original session is just too old.
-- Claude and Codex store sessions in different formats under `~/.claude/projects/…` and `~/.codex/sessions/…` respectively. TermCanvas reads both and merges them into one unified timeline.
+- Claude and Codex store sessions in different formats under `~/.claude/projects/…` and `~/.codex/sessions/…` respectively. Tacit reads both and merges them into one unified timeline.
 
 ---
 
@@ -236,7 +236,7 @@ Keyboard-only interaction:
 
 ### Command Palette — `⌘P`
 
-Different shape from search: instead of "find a thing", it's "run a thing". The palette lists every action TermCanvas can take — toggling panels, switching theme, dispatching a Hydra workflow, opening this guide, registering CLIs, etc. Type to filter, `Enter` to run, `Esc` to close. If you don't remember the shortcut for an action, the palette is the fastest way to find and trigger it.
+Different shape from search: instead of "find a thing", it's "run a thing". The palette lists every action Tacit can take — toggling panels, switching theme, dispatching a Hydra workflow, opening this guide, registering CLIs, etc. Type to filter, `Enter` to run, `Esc` to close. If you don't remember the shortcut for an action, the palette is the fastest way to find and trigger it.
 
 ### Hub — `⌘⇧J`
 
@@ -291,7 +291,7 @@ Three things you reach for when one screen of canvas isn't enough.
 
 ### Multiple named canvases
 
-A canvas in TermCanvas is more than just a viewport — each canvas owns its own projects, viewport, and waypoints. Switch canvases the way you'd switch desktops:
+A canvas in Tacit is more than just a viewport — each canvas owns its own projects, viewport, and waypoints. Switch canvases the way you'd switch desktops:
 
 - `⌘⇧]` / `⌘⇧[` — cycle to next / previous canvas.
 - `⌘⇧N` — open the Canvas Manager: rename, reorder, create, delete.
@@ -309,7 +309,7 @@ A small dot strip at the bottom-centre of the canvas shows which slots are fille
 
 ### Snapshot history — `⌘⇧T`
 
-`⌘S` saves the current canvas state. The Snapshot History modal goes the other direction: it shows the last 20 snapshots TermCanvas auto-captured (every layout change of consequence), lets you preview each one, and rolls the canvas back to that exact state. Diff mode highlights what would change if you restore. Useful after a heavy reorg you wish you hadn't done.
+`⌘S` saves the current canvas state. The Snapshot History modal goes the other direction: it shows the last 20 snapshots Tacit auto-captured (every layout change of consequence), lets you preview each one, and rolls the canvas back to that exact state. Diff mode highlights what would change if you restore. Useful after a heavy reorg you wish you hadn't done.
 
 ---
 
@@ -364,13 +364,13 @@ Open with `⌘,`. Three tabs:
 
 ### Shortcuts
 
-Every shortcut is rebindable. Click the current binding, press a new key combination, `Enter` to save. TermCanvas flags conflicts (e.g. two actions on the same key) and refuses to save until resolved.
+Every shortcut is rebindable. Click the current binding, press a new key combination, `Enter` to save. Tacit flags conflicts (e.g. two actions on the same key) and refuses to save until resolved.
 
 ### Agents
 
 - **Provider selection** — pick your default agent (Claude, Codex, Kimi, Gemini, OpenCode).
 - **API key** — for providers that need one.
-- **Per-agent CLI override** — if you want TermCanvas to use `claude-beta` instead of `claude`, or a custom wrapper script, set it here. The command + args are validated by attempting a `--version` probe.
+- **Per-agent CLI override** — if you want Tacit to use `claude-beta` instead of `claude`, or a custom wrapper script, set it here. The command + args are validated by attempting a `--version` probe.
 
 ---
 
@@ -382,7 +382,7 @@ These are aimed at heavier users; skip until you're comfortable with the basics.
 - **Activity heatmap (`⌘⇧A`)** — paints each tile with a 5-minute output-volume sparkline so a glance at the canvas tells you which agents are doing work right now. Toggle on / off.
 - **Pan-to-recent-activity (`⌥` + `` ` ``)** — fly the camera to whichever terminal had PTY output most recently. Repeat the chord to LRU-cycle through the recently-active set, Alt-Tab style.
 - **Telemetry** — every terminal emits lifecycle events (awaiting-input, tool-running, stall, completion). These drive the pet, status dots, attention queue, Hub, and `⌘K` session search. Disable from Settings → General if you want the app dead-quiet.
-- **Headless mode** — `termcanvas headless` runs the whole stack as an HTTP/SSE service, no Electron window. Useful for CI or for driving TermCanvas from another app. See [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md).
+- **Headless mode** — `termcanvas headless` runs the whole stack as an HTTP/SSE service, no Electron window. Useful for CI or for driving Tacit from another app. See [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md).
 - **Workspace files** — `⌘S` / `⌘⇧S` save the canvas to a `.termcanvas` JSON file. Re-opening restores every project, worktree, terminal, drawing, stashed tile, and viewport. (For automatic state-history with rollback, see Snapshot History above.)
 
 ---

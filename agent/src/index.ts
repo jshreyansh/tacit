@@ -1,5 +1,5 @@
 /**
- * TermCanvas Agent Runtime — public API.
+ * Tacit Agent Runtime — public API.
  */
 
 export type {

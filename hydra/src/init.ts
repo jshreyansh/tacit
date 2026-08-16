@@ -38,7 +38,7 @@ Workflow patterns:
    \`hydra spawn --task "<specific task>" --repo . [--worktree .]\`
 
 Agent launch rule:
-- When dispatching Claude/Codex through TermCanvas CLI, start a fresh agent terminal with \`termcanvas terminal create --prompt "..."\`
+- When dispatching Claude/Codex through Tacit CLI, start a fresh agent terminal with \`termcanvas terminal create --prompt "..."\`
 - Do not use \`termcanvas terminal input\` for task dispatch; it is not a supported automation path
 
 Workflow control:

@@ -39,7 +39,7 @@ test("Hydra skill copy documents root-cause-first, no test hacking, and result g
   assert.doesNotMatch(skill, /result\.json\s*\+\s*`done`|result\.json.*done/i);
 });
 
-test("router skill stays always-on and classifies TermCanvas work before Hydra", () => {
+test("router skill stays always-on and classifies Tacit work before Hydra", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const skillPath = path.resolve(here, "..", "..", "skills", "skills", "using-termcanvas", "SKILL.md");
   const skill = fs.readFileSync(skillPath, "utf-8");

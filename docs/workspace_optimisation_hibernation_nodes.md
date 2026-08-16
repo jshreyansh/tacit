@@ -9,7 +9,7 @@ Electron gives each browser card `<webview>` its own Chromium renderer
 process, and each terminal its own PTY. As a workspace accumulates many
 terminals and browser cards over a long session, that adds up to real memory
 pressure — a genuine concern on a base MacBook (8–16GB), not a hypothetical
-one, once TermCanvas has real users running real workloads.
+one, once Tacit has real users running real workloads.
 
 This was raised in the context of "should we migrate off Electron (e.g. to
 Tauri/Rust) for performance." Conclusion: **no, not for this reason** — a
@@ -21,7 +21,7 @@ nodes nobody is looking at and nothing is using.
 
 ## Why the obvious trigger (app/window focus) is wrong
 
-The first instinct — hibernate when TermCanvas loses OS focus or you switch
+The first instinct — hibernate when Tacit loses OS focus or you switch
 windows/apps — is actively dangerous, not just an optimization. Terminals
 often run agents doing real work *specifically while the user isn't
 watching* (the entire point of background agents: let Claude keep coding

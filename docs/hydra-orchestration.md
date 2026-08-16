@@ -3,7 +3,7 @@
 ## Architecture boundaries
 
 - Hydra is a **Lead-driven control plane**, not the agent runtime. The Lead terminal owns the workbench and decides what happens at each decision point.
-- Worker execution is delegated to local CLIs through TermCanvas. In the UI/runtime bridge this can be a tracked PTY terminal or a one-shot subprocess worker, but the workbench contract is the same either way.
+- Worker execution is delegated to local CLIs through Tacit. In the UI/runtime bridge this can be a tracked PTY terminal or a one-shot subprocess worker, but the workbench contract is the same either way.
 - File evidence is authoritative. `workbench.json`, `assignment.json`, `task.md`, `report.md`, `result.json`, and `ledger.jsonl` define the runtime. Terminal prose is not a source of truth.
 - Role files are the source of truth for CLI / model / reasoning. The caller picks `role`; Hydra resolves the terminal profile from that role definition.
 - `hydra watch` is the decision loop. It returns structured decision points: `dispatch_completed`, `dispatch_failed`, `dispatch_failed_final`, `batch_completed`, `watch_timeout`, `stall_advisory`.

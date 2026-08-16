@@ -23,8 +23,8 @@ test("enableHydraForProject writes Hydra and Pin instructions into the project r
   const agents = fs.readFileSync(path.join(repoPath, "AGENTS.md"), "utf-8");
   assert.match(claude, /## Hydra Orchestration Toolkit/);
   assert.match(agents, /## Hydra Orchestration Toolkit/);
-  assert.match(claude, /## TermCanvas Pin System/);
-  assert.match(agents, /## TermCanvas Pin System/);
+  assert.match(claude, /## Tacit Pin System/);
+  assert.match(agents, /## Tacit Pin System/);
   assert.match(claude, /termcanvas pin render <id> --json/);
   assert.match(agents, /termcanvas pin render <id> --json/);
 });
@@ -59,11 +59,11 @@ test("checkHydraProjectStatus auto-installs the Pin section for projects that al
   for (const fileName of ["CLAUDE.md", "AGENTS.md"]) {
     const filePath = path.join(repoPath, fileName);
     const stripped = fs.readFileSync(filePath, "utf-8").replace(
-      /\n## TermCanvas Pin System[\s\S]*$/,
+      /\n## Tacit Pin System[\s\S]*$/,
       "\n",
     );
     fs.writeFileSync(filePath, stripped, "utf-8");
-    assert.doesNotMatch(stripped, /## TermCanvas Pin System/);
+    assert.doesNotMatch(stripped, /## Tacit Pin System/);
   }
 
   const status = checkHydraProjectStatus(repoPath);
@@ -71,11 +71,11 @@ test("checkHydraProjectStatus auto-installs the Pin section for projects that al
   assert.equal(status, "current");
   assert.match(
     fs.readFileSync(path.join(repoPath, "CLAUDE.md"), "utf-8"),
-    /## TermCanvas Pin System/,
+    /## Tacit Pin System/,
   );
   assert.match(
     fs.readFileSync(path.join(repoPath, "AGENTS.md"), "utf-8"),
-    /## TermCanvas Pin System/,
+    /## Tacit Pin System/,
   );
 });
 

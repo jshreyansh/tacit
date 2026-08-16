@@ -129,7 +129,7 @@ function deleteWindowsUserPathFromRegistry(): void {
 
 function broadcastWindowsEnvironmentChange(): void {
   const script = [
-    "Add-Type -Namespace TermCanvas -Name NativeMethods -MemberDefinition @\"",
+    "Add-Type -Namespace Tacit -Name NativeMethods -MemberDefinition @\"",
     "using System;",
     "using System.Runtime.InteropServices;",
     "public static class NativeMethods {",
@@ -146,7 +146,7 @@ function broadcastWindowsEnvironmentChange(): void {
     "}",
     "\"@",
     "[UIntPtr]$result = [UIntPtr]::Zero",
-    "[void][TermCanvas.NativeMethods]::SendMessageTimeout(",
+    "[void][Tacit.NativeMethods]::SendMessageTimeout(",
     "  [IntPtr]0xffff,",
     "  0x001A,",
     "  [UIntPtr]::Zero,",

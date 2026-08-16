@@ -98,7 +98,7 @@ test("sanitizeEnv drops undefined values and injects a fallback PATH", () => {
   assert.match(env.PATH, /\/usr\/bin/);
 });
 
-test("sanitizeEnv strips inherited TermCanvas runtime identity", () => {
+test("sanitizeEnv strips inherited Tacit runtime identity", () => {
   const env = sanitizeEnv(
     {
       HOME: "/Users/test",
@@ -267,7 +267,7 @@ test("buildLaunchSpec keeps login shell NO_COLOR when the shell explicitly expor
   assert.equal(launch.env.NO_COLOR, "1");
 });
 
-test("buildLaunchSpec injects TermCanvas instance routing into the PTY environment", async () => {
+test("buildLaunchSpec injects Tacit instance routing into the PTY environment", async () => {
   const previousDevServerUrl = process.env.VITE_DEV_SERVER_URL;
   process.env.VITE_DEV_SERVER_URL = "http://127.0.0.1:5173";
 
@@ -300,7 +300,7 @@ test("buildLaunchSpec injects TermCanvas instance routing into the PTY environme
   }
 });
 
-test("buildLaunchSpec does not inject removed TermCanvas Computer Use config", async () => {
+test("buildLaunchSpec does not inject removed Tacit Computer Use config", async () => {
   const launch = await buildLaunchSpec(
     {
       cwd: "/repo",
@@ -326,26 +326,26 @@ test("buildLaunchSpec does not inject removed TermCanvas Computer Use config", a
 
 test("shell terminal extra PATH entries put agent shims after cliDir for launch prepending", () => {
   const entries = getTerminalExtraPathEntries(
-    "/Applications/TermCanvas.app/Contents/Resources/cli",
+    "/Applications/Tacit.app/Contents/Resources/cli",
     "shell",
     (file) => file.endsWith("/agent-shims"),
   );
 
   assert.deepEqual(entries, [
-    "/Applications/TermCanvas.app/Contents/Resources/cli",
-    "/Applications/TermCanvas.app/Contents/Resources/cli/agent-shims",
+    "/Applications/Tacit.app/Contents/Resources/cli",
+    "/Applications/Tacit.app/Contents/Resources/cli/agent-shims",
   ]);
 });
 
 test("managed agent terminals do not receive shell agent shim PATH entries", () => {
   const entries = getTerminalExtraPathEntries(
-    "/Applications/TermCanvas.app/Contents/Resources/cli",
+    "/Applications/Tacit.app/Contents/Resources/cli",
     "codex",
     () => true,
   );
 
   assert.deepEqual(entries, [
-    "/Applications/TermCanvas.app/Contents/Resources/cli",
+    "/Applications/Tacit.app/Contents/Resources/cli",
   ]);
 });
 

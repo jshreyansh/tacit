@@ -1,8 +1,8 @@
-# TermCanvas 用户指南
+# Tacit 用户指南
 
 **一份实战手册:从 app 长什么样、到那些不告诉你就永远发现不了的交互、到所有值得记的快捷键。**
 
-默认你已经装好了 TermCanvas。下载链接和 `termcanvas` / `hydra` 的 CLI 注册见 [README.zh-CN](../README.zh-CN.md) 的"快速开始"。
+默认你已经装好了 Tacit。下载链接和 `termcanvas` / `hydra` 的 CLI 注册见 [README.zh-CN](../README.zh-CN.md) 的"快速开始"。
 
 - English → [`user-guide.md`](./user-guide.md)
 
@@ -10,7 +10,7 @@
 
 ## 目录
 
-1. [TermCanvas 是什么](#termcanvas-是什么)
+1. [Tacit 是什么](#termcanvas-是什么)
 2. [前 5 分钟](#前-5-分钟)
 3. [三栏布局](#三栏布局)
 4. [在 canvas 上移动](#在-canvas-上移动)
@@ -33,9 +33,9 @@ macOS 用 `⌘`,Linux / Windows 上所有 `⌘` 自动换成 `Ctrl` —— 每�
 
 ---
 
-## TermCanvas 是什么
+## Tacit 是什么
 
-TermCanvas 是一个**专门为 AI agent 做的无限画布**。canvas 上每个 tile 都是真正的 PTY —— 通常是 `claude`、`codex`、`gemini`、`lazygit` 或者 shell —— 你像贴便签条一样把它们摆在画板上。可以同时在十几个 worktree 里跑十几个 Claude 会话,缩小一眼扫全景,放大到正在驱动的那个,随时翻出任何历史会话像翻聊天记录一样回看。
+Tacit 是一个**专门为 AI agent 做的无限画布**。canvas 上每个 tile 都是真正的 PTY —— 通常是 `claude`、`codex`、`gemini`、`lazygit` 或者 shell —— 你像贴便签条一样把它们摆在画板上。可以同时在十几个 worktree 里跑十几个 Claude 会话,缩小一眼扫全景,放大到正在驱动的那个,随时翻出任何历史会话像翻聊天记录一样回看。
 
 周围那些 UI 就是为了让你不用离开 canvas 干杂事:
 
@@ -63,7 +63,7 @@ TermCanvas 是一个**专门为 AI agent 做的无限画布**。canvas 上每个
 
 ## 三栏布局
 
-TermCanvas 的形状永远是这样:
+Tacit 的形状永远是这样:
 
 ```
 ┌───────────┬────────────────────────────┬───────────┐
@@ -191,7 +191,7 @@ terminal **标题栏**右键:
 两件事要知道:
 
 - 如果 CLI 那头已经把会话清掉了(Claude 的会话缓存有 TTL),续接 terminal 会打印 `[Session expired, starting fresh...]` 然后自动启动一个全新会话。不是你的错,就是原来那场太老了。
-- Claude 和 Codex 在 `~/.claude/projects/…` 和 `~/.codex/sessions/…` 下用不同格式存会话。TermCanvas 读两边并合并成一条统一时间线。
+- Claude 和 Codex 在 `~/.claude/projects/…` 和 `~/.codex/sessions/…` 下用不同格式存会话。Tacit 读两边并合并成一条统一时间线。
 
 ---
 
@@ -236,7 +236,7 @@ terminal **标题栏**右键:
 
 ### 命令面板 — `⌘P`
 
-形态和搜索不同:搜索是「找一个东西」,面板是「执行一个动作」。这里列出 TermCanvas 能做的所有动作 —— 切换面板、换主题、派发 Hydra 任务、打开本指南、注册 CLI 等等。打字过滤,`Enter` 执行,`Esc` 关闭。如果你不记得某个动作的快捷键,从这里找最快。
+形态和搜索不同:搜索是「找一个东西」,面板是「执行一个动作」。这里列出 Tacit 能做的所有动作 —— 切换面板、换主题、派发 Hydra 任务、打开本指南、注册 CLI 等等。打字过滤,`Enter` 执行,`Esc` 关闭。如果你不记得某个动作的快捷键,从这里找最快。
 
 ### Hub — `⌘⇧J`
 
@@ -291,7 +291,7 @@ stash 状态**跨 workspace 保存持久化**,重启后 stashed terminal 还在�
 
 ### 多个命名画布
 
-TermCanvas 的「画布」不只是视口 —— 每个画布都有自己的项目、视口、waypoint。像切换桌面一样切画布:
+Tacit 的「画布」不只是视口 —— 每个画布都有自己的项目、视口、waypoint。像切换桌面一样切画布:
 
 - `⌘⇧]` / `⌘⇧[` —— 下一个 / 上一个画布。
 - `⌘⇧N` —— 打开画布管理器:重命名、排序、新建、删除。
@@ -309,7 +309,7 @@ canvas 底部正中有一条小点,显示哪些槽已经填了。布局铺得很
 
 ### 快照历史 — `⌘⇧T`
 
-`⌘S` 是手动保存当前状态。快照历史是反向操作:列出 TermCanvas 自动捕获的最近 20 个快照(每次有意义的布局变化都会存一份),逐一预览,选一个把整个画布回滚到那时候。Diff 模式高亮恢复后会变什么。一通乱拖之后想反悔时用。
+`⌘S` 是手动保存当前状态。快照历史是反向操作:列出 Tacit 自动捕获的最近 20 个快照(每次有意义的布局变化都会存一份),逐一预览,选一个把整个画布回滚到那时候。Diff 模式高亮恢复后会变什么。一通乱拖之后想反悔时用。
 
 ---
 
@@ -364,13 +364,13 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 
 ### Shortcuts(快捷键)
 
-每个快捷键都可以重绑。点当前绑定,按新键组合,Enter 保存。TermCanvas 会标记冲突(比如两个动作绑同一个键)并拒绝保存直到解决。
+每个快捷键都可以重绑。点当前绑定,按新键组合,Enter 保存。Tacit 会标记冲突(比如两个动作绑同一个键)并拒绝保存直到解决。
 
 ### Agents
 
 - **Provider 选择** — 选默认 agent(Claude / Codex / Kimi / Gemini / OpenCode)。
 - **API key** — 需要的 provider 填一下。
-- **Per-agent CLI 覆盖** — 如果你要 TermCanvas 用 `claude-beta` 而不是 `claude`,或者一个自定义包装脚本,在这里设置。命令 + 参数会跑一次 `--version` 探测验证。
+- **Per-agent CLI 覆盖** — 如果你要 Tacit 用 `claude-beta` 而不是 `claude`,或者一个自定义包装脚本,在这里设置。命令 + 参数会跑一次 `--version` 探测验证。
 
 ---
 
@@ -382,7 +382,7 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 - **活动热力图(`⌘⇧A`)** — 每个 tile 上画一条 5 分钟输出量 sparkline,扫一眼 canvas 就知道哪些 agent 现在在干活。开关式。
 - **飞向最近活动(`⌥` + `` ` ``)** — 把镜头飞到最近有 PTY 输出的终端。重复按等于在最近活跃集合里 LRU 循环,Alt-Tab 风格。
 - **Telemetry** — 每个 terminal 都发生命周期事件(awaiting-input / tool-running / stall / completion)。这些驱动 pet、状态点、注意力队列、Hub、`⌘K` 会话搜索。设置 → 通用 里可以整体关掉。
-- **Headless 模式** — `termcanvas headless` 把整个栈跑成 HTTP/SSE 服务,不开 Electron 窗口。CI 或者别的 app 驱动 TermCanvas 时用。详见 [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md)。
+- **Headless 模式** — `termcanvas headless` 把整个栈跑成 HTTP/SSE 服务,不开 Electron 窗口。CI 或者别的 app 驱动 Tacit 时用。详见 [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md)。
 - **Workspace 文件** — `⌘S` / `⌘⇧S` 把画布存成一个 `.termcanvas` JSON 文件。重开它会恢复所有项目、worktree、terminal、涂鸦、stashed tile、视口。(自动状态历史 + 回滚见上面的「快照历史」。)
 
 ---

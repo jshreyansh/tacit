@@ -8,7 +8,7 @@ import type {
 } from "./types.ts";
 
 /**
- * Adapter over the existing TermCanvas CLI wrapper. Preserves the
+ * Adapter over the existing Tacit CLI wrapper. Preserves the
  * desktop / headless-server behavior bit-for-bit — this class just
  * re-exposes the old module functions under the HydraRuntime interface so
  * standalone and TC paths can be swapped without touching call sites.

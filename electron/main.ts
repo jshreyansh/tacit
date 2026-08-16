@@ -218,7 +218,7 @@ const skipLock = isDev || !!process.env.TERMCANVAS_SKIP_LOCK;
 const gotLock = skipLock || app.requestSingleInstanceLock();
 if (!gotLock) {
   console.error(
-    "[TermCanvas] Another instance is already running. Quitting.\n" +
+    "[Tacit] Another instance is already running. Quitting.\n" +
       "  Kill the old process first: pkill -f Electron",
   );
   app.quit();
@@ -603,9 +603,9 @@ function createWindow() {
     try {
       const port = await apiServer.start();
       writePortFile(port);
-      if (isDev) console.log(`[TermCanvas API] http://127.0.0.1:${port}`);
+      if (isDev) console.log(`[Tacit API] http://127.0.0.1:${port}`);
     } catch (err) {
-      console.error("[TermCanvas API] Failed to start:", err);
+      console.error("[Tacit API] Failed to start:", err);
     }
   });
   mainWindow.on("close", () => {
@@ -1731,7 +1731,7 @@ function setupIpc() {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: "Save Workspace",
       defaultPath: "workspace.termcanvas",
-      filters: [{ name: "TermCanvas Workspace", extensions: ["termcanvas"] }],
+      filters: [{ name: "Tacit Workspace", extensions: ["termcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
     const filePath = workspaceSavePaths.register(result.filePath);
@@ -1755,7 +1755,7 @@ function setupIpc() {
   ipcMain.handle("workspace:open", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "Open Workspace",
-      filters: [{ name: "TermCanvas Workspace", extensions: ["termcanvas"] }],
+      filters: [{ name: "Tacit Workspace", extensions: ["termcanvas"] }],
       properties: ["openFile"],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -2787,7 +2787,7 @@ function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
  * of this same idea: that shim only fires when a user manually types
  * `claude`/`codex` inside a plain Shell-type terminal (PATH-intercepted —
  * see getTerminalExtraPathEntries, which only prepends the shim dir for
- * terminalType === "shell"). TermCanvas's own native "claude" terminal type
+ * terminalType === "shell"). Tacit's own native "claude" terminal type
  * launches the real `claude` binary directly via cliConfig.ts's launch
  * config, never touching that shim at all — so without this second
  * injection point, every terminal created from the dock/context menu/
@@ -2821,7 +2821,7 @@ function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
           // `process.execPath` is the Electron binary, and a PACKAGED Electron
           // app ignores an app path in argv — it always boots its own bundled
           // asar. So without this, every terminal launch would silently start
-          // a second copy of TermCanvas instead of the MCP server, and the
+          // a second copy of Tacit instead of the MCP server, and the
           // agent would sit there with no tools. Unpackaged Electron happens
           // to honour argv[1], which is why dev never caught it. Running as
           // plain node is also what the bridge actually needs (no Electron

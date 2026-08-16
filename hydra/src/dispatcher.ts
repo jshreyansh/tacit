@@ -96,7 +96,7 @@ export async function dispatchCreateOnly(
   dependencies: DispatcherDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<DispatchCreateOnlyResult> {
   if (!dependencies.isTermCanvasRunning()) {
-    throw new HydraError("Hydra runtime is not available (TermCanvas not running and standalone runtime unavailable)", {
+    throw new HydraError("Hydra runtime is not available (Tacit not running and standalone runtime unavailable)", {
       errorCode: "DISPATCH_RUNTIME_UNAVAILABLE",
       stage: "dispatcher.preflight",
       ids: {

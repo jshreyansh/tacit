@@ -115,7 +115,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ type, payload }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",
@@ -131,7 +131,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     {
       title: "Save a durable note for this project",
       description:
-        "Writes a durable note to this project's shared memory — readable by any other agent working on this project later, even without a live connection, and by future Claude sessions (it shows up in TermCanvas's own Memory tab). Use this for findings/decisions worth keeping, not transient status — use emit_event for that. Re-using the same `name` updates the note in place instead of creating a duplicate.",
+        "Writes a durable note to this project's shared memory — readable by any other agent working on this project later, even without a live connection, and by future Claude sessions (it shows up in Tacit's own Memory tab). Use this for findings/decisions worth keeping, not transient status — use emit_event for that. Re-using the same `name` updates the note in place instead of creating a duplicate.",
       inputSchema: {
         name: z
           .string()
@@ -152,7 +152,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ name, description, type, body }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",
@@ -274,7 +274,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ type, prompt, position, connectTo }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",
@@ -300,7 +300,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ url, position, connectTo }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = (await apiRequest(
         "POST",
@@ -334,7 +334,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ body, position }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",
@@ -365,7 +365,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ source, target }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",
@@ -390,7 +390,7 @@ export function createTermcanvasBridgeServer(): McpServer {
     async ({ event, detail }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
-        return textResult("Not running inside a TermCanvas terminal.");
+        return textResult("Not running inside a Tacit terminal.");
       }
       const result = await apiRequest(
         "POST",

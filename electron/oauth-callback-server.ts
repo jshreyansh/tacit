@@ -22,7 +22,7 @@ const CALLBACK_PORT = 8914;
  */
 const RELAY_HTML = `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>TermCanvas Login</title>
+<head><meta charset="utf-8"><title>Tacit Login</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
          display: flex; align-items: center; justify-content: center; height: 100vh;
@@ -78,7 +78,7 @@ const RELAY_HTML = `<!DOCTYPE html>
   // Success — server already captured the code from query params
   if (query.get("code")) {
     msg.innerHTML = '<h2 class="success">Login successful!</h2>' +
-      '<p>You can close this tab and return to TermCanvas.</p>';
+      '<p>You can close this tab and return to Tacit.</p>';
     return;
   }
 
@@ -188,7 +188,7 @@ export function startOAuthCallbackServer(): {
       settle({
         type: "error",
         error: "port_in_use",
-        description: `Port ${CALLBACK_PORT} is already in use. Close any other TermCanvas instances and try again.`,
+        description: `Port ${CALLBACK_PORT} is already in use. Close any other Tacit instances and try again.`,
       });
     } else {
       console.error("[OAuthCallback] Server error:", err);

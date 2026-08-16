@@ -32,7 +32,7 @@ function defaultTelemetry(terminalId: string): { shell_pid?: number | null } | n
   try {
     return getRuntime().telemetryTerminal(terminalId);
   } catch {
-    // Telemetry unreachable (e.g. TermCanvas not running) — swallow and let
+    // Telemetry unreachable (e.g. Tacit not running) — swallow and let
     // the caller skip identity capture rather than fail the dispatch itself.
     return null;
   }

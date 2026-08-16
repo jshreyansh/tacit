@@ -27,9 +27,9 @@ export function resetRuntime(): void {
  * Selector precedence:
  *   1. Test/explicit override via setRuntime()
  *   2. HYDRA_STANDALONE=1 → force standalone
- *   3. HYDRA_STANDALONE=0 → force TermCanvas
- *   4. Auto-detect: if caller is inside a TermCanvas terminal (env var set)
- *      OR the TC daemon port file exists → TermCanvas. Otherwise → standalone.
+ *   3. HYDRA_STANDALONE=0 → force Tacit
+ *   4. Auto-detect: if caller is inside a Tacit terminal (env var set)
+ *      OR the TC daemon port file exists → Tacit. Otherwise → standalone.
  *
  * Auto-detect keeps the local desktop path working by default. Users on
  * a bare machine (no TC, no env var) automatically get standalone mode

@@ -379,7 +379,7 @@ export async function initWorkbench(
   const repoPath = path.resolve(options.repoPath);
   const workbenchId = generateWorkbenchId();
 
-  // Lead identity comes from the active runtime. TermCanvas sources it
+  // Lead identity comes from the active runtime. Tacit sources it
   // from TERMCANVAS_TERMINAL_ID on the calling terminal; Standalone uses
   // HYDRA_LEAD_ID or a stable synthesized id. Either way, without a lead
   // id the workbench has no owner and lead-guard cannot enforce
@@ -388,7 +388,7 @@ export async function initWorkbench(
   if (!leadTerminalId) {
     throw new HydraError(
       "Cannot init workbench: the active runtime did not produce a lead id. " +
-        "Run inside a TermCanvas terminal or set HYDRA_LEAD_ID for standalone mode.",
+        "Run inside a Tacit terminal or set HYDRA_LEAD_ID for standalone mode.",
       { errorCode: "WORKBENCH_NO_LEAD", stage: "workbench.init" },
     );
   }

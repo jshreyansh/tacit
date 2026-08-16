@@ -547,7 +547,7 @@ export class MacCustomUpdater {
 
       let releaseNotes = "";
       try {
-        const ua = `TermCanvas/${app.getVersion()}`;
+        const ua = `Tacit/${app.getVersion()}`;
         const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/v${release.version}`;
         const json = await fetchText(apiUrl, ua);
         const data = JSON.parse(json) as { body?: string };

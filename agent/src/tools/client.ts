@@ -65,7 +65,7 @@ function resolveConnection(env: Record<string, string | undefined>): ConnectionT
     const port = parseInt(fs.readFileSync(portFile, "utf-8").trim(), 10);
     return { protocol: "http:", hostname: "127.0.0.1", port, basePath: "" };
   } catch {
-    throw new Error(`TermCanvas is not running (no port file at ${portFile})`);
+    throw new Error(`Tacit is not running (no port file at ${portFile})`);
   }
 }
 

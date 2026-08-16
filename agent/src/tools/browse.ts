@@ -55,7 +55,7 @@ function toArgs(input: z.infer<typeof inputSchema>): string[] {
 
 export const browseTool: Tool<typeof inputSchema.shape> = {
   name: "BrowseAction",
-  description: "Browser automation via the TermCanvas browse server: navigate, click, fill, screenshot, and more.",
+  description: "Browser automation via the Tacit browse server: navigate, click, fill, screenshot, and more.",
   inputSchema,
   isReadOnly: false,
 

@@ -277,7 +277,7 @@ function readJsonLines<T>(output: string): T[] {
     .map((line) => JSON.parse(line) as T);
 }
 
-test("standalone workflow lifecycle runs without TermCanvas and asks in the dispatch worktree", () => {
+test("standalone workflow lifecycle runs without Tacit and asks in the dispatch worktree", () => {
   const repo = initRepo();
   const homeDir = makeTempDir("hydra-standalone-home-");
   const binDir = path.join(homeDir, "bin");
@@ -548,7 +548,7 @@ test("standalone merge flow succeeds and cleanup removes Hydra-managed dispatch 
   }
 });
 
-test("standalone spawn flow works without TermCanvas and can be listed and cleaned up", () => {
+test("standalone spawn flow works without Tacit and can be listed and cleaned up", () => {
   const repo = initRepo();
   const homeDir = makeTempDir("hydra-standalone-home-");
   const binDir = path.join(homeDir, "bin");
@@ -591,7 +591,7 @@ test("standalone spawn flow works without TermCanvas and can be listed and clean
   }
 });
 
-test("standalone workbench can be marked failed without TermCanvas", () => {
+test("standalone workbench can be marked failed without Tacit", () => {
   const repo = initRepo();
   const homeDir = makeTempDir("hydra-standalone-home-");
   const binDir = path.join(homeDir, "bin");

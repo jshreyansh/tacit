@@ -273,7 +273,7 @@ function isTermCanvasComputerUseConfig(lines: string[]): boolean {
 }
 
 // Strip a `[tableName]` block only when its content matches a known legacy
-// TermCanvas Computer Use signature. This keeps user-managed MCPs that happen
+// Tacit Computer Use signature. This keeps user-managed MCPs that happen
 // to use the generic `computer-use` server name.
 function removeTomlTableIf(
   content: string,
@@ -337,7 +337,7 @@ function removeTomlDottedKeysIf(
 // eventually triggering TOML duplicate-key errors that prevented Codex from
 // starting. This helper repairs already-polluted config.toml files on upgrade.
 //
-// The signatures are scoped to TermCanvas computer-use entries — either the
+// The signatures are scoped to Tacit computer-use entries — either the
 // MCP server path component (`mcp-computer-use-server` or
 // `mcp/computer-use-server`, including `\\`-escaped variants on Windows) or
 // the env-var prefix (`TERMCANVAS_COMPUTER_USE_*`) — so unrelated user keys

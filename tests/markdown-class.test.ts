@@ -102,7 +102,7 @@ test("full html documents get sandbox CSP while preserving local scripts", async
   assert.equal(isHtmlDocument(html), true);
   assert.ok(
     html.includes("connect-src 'none'"),
-    "sandbox document should receive TermCanvas CSP",
+    "sandbox document should receive Tacit CSP",
   );
   assert.ok(!html.includes("<base"), "base tags should be removed");
   assert.ok(!html.includes("default-src *"), "caller CSP should be replaced");

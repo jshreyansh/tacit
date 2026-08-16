@@ -28,9 +28,9 @@ function usesCjk(text: string): boolean {
 function buildPinTaskInstruction(pin: PinComposerInput): string {
   const sourceText = `${pin.title}\n${pin.body}`;
   if (usesCjk(sourceText)) {
-    return "这是一个已有的 TermCanvas pin，作为当前对话的上下文提供。不要把它再次记录为新的 pin；请根据用户的后续说明判断是执行、研究还是讨论。如果意图不明确，先询问下一步。";
+    return "这是一个已有的 Tacit pin，作为当前对话的上下文提供。不要把它再次记录为新的 pin；请根据用户的后续说明判断是执行、研究还是讨论。如果意图不明确，先询问下一步。";
   }
-  return "This is an existing TermCanvas pin provided as context for the current conversation. Do not create or record it as a new pin; use the user's surrounding instructions to decide whether to execute, investigate, or discuss it. If the intent is unclear, ask what to do next.";
+  return "This is an existing Tacit pin provided as context for the current conversation. Do not create or record it as a new pin; use the user's surrounding instructions to decide whether to execute, investigate, or discuss it. If the intent is unclear, ask what to do next.";
 }
 
 function escapeRegex(s: string): string {

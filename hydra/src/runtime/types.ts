@@ -1,12 +1,12 @@
 /**
  * Runtime abstraction that lets hydra drive workers through either
- * TermCanvas (the original desktop/headless Electron-derived path) or a
+ * Tacit (the original desktop/headless Electron-derived path) or a
  * pure subprocess path that spawns `claude` / `codex` directly with no
  * PTY, HTTP server, or project registry.
  *
  * Selection is centralized in ./index.ts (getRuntime). Every call-site in
  * hydra/src that previously reached into ./termcanvas.ts now goes through
- * this interface. The TermCanvas path is preserved exactly — the
+ * this interface. The Tacit path is preserved exactly — the
  * standalone path is additive.
  */
 
@@ -50,20 +50,20 @@ export interface HydraRuntime {
   readonly name: "termcanvas" | "standalone";
 
   /**
-   * Dispatcher preflight. TermCanvas returns false when the TC daemon is
+   * Dispatcher preflight. Tacit returns false when the TC daemon is
    * not running (no port file); Standalone always returns true.
    */
   isAvailable(): boolean;
 
   /**
-   * Lead identity for ensureLeadCaller. TermCanvas returns
+   * Lead identity for ensureLeadCaller. Tacit returns
    * TERMCANVAS_TERMINAL_ID; Standalone returns HYDRA_LEAD_ID or a synthesized
    * stable id derived from process.pid + boot-time persisted to disk.
    */
   getCurrentLeadId(): string | undefined;
 
   /**
-   * Register the repo on the TermCanvas canvas. No-op in standalone — the
+   * Register the repo on the Tacit canvas. No-op in standalone — the
    * repo path IS the project id.
    */
   ensureProjectTracked(repoPath: string): { id: string; path: string };
@@ -78,7 +78,7 @@ export interface HydraRuntime {
   findProjectByPath(repoPath: string): { id: string; path: string } | null;
 
   /**
-   * Spawn a worker. TermCanvas creates a PTY terminal on the canvas;
+   * Spawn a worker. Tacit creates a PTY terminal on the canvas;
    * Standalone spawns a claude/codex child process in one-shot mode and
    * synthesizes a terminal id.
    */
@@ -91,7 +91,7 @@ export interface HydraRuntime {
   terminalDestroy(terminalId: string): void;
 
   /**
-   * Worker telemetry snapshot. TermCanvas proxies to `termcanvas telemetry
+   * Worker telemetry snapshot. Tacit proxies to `termcanvas telemetry
    * get`; standalone reads its in-memory / on-disk state.
    */
   telemetryTerminal(terminalId: string): RuntimeTelemetrySnapshot | null;

@@ -22,7 +22,7 @@ const inputSchema = z.object({
 
 export const terminalTool: Tool<typeof inputSchema.shape> = {
   name: "TerminalManage",
-  description: "Manage TermCanvas terminals: create, list, get status/output, destroy, or set title.",
+  description: "Manage Tacit terminals: create, list, get status/output, destroy, or set title.",
   inputSchema,
   isReadOnly: false,
 

@@ -1,5 +1,5 @@
 /**
- * Core types for the TermCanvas agent runtime.
+ * Core types for the Tacit agent runtime.
  *
  * Simplified from CC's type system — keeps only what an
  * orchestration-only (read-only + dispatch) agent needs.

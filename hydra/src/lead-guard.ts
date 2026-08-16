@@ -8,7 +8,7 @@ import type { WorkbenchRecord } from "./workflow-store.ts";
 // semantics and prevents accidental cross-terminal interference.
 //
 // The lead id source depends on the active runtime:
-//   - TermCanvas: TERMCANVAS_TERMINAL_ID from the owning terminal.
+//   - Tacit: TERMCANVAS_TERMINAL_ID from the owning terminal.
 //   - Standalone: HYDRA_LEAD_ID or a stable synthesized id persisted to
 //     ~/.hydra/standalone/lead-id.
 
@@ -19,7 +19,7 @@ export function getCurrentTerminalId(): string | undefined {
 export function ensureLeadCaller(workbench: WorkbenchRecord): void {
   const callerId = getCurrentTerminalId();
   if (!callerId) {
-    // No TERMCANVAS_TERMINAL_ID — caller is outside TermCanvas. Allow this
+    // No TERMCANVAS_TERMINAL_ID — caller is outside Tacit. Allow this
     // for tooling/scripts; the workbench's lead_terminal_id is informational.
     // If we want strict enforcement, change this to throw.
     return;

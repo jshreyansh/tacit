@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/icon.png" width="128" alt="TermCanvas app icon" />
+<img src="docs/icon.png" width="128" alt="Tacit app icon" />
 
-# TermCanvas
+# Tacit
 
 **Your terminals, on an infinite canvas.**
 
@@ -16,27 +16,27 @@
 
 <br>
 
-<img src="docs/demo.gif" alt="TermCanvas in action — canvas navigation, focus, zoom, and panel switching" />
+<img src="docs/demo.gif" alt="Tacit in action — canvas navigation, focus, zoom, and panel switching" />
 
 <br>
 
-<img src="docs/hero-canvas.png" alt="TermCanvas — multiple AI agents arranged on an infinite canvas" />
+<img src="docs/hero-canvas.png" alt="Tacit — multiple AI agents arranged on an infinite canvas" />
 
 <br><br>
 
-<img src="docs/hero-hub.png" alt="TermCanvas Hub — knowledge graph view with sessions sidebar" />
+<img src="docs/hero-hub.png" alt="Tacit Hub — knowledge graph view with sessions sidebar" />
 
 </div>
 
 <br>
 
-TermCanvas spreads all your terminals across an infinite spatial canvas — no more tabs, no more split panes. Drag them around, zoom in to focus, zoom out to see the big picture.
+Tacit spreads all your terminals across an infinite spatial canvas — no more tabs, no more split panes. Drag them around, zoom in to focus, zoom out to see the big picture.
 
-It organizes everything in a **Project → Worktree → Terminal** hierarchy that mirrors how you actually use git. Add a project, and TermCanvas auto-detects its worktrees. Create a new worktree from the terminal, and it appears on the canvas instantly.
+It organizes everything in a **Project → Worktree → Terminal** hierarchy that mirrors how you actually use git. Add a project, and Tacit auto-detects its worktrees. Create a new worktree from the terminal, and it appears on the canvas instantly.
 
 <p align="right"><a href="./README.zh-CN.md">中文文档 →</a></p>
 
-> **New to TermCanvas?** Read the full [**User Guide**](./docs/user-guide.md) — every interaction explained, every keyboard shortcut, plus the non-obvious tricks (⌘E focus chain, drag-to-stash, session replay, etc.).
+> **New to Tacit?** Read the full [**User Guide**](./docs/user-guide.md) — every interaction explained, every keyboard shortcut, plus the non-obvious tricks (⌘E focus chain, drag-to-stash, session replay, etc.).
 
 ---
 
@@ -46,16 +46,16 @@ It organizes everything in a **Project → Worktree → Terminal** hierarchy tha
 
 > [!IMPORTANT]
 > **Apple Silicon (M-series) Macs — pick the file with `arm64` in its name**
-> Files **with** `arm64` in the filename (e.g. `TermCanvas-X.Y.Z-arm64.dmg`, `TermCanvas-X.Y.Z-arm64-mac.zip`) are native Apple Silicon builds. Files **without** `arm64` are Intel (x64) builds — they'll still launch on M-series Macs via Rosetta 2, but you'll see noticeable lag when panning/zooming the canvas.
+> Files **with** `arm64` in the filename (e.g. `Tacit-X.Y.Z-arm64.dmg`, `Tacit-X.Y.Z-arm64-mac.zip`) are native Apple Silicon builds. Files **without** `arm64` are Intel (x64) builds — they'll still launch on M-series Macs via Rosetta 2, but you'll see noticeable lag when panning/zooming the canvas.
 >
-> To verify after install: open **Activity Monitor**, find TermCanvas, and check the **Kind** column — it should say **Apple**, not **Intel**. If it says Intel, delete the app and redownload the `arm64` variant.
+> To verify after install: open **Activity Monitor**, find Tacit, and check the **Kind** column — it should say **Apple**, not **Intel**. If it says Intel, delete the app and redownload the `arm64` variant.
 
 > [!WARNING]
 > **macOS note for unsigned builds**
-> If macOS says TermCanvas is damaged or blocks launch because the app is unsigned, clear the quarantine attribute and try again:
+> If macOS says Tacit is damaged or blocks launch because the app is unsigned, clear the quarantine attribute and try again:
 >
 > ```bash
-> xattr -cr /Applications/TermCanvas.app
+> xattr -cr /Applications/Tacit.app
 > ```
 >
 > If you installed the app somewhere else, replace the path with the actual app location.
@@ -73,7 +73,7 @@ pnpm dev
 
 **Install CLI tools** — after launching the app, go to Settings → General → Command line interface and click Register. This adds `termcanvas` and `hydra` to your PATH.
 
-Registration also installs TermCanvas skills and lifecycle hooks for Claude/Codex. For Codex 0.129.0 and newer, TermCanvas writes the required hook trust state in `~/.codex/config.toml` so the generated hooks are reviewed/trusted and continue to emit terminal lifecycle and telemetry events.
+Registration also installs Tacit skills and lifecycle hooks for Claude/Codex. For Codex 0.129.0 and newer, Tacit writes the required hook trust state in `~/.codex/config.toml` so the generated hooks are reviewed/trusted and continue to emit terminal lifecycle and telemetry events.
 
 ---
 
@@ -173,7 +173,7 @@ For Claude/Codex task automation, start a fresh terminal with `termcanvas termin
 
 <br>
 
-Hydra is TermCanvas's terminal orchestration toolkit for Lead-driven workflows and isolated direct workers. It coordinates **git worktrees**, **assignment/run file contracts**, and the **telemetry truth layer** without taking control away from the agent sessions themselves.
+Hydra is Tacit's terminal orchestration toolkit for Lead-driven workflows and isolated direct workers. It coordinates **git worktrees**, **assignment/run file contracts**, and the **telemetry truth layer** without taking control away from the agent sessions themselves.
 
 Hydra is now **Lead-driven**. One main terminal owns the workbench, reads the codebase, and decides what to do at each decision point. Worker terminals stay autonomous. Workbench state lives under repo-local `.hydra/workbenches/`, and the authoritative contract is on disk: `inputs/intent.md`, `dispatches/<dispatchId>/intent.md`, `report.md`, `result.json`, and `ledger.jsonl`. Terminal prose is advisory only; validated `result.json` is the machine gate.
 
@@ -371,7 +371,7 @@ A short map of where each major feature lives. Every shortcut here is rebindable
 
 ## Roadmap
 
-TermCanvas is evolving from a local desktop tool into a **cloud-native AI development platform**. Here's what's coming:
+Tacit is evolving from a local desktop tool into a **cloud-native AI development platform**. Here's what's coming:
 
 ### Cloud Runtime
 
@@ -392,7 +392,7 @@ End-to-end automation from idea to shipped code, powered by cloud runtime:
 
 ### Vision
 
-The goal is simple: **you describe intent, TermCanvas handles the rest.** Your canvas becomes a mission control for autonomous AI development — monitor progress, review results, intervene when needed, and let the cloud do the heavy lifting.
+The goal is simple: **you describe intent, Tacit handles the rest.** Your canvas becomes a mission control for autonomous AI development — monitor progress, review results, intervene when needed, and let the cloud do the heavy lifting.
 
 ---
 

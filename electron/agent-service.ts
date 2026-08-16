@@ -33,7 +33,7 @@ export interface AgentConfig {
   resumeSessionId?: string;
 }
 
-const SYSTEM_PROMPT = `You are an AI assistant embedded in TermCanvas, a terminal-based canvas workspace.
+const SYSTEM_PROMPT = `You are an AI assistant embedded in Tacit, a terminal-based canvas workspace.
 You can help users manage terminals, projects, worktrees, and workflows through the available tools.
 Be concise and direct. Respond in the same language the user uses.`;
 

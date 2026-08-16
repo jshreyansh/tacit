@@ -39,7 +39,7 @@ dispatches roles based on task needs, reads every report." It already:
   when to spawn a full node vs. just answering directly.
 
 **Correction after reading further — dispatched workers already have canvas
-presence.** When Hydra dispatches through the TermCanvas runtime (not the
+presence.** When Hydra dispatches through the Tacit runtime (not the
 standalone/raw-subprocess one), it calls `terminal create --parent-terminal
 <id> --workflow-id <id> --assignment-id <id>` — a real terminal card gets
 created in the running app, linked to its parent. `src/components/

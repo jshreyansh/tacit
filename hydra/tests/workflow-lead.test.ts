@@ -697,7 +697,7 @@ test("watchUntilDecision exposes pre-captured session info on the completed Deci
 
     // Pre-populate session info on the run, simulating capture from telemetry
     // before the terminal was destroyed. This bypasses the live telemetry call
-    // path so the test can run without TermCanvas being available.
+    // path so the test can run without Tacit being available.
     const manager = new AssignmentManager(repo, init.workbench_id);
     const assignment = manager.load(dispatched.dispatch_id)!;
     const run = assignment.runs[0]!;

@@ -19,7 +19,7 @@ import type {
  *
  * Why no PTY: hydra already writes task.md + expects result.json from the
  * worker. Interactivity is not a requirement of the contract — only a
- * convenience of the TermCanvas UI. One-shot `claude -p --output-format
+ * convenience of the Tacit UI. One-shot `claude -p --output-format
  * json` is sufficient and removes the node-pty / Electron / HTTP-server
  * dependency chain from the critical path.
  *
@@ -306,7 +306,7 @@ export class StandaloneRuntime implements HydraRuntime {
     if (options.type !== "claude" && options.type !== "codex") {
       throw new Error(
         `Standalone runtime supports only claude|codex, got: ${options.type}. ` +
-          `Set HYDRA_STANDALONE=0 or run inside TermCanvas for other terminal types.`,
+          `Set HYDRA_STANDALONE=0 or run inside Tacit for other terminal types.`,
       );
     }
 

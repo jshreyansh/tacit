@@ -26,7 +26,7 @@ export function parseJsonOrDie(stdout: string): any {
     return JSON.parse(stdout);
   } catch {
     throw new HydraError(
-      `Failed to parse TermCanvas response: ${stdout.slice(0, 200)}`,
+      `Failed to parse Tacit response: ${stdout.slice(0, 200)}`,
       {
         errorCode: "TERMCANVAS_INVALID_JSON",
         stage: "termcanvas.parse_json",
@@ -199,7 +199,7 @@ export function ensureProjectTracked(repoPath: string): { id: string; path: stri
 
   const tracked = findProjectByPath(abs);
   if (!tracked) {
-    throw new HydraError(`Repo not found on TermCanvas canvas after add: ${abs}`, {
+    throw new HydraError(`Repo not found on Tacit canvas after add: ${abs}`, {
       errorCode: "TERMCANVAS_PROJECT_TRACK_FAILED",
       stage: "termcanvas.ensure_project",
       ids: {},

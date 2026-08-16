@@ -7,7 +7,7 @@ const inputSchema = z.object({});
 
 export const canvasStateTool: Tool<typeof inputSchema.shape> = {
   name: "CanvasState",
-  description: "Get the full TermCanvas canvas state including projects, worktrees, and terminals.",
+  description: "Get the full Tacit canvas state including projects, worktrees, and terminals.",
   inputSchema,
   isReadOnly: true,
 

@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const MARKER = "## TermCanvas Pin System";
+const MARKER = "## Tacit Pin System";
 const INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md"] as const;
 
 const PIN_SECTION = `
-## TermCanvas Pin System
+## Tacit Pin System
 
-TermCanvas has a first-class pin store. Pins are persistent records of work
+Tacit has a first-class pin store. Pins are persistent records of work
 the user wants done — captured when the user expresses intent, not when the
 work happens. Use the \`termcanvas pin\` CLI to read and write them. Any agent
 terminal can record, read, and update pins.
@@ -20,7 +20,7 @@ When to record a pin:
 Do NOT silently nod — capture the pin with \`termcanvas pin add\` so it survives the session.
 
 When existing pin content is pasted or dropped into the conversation:
-- Treat it as context from an existing TermCanvas pin, not as a request to create another pin.
+- Treat it as context from an existing Tacit pin, not as a request to create another pin.
 - Use the user's surrounding instruction to decide whether to execute, investigate, or discuss it.
 - If the intent is unclear, ask what to do next instead of assuming the pin should be solved immediately.
 
@@ -65,7 +65,7 @@ Rules:
 - Pins belong to the user. Don't invent pins the user didn't ask for.
 - One pin per intent. Three deferred items = three \`pin add\` calls.
 - After completing work that originated from a pin, call \`pin update <id> --status done\`.
-- The pin store is local to TermCanvas. It does NOT auto-sync to GitHub. If the user wants something on GitHub, they will say so explicitly.
+- The pin store is local to Tacit. It does NOT auto-sync to GitHub. If the user wants something on GitHub, they will say so explicitly.
 - Status values: \`open\` (default), \`done\`, \`dropped\`. Pick \`dropped\` (not delete) when a pin is abandoned, so the history is preserved.
 `;
 
@@ -128,7 +128,7 @@ function normalizeSection(section: string): string {
 function findPinSectionRanges(
   content: string,
 ): Array<{ start: number; end: number }> {
-  const headingRegex = /^## TermCanvas Pin System$/gm;
+  const headingRegex = /^## Tacit Pin System$/gm;
   const ranges: Array<{ start: number; end: number }> = [];
 
   for (const match of content.matchAll(headingRegex)) {

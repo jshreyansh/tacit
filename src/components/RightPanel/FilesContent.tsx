@@ -918,7 +918,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
         style={{
           flex: 1,
           minHeight: 0,
-          // Map TermCanvas CSS variables into @pierre/trees shadow DOM via
+          // Map Tacit CSS variables into @pierre/trees shadow DOM via
           // inherited custom properties.
           ["--trees-theme-sidebar-bg" as string]: "var(--surface)",
           ["--trees-theme-sidebar-fg" as string]: "var(--text-primary)",

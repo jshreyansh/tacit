@@ -13,7 +13,7 @@ const inputSchema = z.object({
 
 export const projectTool: Tool<typeof inputSchema.shape> = {
   name: "ProjectManage",
-  description: "Manage TermCanvas projects: add, list, remove, or rescan worktrees.",
+  description: "Manage Tacit projects: add, list, remove, or rescan worktrees.",
   inputSchema,
   isReadOnly: false,
 

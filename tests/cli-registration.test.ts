@@ -16,7 +16,7 @@ import {
   unregisterCli,
 } from "../electron/cli-registration.ts";
 
-const CLI_DIR = "C:\\Users\\test\\AppData\\Local\\Programs\\TermCanvas\\cli";
+const CLI_DIR = "C:\\Users\\test\\AppData\\Local\\Programs\\Tacit\\cli";
 
 function createWindowsDeps(
   initialRegistryValue: WindowsRegistryPathValue | null,

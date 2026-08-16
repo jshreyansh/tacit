@@ -17,7 +17,7 @@ export function resolveCanvasProjectRoot(
   }
   throw Object.assign(
     new Error(
-      "This repo is not on the TermCanvas canvas. Add it as a project first.",
+      "This repo is not on the Tacit canvas. Add it as a project first.",
     ),
     { status: 400 },
   );

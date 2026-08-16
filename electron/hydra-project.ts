@@ -55,7 +55,7 @@ export function checkHydraProjectStatus(repoPath: string): HydraInjectStatus {
     const resolvedPath = path.resolve(repoPath);
     const hydraStatus = checkHydraInstructionsStatus(resolvedPath);
 
-    // "missing" means the user has never opted into TermCanvas instructions for
+    // "missing" means the user has never opted into Tacit instructions for
     // this project — surface the prompt so they can choose to install. Anything
     // else means they already opted in; silently heal forward for outdated text
     // and for newly-introduced sections (e.g. Task) added in later releases.
