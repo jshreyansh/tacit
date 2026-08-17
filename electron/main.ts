@@ -160,7 +160,12 @@ import { createRenderDiagnosticsLogger } from "./render-diagnostics";
 import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
 import { CaptureService, getCaptureDir } from "./capture-service";
-import type { CaptureEvent } from "../shared/capture";
+import {
+  InjectedTextTracker,
+  detectHarnessText,
+  type CaptureEvent,
+  type CaptureTextSource,
+} from "../shared/capture";
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
 import { WorkspaceSavePathRegistry } from "./workspace-save-path";
@@ -292,6 +297,11 @@ const captureService = new CaptureService(getCaptureDir(TERMCANVAS_DIR));
 const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TERMCANVAS_DIR));
 managerRoleLog.load();
 /**
+ * Text this app pushed into a terminal, so the prompt hook can tell it apart
+ * from something the user actually typed. See InjectedTextTracker.
+ */
+const injectedText = new InjectedTextTracker();
+/**
  * Which canvas entries are attributed to. Main has no view of the canvas
  * registry, so the renderer reports it (see the capture:set-canvas handler) and
  * hook-driven entries — which arrive here, not there — can still be attributed.
@@ -309,12 +319,21 @@ const hookReceiver = new HookReceiver((event) => {
   if (event.hook_event_name === "UserPromptSubmit") {
     const prompt = (event as { prompt?: unknown }).prompt;
     const hasText = typeof prompt === "string";
+    // Three possible authors, only one of which is evidence of judgement.
+    // App injections are matched exactly against what we just wrote; harness
+    // wrappers are matched on their machine-only shape.
+    let source: CaptureTextSource = "user";
+    if (hasText) {
+      if (injectedText.claim(event.terminal_id, prompt)) source = "app";
+      else if (detectHarnessText(prompt)) source = "harness";
+    }
     captureService.record(
       {
         kind: "prompt",
         actor: `terminal:${event.terminal_id}`,
         session: event.session_id ?? null,
         text: hasText ? prompt : null,
+        ...(source === "user" ? {} : { source }),
         // If Claude Code ever renames this field, the record says so on the
         // first prompt instead of quietly filling with nulls.
         ...(hasText
@@ -2676,6 +2695,10 @@ function setupIpc() {
           detail: "Target terminal is not running.",
         };
       }
+
+      // Remembered before writing so the prompt hook — which can fire before
+      // this call even returns — recognises the text coming back as ours.
+      injectedText.note(target.terminalId, message);
 
       const request: ComposerSubmitRequest = {
         terminalId: target.terminalId,

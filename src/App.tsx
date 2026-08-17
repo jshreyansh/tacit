@@ -854,14 +854,13 @@ export function App() {
         position?: { x: number; y: number };
         connectTo?: ConnectionEndpoint;
       }) => {
-        const id = addBrowserCardToScene(opts.position, opts.url);
-        recordDecision({
-          kind: "spawn",
-          node: `browser:${id}`,
-          by: `terminal:${opts.requesterTerminalId}`,
-          parent: `terminal:${opts.requesterTerminalId}`,
-          detail: opts.url,
-        });
+        // addBrowserCardToScene records the spawn itself — passing the
+        // requester is what makes it read as the agent's rather than yours.
+        const id = addBrowserCardToScene(
+          opts.position,
+          opts.url,
+          `terminal:${opts.requesterTerminalId}`,
+        );
         if (opts.connectTo) {
           createConnectionInScene({ kind: "browser", id }, opts.connectTo, {
             origin: "spawn",

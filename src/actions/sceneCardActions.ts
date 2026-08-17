@@ -7,6 +7,7 @@ import { usePreferencesStore } from "../stores/preferencesStore";
 import { useIdentityStore } from "../stores/identityStore";
 import { DEFAULT_IDENTITY_ID } from "../types/workspace";
 import { recordDecision } from "../capture";
+import type { CaptureActor } from "../../shared/capture";
 
 const DEFAULT_BROWSER_URL = "https://google.com";
 
@@ -37,11 +38,30 @@ export function createBrowserCardInScene(
 export function addBrowserCardToScene(
   position?: { x: number; y: number },
   url: string = DEFAULT_BROWSER_URL,
+  /**
+   * Who opened it. Defaults to the user because every path except the agent's
+   * spawn_browser tool is a person clicking something — the dock, the canvas
+   * context menu, the command palette.
+   */
+  by: CaptureActor = "user",
 ): string {
   if (!usePreferencesStore.getState().browserEnabled) {
     usePreferencesStore.getState().setBrowserEnabled(true);
   }
-  return createBrowserCardInScene(url, position);
+  const id = createBrowserCardInScene(url, position);
+  // Recorded here rather than at the call sites, the same way terminals are
+  // recorded inside createTerminalInScene. Sitting only on the agent's path
+  // meant a browser you opened yourself appeared in the record from nowhere —
+  // its close entry had no matching spawn — and the whole record read as
+  // though the agent created everything and you created nothing.
+  recordDecision({
+    kind: "spawn",
+    node: `browser:${id}`,
+    by,
+    parent: by === "user" ? null : by,
+    detail: url,
+  });
+  return id;
 }
 
 export function updateBrowserCardInScene(
