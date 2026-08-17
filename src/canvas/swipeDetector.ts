@@ -5,15 +5,27 @@ const SWIPE_MAX_DELTA_Y = 60; // px accumulated vertically (reject diagonal)
 const SWIPE_MAX_DURATION = 500; // ms — quick flick, not a pan
 const SWIPE_MIN_EVENTS = 2; // need at least 2 wheel events
 const SWIPE_IDLE_TIMEOUT = 120; // ms between events to consider a new gesture
-// After a trigger, macOS keeps sending a long, smoothly-decaying tail of
-// momentum wheel events — confirmed via real-device logging, values like
-// -113, -110, -106, ... -57 arriving well under 300ms apart throughout the
-// whole decay. A sliding idle-timeout on that stream never actually goes
-// idle, so it never releases in time for the next real swipe. Releasing on
-// amplitude instead — the first sample that decays back down near zero —
-// tracks the physical gesture ending rather than guessing at a timing gap.
-const SWIPE_MOMENTUM_RELEASE_DELTA = 8; // px — below this, momentum has settled
-const SWIPE_COOLDOWN_MAX_DURATION = 900; // ms — hard cap if momentum never visibly settles
+
+// After a trigger, macOS keeps emitting a long, smoothly-decaying tail of
+// momentum wheel events — values like -113, -110, -106 … arriving at the
+// normal ~60Hz rate for a second or more after the fingers have left.
+//
+// Releasing that cooldown on the tail's own amplitude, or on a fixed elapsed
+// time, is what made focus mode skip a node: whichever released first let the
+// REMAINING tail through, and a few dozen decaying samples still accumulate
+// past the trigger distance inside the duration window. Swipe A→B, arrive at
+// B, land on C a second later having touched nothing.
+//
+// The reliable end-of-gesture signal is a gap in the stream. Momentum never
+// pauses until it genuinely stops, and a human's next swipe always follows one
+// — fingers have to lift and reposition. So the cooldown ends when the wheel
+// goes quiet, not when its numbers get small.
+const SWIPE_MOMENTUM_QUIET_GAP = 120; // ms of silence that means the tail ended
+// Pure safety net for a device that somehow streams without ever pausing. It
+// releases the cooldown but deliberately CONSUMES the sample that trips it,
+// so an unbroken stream can never seed a gesture — the failure it exists to
+// prevent is a lockout, not a missed swipe.
+const SWIPE_COOLDOWN_HARD_CAP = 3000; // ms
 
 interface SwipeTracker {
   startTime: number;
@@ -50,31 +62,30 @@ export interface SwipeResult {
 export function createSwipeDetector() {
   let tracker: SwipeTracker | null = null;
   let cooldownStartedAt: number | null = null;
+  let lastCooldownEventAt = 0;
 
   return {
     handleWheel(event: SwipeInput): SwipeResult {
       const now = Date.now();
 
-      // If we previously triggered, absorb the rest of that gesture's
-      // momentum tail — but release the instant a sample decays down near
-      // zero (the gesture has physically ended), not on a timing gap that
-      // a dense momentum stream may never produce. The hard cap is just a
-      // safety net for a tail that never visibly settles.
+      // Absorb the momentum tail of the gesture we just fired, until the wheel
+      // actually goes quiet. See SWIPE_MOMENTUM_QUIET_GAP for why silence is
+      // the signal rather than the tail's amplitude or a fixed duration.
       if (cooldownStartedAt !== null) {
-        const magnitude = Math.max(
-          Math.abs(event.deltaX),
-          Math.abs(event.deltaY),
-        );
-        const cooldownElapsed = now - cooldownStartedAt;
-        const settled =
-          magnitude < SWIPE_MOMENTUM_RELEASE_DELTA ||
-          cooldownElapsed > SWIPE_COOLDOWN_MAX_DURATION;
-        if (!settled) {
+        if (now - lastCooldownEventAt >= SWIPE_MOMENTUM_QUIET_GAP) {
+          // The stream paused, so the previous gesture is physically over and
+          // this event belongs to a new one. Fall through and let it start.
+          cooldownStartedAt = null;
+        } else if (now - cooldownStartedAt > SWIPE_COOLDOWN_HARD_CAP) {
+          // Never observed a pause. Release so the detector cannot lock up,
+          // but consume this sample — an unbroken stream is not a swipe.
+          cooldownStartedAt = null;
+          lastCooldownEventAt = now;
+          return { triggered: false };
+        } else {
+          lastCooldownEventAt = now;
           return { triggered: false };
         }
-        cooldownStartedAt = null;
-        // Fall through — this low-amplitude/timed-out sample is free to
-        // start a fresh gesture below rather than being consumed itself.
       }
 
       // Start a new sequence if idle for too long
@@ -117,6 +128,7 @@ export function createSwipeDetector() {
       ) {
         const direction: 1 | -1 = tracker.signedX >= 0 ? 1 : -1;
         cooldownStartedAt = now;
+        lastCooldownEventAt = now;
         tracker = null;
         return { triggered: true, direction };
       }
@@ -127,6 +139,7 @@ export function createSwipeDetector() {
     reset() {
       tracker = null;
       cooldownStartedAt = null;
+      lastCooldownEventAt = 0;
     },
   };
 }
