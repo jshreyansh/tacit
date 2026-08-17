@@ -44,8 +44,14 @@ function withClock<T>(run: (clock: { now: number }) => T): T {
 const FLICK = [{ deltaX: -60 }, { deltaX: -55 }, { deltaX: -45 }];
 
 /**
- * A real momentum tail, shaped like the ones logged from the device: a long
- * smooth decay at the same event rate, never pausing until it stops.
+ * A real momentum tail: a long smooth decay at the same event rate, never
+ * pausing until it stops.
+ *
+ * It must begin at or below the velocity the fingers left at — the hardware
+ * continues the gesture, it does not exceed it. An earlier version of this
+ * helper started the tail well ABOVE the flick's final samples, which models a
+ * rise the trackpad never produces, and a rise is precisely what a new gesture
+ * looks like.
  */
 function momentumTail(from: number, samples: number) {
   const out: Array<{ deltaX: number }> = [];
@@ -90,7 +96,7 @@ test("the direction reflects the way the fingers moved", () => {
 test("a long momentum tail after a flick never fires a second time", () => {
   withClock((clock) => {
     const d = createSwipeDetector();
-    const fired = feed(d, [...FLICK, ...momentumTail(120, 90)], clock);
+    const fired = feed(d, [...FLICK, ...momentumTail(45, 90)], clock);
     assert.equal(fired, 1, "the tail must not page again");
   });
 });
@@ -99,7 +105,7 @@ test("even a very long tail cannot fire again", () => {
   withClock((clock) => {
     const d = createSwipeDetector();
     // ~2.5s of decay at 60Hz, past any fixed cooldown cap.
-    const fired = feed(d, [...FLICK, ...momentumTail(140, 150)], clock);
+    const fired = feed(d, [...FLICK, ...momentumTail(45, 150)], clock);
     assert.equal(fired, 1);
   });
 });
@@ -109,7 +115,7 @@ test("the settled end of a tail does not accumulate into a swipe", () => {
   withClock((clock) => {
     const d = createSwipeDetector();
     const crawl = Array.from({ length: 40 }, () => ({ deltaX: -6 }));
-    const fired = feed(d, [...FLICK, ...momentumTail(120, 40), ...crawl], clock);
+    const fired = feed(d, [...FLICK, ...momentumTail(45, 40), ...crawl], clock);
     assert.equal(fired, 1);
   });
 });
@@ -119,9 +125,43 @@ test("the settled end of a tail does not accumulate into a swipe", () => {
 test("a second deliberate swipe after the tail ends does fire", () => {
   withClock((clock) => {
     const d = createSwipeDetector();
-    feed(d, [...FLICK, ...momentumTail(120, 60)], clock);
+    feed(d, [...FLICK, ...momentumTail(45, 60)], clock);
     clock.now += 400; // fingers lifted, trackpad silent
     assert.equal(feed(d, FLICK, clock), 1, "a genuine second swipe must page");
+  });
+});
+
+// The bug the momentum fix itself introduced: paging quickly meant swiping
+// into the previous swipe's tail, where the gesture was absorbed AND reset the
+// clock that would have released it — measured at 2 of 5 swipes registering.
+test("paging fast registers every swipe, tail or no tail", () => {
+  withClock((clock) => {
+    const d = createSwipeDetector();
+    for (const pause of [0, 50, 100, 150, 400]) {
+      const fresh = createSwipeDetector();
+      let fired = 0;
+      for (let i = 0; i < 5; i += 1) {
+        fired += feed(fresh, FLICK, clock);
+        feed(fresh, momentumTail(45, 40), clock);
+        clock.now += pause;
+      }
+      assert.equal(fired, 5, `every swipe must register with a ${pause}ms pause`);
+    }
+    void d;
+  });
+});
+
+// A swipe triggers partway through, so its own remaining samples arrive during
+// the cooldown and can be larger than the ones that met the threshold. One
+// rise is therefore ambiguous and must not be treated as a new gesture.
+test("the firing swipe's own tail-end does not count as a new gesture", () => {
+  withClock((clock) => {
+    const d = createSwipeDetector();
+    // Accelerating flick: fires on the second sample, then keeps growing.
+    const accelerating = [{ deltaX: -40 }, { deltaX: -80 }, { deltaX: -110 }];
+    const fired =
+      feed(d, accelerating, clock) + feed(d, momentumTail(110, 60), clock);
+    assert.equal(fired, 1, "one gesture, one page");
   });
 });
 
