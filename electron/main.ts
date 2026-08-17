@@ -167,6 +167,8 @@ import {
   type CaptureTextSource,
 } from "../shared/capture";
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
+import { RecallService } from "./recall-service";
+import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
 import { WorkspaceSavePathRegistry } from "./workspace-save-path";
 import {
@@ -302,6 +304,14 @@ managerRoleLog.load();
  */
 const injectedText = new InjectedTextTracker();
 /**
+ * Reader over the decision record and the workspace journal. The journal
+ * directory is resolved lazily because it is keyed on the active canvas, which
+ * the renderer owns and which changes as canvases are switched.
+ */
+const recallService = new RecallService(getCaptureDir(TERMCANVAS_DIR), () =>
+  captureCanvasId ? getMemoryDirForWorkspace(captureCanvasId) : null,
+);
+/**
  * Which canvas entries are attributed to. Main has no view of the canvas
  * registry, so the renderer reports it (see the capture:set-canvas handler) and
  * hook-driven entries — which arrive here, not there — can still be attributed.
@@ -396,6 +406,7 @@ const apiServer = new ApiServer({
   telemetryService,
   taskStore,
   dataUrlToPngBuffer,
+  recallService,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {

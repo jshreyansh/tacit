@@ -198,6 +198,47 @@ export function createTermcanvasBridgeServer(): McpServer {
   );
 
   server.registerTool(
+    "recall",
+    {
+      title: "Search what has already been decided on this canvas",
+      description:
+        "Searches the decision record and the workspace journal together — what the user asked for, what got spawned and wired, what was tried and abandoned, and the notes past holders of the manager role wrote. Use it before starting something that might have been done already, and when the user refers to earlier work without saying which. Filters are exact and narrow the search rather than merely ranking it: pass `node` to see everything that ever happened to one terminal or browser, `kinds` to restrict to particular events, `since` to bound the time. Text that the app or the CLI injected is excluded unless asked for, so results are what a person actually said and did. Open to any terminal.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe("Words to search for; omit to list the most recent matches"),
+        node: z
+          .string()
+          .optional()
+          .describe("Only entries touching this node, e.g. 'browser:browser-123-4'"),
+        kinds: z
+          .array(z.enum(["prompt", "spawn", "wire", "unwire", "close", "rename", "manager", "topology", "note"]))
+          .optional()
+          .describe("Restrict to these kinds of entry"),
+        since: z.string().optional().describe("ISO timestamp lower bound"),
+        include_injected: z
+          .boolean()
+          .optional()
+          .describe("Include app notices and harness messages; off by default"),
+        limit: z.number().optional().describe("Max results, default 12"),
+      },
+    },
+    async ({ query, node, kinds, since, include_injected, limit }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/recall`,
+        { query, node, kinds, since, include_injected, limit },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
     "query_memory",
     {
       title: "Search durable memory",

@@ -23,6 +23,8 @@ import {
   submitComposerRequest,
 } from "./composer-submit";
 import type { ComposerSubmitRequest } from "../src/types";
+import type { RecallService } from "./recall-service";
+import type { RecallQuery } from "../shared/recall";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -31,6 +33,7 @@ interface ApiServerDeps {
   telemetryService: TelemetryService;
   taskStore: PinStore;
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
+  recallService: RecallService;
 }
 
 export class ApiServer {
@@ -259,6 +262,9 @@ export class ApiServer {
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/spawn-note$/)) {
       const id = pathname.split("/")[2];
       return this.spawnNote(id, body);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/recall$/)) {
+      return this.recall(body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/connect-nodes$/)) {
       const id = pathname.split("/")[2];
@@ -1110,7 +1116,38 @@ export class ApiServer {
       // written is a normal, expected state, not an error.
     }
 
-    return { ...liveSummary, recentJournal };
+    // The digest is what turns this from "what is on the canvas" into "what has
+    // been going on here" — what the user keeps asking for, and what was tried
+    // and dropped. A fresh holder needs that before it needs a node count.
+    return { ...liveSummary, recentJournal, digest: this.deps.recallService.digest() };
+  }
+
+  /**
+   * Backs the `recall` MCP tool. Open to any terminal, like query_memory:
+   * reading what already happened grants nothing, and a sub-agent that can
+   * check whether an approach was already abandoned is strictly better than
+   * one that repeats it.
+   */
+  private async recall(body: any) {
+    const query: RecallQuery = {
+      text: typeof body?.query === "string" ? body.query : undefined,
+      kinds: Array.isArray(body?.kinds) ? body.kinds : undefined,
+      node: typeof body?.node === "string" ? body.node : undefined,
+      since: typeof body?.since === "string" ? body.since : undefined,
+      includeInjected: body?.include_injected === true,
+      limit: typeof body?.limit === "number" ? Math.min(body.limit, 50) : 12,
+    };
+    const hits = this.deps.recallService.query(query);
+    return {
+      results: hits.map((h) => ({
+        at: h.doc.at,
+        kind: h.doc.kind,
+        origin: h.doc.origin,
+        summary: h.doc.summary,
+        nodes: h.doc.nodes,
+        why: h.why,
+      })),
+    };
   }
 
   /** Backs the query_memory MCP tool — open to any terminal, no gating
