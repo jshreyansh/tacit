@@ -4,6 +4,57 @@
 
 This is a structured record of the product discussion around Tacit: its long-term thesis, the local-first product wedge, the voice/HUD idea, workflow learning, team collaboration, privacy boundaries, and commercial direction. It is intentionally not a transcript. It captures the decisions, tensions, and open questions that should guide future product work.
 
+## Conversation map: how the session moved
+
+```mermaid
+flowchart TD
+    A[Existing Tacit\nCanvas of terminals, browsers, agents\nconnections and lifecycle] --> B[Question: what is Tacit really?]
+    B --> C[Long-term thesis\nModels + a person's universe + harness]
+    C --> D[Provider-neutral private control plane\nminimum necessary context\nportable skills and provenance]
+
+    A --> E[Heard and voice-agent research]
+    E --> F[Insight: voice should not merely narrate terminal text]
+    F --> G[HUD / presenter\nstatus, proof, approvals, navigation\nand artifact previews]
+
+    A --> H[Node-system grounding]
+    H --> I[Standard node contract\nstate, typed events, inputs/outputs,\ncapabilities, evidence, policy]
+    I --> J[Foundational connective nodes\ntrigger, condition, transform, HTTP,\napproval, artifact, resource policy]
+
+    G --> K[Learning by demonstration]
+    J --> K
+    K --> L[Observe scoped work + capture intent\npropose reviewable workflow/skill\nnot a brittle macro]
+    L --> M[Canonical Tacit skill specification]
+    M --> N[Adapters compile intent to\nCodex, Claude Code, browser, API, etc.]
+
+    D --> O[Personal vault vs shared workspace]
+    O --> P[Small-team product\nshared canvas, evidence, roles,\nsecrets, recovery, cost control]
+    P --> Q[Later enterprise expansion\npolicy, audit, SSO/VPC/compliance]
+
+    H --> R[Capability graph extension]
+    R --> S[Remote computer / GPU nodes\nscoped mounts, budgets, approvals,\nkill switches, evidence]
+
+    P --> T[Commercial wedge]
+    T --> U[Initial users: serious builders\nand small AI-native teams]
+    U --> V[Promise: turn agent work into\nreliable, reusable systems]
+    V --> W[Monetization\nfree local adoption → Pro → Team\n→ Business + optional compute usage]
+    W --> X[Validation\nprove daily pain, retention,\nand willingness to pay]
+
+    D -. principle throughout .-> G
+    D -. principle throughout .-> K
+    D -. principle throughout .-> P
+    D -. principle throughout .-> R
+```
+
+### The turning points
+
+1. **From canvas UI to system primitive:** Tacit's terminals, browsers, agents, connections, and hibernation already proved a real node/lifecycle system rather than a visual mockup.
+2. **From voice notification to operating interface:** Heard was useful as a reference for salience and narration, but Tacit should own the richer workspace-aware HUD, evidence presentation, and navigation experience.
+3. **From recorded macro to learning loop:** a workflow should be proposed from scoped observation, stated intent, decisions, and outcomes, then reviewed by the user; it should not be blindly inferred from clicks.
+4. **From single harness skills to portable intent:** Tacit owns the canonical skill/evidence contract and adapts it to each external agent or provider.
+5. **From individual philosophy to a sellable wedge:** retain the personal-control and portability principles, but initially serve people who feel urgent coordination pain: multi-agent builders and small teams.
+6. **From local canvas to capability graph:** remote computers and GPUs extend the existing node contract, but must have strict data, licensing, cost, and approval boundaries.
+7. **From abstract market story to proof:** the first proof is not a huge TAM slide; it is repeated use and paid adoption around a narrow, measurable multi-agent workflow.
+
 ## One-sentence thesis
 
 **Tacit is a local-first control plane for people and teams to run, understand, govern, and reuse work performed across agents, terminals, browsers, APIs, and later cloud compute.**
@@ -307,4 +358,3 @@ Early evidence a VC should care about:
 The vision is large, but it is not merely philosophical. Tacit already has a technical spine: a canvas of real terminals, browsers, agents, connections, state, and lifecycle controls.
 
 The central discipline is to avoid shipping “the whole universe” at once. Prove the local loop where a person can run several agents and tools, understand what matters, intervene naturally, and preserve the work as a reusable system. Build the team and cloud layers on that same explicit node, policy, evidence, and ownership model.
-
