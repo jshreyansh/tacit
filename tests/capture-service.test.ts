@@ -9,7 +9,9 @@ import {
   CAPTURE_MAX_TEXT_LENGTH,
   CAPTURE_SCHEMA_VERSION,
   captureFileNameFor,
+  normalizeCaptureEntry,
   type CaptureEntry,
+  type LegacyCaptureEntry,
 } from "../shared/capture";
 
 function tempDir(): string {
@@ -55,6 +57,14 @@ test("stamps schema version, timestamp and canvas on every entry", () => {
   assert.equal(entry.schema_version, CAPTURE_SCHEMA_VERSION);
   assert.equal(entry.at, "2026-08-11T09:30:00.000Z");
   assert.equal(entry.canvas, "canvas-7");
+  assert.ok(entry.event_id);
+  assert.equal(entry.actor_identity.kind, "user");
+  assert.equal(entry.node_ref, "terminal:x");
+  assert.equal(entry.intent, "decision");
+  assert.equal(entry.privacy_scope, "workspace");
+  assert.deepEqual(entry.input_refs, []);
+  assert.deepEqual(entry.output_refs, []);
+  assert.deepEqual(entry.evidence, []);
 });
 
 test("creates the directory on first write", () => {
@@ -153,7 +163,7 @@ test("health reports counts and the directory it writes to", () => {
 test("stops writing once the per-file cap is reached", () => {
   const dir = tempDir();
   // Cap small enough that the second write is refused.
-  const service = new CaptureService(dir, 200);
+  const service = new CaptureService(dir, 1_200);
 
   let accepted = 0;
   for (let i = 0; i < 40; i += 1) {
@@ -167,7 +177,54 @@ test("stops writing once the per-file cap is reached", () => {
   const size = fs.statSync(path.join(dir, captureFileNameFor(new Date()))).size;
   // A ceiling, not a threshold: the cap is checked before writing, so the file
   // never grows past it by a whole extra entry.
-  assert.ok(size <= 200, `expected <= 200 bytes, got ${size}`);
+  assert.ok(size <= 1_200, `expected <= 1200 bytes, got ${size}`);
+});
+
+test("record context carries task, references, evidence, correction and privacy", () => {
+  const dir = tempDir();
+  const at = new Date("2026-08-11T09:30:00.000Z");
+  new CaptureService(dir).record(
+    { kind: "prompt", actor: "terminal:a", session: "session-a", text: "retry safely" },
+    "canvas-1",
+    at,
+    {
+      taskId: "task-7",
+      inputRefs: [{ kind: "file", ref: "README.md" }],
+      outputRefs: [{ kind: "artifact", ref: "build:42" }],
+      evidence: [{ kind: "screenshot", ref: "shot:before" }],
+      intent: "correction",
+      privacyScope: "private",
+      method: "hook",
+    },
+  );
+  const [entry] = readEntries(dir, at);
+  assert.equal(entry.task_id, "task-7");
+  assert.equal(entry.session_id, "session-a");
+  assert.equal(entry.intent, "correction");
+  assert.equal(entry.privacy_scope, "private");
+  assert.equal(entry.provenance.method, "hook");
+  assert.equal(entry.input_refs[0]?.ref, "README.md");
+  assert.equal(entry.output_refs[0]?.ref, "build:42");
+  assert.equal(entry.evidence[0]?.ref, "shot:before");
+});
+
+test("v1 entries migrate in memory without rewriting the append-only record", () => {
+  const legacy: LegacyCaptureEntry = {
+    schema_version: 1,
+    at: "2026-08-11T09:30:00.000Z",
+    canvas: "canvas-1",
+    kind: "wire",
+    from: "terminal:a",
+    to: "browser:b",
+    origin: "manual",
+    by: "user",
+  };
+  const entry = normalizeCaptureEntry(legacy);
+  assert.equal(entry.schema_version, CAPTURE_SCHEMA_VERSION);
+  assert.equal(entry.from, legacy.from);
+  assert.equal(entry.to, legacy.to);
+  assert.equal(entry.provenance.method, "migration");
+  assert.equal(entry.provenance.source_schema_version, 1);
 });
 
 test("entries land in a file named for their own local day", () => {

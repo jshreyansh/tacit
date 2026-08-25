@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
-  CAPTURE_SCHEMA_VERSION,
+  buildCaptureEnvelope,
   captureFileNameFor,
   truncateCaptureText,
   type CaptureEntry,
   type CaptureEvent,
   type CaptureHealth,
+  type CaptureRecordContext,
 } from "../shared/capture";
 
 /**
@@ -53,9 +55,14 @@ export class CaptureService {
    * Append one entry. Returns whether it landed, for tests — callers in the
    * app deliberately ignore it.
    */
-  record(event: CaptureEvent, canvasId: string | null, now = new Date()): boolean {
+  record(
+    event: CaptureEvent,
+    canvasId: string | null,
+    now = new Date(),
+    context: CaptureRecordContext = {},
+  ): boolean {
     try {
-      const entry = this.buildEntry(event, canvasId, now);
+      const entry = this.buildEntry(event, canvasId, now, context);
       const fileName = captureFileNameFor(now);
       const filePath = path.join(this.dirPath, fileName);
 
@@ -99,24 +106,24 @@ export class CaptureService {
     event: CaptureEvent,
     canvasId: string | null,
     now: Date,
+    context: CaptureRecordContext,
   ): CaptureEntry {
-    const base = {
-      schema_version: CAPTURE_SCHEMA_VERSION,
-      at: now.toISOString(),
-      canvas: canvasId,
-    } as const;
-
+    let normalizedEvent = event;
     if (event.kind === "prompt" && typeof event.text === "string") {
       const { text, truncated } = truncateCaptureText(event.text);
-      return {
-        ...base,
+      normalizedEvent = {
         ...event,
         text,
         ...(truncated ? { truncated: true as const } : {}),
       };
     }
-
-    return { ...base, ...event };
+    return buildCaptureEnvelope(
+      normalizedEvent,
+      canvasId,
+      now.toISOString(),
+      randomUUID(),
+      context,
+    );
   }
 }
 

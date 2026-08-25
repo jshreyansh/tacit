@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { detectHarnessText, detectLegacyAppText } from "../shared/capture";
-import type { CaptureEntry, CaptureNodeRef } from "../shared/capture";
+import {
+  normalizeCaptureEntry,
+  type CaptureEntry,
+  type CaptureNodeRef,
+  type LegacyCaptureEntry,
+} from "../shared/capture";
 import {
   recall,
   type RecallDoc,
@@ -194,7 +199,9 @@ function readRecordFile(filePath: string): RecallDoc[] {
     if (!line.trim()) return;
     let entry: CaptureEntry;
     try {
-      entry = JSON.parse(line) as CaptureEntry;
+      entry = normalizeCaptureEntry(
+        JSON.parse(line) as CaptureEntry | LegacyCaptureEntry,
+      );
     } catch {
       return; // a truncated tail is normal on a hard kill
     }

@@ -361,6 +361,8 @@ const hookReceiver = new HookReceiver((event) => {
             }),
       },
       captureCanvasId,
+      new Date(),
+      { method: "hook", sessionId: event.session_id ?? null },
     );
   }
 
@@ -1537,7 +1539,7 @@ function setupIpc() {
   // inside user interactions, and must never wait on a disk append — nor be
   // able to reject one. See CaptureService for why loss is preferred to noise.
   ipcMain.on("capture:record", (_event, entry: CaptureEvent) => {
-    captureService.record(entry, captureCanvasId);
+    captureService.record(entry, captureCanvasId, new Date(), { method: "renderer" });
   });
 
   ipcMain.on("capture:set-canvas", (_event, canvasId: string | null) => {
