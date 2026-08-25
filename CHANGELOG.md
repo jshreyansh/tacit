@@ -2,6 +2,11 @@
 
 All notable changes to TermCanvas will be documented in this file.
 
+## [0.39.11] - 2026-08-26
+
+### Fixed
+- **Connected-browser pairing no longer gets stuck on a stale code**: first-time pairing now allows 15 minutes and shows a visible countdown plus an always-available fresh-code action when a code expires or has already been used.
+
 ## [0.39.10] - 2026-06-01
 
 ### Fixed

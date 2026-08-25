@@ -142,6 +142,7 @@ export function IdentityManagerModal() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [pairingOffer, setPairingOffer] = useState<PairingOffer | null>(null);
+  const [pairingNow, setPairingNow] = useState(() => Date.now());
   const [authorizedTabs, setAuthorizedTabs] = useState<AuthorizedBrowserTab[]>([]);
   const [browserStatus, setBrowserStatus] = useState<string | null>(null);
   const [loadingBrowsers, setLoadingBrowsers] = useState(false);
@@ -197,12 +198,20 @@ export function IdentityManagerModal() {
     return () => window.removeEventListener("keydown", handler);
   }, [open, editingId, confirmDeleteId, closeManager, refreshAuthorizedTabs]);
 
+  useEffect(() => {
+    if (!open || !pairingOffer) return;
+    setPairingNow(Date.now());
+    const timer = window.setInterval(() => setPairingNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [open, pairingOffer]);
+
   const beginBrowserPairing = useCallback(async () => {
     setBrowserStatus("Creating a private connection…");
     try {
       const offer = await window.termcanvas.browserConnection.beginPairing();
       setPairingOffer(offer);
-      setBrowserStatus("Paste this connection into the Tacit browser extension.");
+      setPairingNow(Date.now());
+      setBrowserStatus("Fresh connection created. Copy it into the Tacit browser extension.");
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Could not start browser pairing");
     }
@@ -210,6 +219,10 @@ export function IdentityManagerModal() {
 
   const copyPairingOffer = useCallback(async () => {
     if (!pairingOffer) return;
+    if (Date.parse(pairingOffer.expiresAt) <= Date.now()) {
+      setBrowserStatus("This connection expired. Generate a new code before returning to the extension.");
+      return;
+    }
     await navigator.clipboard.writeText(`${pairingOffer.endpoint}#${pairingOffer.code}`);
     setBrowserStatus("Connection copied. Open the Tacit extension in your browser and paste it there.");
   }, [pairingOffer]);
@@ -260,6 +273,12 @@ export function IdentityManagerModal() {
   const deleteTarget = confirmDeleteId
     ? (identities.find((i) => i.id === confirmDeleteId) ?? null)
     : null;
+  const pairingRemainingMs = pairingOffer
+    ? Math.max(0, Date.parse(pairingOffer.expiresAt) - pairingNow)
+    : 0;
+  const pairingExpired = pairingOffer !== null && pairingRemainingMs === 0;
+  const pairingRemainingMinutes = Math.floor(pairingRemainingMs / 60_000);
+  const pairingRemainingSeconds = Math.floor((pairingRemainingMs % 60_000) / 1_000);
 
   return createPortal(
     <>
@@ -488,17 +507,42 @@ export function IdentityManagerModal() {
                 )}
 
                 {pairingOffer ? (
-                  <div className="mt-2 flex items-center gap-2 rounded-md border border-[var(--accent)]/25 px-2 py-2">
-                    <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
-                      {pairingOffer.endpoint}#{pairingOffer.code}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => void copyPairingOffer()}
-                      className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)]"
+                  <div
+                    className="mt-2 rounded-md border px-2 py-2"
+                    style={{ borderColor: pairingExpired ? "var(--red)" : "color-mix(in srgb, var(--accent) 25%, transparent)" }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <code
+                        className="min-w-0 flex-1 truncate text-[11px]"
+                        style={{ color: pairingExpired ? "var(--text-faint)" : "var(--text-secondary)" }}
+                      >
+                        {pairingOffer.endpoint}#{pairingOffer.code}
+                      </code>
+                      {!pairingExpired && (
+                        <button
+                          type="button"
+                          onClick={() => void copyPairingOffer()}
+                          className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)]"
+                        >
+                          Copy connection
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void beginBrowserPairing()}
+                        className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                      >
+                        {pairingExpired ? "Generate new code" : "New code"}
+                      </button>
+                    </div>
+                    <p
+                      className="tc-timestamp mt-1"
+                      style={{ color: pairingExpired ? "var(--red)" : "var(--text-faint)" }}
                     >
-                      Copy connection
-                    </button>
+                      {pairingExpired
+                        ? "Expired or already used? Generate a fresh one-time code."
+                        : `One-time code · expires in ${pairingRemainingMinutes}:${String(pairingRemainingSeconds).padStart(2, "0")}`}
+                    </p>
                   </div>
                 ) : (
                   <button

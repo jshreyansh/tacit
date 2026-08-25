@@ -22,12 +22,22 @@ test("pairing is one-time and returns an install-scoped secret", () => {
   );
 });
 
+test("default pairing window allows a realistic first-time extension setup", () => {
+  const registry = new BrowserConnectionRegistry();
+  const offer = registry.beginPairing(1_000);
+  const paired = registry.completePairing(offer.code, identity, 1_000 + 10 * 60_000);
+  assert.equal(paired.connection.identity.profileLabel, identity.profileLabel);
+});
+
 test("expired and incompatible pairing attempts are refused", () => {
   const registry = new BrowserConnectionRegistry(100);
   const expired = registry.beginPairing(1_000);
   assert.throws(
     () => registry.completePairing(expired.code, identity, 1_101),
-    { code: "pairing_invalid" },
+    {
+      code: "pairing_invalid",
+      message: /expired or was already used.*Generate a new connection/,
+    },
   );
   const incompatible = registry.beginPairing(2_000);
   assert.throws(

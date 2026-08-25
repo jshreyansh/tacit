@@ -55,7 +55,11 @@ export class BrowserConnectionRegistry {
   private readonly connections = new Map<string, ConnectionSecret>();
   private readonly bindings = new Map<string, ConnectedTabBinding>();
 
-  constructor(private readonly pairingTtlMs = 5 * 60_000) {}
+  // Installing an unpacked extension and reaching the pairing field commonly
+  // takes more than five minutes on a first run. The code is still high
+  // entropy and one-use, so a 15-minute setup window remains a narrow local
+  // capability without turning normal onboarding into a race.
+  constructor(private readonly pairingTtlMs = 15 * 60_000) {}
 
   beginPairing(now = Date.now()): PairingOffer {
     this.sweep(now);
@@ -76,7 +80,10 @@ export class BrowserConnectionRegistry {
     }
     const pending = this.pending.get(code);
     if (!pending) {
-      throw new BrowserConnectionError("Pairing code is invalid or expired", "pairing_invalid");
+      throw new BrowserConnectionError(
+        "This one-time connection expired or was already used. Generate a new connection in Tacit.",
+        "pairing_invalid",
+      );
     }
     if (identity.protocolVersion !== CONNECTED_BROWSER_PROTOCOL_VERSION) {
       throw new BrowserConnectionError("Browser connector protocol is incompatible", "protocol_mismatch");
