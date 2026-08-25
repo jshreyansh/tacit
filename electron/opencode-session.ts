@@ -505,7 +505,7 @@ export function readOpenCodeSessionTelemetry(
           const message = safeParseObject(row.data);
           if (message) nextEvents = eventFromOpenCodeMessage(row, message);
         } else {
-          const message = safeParseObject(row.message_data);
+          const message = safeParseObject(item.row.message_data);
           if (part) nextEvents = eventFromOpenCodePart(row, part, message);
         }
 

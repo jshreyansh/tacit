@@ -256,7 +256,7 @@ export function createWorkflowControl(
     }
 
     const prompt = buildCreateOnlyPrompt(
-      request.taskFile, request.workflowId, request.resultFile,
+      request.taskFile, request.workbenchId, request.resultFile,
       { assignmentId: request.assignmentId, runId: request.runId },
     );
 
@@ -271,7 +271,7 @@ export function createWorkflowControl(
         prompt,
         autoApprove: request.autoApprove,
         parentTerminalId: request.parentTerminalId,
-        workflowId: request.workflowId,
+        workflowId: request.workbenchId,
         assignmentId: request.assignmentId,
         repoPath: request.repoPath,
         resumeSessionId: request.resumeSessionId,
@@ -298,7 +298,7 @@ export function createWorkflowControl(
       prompt,
       autoApprove: request.autoApprove,
       parentTerminalId: request.parentTerminalId,
-      workflowId: request.workflowId,
+      workflowId: request.workbenchId,
       assignmentId: request.assignmentId,
       repoPath: request.repoPath,
       resumeSessionId: request.resumeSessionId,
@@ -364,10 +364,15 @@ export function createWorkflowControl(
       };
     },
     async redispatch(repoPath, workflowId, nodeId, intent) {
-      return redispatchNode(
+      const result = await redispatchNode(
         { repoPath: path.resolve(repoPath), workbenchId: workflowId, dispatchId: nodeId, intent },
         workflowDependencies,
       );
+      return {
+        ...result,
+        assignment_id: nodeId,
+        node_id: nodeId,
+      };
     },
     async watchDecision(repoPath, workflowId) {
       const decision = await watchUntilDecision(

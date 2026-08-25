@@ -13,6 +13,7 @@ interface ConnectionTarget {
   hostname: string;
   port: number;
   basePath: string;
+  authToken: string;
 }
 
 function normalizeBasePath(pathname: string): string {
@@ -45,6 +46,7 @@ function getConnection(): ConnectionTarget {
         hostname: parsed.hostname,
         port,
         basePath: normalizeBasePath(parsed.pathname),
+        authToken: process.env.TERMCANVAS_API_TOKEN?.trim() ?? "",
       };
     } catch {
       console.error(`Invalid TERMCANVAS_URL: ${envUrl}`);
@@ -61,12 +63,13 @@ function getConnection(): ConnectionTarget {
       hostname: envHost,
       port: parseInt(envPort, 10),
       basePath: "",
+      authToken: process.env.TERMCANVAS_API_TOKEN?.trim() ?? "",
     };
   }
 
   const portFile = resolveTermCanvasPortFile(process.env);
   try {
-    const [portStr, pidStr] = fs.readFileSync(portFile, "utf-8").trim().split("\n");
+    const [portStr, pidStr, authToken = ""] = fs.readFileSync(portFile, "utf-8").trim().split("\n");
     const port = parseInt(portStr, 10);
     const pid = parseInt(pidStr, 10);
     if (!isNaN(pid)) {
@@ -83,6 +86,7 @@ function getConnection(): ConnectionTarget {
       hostname: "127.0.0.1",
       port,
       basePath: "",
+      authToken,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -91,21 +95,19 @@ function getConnection(): ConnectionTarget {
   }
 }
 
-const apiToken = process.env.TERMCANVAS_API_TOKEN?.trim();
-
 function requestOnce(
   method: string,
   urlPath: string,
   body?: unknown,
 ): Promise<any> {
-  const { protocol, hostname, port, basePath } = getConnection();
+  const { protocol, hostname, port, basePath, authToken } = getConnection();
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : undefined;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (data) headers["Content-Length"] = String(Buffer.byteLength(data));
-    if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
     const transport = protocol === "https:" ? https : http;
     const req = transport.request(

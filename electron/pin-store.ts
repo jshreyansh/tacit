@@ -84,10 +84,10 @@ export class PinStore extends EventEmitter {
       links: input.links ?? [],
       created: now,
       updated: now,
-      x: input.x,
-      y: input.y,
-      w: input.w,
-      h: input.h,
+      ...(input.x === undefined ? {} : { x: input.x }),
+      ...(input.y === undefined ? {} : { y: input.y }),
+      ...(input.w === undefined ? {} : { w: input.w }),
+      ...(input.h === undefined ? {} : { h: input.h }),
     };
     this.writeFile(this.pinPath(repo, id), pin);
     this.populateAttachmentsUrl(pin);

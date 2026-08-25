@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useRef } from "react";
-import { marked } from "marked";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useUpdaterStore } from "../stores/updaterStore";
 import { useT } from "../i18n/useT";
 import { useLocaleStore } from "../stores/localeStore";
+import { renderMarkdown } from "../utils/markdownClass";
 
 interface Props {
   onClose: () => void;
@@ -66,9 +66,9 @@ export function UpdateModal({ onClose }: Props) {
   const rawNotes =
     typeof info?.releaseNotes === "string" ? info.releaseNotes : "";
   const notes = extractLocalizedNotes(rawNotes, locale);
-  const changelogHtml = notes
-    ? (marked.parse(notes, { async: false }) as string)
-    : "";
+  // Release notes originate outside the renderer (currently GitHub release
+  // metadata). Always sanitize them before inserting the result as HTML.
+  const changelogHtml = notes ? renderMarkdown(notes) : "";
 
   // A single primary slot drives the right-hand button across every
   // status, so the footer's width and rhythm don't pop when state moves

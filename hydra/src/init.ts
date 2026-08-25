@@ -110,7 +110,10 @@ export function checkHydraInstructionsStatus(
     }
 
     const currentSection = extractHydraSection(content);
-    if (normalizeSection(currentSection) !== normalizeSection(desiredSection)) {
+    if (
+      currentSection === null ||
+      normalizeSection(currentSection) !== normalizeSection(desiredSection)
+    ) {
       worst = "outdated";
     }
   }

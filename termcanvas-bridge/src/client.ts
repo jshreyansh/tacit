@@ -8,17 +8,23 @@ import { resolveTermCanvasPortFile } from "../../shared/termcanvas-instance.ts";
  * so this MCP server (run via cli/agent-shims/run.ts's --mcp-config
  * injection) talks to whichever Tacit instance actually spawned it.
  */
-function resolveBaseUrl(): string {
+function resolveConnection(): { baseUrl: string; authToken: string } {
   const envUrl = process.env.TERMCANVAS_URL?.trim();
-  if (envUrl) return envUrl.replace(/\/$/, "");
+  if (envUrl) {
+    return {
+      baseUrl: envUrl.replace(/\/$/, ""),
+      authToken: process.env.TERMCANVAS_API_TOKEN?.trim() ?? "",
+    };
+  }
 
   const portFile = resolveTermCanvasPortFile(process.env);
   const raw = fs.readFileSync(portFile, "utf-8").trim();
-  const port = parseInt(raw.split("\n")[0], 10);
+  const [portText, , authToken = ""] = raw.split("\n");
+  const port = parseInt(portText, 10);
   if (!Number.isFinite(port)) {
     throw new Error(`Invalid port in ${portFile}`);
   }
-  return `http://127.0.0.1:${port}`;
+  return { baseUrl: `http://127.0.0.1:${port}`, authToken };
 }
 
 export async function apiRequest<T = unknown>(
@@ -26,10 +32,16 @@ export async function apiRequest<T = unknown>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const baseUrl = resolveBaseUrl();
+  const { baseUrl, authToken } = resolveConnection();
+  if (!authToken) {
+    throw new Error("Tacit API credentials are unavailable");
+  }
   const res = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {

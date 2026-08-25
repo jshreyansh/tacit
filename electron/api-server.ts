@@ -25,6 +25,7 @@ import {
 import type { ComposerSubmitRequest } from "../src/types";
 import type { RecallService } from "./recall-service";
 import type { RecallQuery } from "../shared/recall";
+import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -39,9 +40,14 @@ interface ApiServerDeps {
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
+  private readonly authToken = createApiAuthToken();
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+  }
+
+  getAuthToken(): string {
+    return this.authToken;
   }
 
   start(): Promise<number> {
@@ -74,6 +80,12 @@ export class ApiServer {
     res.setHeader("Content-Type", "application/json");
 
     try {
+      if (!this.isAuthorized(req)) {
+        res.setHeader("WWW-Authenticate", "Bearer");
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
       const body =
         method === "POST" || method === "PUT" || method === "DELETE"
           ? await this.readBody(req)
@@ -86,6 +98,10 @@ export class ApiServer {
       res.writeHead(status);
       res.end(JSON.stringify({ error: err.message ?? "Internal error" }));
     }
+  }
+
+  private isAuthorized(req: http.IncomingMessage): boolean {
+    return isAuthorizedBearer(req.headers.authorization, this.authToken);
   }
 
   private async route(

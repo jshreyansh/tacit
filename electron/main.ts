@@ -238,8 +238,14 @@ function perfLog(label: string, details: Record<string, unknown>) {
   console.log(`[Perf] ${label}`, details);
 }
 
-function writePortFile(port: number) {
-  fs.writeFileSync(PORT_FILE, `${port}\n${process.pid}`, "utf-8");
+function writePortFile(port: number, authToken: string) {
+  fs.mkdirSync(path.dirname(PORT_FILE), { recursive: true });
+  const tempPath = `${PORT_FILE}.tmp`;
+  fs.writeFileSync(tempPath, `${port}\n${process.pid}\n${authToken}`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+  fs.renameSync(tempPath, PORT_FILE);
 }
 
 function cleanupPortFile() {
@@ -632,7 +638,7 @@ function createWindow() {
     rendererReady = true;
     try {
       const port = await apiServer.start();
-      writePortFile(port);
+      writePortFile(port, apiServer.getAuthToken());
       if (isDev) console.log(`[Tacit API] http://127.0.0.1:${port}`);
     } catch (err) {
       console.error("[Tacit API] Failed to start:", err);

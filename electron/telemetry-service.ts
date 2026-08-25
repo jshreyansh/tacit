@@ -309,11 +309,7 @@ export function deriveTelemetryStatus(
     }
   }
 
-  if (
-    snapshot.turn_state !== "turn_complete" &&
-    snapshot.turn_state !== "turn_aborted" &&
-    snapshot.last_session_event_at
-  ) {
+  if (snapshot.last_session_event_at) {
     const lastSessionEventMs = new Date(
       snapshot.last_session_event_at,
     ).getTime();
@@ -1412,7 +1408,10 @@ export class TelemetryService {
             ? event.notification_type
             : undefined;
         const awaitingInput = shouldMarkClaudeNotificationAwaitingInput(
-          event,
+          {
+            notification_type: event.notification_type,
+            message: event.message,
+          },
           state.pendingPreToolUse,
         );
         if (awaitingInput) {
