@@ -35,12 +35,13 @@ async function resolveBoundBrowserId(): Promise<string | null> {
 }
 
 async function driveBrowser(action: string, params: Record<string, unknown>) {
+  const terminalId = getTerminalId();
   const browserId = await resolveBoundBrowserId();
   if (!browserId) return textResult(NOT_WIRED_MESSAGE);
   const result = await apiRequest(
     "POST",
     `/browser/${encodeURIComponent(browserId)}/action`,
-    { action, params },
+    { action, params, actor: terminalId ? `terminal:${terminalId}` : "system" },
   );
   return textResult(JSON.stringify(result, null, 2));
 }

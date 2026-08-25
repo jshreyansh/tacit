@@ -37,9 +37,11 @@ jobs:
       - name: Test security boundaries
         run: pnpm test:security
 
+      - name: Test browser controller boundaries
+        run: pnpm test:browser
+
       - name: Run test suite
         run: pnpm test
 
       - name: Build desktop app
         run: pnpm build
-

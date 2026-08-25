@@ -8,6 +8,22 @@ import {
   partitionForIdentity,
 } from "../stores/identityStore";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { addConnectedBrowserCardToScene } from "../actions/sceneCardActions";
+import type {
+  ConnectedBrowserConnection,
+  ConnectedTabBinding,
+} from "../../shared/browser-connection";
+
+interface PairingOffer {
+  endpoint: string;
+  code: string;
+  expiresAt: string;
+}
+
+interface AuthorizedBrowserTab {
+  binding: ConnectedTabBinding;
+  connection: ConnectedBrowserConnection;
+}
 
 function CloseGlyph() {
   return (
@@ -84,6 +100,26 @@ function ActiveDotGlyph() {
   );
 }
 
+function BrowserLinkGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.35"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="1.75" y="2.25" width="12.5" height="10.5" rx="2" />
+      <path d="M2 5.25h12M4 3.8h.01M6 3.8h.01" />
+      <path d="M6.1 9.1h3.8M8 7.2v3.8" />
+    </svg>
+  );
+}
+
 export function IdentityManagerModal() {
   const t = useT();
   const open = useIdentityManagerStore((s) => s.open);
@@ -105,7 +141,23 @@ export function IdentityManagerModal() {
   const [draftName, setDraftName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pairingOffer, setPairingOffer] = useState<PairingOffer | null>(null);
+  const [authorizedTabs, setAuthorizedTabs] = useState<AuthorizedBrowserTab[]>([]);
+  const [browserStatus, setBrowserStatus] = useState<string | null>(null);
+  const [loadingBrowsers, setLoadingBrowsers] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshAuthorizedTabs = useCallback(async () => {
+    setLoadingBrowsers(true);
+    try {
+      setAuthorizedTabs(await window.termcanvas.browserConnection.listTabs());
+      setBrowserStatus(null);
+    } catch (error) {
+      setBrowserStatus(error instanceof Error ? error.message : "Could not read connected tabs");
+    } finally {
+      setLoadingBrowsers(false);
+    }
+  }, []);
 
   // Open-from-keyboard/command-palette with a target id.
   useEffect(() => {
@@ -127,6 +179,7 @@ export function IdentityManagerModal() {
 
   useEffect(() => {
     if (!open) return;
+    void refreshAuthorizedTabs();
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (editingId) {
@@ -142,7 +195,29 @@ export function IdentityManagerModal() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, editingId, confirmDeleteId, closeManager]);
+  }, [open, editingId, confirmDeleteId, closeManager, refreshAuthorizedTabs]);
+
+  const beginBrowserPairing = useCallback(async () => {
+    setBrowserStatus("Creating a private connection…");
+    try {
+      const offer = await window.termcanvas.browserConnection.beginPairing();
+      setPairingOffer(offer);
+      setBrowserStatus("Paste this connection into the Tacit browser extension.");
+    } catch (error) {
+      setBrowserStatus(error instanceof Error ? error.message : "Could not start browser pairing");
+    }
+  }, []);
+
+  const copyPairingOffer = useCallback(async () => {
+    if (!pairingOffer) return;
+    await navigator.clipboard.writeText(`${pairingOffer.endpoint}#${pairingOffer.code}`);
+    setBrowserStatus("Connection copied. Open the Tacit extension in your browser and paste it there.");
+  }, [pairingOffer]);
+
+  const addConnectedTab = useCallback((entry: AuthorizedBrowserTab) => {
+    addConnectedBrowserCardToScene(entry.binding, entry.connection);
+    setBrowserStatus(`Added “${entry.binding.tab.title || entry.binding.tab.url}” to the canvas.`);
+  }, []);
 
   const commitRename = useCallback(() => {
     if (!editingId) return;
@@ -198,7 +273,7 @@ export function IdentityManagerModal() {
         }}
       >
         <div
-          className="w-[420px] max-w-[90vw] rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-xl"
+          className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
           <header className="flex items-center justify-between px-4 pt-3 pb-3 border-b border-[var(--border)]">
@@ -226,7 +301,8 @@ export function IdentityManagerModal() {
             </button>
           </header>
 
-          <ul className="px-2 py-2 max-h-[320px] overflow-y-auto">
+          <div className="overflow-y-auto max-h-[calc(86vh-94px)]">
+          <ul className="px-2 py-2 max-h-[250px] overflow-y-auto">
             {identities.map((identity) => {
               const isActive = identity.id === activeIdentityId;
               const isEditing = editingId === identity.id;
@@ -339,6 +415,109 @@ export function IdentityManagerModal() {
                 {t["identity.manager.newIdentityHint"]}
               </span>
             </button>
+          </div>
+
+          <section className="border-t border-[var(--border)] px-4 py-3">
+            <div className="flex items-start gap-3">
+              <span
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)]"
+                style={{ background: "var(--bg)" }}
+              >
+                <BrowserLinkGlyph />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="tc-ui" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                    Use your signed-in browser
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void refreshAuthorizedTabs()}
+                    disabled={loadingBrowsers}
+                    className="tc-meta rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+                  >
+                    {loadingBrowsers ? "Checking…" : "Refresh"}
+                  </button>
+                </div>
+                <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                  Connect one tab from Chrome, Edge, or Brave. Tacit controls only tabs you explicitly share; it never copies your profile or cookies.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const folder = await window.termcanvas.browserConnection.openExtensionFolder();
+                      await navigator.clipboard.writeText(folder);
+                      setBrowserStatus("Extension folder opened and its path copied. In your browser’s Extensions page, choose “Load unpacked” and select it.");
+                    } catch (error) {
+                      setBrowserStatus(error instanceof Error ? error.message : "Could not open the extension folder");
+                    }
+                  }}
+                  className="tc-meta mt-1 underline decoration-[var(--border-hover)] underline-offset-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Install the Tacit browser extension
+                </button>
+
+                {authorizedTabs.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {authorizedTabs.map((entry) => (
+                      <div
+                        key={entry.binding.id}
+                        className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5"
+                        style={{ background: "var(--bg)" }}
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--green)" }} />
+                        <div className="min-w-0 flex-1">
+                          <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
+                            {entry.binding.tab.title || "Untitled tab"}
+                          </div>
+                          <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                            {entry.connection.identity.browser} · {entry.connection.identity.profileLabel} · {entry.binding.tab.url}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addConnectedTab(entry)}
+                          className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2 py-1 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                        >
+                          Add to canvas
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {pairingOffer ? (
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-[var(--accent)]/25 px-2 py-2">
+                    <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                      {pairingOffer.endpoint}#{pairingOffer.code}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => void copyPairingOffer()}
+                      className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)]"
+                    >
+                      Copy connection
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void beginBrowserPairing()}
+                    className="tc-ui mt-2 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                  >
+                    Pair a system browser
+                  </button>
+                )}
+
+                {browserStatus && (
+                  <p role="status" className="tc-timestamp mt-2" style={{ color: "var(--text-muted)" }}>
+                    {browserStatus}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
           </div>
 
           <footer

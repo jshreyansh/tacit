@@ -169,6 +169,8 @@ function summarize(entry: CaptureEntry): string {
       return `renamed ${entry.node} to "${entry.title}"`;
     case "manager":
       return entry.node ? `${entry.node} became the workspace manager` : "workspace manager unassigned";
+    case "browser_action":
+      return `${entry.ok ? "used" : "failed"} ${entry.action} on ${entry.node} via ${entry.backend}${entry.url ? ` — ${entry.url}` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }
@@ -179,6 +181,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "spawn":
     case "close":
     case "rename":
+    case "browser_action":
       return [entry.node];
     case "wire":
     case "unwire":

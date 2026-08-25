@@ -7,6 +7,11 @@ import type { CaptureEvent, CaptureHealth } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
+import type {
+  ConnectedBrowserConnection,
+  ConnectedTabBinding,
+} from "../shared/browser-connection";
+import type { BrowserActionName } from "../shared/browser-controller";
 
 type SessionTelemetryProvider = Exclude<TelemetryProvider, "unknown">;
 
@@ -175,6 +180,24 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ipcRenderer.send("capture:set-canvas", canvasId),
     getHealth: () =>
       ipcRenderer.invoke("capture:get-health") as Promise<CaptureHealth>,
+  },
+  browserConnection: {
+    beginPairing: () => ipcRenderer.invoke("browser-connect:begin-pairing") as Promise<{
+      endpoint: string;
+      code: string;
+      expiresAt: string;
+    }>,
+    listTabs: () => ipcRenderer.invoke("browser-connect:list-tabs") as Promise<Array<{
+      binding: ConnectedTabBinding;
+      connection: ConnectedBrowserConnection;
+    }>>,
+    openExtensionFolder: () =>
+      ipcRenderer.invoke("browser-connect:open-extension-folder") as Promise<string>,
+    execute: (input: {
+      bindingId: string;
+      action: BrowserActionName;
+      params: Record<string, unknown>;
+    }) => ipcRenderer.invoke("browser-connect:execute", input) as Promise<unknown>,
   },
   managerRole: {
     /** Fire-and-forget, like capture — assignment must not wait on a disk write. */

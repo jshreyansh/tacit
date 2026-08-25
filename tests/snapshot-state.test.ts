@@ -393,6 +393,11 @@ test("restoreWorkspaceSnapshot clears existing terminal runtimes before applying
       w: 320,
       h: 240,
       identityId: "identity-default",
+      backend: {
+        kind: "managed",
+        engine: "legacy-webview",
+        identityId: "identity-default",
+      },
     },
   });
 });

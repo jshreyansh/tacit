@@ -6,6 +6,7 @@ import {
   DEFAULT_IDENTITY_ID,
   DEFAULT_IDENTITY_NAME,
 } from "../types/workspace";
+import { managedBrowserBinding } from "../../shared/browser-controller";
 
 export function partitionForIdentity(identityId: string): string {
   return `persist:identity-${identityId}`;
@@ -142,10 +143,13 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
     // never references a partition nothing manages anymore.
     const cards = useBrowserCardStore.getState().cards;
     for (const card of Object.values(cards)) {
-      if (card.identityId === id) {
+      if (card.identityId === id && card.backend?.kind !== "connected-tab") {
         useBrowserCardStore
           .getState()
-          .updateCard(card.id, { identityId: fallback.id });
+          .updateCard(card.id, {
+            identityId: fallback.id,
+            backend: managedBrowserBinding(fallback.id),
+          });
       }
     }
 

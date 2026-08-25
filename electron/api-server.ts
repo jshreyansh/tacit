@@ -26,6 +26,8 @@ import type { ComposerSubmitRequest } from "../src/types";
 import type { RecallService } from "./recall-service";
 import type { RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
+import type { ConnectedBrowserBroker } from "./connected-browser-broker";
+import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -35,6 +37,19 @@ interface ApiServerDeps {
   taskStore: PinStore;
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
   recallService: RecallService;
+  connectedBrowserBroker: ConnectedBrowserBroker;
+}
+
+const BROWSER_CONNECTOR_ROUTES = new Set([
+  "/browser-connect/complete",
+  "/browser-connect/tab",
+  "/browser-connect/poll",
+  "/browser-connect/result",
+  "/browser-connect/revoke",
+]);
+
+function isBrowserConnectorRoute(method: string, pathname: string): boolean {
+  return method === "POST" && BROWSER_CONNECTOR_ROUTES.has(pathname);
 }
 
 export class ApiServer {
@@ -80,7 +95,7 @@ export class ApiServer {
     res.setHeader("Content-Type", "application/json");
 
     try {
-      if (!this.isAuthorized(req)) {
+      if (!this.isAuthorized(req) && !isBrowserConnectorRoute(method, pathname)) {
         res.setHeader("WWW-Authenticate", "Bearer");
         res.writeHead(401);
         res.end(JSON.stringify({ error: "Unauthorized" }));
@@ -110,6 +125,21 @@ export class ApiServer {
     url: URL,
     body: any,
   ): Promise<any> {
+    if (method === "POST" && pathname === "/browser-connect/complete") {
+      return this.browserConnectComplete(body);
+    }
+    if (method === "POST" && pathname === "/browser-connect/tab") {
+      return this.browserConnectTab(body);
+    }
+    if (method === "POST" && pathname === "/browser-connect/poll") {
+      return this.browserConnectPoll(body);
+    }
+    if (method === "POST" && pathname === "/browser-connect/result") {
+      return this.browserConnectResult(body);
+    }
+    if (method === "POST" && pathname === "/browser-connect/revoke") {
+      return this.browserConnectRevoke(body);
+    }
     if (method === "POST" && pathname === "/project/add") {
       return this.projectAdd(body);
     }
@@ -828,10 +858,14 @@ export class ApiServer {
 
   private async browserAction(id: string, body: any) {
     const action = body?.action;
-    if (!action) {
+    if (typeof action !== "string") {
       throw Object.assign(new Error("action is required"), { status: 400 });
     }
     const params = body?.params ?? {};
+    if (!params || typeof params !== "object" || Array.isArray(params)) {
+      throw Object.assign(new Error("params must be an object"), { status: 400 });
+    }
+    const actor = await this.resolveBrowserActionActor(id, body?.actor);
 
     // Lets the canvas visually pulse the connection while a browser-bridge
     // tool call is actually in flight (see src/canvas/ConnectionLayer.tsx,
@@ -849,7 +883,7 @@ export class ApiServer {
 
     try {
       const result = await this.execRenderer(
-        `window.__tcApi.driveBrowserCard(${JSON.stringify(id)}, ${JSON.stringify(action)}, ${JSON.stringify(params)})`,
+        `window.__tcApi.driveBrowserCard(${JSON.stringify(id)}, ${JSON.stringify(action)}, ${JSON.stringify(params)}, ${JSON.stringify(actor)})`,
       );
       sendToWindow(win, "browser-bridge:call", {
         phase: "end",
@@ -869,6 +903,91 @@ export class ApiServer {
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  }
+
+  private async resolveBrowserActionActor(browserId: string, candidate: unknown): Promise<string> {
+    if (typeof candidate !== "string" || !candidate.startsWith("terminal:")) return "system";
+    const terminalId = candidate.slice("terminal:".length);
+    if (!terminalId || terminalId.includes(":")) return "system";
+    const binding = await this.terminalBrowserBinding(terminalId);
+    return binding?.browserId === browserId ? candidate : "system";
+  }
+
+  private browserConnectComplete(body: any) {
+    const browser = body?.browser;
+    if (browser !== "chrome" && browser !== "edge" && browser !== "brave") {
+      throw Object.assign(new Error("Supported browser identity is required"), { status: 400 });
+    }
+    if (
+      typeof body?.code !== "string" ||
+      typeof body?.profileLabel !== "string" ||
+      typeof body?.extensionId !== "string" ||
+      typeof body?.protocolVersion !== "number"
+    ) {
+      throw Object.assign(new Error("Complete browser pairing details are required"), { status: 400 });
+    }
+    return this.deps.connectedBrowserBroker.registry.completePairing(body?.code, {
+      browser,
+      profileLabel: body?.profileLabel,
+      extensionId: body?.extensionId,
+      protocolVersion: body?.protocolVersion ?? CONNECTED_BROWSER_PROTOCOL_VERSION,
+    });
+  }
+
+  private browserConnectTab(body: any) {
+    if (
+      typeof body?.connectionId !== "string" ||
+      typeof body?.token !== "string" ||
+      !body?.tab ||
+      !Array.isArray(body?.capabilities)
+    ) {
+      throw Object.assign(new Error("Connection, tab, and capabilities are required"), { status: 400 });
+    }
+    return this.deps.connectedBrowserBroker.registry.authorizeTab(
+      body?.connectionId,
+      body?.token,
+      body?.tab,
+      body?.capabilities,
+    );
+  }
+
+  private browserConnectPoll(body: any) {
+    this.requireBrowserConnectionCredentials(body);
+    return this.deps.connectedBrowserBroker.poll(
+      body?.connectionId,
+      body?.token,
+      body?.waitMs,
+    );
+  }
+
+  private browserConnectResult(body: any) {
+    this.requireBrowserConnectionCredentials(body);
+    if (
+      typeof body?.commandId !== "string" ||
+      !body?.result ||
+      typeof body.result.ok !== "boolean"
+    ) {
+      throw Object.assign(new Error("A valid browser command result is required"), { status: 400 });
+    }
+    this.deps.connectedBrowserBroker.settle(
+      body?.connectionId,
+      body?.token,
+      body?.commandId,
+      body?.result,
+    );
+    return { ok: true };
+  }
+
+  private browserConnectRevoke(body: any) {
+    this.requireBrowserConnectionCredentials(body);
+    this.deps.connectedBrowserBroker.revokeConnection(body.connectionId, body.token);
+    return { ok: true };
+  }
+
+  private requireBrowserConnectionCredentials(body: any): void {
+    if (typeof body?.connectionId !== "string" || typeof body?.token !== "string") {
+      throw Object.assign(new Error("Browser connection credentials are required"), { status: 400 });
     }
   }
 

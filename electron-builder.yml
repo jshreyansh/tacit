@@ -33,6 +33,13 @@ extraResources:
     to: termcanvas-bridge
     filter:
       - "**/*"
+  # Unpacked Chromium extension for the explicit system-browser pairing
+  # prototype. It is never installed silently; the setup UI opens this exact
+  # folder so the user can review and load it themselves.
+  - from: browser-extension
+    to: browser-extension
+    filter:
+      - "**/*"
 asarUnpack:
   - node_modules/node-pty/**/*
 

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Tacit Connected Browser",
+  "version": "0.1.0",
+  "description": "Connect only the browser tab you explicitly choose to your local Tacit canvas.",
+  "permissions": ["activeTab", "tabs", "storage", "debugger"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": {
+    "default_title": "Connect this tab to Tacit",
+    "default_popup": "popup.html"
+  }
+}

@@ -30,6 +30,8 @@ import {
   type SessionType,
 } from "./session-watcher";
 import { ApiServer } from "./api-server";
+import { BrowserConnectionRegistry } from "./browser-connection-registry";
+import { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -317,6 +319,9 @@ const injectedText = new InjectedTextTracker();
 const recallService = new RecallService(getCaptureDir(TERMCANVAS_DIR), () =>
   captureCanvasId ? getMemoryDirForWorkspace(captureCanvasId) : null,
 );
+const browserConnectionRegistry = new BrowserConnectionRegistry();
+const connectedBrowserBroker = new ConnectedBrowserBroker(browserConnectionRegistry);
+let desktopApiPort: number | null = null;
 /**
  * Which canvas entries are attributed to. Main has no view of the canvas
  * registry, so the renderer reports it (see the capture:set-canvas handler) and
@@ -415,6 +420,7 @@ const apiServer = new ApiServer({
   taskStore,
   dataUrlToPngBuffer,
   recallService,
+  connectedBrowserBroker,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -640,6 +646,7 @@ function createWindow() {
     rendererReady = true;
     try {
       const port = await apiServer.start();
+      desktopApiPort = port;
       writePortFile(port, apiServer.getAuthToken());
       if (isDev) console.log(`[Tacit API] http://127.0.0.1:${port}`);
     } catch (err) {
@@ -1850,6 +1857,48 @@ function setupIpc() {
       }
       await session.fromPartition(partitionName).clearStorageData();
     },
+  );
+
+  ipcMain.handle("browser-connect:begin-pairing", () => {
+    if (!desktopApiPort) {
+      throw new Error("Tacit browser connector is not ready yet");
+    }
+    return {
+      endpoint: `http://127.0.0.1:${desktopApiPort}`,
+      ...browserConnectionRegistry.beginPairing(),
+    };
+  });
+
+  ipcMain.handle("browser-connect:list-tabs", () =>
+    browserConnectionRegistry.listAuthorizedTabsForApp(),
+  );
+
+  ipcMain.handle("browser-connect:open-extension-folder", async () => {
+    const extensionDir = app.isPackaged
+      ? path.join(process.resourcesPath, "browser-extension")
+      : path.join(app.getAppPath(), "browser-extension");
+    if (!fs.existsSync(path.join(extensionDir, "manifest.json"))) {
+      throw new Error("Tacit browser extension is missing from this build");
+    }
+    const error = await shell.openPath(extensionDir);
+    if (error) throw new Error(error);
+    return extensionDir;
+  });
+
+  ipcMain.handle(
+    "browser-connect:execute",
+    async (
+      _event,
+      input: {
+        bindingId: string;
+        action: import("../shared/browser-controller").BrowserActionName;
+        params: Record<string, unknown>;
+      },
+    ) => connectedBrowserBroker.execute(
+      input.bindingId,
+      input.action,
+      input.params,
+    ),
   );
 
   const IMAGE_EXTS_FS = new Set([

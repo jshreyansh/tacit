@@ -5,11 +5,15 @@ export type ConnectedBrowserFamily = "chrome" | "edge" | "brave";
 export type BrowserCapability =
   | "inspect"
   | "navigate"
+  | "back"
+  | "forward"
+  | "reload"
   | "click"
   | "type"
   | "press_key"
   | "select"
   | "scroll"
+  | "wait"
   | "screenshot"
   | "upload"
   | "download";
@@ -17,11 +21,15 @@ export type BrowserCapability =
 export const PORTABLE_BROWSER_CAPABILITIES: readonly BrowserCapability[] = [
   "inspect",
   "navigate",
+  "back",
+  "forward",
+  "reload",
   "click",
   "type",
   "press_key",
   "select",
   "scroll",
+  "wait",
   "screenshot",
   "upload",
   "download",
@@ -56,4 +64,3 @@ export interface ConnectedBrowserConnection {
   connectedAt: string;
   revokedAt: string | null;
 }
-

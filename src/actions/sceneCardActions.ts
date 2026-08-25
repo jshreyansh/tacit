@@ -8,6 +8,8 @@ import { useIdentityStore } from "../stores/identityStore";
 import { DEFAULT_IDENTITY_ID } from "../types/workspace";
 import { recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
+import { normalizeBrowserNodeBinding } from "../../shared/browser-controller";
+import type { ConnectedBrowserConnection, ConnectedTabBinding } from "../../shared/browser-connection";
 
 const DEFAULT_BROWSER_URL = "https://google.com";
 
@@ -64,6 +66,22 @@ export function addBrowserCardToScene(
   return id;
 }
 
+export function addConnectedBrowserCardToScene(
+  binding: ConnectedTabBinding,
+  connection: ConnectedBrowserConnection,
+  position?: { x: number; y: number },
+): string {
+  const id = useBrowserCardStore.getState().addConnectedCard(binding, connection, position);
+  recordDecision({
+    kind: "spawn",
+    node: `browser:${id}`,
+    by: "user",
+    parent: null,
+    detail: `connected ${connection.identity.browser} tab — ${binding.tab.url}`,
+  });
+  return id;
+}
+
 export function updateBrowserCardInScene(
   cardId: string,
   patch: Partial<BrowserCardData>,
@@ -88,10 +106,14 @@ export function removeBrowserCardFromScene(cardId: string) {
  * `identityId` at all — fall them back to whatever identity is currently
  * the default rather than leaving the field undefined. */
 function normalizeCardIdentity(card: BrowserCardData): BrowserCardData {
-  if (card.identityId) return card;
   const fallbackId =
     useIdentityStore.getState().activeIdentityId || DEFAULT_IDENTITY_ID;
-  return { ...card, identityId: fallbackId };
+  const identityId = card.identityId || fallbackId;
+  return {
+    ...card,
+    identityId,
+    backend: normalizeBrowserNodeBinding(card.backend, identityId),
+  };
 }
 
 export function restoreBrowserCardsInScene(

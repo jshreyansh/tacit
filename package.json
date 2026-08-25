@@ -20,6 +20,7 @@
     "postinstall": "node scripts/postinstall.mjs",
     "typecheck": "tsc --noEmit",
     "test:security": "tsx --test tests/update-modal-security.test.ts tests/api-server-auth.test.ts",
+    "test:browser": "tsx --test tests/browser-connection-registry.test.ts tests/browser-controller.test.ts tests/connected-browser-broker.test.ts tests/browser-extension-security.test.ts",
     "typecheck:headless": "tsc --noEmit -p tsconfig.headless.json",
     "build:headless": "tsc -p tsconfig.headless.build.json",
     "test:hydra": "tsx --test hydra/tests/standalone-e2e.test.ts hydra/tests/workflow-lead.test.ts hydra/tests/cleanup.test.ts",

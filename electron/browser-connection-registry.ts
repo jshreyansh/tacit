@@ -30,9 +30,16 @@ export interface PairingResult {
 }
 
 export class BrowserConnectionError extends Error {
+  readonly status: number;
   constructor(message: string, readonly code: string) {
     super(message);
     this.name = "BrowserConnectionError";
+    this.status =
+      code.endsWith("_invalid") || code === "protocol_mismatch"
+        ? 400
+        : code === "capability_missing"
+          ? 403
+          : 401;
   }
 }
 
@@ -64,6 +71,9 @@ export class BrowserConnectionRegistry {
     now = Date.now(),
   ): PairingResult {
     this.sweep(now);
+    if (typeof code !== "string" || !identity || typeof identity !== "object") {
+      throw new BrowserConnectionError("Pairing identity is invalid", "identity_invalid");
+    }
     const pending = this.pending.get(code);
     if (!pending) {
       throw new BrowserConnectionError("Pairing code is invalid or expired", "pairing_invalid");
@@ -71,7 +81,12 @@ export class BrowserConnectionRegistry {
     if (identity.protocolVersion !== CONNECTED_BROWSER_PROTOCOL_VERSION) {
       throw new BrowserConnectionError("Browser connector protocol is incompatible", "protocol_mismatch");
     }
-    if (!identity.extensionId.trim() || !identity.profileLabel.trim()) {
+    if (
+      typeof identity.extensionId !== "string" ||
+      typeof identity.profileLabel !== "string" ||
+      !identity.extensionId.trim() ||
+      !identity.profileLabel.trim()
+    ) {
       throw new BrowserConnectionError("Browser and profile must be identified", "identity_invalid");
     }
     this.pending.delete(code); // one use, including after a successful proof
@@ -98,13 +113,30 @@ export class BrowserConnectionRegistry {
     now = Date.now(),
   ): ConnectedTabBinding {
     this.requireConnection(connectionId, token);
-    if (!Number.isInteger(tab.tabId) || !Number.isInteger(tab.windowId) || !tab.url) {
+    if (
+      !tab ||
+      !Number.isInteger(tab.tabId) ||
+      !Number.isInteger(tab.windowId) ||
+      typeof tab.url !== "string" ||
+      !tab.url ||
+      typeof tab.title !== "string" ||
+      !Array.isArray(requestedCapabilities)
+    ) {
       throw new BrowserConnectionError("A concrete browser tab must be selected", "tab_invalid");
     }
     const allowed = new Set(PORTABLE_BROWSER_CAPABILITIES);
     const capabilities = [...new Set(requestedCapabilities)].filter((capability) =>
       allowed.has(capability),
     );
+    for (const existing of this.bindings.values()) {
+      if (
+        existing.connectionId === connectionId &&
+        existing.tab.tabId === tab.tabId &&
+        !existing.revokedAt
+      ) {
+        existing.revokedAt = new Date(now).toISOString();
+      }
+    }
     const binding: ConnectedTabBinding = {
       id: randomUUID(),
       connectionId,
@@ -160,6 +192,46 @@ export class BrowserConnectionRegistry {
     }
   }
 
+  authenticate(connectionId: string, token: string): ConnectedBrowserConnection {
+    return this.requireConnection(connectionId, token).connection;
+  }
+
+  listAuthorizedTabsForApp(): Array<{
+    binding: ConnectedTabBinding;
+    connection: ConnectedBrowserConnection;
+  }> {
+    const result: Array<{
+      binding: ConnectedTabBinding;
+      connection: ConnectedBrowserConnection;
+    }> = [];
+    for (const binding of this.bindings.values()) {
+      const secret = this.connections.get(binding.connectionId);
+      if (!binding.revokedAt && secret && !secret.connection.revokedAt) {
+        result.push({ binding: { ...binding, tab: { ...binding.tab } }, connection: secret.connection });
+      }
+    }
+    return result;
+  }
+
+  /** Trusted app-side lookup; connection secrets never enter canvas snapshots. */
+  requireAuthorizedTabForApp(
+    bindingId: string,
+    capability: BrowserCapability,
+  ): ConnectedTabBinding {
+    const binding = this.bindings.get(bindingId);
+    const connection = binding ? this.connections.get(binding.connectionId) : undefined;
+    if (!binding || binding.revokedAt || !connection || connection.connection.revokedAt) {
+      throw new BrowserConnectionError("This connected tab is unavailable", "tab_unauthorized");
+    }
+    if (!binding.capabilities.includes(capability)) {
+      throw new BrowserConnectionError(
+        `The connected tab did not grant ${capability}`,
+        "capability_missing",
+      );
+    }
+    return binding;
+  }
+
   private requireConnection(connectionId: string, token: string): ConnectionSecret {
     const secret = this.connections.get(connectionId);
     if (!secret || secret.connection.revokedAt || !safeEqual(secret.token, token)) {
@@ -180,4 +252,3 @@ function safeEqual(expected: string, supplied: string): boolean {
   const right = Buffer.from(supplied);
   return left.length === right.length && timingSafeEqual(left, right);
 }
-

@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header><span class="mark"></span><strong>Tacit</strong></header>
+      <section id="pairing">
+        <p>Paste the connection shown by Tacit. No passwords or cookies are copied.</p>
+        <label>Connection <input id="offer" placeholder="http://127.0.0.1:…#…" /></label>
+        <label>Profile label <input id="profile" placeholder="Work" maxlength="80" /></label>
+        <button id="pair">Pair browser</button>
+      </section>
+      <section id="connected" hidden>
+        <p id="identity"></p>
+        <div class="tab"><span id="tab-title">Current tab</span><small id="tab-url"></small></div>
+        <button id="connect-tab">Connect this tab</button>
+        <button id="forget" class="secondary">Forget this browser</button>
+      </section>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

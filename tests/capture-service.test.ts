@@ -67,6 +67,27 @@ test("stamps schema version, timestamp and canvas on every entry", () => {
   assert.deepEqual(entry.evidence, []);
 });
 
+test("browser capability use is captured without copying page contents", () => {
+  const dir = tempDir();
+  new CaptureService(dir).record(
+    {
+      kind: "browser_action",
+      node: "browser:work",
+      action: "navigate",
+      backend: "connected-tab",
+      by: "terminal:manager",
+      ok: true,
+      url: "https://linear.app/acme",
+    },
+    "canvas-1",
+  );
+  const [entry] = readEntries(dir);
+  assert.equal(entry.kind, "browser_action");
+  assert.equal(entry.node_ref, "browser:work");
+  assert.equal(entry.actor_identity.kind, "agent");
+  assert.ok(!("text" in entry), "page text must remain referenced, not copied into the record");
+});
+
 test("creates the directory on first write", () => {
   const dir = path.join(tempDir(), "record", "nested");
   assert.equal(fs.existsSync(dir), false);

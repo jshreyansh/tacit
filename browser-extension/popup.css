@@ -1,0 +1,14 @@
+:root { color-scheme: dark; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { width: 320px; margin: 0; background: #111; color: #eee; }
+main { padding: 14px; }
+header { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 14px; }
+.mark { width: 9px; height: 9px; border-radius: 50%; background: #8bffb0; box-shadow: 0 0 12px #8bffb077; }
+p { color: #aaa; line-height: 1.45; }
+label { display: block; color: #aaa; margin: 10px 0; }
+input { box-sizing: border-box; width: 100%; margin-top: 5px; padding: 8px; color: #eee; background: #1c1c1c; border: 1px solid #383838; border-radius: 6px; }
+button { width: 100%; padding: 9px; border: 0; border-radius: 6px; background: #eee; color: #111; font-weight: 600; cursor: pointer; }
+button.secondary { margin-top: 7px; background: transparent; color: #aaa; border: 1px solid #383838; }
+.tab { padding: 9px; margin: 10px 0; background: #1a1a1a; border-radius: 6px; }
+.tab span, .tab small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab small { color: #777; margin-top: 3px; }
+#status { min-height: 18px; margin: 10px 0 0; font-size: 12px; }

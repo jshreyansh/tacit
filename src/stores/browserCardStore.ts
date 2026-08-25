@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useSelectionStore } from "./selectionStore";
 import { useWorkspaceStore } from "./workspaceStore";
+import { managedBrowserBinding, type BrowserNodeBinding } from "../../shared/browser-controller";
+import type { ConnectedBrowserConnection, ConnectedTabBinding } from "../../shared/browser-connection";
 
 export interface BrowserCardData {
   id: string;
@@ -12,6 +14,8 @@ export interface BrowserCardData {
   h: number;
   /** Which BrowserIdentity's session partition this card's webview uses. */
   identityId: string;
+  /** Provider-neutral runtime binding. Missing only on pre-migration snapshots. */
+  backend?: BrowserNodeBinding;
 }
 
 interface BrowserCardStore {
@@ -19,6 +23,11 @@ interface BrowserCardStore {
   addCard: (
     url: string,
     identityId: string,
+    position?: { x: number; y: number },
+  ) => string;
+  addConnectedCard: (
+    binding: ConnectedTabBinding,
+    connection: ConnectedBrowserConnection,
     position?: { x: number; y: number },
   ) => string;
   removeCard: (id: string) => void;
@@ -45,6 +54,33 @@ export const useBrowserCardStore = create<BrowserCardStore>((set) => ({
       w: 800,
       h: 600,
       identityId,
+      backend: managedBrowserBinding(identityId),
+    };
+    set((state) => ({ cards: { ...state.cards, [id]: card } }));
+    markDirty();
+    return id;
+  },
+
+  addConnectedCard: (binding, connection, position) => {
+    const id = `browser-${Date.now()}-${++counter}`;
+    const card: BrowserCardData = {
+      id,
+      url: binding.tab.url,
+      title: binding.tab.title,
+      x: position?.x ?? window.innerWidth / 2 - 400,
+      y: position?.y ?? window.innerHeight / 2 - 300,
+      w: 800,
+      h: 600,
+      // Kept for legacy snapshot/UI compatibility; connected cards do not
+      // consume this partition.
+      identityId: "identity-default",
+      backend: {
+        kind: "connected-tab",
+        connectionId: connection.id,
+        tabBindingId: binding.id,
+        browser: connection.identity.browser,
+        profileLabel: connection.identity.profileLabel,
+      },
     };
     set((state) => ({ cards: { ...state.cards, [id]: card } }));
     markDirty();

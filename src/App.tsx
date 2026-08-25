@@ -43,7 +43,9 @@ import {
 } from "./actions/sceneCardActions";
 import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
-import { getBrowserWebview } from "./canvas/browserWebviewRegistry";
+import { BrowserController } from "./browser/browserController";
+import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
+import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { usePinStore } from "./stores/pinStore";
 import {
   useCanvasRegistryStore,
@@ -95,6 +97,9 @@ import { performContextualSelectAll } from "./utils/contextualSelectAll";
 // already tile the full viewport with their own opaque backgrounds, so
 // dropping this one is safe on mac and never visible on other platforms.
 const IS_MAC = (window.termcanvas?.app.platform ?? "darwin") === "darwin";
+const browserController = new BrowserController();
+browserController.register(legacyWebviewBrowserAdapter);
+browserController.register(connectedTabBrowserAdapter);
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -917,52 +922,32 @@ export function App() {
         return { ok: id !== null, id };
       },
 
-      // Drives a live browser tile's <webview> on behalf of the MCP server
-      // (see electron/api-server.ts's /browser/:id/action route, which
-      // reaches this via execRenderer since the webview instance only
-      // exists here in the renderer).
+      // Provider-neutral browser control. Existing cards resolve to the
+      // managed legacy-webview adapter; connected tabs use another adapter.
       driveBrowserCard: async (
         id: string,
         action: string,
         params: Record<string, unknown> = {},
+        actor: string = "system",
       ) => {
-        const webview = getBrowserWebview(id);
-        if (!webview) {
-          throw new Error(`Browser tile not found or not mounted: ${id}`);
+        const card = useBrowserCardStore.getState().cards[id];
+        if (!card) throw new Error(`Browser card not found: ${id}`);
+        const result = await browserController.execute(card, action, params);
+        recordDecision({
+          kind: "browser_action",
+          node: `browser:${id}`,
+          action,
+          backend: result.backend,
+          by: actor,
+          ok: result.ok,
+          ...(typeof params.url === "string" ? { url: params.url } : {}),
+          ...(!result.ok ? { error: result.error.message } : {}),
+        });
+        if (!result.ok) {
+          throw new Error(`${result.error.code}: ${result.error.message}`);
         }
-        switch (action) {
-          case "navigate": {
-            const url = params.url as string | undefined;
-            if (!url) throw new Error("navigate requires a url");
-            await webview.loadURL(url);
-            return { url: webview.getURL(), title: webview.getTitle() };
-          }
-          case "read": {
-            const text = await webview.executeJavaScript(
-              "document.body ? document.body.innerText : ''",
-            );
-            return { url: webview.getURL(), title: webview.getTitle(), text };
-          }
-          case "click": {
-            const selector = params.selector as string | undefined;
-            if (!selector) throw new Error("click requires a selector");
-            const clicked = await webview.executeJavaScript(
-              `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
-            );
-            if (!clicked) {
-              throw new Error(`No element matched selector: ${selector}`);
-            }
-            return { ok: true };
-          }
-          case "eval": {
-            const script = params.script as string | undefined;
-            if (!script) throw new Error("eval requires a script");
-            const result = await webview.executeJavaScript(script);
-            return { result };
-          }
-          default:
-            throw new Error(`Unknown browser action: ${action}`);
-        }
+        // Preserve the existing HTTP/MCP response shape during migration.
+        return result.data;
       },
     };
 

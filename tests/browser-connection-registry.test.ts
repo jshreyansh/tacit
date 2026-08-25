@@ -95,3 +95,30 @@ test("revoking the browser connection revokes every granted tab", () => {
     { code: "connection_unauthorized" },
   );
 });
+
+test("re-authorizing the same tab replaces its previous grant", () => {
+  const registry = new BrowserConnectionRegistry();
+  const offer = registry.beginPairing();
+  const paired = registry.completePairing(offer.code, identity);
+  const tab = { tabId: 7, windowId: 1, url: "https://linear.app", title: "Linear" };
+  const first = registry.authorizeTab(paired.connection.id, paired.token, tab, ["inspect"]);
+  const second = registry.authorizeTab(paired.connection.id, paired.token, tab, ["inspect"]);
+  assert.notEqual(first.id, second.id);
+  assert.deepEqual(
+    registry.listAuthorizedTabsForApp().map((entry) => entry.binding.id),
+    [second.id],
+  );
+  assert.throws(
+    () => registry.requireAuthorizedTabForApp(first.id, "inspect"),
+    { code: "tab_unauthorized" },
+  );
+});
+
+test("malformed connector payloads fail as validation errors", () => {
+  const registry = new BrowserConnectionRegistry();
+  const offer = registry.beginPairing();
+  assert.throws(
+    () => registry.completePairing(offer.code, { ...identity, profileLabel: undefined as never }),
+    { code: "identity_invalid", status: 400 },
+  );
+});

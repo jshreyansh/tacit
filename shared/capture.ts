@@ -99,6 +99,17 @@ export type CaptureEvent =
   | { kind: "rename"; node: CaptureNodeRef; title: string; by: CaptureActor }
   | { kind: "manager"; node: CaptureNodeRef | null; by: CaptureActor }
   | {
+      /** A browser capability was exercised; page contents stay in their source. */
+      kind: "browser_action";
+      node: CaptureNodeRef;
+      action: string;
+      backend: "managed" | "connected-tab";
+      by: CaptureActor;
+      ok: boolean;
+      url?: string;
+      error?: string;
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -175,7 +186,8 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "prompt": return event.actor;
     case "spawn":
     case "close":
-    case "rename": return event.node;
+    case "rename":
+    case "browser_action": return event.node;
     case "manager": return event.node;
     case "wire":
     case "unwire": return event.from;

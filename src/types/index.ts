@@ -662,6 +662,23 @@ export interface TermCanvasAPI {
     setCanvas: (canvasId: string | null) => void;
     getHealth: () => Promise<CaptureHealth>;
   };
+  browserConnection: {
+    beginPairing: () => Promise<{
+      endpoint: string;
+      code: string;
+      expiresAt: string;
+    }>;
+    listTabs: () => Promise<Array<{
+      binding: import("../../shared/browser-connection").ConnectedTabBinding;
+      connection: import("../../shared/browser-connection").ConnectedBrowserConnection;
+    }>>;
+    openExtensionFolder: () => Promise<string>;
+    execute: (input: {
+      bindingId: string;
+      action: import("../../shared/browser-controller").BrowserActionName;
+      params: Record<string, unknown>;
+    }) => Promise<unknown>;
+  };
   managerRole: {
     set: (
       input: {
