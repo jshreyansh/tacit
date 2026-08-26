@@ -34,8 +34,9 @@ import { BrowserConnectionRegistry } from "./browser-connection-registry";
 import { ConnectedBrowserBroker } from "./connected-browser-broker";
 import {
   discoverChromeProfiles,
-  importChromeProfileCookies,
+  importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
+import { isValidBrowserIdentityId, partitionForBrowserIdentity } from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -1848,18 +1849,13 @@ function setupIpc() {
     return `tc-attachment://local${fileUrl.pathname}`;
   });
 
-  // Browser identities are just named session partitions (see
-  // src/stores/identityStore.ts's `partitionForIdentity`). Deleting one
-  // should actually log the user out, not just forget its name — the
-  // prefix check keeps this from ever being pointed at an unrelated
-  // partition by a bug elsewhere in the renderer.
   ipcMain.handle(
     "browser-identity:clear-data",
-    async (_event, partitionName: string) => {
-      if (typeof partitionName !== "string" || !partitionName.startsWith("persist:identity-")) {
-        throw new Error(`refused to clear non-identity partition: ${partitionName}`);
+    async (_event, identityId: unknown) => {
+      if (!isValidBrowserIdentityId(identityId) || identityId === "identity-default") {
+        throw new Error("Refused to clear an invalid or default identity");
       }
-      await session.fromPartition(partitionName).clearStorageData();
+      await session.fromPartition(partitionForBrowserIdentity(identityId)).clearStorageData();
     },
   );
 
@@ -1871,27 +1867,13 @@ function setupIpc() {
     "browser-profile-import:chrome",
     async (
       _event,
-      input: { profileId?: unknown; partitionName?: unknown },
+      input: { profileIds?: unknown; existingIdentityNames?: unknown },
     ) => {
-      const profileId = input?.profileId;
-      const partitionName = input?.partitionName;
-      if (typeof profileId !== "string" || !profileId) {
-        throw new Error("A Chrome profile is required");
-      }
-      if (
-        typeof partitionName !== "string" ||
-        !partitionName.startsWith("persist:identity-")
-      ) {
-        throw new Error("Refused to import into a non-identity partition");
-      }
-      const targetSession = session.fromPartition(partitionName);
-      const result = await importChromeProfileCookies(
-        profileId,
-        targetSession.cookies,
-      );
-      await targetSession.cookies.flushStore();
-      await targetSession.flushStorageData();
-      return result;
+      if (!Array.isArray(input?.profileIds) || !input.profileIds.every((id) => typeof id === "string")) throw new Error("Chrome profile ids are required");
+      if (!Array.isArray(input?.existingIdentityNames) || input.existingIdentityNames.length > 1000 || !input.existingIdentityNames.every((name) => typeof name === "string" && name.length <= 200)) throw new Error("Existing identity names are invalid");
+      return importChromeProfilesAsIdentities(input.profileIds, input.existingIdentityNames, {
+        fromPartition: (partitionName) => session.fromPartition(partitionName),
+      });
     },
   );
 

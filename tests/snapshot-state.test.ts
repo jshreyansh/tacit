@@ -249,6 +249,44 @@ test("readWorkspaceSnapshot rejects unrelated JSON instead of treating it as an 
   );
 });
 
+test("readWorkspaceSnapshot preserves imported identity provenance and category statuses", async () => {
+  const { readWorkspaceSnapshot } = await loadSnapshotState("identity-provenance");
+  const categories = Object.fromEntries([
+    "profileMetadata", "cookies", "siteStorage", "history", "bookmarks",
+    "savedPasswords", "openTabs", "cacheAndWorkers", "protectedState",
+  ].map((name) => [name, { status: name === "cookies" ? "imported" : "unsupported", count: name === "cookies" ? 3 : 0 }]));
+  const restored = readWorkspaceSnapshot({
+    version: 3,
+    activeCanvasId: "canvas-1",
+    canvases: [{ id: "canvas-1", name: "Default", createdAt: 1, scene: { version: 2, camera: { x: 0, y: 0, zoom: 1 }, projects: [], annotations: [], browserCards: {} } }],
+    identities: [{ id: "identity-00000000-0000-4000-8000-000000000001", name: "Work", createdAt: 2, provenance: { source: "chrome", sourceProfileId: "Profile 2", sourceProfileName: "Work", importedAt: 2, categories } }],
+    activeIdentityId: "identity-00000000-0000-4000-8000-000000000001",
+  });
+  assert.ok(restored);
+  assert.equal(restored?.workspace.identities[0]?.provenance?.sourceProfileId, "Profile 2");
+  assert.equal(restored?.workspace.identities[0]?.provenance?.categories.cookies.status, "imported");
+  assert.equal(restored?.workspace.identities[0]?.provenance?.categories.savedPasswords.status, "unsupported");
+});
+
+test("readWorkspaceSnapshot rejects identities outside the shared safe legacy id grammar", async () => {
+  const { readWorkspaceSnapshot } = await loadSnapshotState("unsafe-identity-id");
+  const restored = readWorkspaceSnapshot({
+    version: 3,
+    activeCanvasId: "canvas-1",
+    canvases: [{ id: "canvas-1", name: "Default", createdAt: 1, scene: { version: 2, camera: { x: 0, y: 0, zoom: 1 }, projects: [], annotations: [], browserCards: {
+      "browser-1": { id: "browser-1", url: "https://example.com", title: "Example", x: 0, y: 0, w: 800, h: 600, identityId: "identity-../../escape", backend: { kind: "managed", engine: "legacy-webview", identityId: "identity-../../escape" } },
+    } } }],
+    identities: [{ id: "identity-../../escape", name: "Unsafe", createdAt: 2 }],
+    activeIdentityId: "identity-../../escape",
+  });
+  assert.ok(restored);
+  assert.equal(restored?.workspace.identities.length, 1);
+  assert.equal(restored?.workspace.identities[0]?.id, "identity-default");
+  const card = restored?.workspace.canvases[0]?.scene.browserCards["browser-1"];
+  assert.equal(card?.identityId, "identity-default");
+  assert.deepEqual(card?.backend, { kind: "managed", engine: "legacy-webview", identityId: "identity-default" });
+});
+
 test("scene restores keep terminal status while sanitizing runtime-only PTY ids", async () => {
   const { readWorkspaceSnapshot } = await loadSnapshotState("scene-status");
 

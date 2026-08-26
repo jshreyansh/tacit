@@ -5,7 +5,6 @@ import { useT } from "../i18n/useT";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import {
   useIdentityStore,
-  partitionForIdentity,
 } from "../stores/identityStore";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { addConnectedBrowserCardToScene } from "../actions/sceneCardActions";
@@ -13,7 +12,7 @@ import type {
   ConnectedBrowserConnection,
   ConnectedTabBinding,
 } from "../../shared/browser-connection";
-import type { ImportableBrowserProfile } from "../../shared/browser-profile-import";
+import type { BrowserProfileImportResult, ImportableBrowserProfile } from "../../shared/browser-profile-import";
 
 interface PairingOffer {
   endpoint: string;
@@ -101,6 +100,19 @@ function ActiveDotGlyph() {
   );
 }
 
+function ImportResultSummary({ result }: { result?: BrowserProfileImportResult }) {
+  if (!result) return null;
+  if (result.status === "failed") {
+    return <div className="tc-timestamp mt-1" style={{ color: "var(--danger)" }}>{result.error} — retry available</div>;
+  }
+  const cookies = result.identity.provenance.categories.cookies;
+  return (
+    <div className="tc-timestamp mt-1" style={{ color: "var(--text-muted)" }}>
+      Created “{result.identity.name}” · cookies {cookies.status} ({cookies.count}) · passwords unsupported
+    </div>
+  );
+}
+
 function BrowserLinkGlyph() {
   return (
     <svg
@@ -134,6 +146,7 @@ export function IdentityManagerModal() {
   );
   const activeIdentityId = useIdentityStore((s) => s.activeIdentityId);
   const createIdentity = useIdentityStore((s) => s.createIdentity);
+  const registerImportedIdentity = useIdentityStore((s) => s.registerImportedIdentity);
   const renameIdentity = useIdentityStore((s) => s.renameIdentity);
   const deleteIdentity = useIdentityStore((s) => s.deleteIdentity);
   const setActiveIdentity = useIdentityStore((s) => s.setActiveIdentity);
@@ -149,7 +162,10 @@ export function IdentityManagerModal() {
   const [loadingBrowsers, setLoadingBrowsers] = useState(false);
   const [importProfiles, setImportProfiles] = useState<ImportableBrowserProfile[]>([]);
   const [loadingImportProfiles, setLoadingImportProfiles] = useState(false);
-  const [importingProfileId, setImportingProfileId] = useState<string | null>(null);
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [importResults, setImportResults] = useState<Record<string, BrowserProfileImportResult>>({});
+  const [importing, setImporting] = useState(false);
+  const importLockRef = useRef(false);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const refreshAuthorizedTabs = useCallback(async () => {
@@ -167,7 +183,9 @@ export function IdentityManagerModal() {
   const refreshImportProfiles = useCallback(async () => {
     setLoadingImportProfiles(true);
     try {
-      setImportProfiles(await window.termcanvas.browserIdentity.listImportProfiles());
+      const profiles = await window.termcanvas.browserIdentity.listImportProfiles();
+      setImportProfiles(profiles);
+      setSelectedProfileIds(profiles.map((profile) => profile.profileId));
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Could not find Chrome profiles");
     } finally {
@@ -248,28 +266,37 @@ export function IdentityManagerModal() {
     setBrowserStatus(`Added “${entry.binding.tab.title || entry.binding.tab.url}” to the canvas.`);
   }, []);
 
-  const importChromeProfile = useCallback(async (profile: ImportableBrowserProfile) => {
-    const targetIdentity = identitiesById[activeIdentityId];
-    if (!targetIdentity) return;
-    setImportingProfileId(profile.profileId);
-    setBrowserStatus(`Importing signed-in sessions from “${profile.name}”…`);
+  const importChromeProfiles = useCallback(async (profileIds: string[]) => {
+    if (importLockRef.current || profileIds.length === 0) return;
+    importLockRef.current = true;
+    setImporting(true);
+    setBrowserStatus(`Importing ${profileIds.length} Chrome profile${profileIds.length === 1 ? "" : "s"} into fresh identities…`);
     try {
-      const result = await window.termcanvas.browserIdentity.importChromeProfile({
-        profileId: profile.profileId,
-        partitionName: partitionForIdentity(targetIdentity.id),
+      const batch = await window.termcanvas.browserIdentity.importChromeProfiles({
+        profileIds,
+        existingIdentityNames: identities.map((identity) => identity.name),
       });
-      window.dispatchEvent(new CustomEvent("tacit:browser-identity-imported", {
-        detail: { identityId: targetIdentity.id },
-      }));
-      setBrowserStatus(
-        `Imported ${result.importedCookies.toLocaleString()} session cookies from “${result.profileName}” into “${targetIdentity.name}” (${result.skippedCookies.toLocaleString()} expired or unsupported, ${result.failedCookies.toLocaleString()} failed). Browser nodes using this identity were reopened.`,
-      );
+      const nextResults: Record<string, BrowserProfileImportResult> = {};
+      for (const result of batch.results) {
+        nextResults[result.profileId] = result;
+        if (result.status === "completed") registerImportedIdentity(result.identity);
+      }
+      setImportResults((current) => ({ ...current, ...nextResults }));
+      const completed = batch.results.filter((result) => result.status === "completed").length;
+      const failures = batch.results.filter((result) => result.status === "failed");
+      const cleaned = failures.filter((result) => result.cleanup === "completed").length;
+      const cleanupFailed = failures.length - cleaned;
+      const failureSummary = failures.length === 0
+        ? ""
+        : `; ${failures.length} failed (${cleaned} incomplete ${cleaned === 1 ? "identity was" : "identities were"} removed${cleanupFailed > 0 ? `; cleanup failed for ${cleanupFailed}` : ""})`;
+      setBrowserStatus(`Created ${completed} new browser ${completed === 1 ? "identity" : "identities"}${failureSummary}.`);
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Chrome import failed");
     } finally {
-      setImportingProfileId(null);
+      importLockRef.current = false;
+      setImporting(false);
     }
-  }, [activeIdentityId, identitiesById]);
+  }, [identities, registerImportedIdentity]);
 
   const commitRename = useCallback(() => {
     if (!editingId) return;
@@ -296,9 +323,7 @@ export function IdentityManagerModal() {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
-      await window.termcanvas.browserIdentity.clearData(
-        partitionForIdentity(confirmDeleteId),
-      );
+      await window.termcanvas.browserIdentity.clearData(confirmDeleteId);
     } catch (err) {
       console.error("[IdentityManagerModal] failed to clear session data", err);
     }
@@ -485,13 +510,13 @@ export function IdentityManagerModal() {
               </span>
               <div className="min-w-0 flex-1">
                 <span className="tc-ui" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-                  Bring in your Chrome sessions
+                  Import from Chrome
                 </span>
                 <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  One-time import into <strong>{identitiesById[activeIdentityId]?.name ?? "the selected identity"}</strong>. Quit Chrome first; Tacit copies signed-in website sessions into its own private browser storage and never changes Chrome.
+                  Each selected Chrome profile becomes its own persistent Tacit identity. Default and existing identities stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
                 </p>
                 <p className="tc-timestamp mt-1" style={{ color: "var(--text-faint)" }}>
-                  Imports login cookies now. Saved-password and browsing-history import will follow; passwords are not read in this version.
+                  Portable cookies are imported. Storage, history, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.
                 </p>
 
                 {browserStatus && (
@@ -517,31 +542,44 @@ export function IdentityManagerModal() {
                     <div className="tc-meta rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--text-muted)]">
                       No local Chrome profiles found.
                     </div>
-                  ) : importProfiles.map((profile) => (
+                  ) : <>
+                    <div className="flex items-center justify-end gap-2 pb-1">
+                      <button type="button" disabled={importing || selectedProfileIds.length === 0} onClick={() => void importChromeProfiles(selectedProfileIds)} className="tc-ui rounded-md border border-[var(--border)] px-2.5 py-1 disabled:opacity-40">Import selected</button>
+                      <button type="button" disabled={importing} onClick={() => void importChromeProfiles(importProfiles.map((profile) => profile.profileId))} className="tc-ui rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)] disabled:opacity-40">{importing ? "Importing…" : "Import all"}</button>
+                    </div>
+                    {importProfiles.map((profile) => (
                     <div
                       key={profile.profileId}
                       className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2.5 py-2"
                       style={{ background: "var(--bg)" }}
                     >
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${profile.name}`}
+                        checked={selectedProfileIds.includes(profile.profileId)}
+                        disabled={importing}
+                        onChange={(event) => setSelectedProfileIds((current) => event.target.checked ? [...current, profile.profileId] : current.filter((id) => id !== profile.profileId))}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
                           {profile.name}
                         </div>
                         <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
-                          Chrome · {profile.profileId}
+                          Chrome · {profile.profileId}{profile.accountHint ? ` · ${profile.accountHint}` : ""}
                         </div>
+                        <ImportResultSummary result={importResults[profile.profileId]} />
                       </div>
                       <button
                         type="button"
-                        disabled={importingProfileId !== null}
-                        onClick={() => void importChromeProfile(profile)}
+                        disabled={importing}
+                        onClick={() => void importChromeProfiles([profile.profileId])}
                         className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)] disabled:opacity-40"
                       >
-                        {importingProfileId === profile.profileId ? "Importing…" : "Import sessions"}
+                        Import
                       </button>
                     </div>
-                  ))}
+                    ))}
+                  </>}
                 </div>
 
                 <details className="mt-3 border-t border-[var(--border)] pt-2">

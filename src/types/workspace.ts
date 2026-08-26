@@ -1,4 +1,5 @@
 import type { SceneDocument } from "./scene";
+import type { BrowserIdentityProvenance } from "../../shared/browser-profile-import";
 
 export interface WorkspaceCanvas {
   id: string;
@@ -19,6 +20,7 @@ export interface BrowserIdentity {
   id: string;
   name: string;
   createdAt: number;
+  provenance?: BrowserIdentityProvenance;
 }
 
 export interface WorkspaceDocument {

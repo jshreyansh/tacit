@@ -7,9 +7,10 @@ import {
   DEFAULT_IDENTITY_NAME,
 } from "../types/workspace";
 import { managedBrowserBinding } from "../../shared/browser-controller";
+import { partitionForBrowserIdentity, type ImportedBrowserIdentity } from "../../shared/browser-profile-import";
 
 export function partitionForIdentity(identityId: string): string {
-  return `persist:identity-${identityId}`;
+  return partitionForBrowserIdentity(identityId);
 }
 
 let identityIdCounter = 0;
@@ -57,6 +58,7 @@ interface IdentityActions {
   /** Replace the entire registry from a persisted document. */
   hydrate: (identities: BrowserIdentity[], activeIdentityId: string) => void;
   createIdentity: (name?: string) => string;
+  registerImportedIdentity: (identity: ImportedBrowserIdentity) => void;
   renameIdentity: (id: string, name: string) => void;
   /**
    * Delete an identity. No-op if it's the last remaining one. Reassigns
@@ -111,6 +113,13 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
     });
     markDirty();
     return id;
+  },
+
+  registerImportedIdentity: (identity) => {
+    const { identities } = get();
+    if (identities[identity.id]) return;
+    set({ identities: { ...identities, [identity.id]: identity }, activeIdentityId: identity.id });
+    markDirty();
   },
 
   renameIdentity: (id, name) => {

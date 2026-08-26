@@ -6,13 +6,85 @@ export interface ImportableBrowserProfile {
   profileId: string;
   /** User-visible Chrome profile name from Local State. */
   name: string;
+  /** Non-secret account label (normally an email) exposed by Chrome metadata. */
+  accountHint?: string;
+  /** Chrome's built-in avatar identifier/URL; never a source filesystem path. */
+  avatarHint?: string;
 }
 
-export interface BrowserProfileImportResult {
+export type BrowserProfileCategory =
+  | "profileMetadata"
+  | "cookies"
+  | "siteStorage"
+  | "history"
+  | "bookmarks"
+  | "savedPasswords"
+  | "openTabs"
+  | "cacheAndWorkers"
+  | "protectedState";
+
+export type BrowserProfileCategoryStatus =
+  "imported" | "partial" | "empty" | "unsupported" | "failed";
+
+export interface BrowserProfileCategoryResult {
+  status: BrowserProfileCategoryStatus;
+  count: number;
+  detail?: string;
+}
+
+export type BrowserProfileCategorySummary = Record<
+  BrowserProfileCategory,
+  BrowserProfileCategoryResult
+>;
+
+export interface BrowserIdentityProvenance {
   source: BrowserProfileImportSource;
+  sourceProfileId: string;
+  sourceProfileName: string;
+  importedAt: number;
+  categories: BrowserProfileCategorySummary;
+}
+
+export interface ImportedBrowserIdentity {
+  id: string;
+  name: string;
+  createdAt: number;
+  provenance: BrowserIdentityProvenance;
+}
+
+export interface BrowserProfileImportSuccess {
+  status: "completed";
   profileId: string;
-  profileName: string;
-  importedCookies: number;
-  skippedCookies: number;
-  failedCookies: number;
+  identity: ImportedBrowserIdentity;
+}
+
+export interface BrowserProfileImportFailure {
+  status: "failed";
+  profileId: string;
+  errorCode: "profile_import_failed" | "cleanup_failed";
+  error: string;
+  cleanup: "completed" | "failed";
+}
+
+export type BrowserProfileImportResult =
+  | BrowserProfileImportSuccess
+  | BrowserProfileImportFailure;
+
+export interface BrowserProfileImportBatchResult {
+  source: BrowserProfileImportSource;
+  results: BrowserProfileImportResult[];
+}
+
+// UUID imports and pre-v2 renderer-created ids both use this traversal-safe
+// identifier grammar. Keeping legacy ids valid preserves old workspaces.
+const IDENTITY_ID_PATTERN = /^identity-[a-z0-9]+(?:-[a-z0-9]+)*$/i;
+
+export function isValidBrowserIdentityId(value: unknown): value is string {
+  return value === "identity-default" ||
+    (typeof value === "string" && IDENTITY_ID_PATTERN.test(value));
+}
+
+export function partitionForBrowserIdentity(identityId: string): string {
+  if (!isValidBrowserIdentityId(identityId)) throw new Error("Invalid browser identity id");
+  return `persist:identity-${identityId}`;
 }

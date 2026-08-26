@@ -961,15 +961,15 @@ export interface TermCanvasAPI {
     pickBackgroundImage: () => Promise<string | null>;
   };
   browserIdentity: {
-    clearData: (partitionName: string) => Promise<void>;
+    clearData: (identityId: string) => Promise<void>;
     listImportProfiles: () => Promise<
       import("../../shared/browser-profile-import").ImportableBrowserProfile[]
     >;
-    importChromeProfile: (input: {
-      profileId: string;
-      partitionName: string;
+    importChromeProfiles: (input: {
+      profileIds: string[];
+      existingIdentityNames: string[];
     }) => Promise<
-      import("../../shared/browser-profile-import").BrowserProfileImportResult
+      import("../../shared/browser-profile-import").BrowserProfileImportBatchResult
     >;
   };
   fs: {

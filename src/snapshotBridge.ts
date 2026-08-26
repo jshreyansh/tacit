@@ -14,6 +14,9 @@ import type {
   WorkspaceCanvas,
   WorkspaceDocument,
 } from "./types/workspace";
+import type { BrowserProfileCategorySummary } from "../shared/browser-profile-import";
+import { isValidBrowserIdentityId } from "../shared/browser-profile-import";
+import { managedBrowserBinding } from "../shared/browser-controller";
 import {
   DEFAULT_CANVAS_NAME,
   DEFAULT_IDENTITY_ID,
@@ -683,8 +686,26 @@ function coerceBrowserIdentity(value: unknown): BrowserIdentity | null {
   const name = typeof value.name === "string" ? value.name : null;
   const createdAt =
     typeof value.createdAt === "number" ? value.createdAt : Date.now();
-  if (!id || !name) return null;
-  return { id, name, createdAt };
+  if (!isValidBrowserIdentityId(id) || !name) return null;
+  const rawProvenance = isRecord(value.provenance) ? value.provenance : null;
+  const sourceProfileId = rawProvenance && typeof rawProvenance.sourceProfileId === "string"
+    ? rawProvenance.sourceProfileId : null;
+  const sourceProfileName = rawProvenance && typeof rawProvenance.sourceProfileName === "string"
+    ? rawProvenance.sourceProfileName : null;
+  const importedAt = rawProvenance && typeof rawProvenance.importedAt === "number"
+    ? rawProvenance.importedAt : null;
+  const rawCategories = rawProvenance && isRecord(rawProvenance.categories)
+    ? rawProvenance.categories : null;
+  const categoryNames = ["profileMetadata", "cookies", "siteStorage", "history", "bookmarks", "savedPasswords", "openTabs", "cacheAndWorkers", "protectedState"] as const;
+  const categories = rawCategories ? Object.fromEntries(categoryNames.flatMap((category) => {
+    const entry = rawCategories[category];
+    if (!isRecord(entry) || !["imported", "partial", "empty", "unsupported", "failed"].includes(String(entry.status)) || typeof entry.count !== "number") return [];
+    return [[category, { status: entry.status, count: entry.count, ...(typeof entry.detail === "string" ? { detail: entry.detail } : {}) }]];
+  })) : null;
+  const provenance = rawProvenance?.source === "chrome" && sourceProfileId && sourceProfileName && importedAt !== null && categories && Object.keys(categories).length === categoryNames.length
+    ? { source: "chrome" as const, sourceProfileId, sourceProfileName, importedAt, categories: categories as BrowserProfileCategorySummary }
+    : undefined;
+  return { id, name, createdAt, ...(provenance ? { provenance } : {}) };
 }
 
 function defaultIdentities(): {
@@ -741,7 +762,30 @@ function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
       ? requestedActive
       : canvases[0].id;
   const { identities, activeIdentityId } = coerceIdentities(value);
-  return { version: 3, activeCanvasId, canvases, identities, activeIdentityId };
+  const identityIds = new Set(identities.map((identity) => identity.id));
+  const repairedCanvases = canvases.map((canvas) => ({
+    ...canvas,
+    scene: {
+      ...canvas.scene,
+      browserCards: Object.fromEntries(
+        Object.entries(canvas.scene.browserCards).map(([cardId, card]) => {
+          if (card.backend?.kind === "connected-tab") return [cardId, card];
+          const requestedIdentityId = card.backend?.kind === "managed"
+            ? card.backend.identityId
+            : card.identityId;
+          const identityId = isValidBrowserIdentityId(requestedIdentityId) && identityIds.has(requestedIdentityId)
+            ? requestedIdentityId
+            : activeIdentityId;
+          return [cardId, {
+            ...card,
+            identityId,
+            backend: managedBrowserBinding(identityId),
+          }];
+        }),
+      ),
+    },
+  }));
+  return { version: 3, activeCanvasId, canvases: repairedCanvases, identities, activeIdentityId };
 }
 
 function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {

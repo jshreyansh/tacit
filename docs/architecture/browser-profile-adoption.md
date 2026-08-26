@@ -1,82 +1,58 @@
-# Browser profile adoption decision
+# Browser Profile Adoption v2
 
-## Decision
+## Product contract
 
-Tacit will use a staged hybrid model:
+Chrome profiles are import sources, not bags of cookies to merge into an existing Tacit identity. Each selected Chrome profile creates one independent, persistent Tacit browser identity. The built-in `Default` identity is never an import destination. Importing all selected profiles creates one identity per source profile, and every managed browser node can switch to any imported identity.
 
-1. **Tacit identity with one-time session import** — an isolated, persistent browser identity owned by Tacit. On macOS, the user can select a local Chrome profile, quit Chrome, and import its portable login cookies once. Tacit decrypts them through Chrome Safe Storage and immediately re-encrypts them in the destination Electron session; raw values never reach renderer state, snapshots, capture, or logs.
-2. **Connected tab (optional)** — a browser extension connects one explicitly selected tab from Chrome, Edge, or Brave when a live system-browser tab is specifically useful.
-3. **System-browser OAuth handoff** — app-owned OAuth opens in the system browser and returns through a secure callback where a provider supports it.
+The source remains read-only. Tacit first snapshots the required Chrome files into a private temporary directory, imports into a fresh Tacit partition, flushes it, and only then publishes the identity to renderer state. A failed import clears the fresh partition and leaves no visible identity. Re-importing the same source creates a deliberate refreshed replacement or an explicitly named additional identity; it never silently mixes state.
 
-Tacit will not mount, mutate, or concurrently reuse a live system-browser profile. The first import slice is cookies only: saved passwords and browsing history are not read. Chromium app-bound (`v20`) cookies are deliberately skipped rather than bypassing their protection.
+## Trust boundary
 
-## Why
+- The renderer sends a validated Chrome profile id and an import request. It never chooses an arbitrary Electron partition.
+- The main process creates the identity id and destination partition, performs migration, and returns only metadata and counts/statuses.
+- Raw cookies, passwords, tokens, encryption keys, local-storage values, and IndexedDB records never enter renderer state, logs, snapshots, capture, or IPC results.
+- Chrome is never mounted as a live Electron partition and no source file is modified.
+- Temporary snapshots are exact app-created paths and are removed in `finally` paths.
+- Protected or incompatible state is reported as unsupported/needs-login; it is not counted as imported.
 
-Google's OAuth policy prohibits directing authorization requests to a developer-controlled embedded user-agent. Changing a user agent or replacing `<webview>` with another embedded Electron surface does not remove that policy boundary. Electron also recommends moving away from `<webview>` because of its stability architecture.
+## Import categories
 
-A one-time cookie import provides the lowest-friction normal experience: browser nodes stay signed in using Tacit-owned storage without requiring an extension action for every tab. Chrome must be closed during the database copy, and only a validated profile directory can be selected. The connected-tab extension remains useful for sites whose sessions cannot be ported or when the user explicitly wants to control the live Chrome tab.
+Every result contains a truthful status for each category (`imported`, `partial`, `empty`, `unsupported`, or `failed`) plus non-sensitive counts.
 
-## Feasibility and risk
+| Category | v2 behavior |
+|---|---|
+| Profile name, avatar/account hint | Create identity metadata and provenance from Chrome `Local State`/`Preferences`; never expose account secrets. |
+| Cookies/session cookies | Decrypt portable v10/v11 values through macOS Keychain and re-save through Electron. App-bound v20 values remain unsupported. |
+| Local/session storage, IndexedDB, shared storage | Migrate only through a compatibility-checked, staged adapter. Never raw-copy a live database into an active partition. If Chromium formats are incompatible, report partial/unsupported per category. |
+| History, favicons, bookmarks | Import into Tacit-owned browsing metadata used for address suggestions/history UI; do not pretend Electron itself consumes Chrome's SQLite files. |
+| Saved passwords | Opt-in only. Decrypt in main process after a visible macOS permission and store in Tacit's own Keychain-backed vault. Autofill is explicit; plaintext never persists or crosses IPC. If the secure vault/autofill path is not complete, report unsupported and do not read passwords. |
+| Open tabs | Optional follow-up action that can create browser nodes; not required to consider an identity imported. |
+| Cache and service workers | Rebuild naturally after navigation; stale caches/workers are not copied. |
+| Passkeys, payment methods, extensions, device/app-bound tokens | Never copied. Explain that the relevant site may require one fresh login. |
 
-| Path | Existing login | Corruption risk | Google sign-in | Automation | Recommendation |
-|---|---:|---:|---:|---:|---|
-| Tacit persistent identity + one-time cookie import | Yes, for portable sessions | Low | Existing session reused where portable | Strong | Primary onboarding path |
-| Connected Chrome tab | Yes | Low | Yes, login stays in Chrome | Strong | Optional live-tab path |
-| Connected Edge tab | Yes | Low | Yes, login stays in Edge | Strong | Same Chromium extension adapter |
-| Connected Brave tab | Yes | Low | Yes, login stays in Brave | Strong | Same adapter; test Brave-specific policy |
-| Safari tab | Yes | Low | Yes | Separate extension/runtime APIs | Later adapter, not first prototype |
-| Limited bookmark/history import | Partial | Medium | Not applicable | Weak | Consider later with preview/rollback |
-| Saved-password import | Potentially | High | Not applicable | N/A | Deferred; Electron exposes no supported importer |
-| Direct raw cookie DB copy | Potentially | High | Fragile | N/A | Rejected; cookies are decrypted and re-saved individually instead |
-| Direct live profile reuse | Yes | Critical | Unreliable | Fragile | Rejected |
+## UX
 
-## Permission experience
+The manager says **Import from Chrome**, lists source profiles with name/avatar/account hint where available, supports selecting profiles and **Import selected** / **Import all**, and shows progress per profile. Successful rows say which new Tacit identity was created and summarize each category. Failed rows remain retryable and do not appear in the identity list. Existing identities and Default remain unchanged.
 
-The first browser-import flow should say exactly what happens:
+The normal browser-node identity menu includes the newly imported identities. Selecting one reopens that managed node on the identity's persistent partition. The optional connected-tab extension stays separate and clearly labeled as a live-tab path.
 
-1. Tacit lists user-visible Chrome profile names and the currently selected Tacit identity.
-2. The user quits Chrome and chooses **Import sessions**.
-3. macOS may ask for Keychain access to Chrome Safe Storage.
-4. Tacit reports only imported/skipped/failed counts and refreshes browser nodes using that identity.
-5. The source Chrome profile is never written to and the temporary database copy is deleted.
+## Acceptance criteria
 
-The optional connected-tab flow continues to show a short-lived pairing code, explicit per-tab approval, requested capabilities, and revocation controls.
+1. Importing profile A creates identity A and writes only to A's new partition; `Default` is byte-for-byte untouched.
+2. Importing profiles A and B in one action creates two isolated identities. A cookie written in A is absent from B and Default.
+3. A failed profile import clears its fresh partition and does not register an identity. Other profiles in the same batch may succeed.
+4. Duplicate display names are deterministically disambiguated. Provenance (`source`, source profile id/name, imported timestamp, category summary) survives snapshot save/restore; parser paths do not drop it.
+5. Renderer-controlled partition names are removed from import and clear-data IPC. Main-process handlers validate identity ids/profile ids and own partition resolution.
+6. Import requires Chrome to be fully quit before source snapshotting and copies SQLite WAL/SHM sidecars where relevant.
+7. UI has stable busy/progress/success/error states and cannot be double-submitted by rerendering.
+8. Results never include cookie values, passwords, tokens, keys, raw site-storage values, or source filesystem paths.
+9. Existing browser identities, connected tabs, browser cards, snapshots, and old workspaces continue to work.
+10. Unit/integration tests cover discovery metadata, identity transaction/rollback, import-all partial success, isolation, IPC validation, snapshot provenance, and protected-data reporting. Typecheck, browser tests, full tests, production build, and packaged-app smoke test pass before a DMG is handed off.
 
-Sensitive form values are redacted from the capture record. Uploads, downloads, and any non-portable debugging operation require separate visible permission.
+## Platform boundary
 
-## Prototype boundary
+Tacit can reproduce the portable parts of a Chrome profile's browsing identity; it cannot literally become Chrome or clone proprietary Chrome Sync, extensions, passkeys, payment credentials, or device-bound sessions. The UI must call this a profile import and describe any site that still needs one login. A connected system-browser profile remains the later route for exact live Chrome state.
 
-`browser-profile-import.ts` implements the app-owned import slice:
+## Browser surface direction
 
-- validated Chrome-root/profile-directory discovery;
-- Chrome-closed enforcement before copying the database;
-- macOS Chrome Safe Storage key retrieval without renderer exposure;
-- v10/v11 decryption with schema-24 host authentication;
-- explicit rejection of app-bound v20 data;
-- per-cookie re-encryption by Electron's destination session;
-- count-only results and exact temporary-directory cleanup.
-
-`BrowserConnectionRegistry` separately implements the optional live-tab slice:
-
-- expiring, one-use pairing offers;
-- protocol and browser/profile identity checks;
-- a high-entropy install-scoped connection token;
-- explicit per-tab and per-capability authorization;
-- constant-time token verification;
-- tab-level and whole-browser revocation;
-- rejection of stale, spoofed, cross-tab, and missing-capability requests.
-
-The registry intentionally contains no API for profile paths, cookies, passwords, or arbitrary unselected tabs.
-
-## Migration and rollback
-
-Existing Tacit identities and their `persist:identity-*` partitions remain the destination. Import writes cookies through Electron's supported session API and refreshes existing managed cards; it never mounts or modifies the Chrome source. Connecting a system tab creates a separate backend binding and never converts an identity partition.
-
-Rollback is deletion-only: deleting a Tacit identity clears its imported sessions through the existing partition wipe. Revoking an extension connection removes only the live-tab backend. Chrome remains untouched in both cases.
-
-## Sources
-
-- [Electron `<webview>` warning](https://www.electronjs.org/docs/latest/api/webview-tag)
-- [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
-- [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger)
-- [Google OAuth 2.0 policies](https://developers.google.com/identity/protocols/oauth2/policies)
+Electron recommends moving away from `<webview>`. Profile Adoption v2 must keep partition ownership behind a browser-surface abstraction so managed nodes can migrate to `WebContentsView` without changing identity semantics. That surface migration is a separate risk-controlled change; profile import must not depend on raw `<webview>` APIs beyond selecting a persistent partition today.

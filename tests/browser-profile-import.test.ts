@@ -11,14 +11,16 @@ import {
   deriveMacChromiumKey,
   discoverChromeProfiles,
   importChromeProfileCookies,
+  importChromeProfilesAsIdentities,
 } from "../electron/browser-profile-import";
+import { isValidBrowserIdentityId, partitionForBrowserIdentity } from "../shared/browser-profile-import";
 
 function chromeFixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-chrome-profile-test-"));
   fs.writeFileSync(path.join(root, "Local State"), JSON.stringify({
     profile: {
       info_cache: {
-        Default: { name: "Personal" },
+        Default: { name: "Personal", user_name: "person@example.com", avatar_icon: "chrome://theme/IDR_PROFILE_AVATAR_1" },
         "Profile 2": { name: "Work" },
         "../escape": { name: "Unsafe" },
       },
@@ -63,7 +65,7 @@ test("Chrome profile discovery exposes names but rejects unsafe profile paths", 
   const root = chromeFixture();
   try {
     assert.deepEqual(discoverChromeProfiles(root), [
-      { source: "chrome", profileId: "Default", name: "Personal" },
+      { source: "chrome", profileId: "Default", name: "Personal", accountHint: "person@example.com", avatarHint: "chrome://theme/IDR_PROFILE_AVATAR_1" },
       { source: "chrome", profileId: "Profile 2", name: "Work" },
     ]);
   } finally {
@@ -191,4 +193,122 @@ test("Chromium timestamps convert from the 1601 epoch", () => {
   assert.equal(chromiumTimestampToUnixSeconds(0), undefined);
   assert.equal(chromiumTimestampToUnixSeconds(11_644_473_600_000_000), 0);
   assert.equal(chromiumTimestampToUnixSeconds(11_644_473_601_000_000), 1);
+});
+
+test("identity partitions use the shared strict id rule", () => {
+  const id = "identity-00000000-0000-4000-8000-000000000001";
+  assert.equal(isValidBrowserIdentityId(id), true);
+  assert.equal(partitionForBrowserIdentity(id), `persist:identity-${id}`);
+  assert.equal(isValidBrowserIdentityId("identity-../../Default"), false);
+  assert.throws(() => partitionForBrowserIdentity("identity-../../Default"));
+});
+
+test("batch import creates isolated identities, disambiguates names, and reports unsupported categories", async () => {
+  const root = chromeFixture();
+  fs.writeFileSync(path.join(root, "Local State"), JSON.stringify({ profile: { info_cache: {
+    Default: { name: "Work", user_name: "person@example.com", avatar_icon: "chrome://theme/avatar" },
+    "Profile 2": { name: "Work" },
+  } } }));
+  const partitions = new Map<string, { values: string[]; cleared: boolean }>();
+  const uuids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default", "Profile 2"], ["Default", "Work"], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => uuids.shift()!,
+      now: () => 1234,
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "secret", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: (partitionName) => {
+        assert.notEqual(partitionName, "persist:identity-identity-default");
+        const state = { values: [] as string[], cleared: false };
+        partitions.set(partitionName, state);
+        return {
+          cookies: { set: async (cookie) => { state.values.push(cookie.value); }, remove: async () => {}, flushStore: async () => {} },
+          flushStorageData: async () => {},
+          clearStorageData: async () => { state.cleared = true; state.values = []; },
+        };
+      },
+    });
+    assert.equal(result.results.length, 2);
+    assert.equal(partitions.size, 2);
+    assert.deepEqual([...partitions.values()].map((state) => state.values), [["secret"], ["secret"]]);
+    const completed = result.results.filter((entry) => entry.status === "completed");
+    assert.deepEqual(completed.map((entry) => entry.status === "completed" && entry.identity.name), ["Work 2", "Work 3"]);
+    assert.equal(completed[0]?.status === "completed" && completed[0].identity.provenance.categories.savedPasswords.status, "unsupported");
+    assert.equal(JSON.stringify(result).includes("secret"), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("batch import rolls back a failed identity while preserving another success", async () => {
+  const root = chromeFixture();
+  let partitionNumber = 0;
+  const cleared: string[] = [];
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default", "Profile 2"], [], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => `00000000-0000-4000-8000-00000000000${++partitionNumber}`,
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "private", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: (partitionName) => ({
+        cookies: { set: async () => { if (partitionName.endsWith("2")) throw new Error("write failed"); }, remove: async () => {}, flushStore: async () => {} },
+        flushStorageData: async () => {},
+        clearStorageData: async () => { cleared.push(partitionName); },
+      }),
+    });
+    assert.deepEqual(result.results.map((entry) => entry.status), ["completed", "failed"]);
+    assert.equal(cleared.length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("batch import does not expose snapshot filesystem paths in failure results", async () => {
+  const root = chromeFixture();
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default"], [], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readCookieRows: async (cookieDbPath) => {
+        throw new Error(`could not open snapshot at ${cookieDbPath}`);
+      },
+      fromPartition: () => ({
+        cookies: { set: async () => {}, remove: async () => {} },
+        flushStorageData: async () => {},
+        clearStorageData: async () => {},
+      }),
+    });
+    assert.equal(result.results[0]?.status, "failed");
+    assert.equal(result.results[0]?.status === "failed" ? result.results[0].errorCode : "", "profile_import_failed");
+    assert.equal(result.results[0]?.status === "failed" ? result.results[0].cleanup : "", "completed");
+    assert.equal(JSON.stringify(result).includes("tacit-chrome-import-"), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rollback failure stays profile-scoped and does not discard other batch results", async () => {
+  const root = chromeFixture();
+  let partitionNumber = 0;
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default", "Profile 2"], [], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => `00000000-0000-4000-8000-00000000000${++partitionNumber}`,
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "private", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: (partitionName) => ({
+        cookies: { set: async () => { if (partitionName.endsWith("1")) throw new Error("write failed"); }, remove: async () => {} },
+        flushStorageData: async () => {},
+        clearStorageData: async () => { if (partitionName.endsWith("1")) throw new Error("clear failed"); },
+      }),
+    });
+    assert.deepEqual(result.results.map((entry) => entry.status), ["failed", "completed"]);
+    assert.match(result.results[0]?.status === "failed" ? result.results[0].error : "", /rollback/i);
+    assert.equal(result.results[0]?.status === "failed" ? result.results[0].errorCode : "", "cleanup_failed");
+    assert.equal(result.results[0]?.status === "failed" ? result.results[0].cleanup : "", "failed");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

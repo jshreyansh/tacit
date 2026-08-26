@@ -659,21 +659,21 @@ contextBridge.exposeInMainWorld("termcanvas", {
       >,
   },
   browserIdentity: {
-    clearData: (partitionName: string) =>
+    clearData: (identityId: string) =>
       ipcRenderer.invoke(
         "browser-identity:clear-data",
-        partitionName,
+        identityId,
       ) as Promise<void>,
     listImportProfiles: () =>
       ipcRenderer.invoke("browser-profile-import:list") as Promise<
         import("../shared/browser-profile-import").ImportableBrowserProfile[]
       >,
-    importChromeProfile: (input: {
-      profileId: string;
-      partitionName: string;
+    importChromeProfiles: (input: {
+      profileIds: string[];
+      existingIdentityNames: string[];
     }) =>
       ipcRenderer.invoke("browser-profile-import:chrome", input) as Promise<
-        import("../shared/browser-profile-import").BrowserProfileImportResult
+        import("../shared/browser-profile-import").BrowserProfileImportBatchResult
       >,
   },
   fs: {

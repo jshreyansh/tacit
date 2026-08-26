@@ -3,6 +3,7 @@ import {
   createDecipheriv,
   createHash,
   pbkdf2Sync,
+  randomUUID,
 } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,9 +11,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { Cookies } from "electron";
 import type {
-  BrowserProfileImportResult,
+  BrowserProfileCategorySummary,
+  BrowserProfileImportBatchResult,
   ImportableBrowserProfile,
 } from "../shared/browser-profile-import";
+import { partitionForBrowserIdentity } from "../shared/browser-profile-import";
 
 const execFileAsync = promisify(execFile);
 const CHROME_SAFE_STORAGE_SERVICE = "Chrome Safe Storage";
@@ -21,7 +24,11 @@ const MAC_CHROMIUM_IV = Buffer.alloc(16, 0x20);
 
 interface ChromeLocalState {
   profile?: {
-    info_cache?: Record<string, { name?: unknown }>;
+    info_cache?: Record<string, {
+      name?: unknown;
+      user_name?: unknown;
+      avatar_icon?: unknown;
+    }>;
   };
 }
 
@@ -45,6 +52,27 @@ export interface BrowserProfileImportDeps {
     schemaVersion: number;
     rows: ChromiumCookieRow[];
   }>;
+}
+
+export interface CookieImportCounts {
+  source: "chrome";
+  profileId: string;
+  profileName: string;
+  importedCookies: number;
+  skippedCookies: number;
+  failedCookies: number;
+}
+
+export interface IdentityImportSession {
+  cookies: Pick<Cookies, "set" | "remove"> & { flushStore?: () => Promise<void> };
+  flushStorageData: () => Promise<void>;
+  clearStorageData: () => Promise<void>;
+}
+
+export interface BrowserIdentityImportDeps extends BrowserProfileImportDeps {
+  fromPartition: (partitionName: string) => IdentityImportSession;
+  createIdentityId?: () => string;
+  now?: () => number;
 }
 
 export function defaultChromeRoot(): string {
@@ -84,6 +112,12 @@ export function discoverChromeProfiles(
           : profileId === "Default"
             ? "Default"
             : profileId,
+      ...(typeof infoCache[profileId]?.user_name === "string" && infoCache[profileId]!.user_name!.trim()
+        ? { accountHint: (infoCache[profileId]!.user_name as string).trim() }
+        : {}),
+      ...(typeof infoCache[profileId]?.avatar_icon === "string" && infoCache[profileId]!.avatar_icon!.trim().startsWith("chrome://theme/")
+        ? { avatarHint: (infoCache[profileId]!.avatar_icon as string).trim() }
+        : {}),
     }))
     .sort((left, right) => {
       if (left.profileId === "Default") return -1;
@@ -96,7 +130,7 @@ export async function importChromeProfileCookies(
   profileId: string,
   targetCookies: Pick<Cookies, "set" | "remove">,
   deps: BrowserProfileImportDeps = {},
-): Promise<BrowserProfileImportResult> {
+): Promise<CookieImportCounts> {
   const chromeRoot = deps.chromeRoot ?? defaultChromeRoot();
   const profiles = discoverChromeProfiles(chromeRoot);
   const profile = profiles.find((candidate) => candidate.profileId === profileId);
@@ -115,9 +149,10 @@ export async function importChromeProfileCookies(
     path.join(profileRoot, "Network", "Cookies"),
   ];
   const sourceCookieDb = cookieDbCandidates.find((candidate) => fs.existsSync(candidate));
-  if (!sourceCookieDb) {
-    throw new Error("This Chrome profile has no cookies to import");
-  }
+  if (!sourceCookieDb) return {
+    source: "chrome", profileId: profile.profileId, profileName: profile.name,
+    importedCookies: 0, skippedCookies: 0, failedCookies: 0,
+  };
 
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-chrome-import-"));
   const copiedCookieDb = path.join(scratchDir, "Cookies");
@@ -215,6 +250,95 @@ export async function importChromeProfileCookies(
   }
 }
 
+export async function importChromeProfilesAsIdentities(
+  profileIds: string[],
+  existingIdentityNames: string[],
+  deps: BrowserIdentityImportDeps,
+): Promise<BrowserProfileImportBatchResult> {
+  if (!Array.isArray(profileIds) || profileIds.length === 0 || profileIds.length > 100) {
+    throw new Error("Select at least one Chrome profile");
+  }
+  if (new Set(profileIds).size !== profileIds.length || profileIds.some((id) => !isSafeProfileId(id))) {
+    throw new Error("Invalid Chrome profile selection");
+  }
+  const profiles = discoverChromeProfiles(deps.chromeRoot ?? defaultChromeRoot());
+  const byId = new Map(profiles.map((profile) => [profile.profileId, profile]));
+  if (profileIds.some((id) => !byId.has(id))) throw new Error("A Chrome profile is no longer available");
+  const isRunning = deps.isChromeRunning ?? defaultIsChromeRunning;
+  if (await isRunning()) throw new Error("Quit Google Chrome completely, then try the import again");
+
+  const takenNames = new Set(existingIdentityNames.filter((name) => typeof name === "string").map((name) => name.trim().toLocaleLowerCase()));
+  const results: BrowserProfileImportBatchResult["results"] = [];
+  for (const profileId of profileIds) {
+    const profile = byId.get(profileId)!;
+    const identityId = `identity-${(deps.createIdentityId ?? randomUUID)()}`;
+    const partitionName = partitionForBrowserIdentity(identityId);
+    const targetSession = deps.fromPartition(partitionName);
+    const createdAt = (deps.now ?? Date.now)();
+    let identityName = profile.name.trim() || profile.profileId;
+    for (let suffix = 2; takenNames.has(identityName.toLocaleLowerCase()); suffix += 1) {
+      identityName = `${profile.name.trim() || profile.profileId} ${suffix}`;
+    }
+    takenNames.add(identityName.toLocaleLowerCase());
+    try {
+      const cookieResult = await importChromeProfileCookies(profileId, targetSession.cookies, {
+        ...deps,
+        isChromeRunning: async () => false,
+      });
+      await targetSession.cookies.flushStore?.();
+      await targetSession.flushStorageData();
+      const cookieStatus = cookieResult.importedCookies === 0
+        ? "empty"
+        : cookieResult.failedCookies > 0 || cookieResult.skippedCookies > 0 ? "partial" : "imported";
+      const unsupported = (detail: string) => ({ status: "unsupported" as const, count: 0, detail });
+      const categories: BrowserProfileCategorySummary = {
+        profileMetadata: { status: "imported", count: 1 },
+        cookies: { status: cookieStatus, count: cookieResult.importedCookies, ...(cookieResult.skippedCookies + cookieResult.failedCookies > 0 ? { detail: `${cookieResult.skippedCookies} unsupported or expired; ${cookieResult.failedCookies} failed` } : {}) },
+        siteStorage: unsupported("Portable staged storage adapter is not available yet"),
+        history: unsupported("Tacit browsing metadata import is not available yet"),
+        bookmarks: unsupported("Tacit bookmark import is not available yet"),
+        savedPasswords: unsupported("Secure vault and explicit autofill are not available; passwords were not read"),
+        openTabs: unsupported("Open-tab recreation is an optional follow-up"),
+        cacheAndWorkers: unsupported("Caches and service workers rebuild after navigation"),
+        protectedState: unsupported("Passkeys, payments, extensions, and device-bound tokens are never copied"),
+      };
+      results.push({
+        status: "completed",
+        profileId,
+        identity: {
+          id: identityId,
+          name: identityName,
+          createdAt,
+          provenance: { source: "chrome", sourceProfileId: profileId, sourceProfileName: profile.name, importedAt: createdAt, categories },
+        },
+      });
+    } catch {
+      let cleanup: "completed" | "failed" = "completed";
+      try {
+        await targetSession.clearStorageData();
+      } catch {
+        cleanup = "failed";
+      }
+      results.push(cleanup === "completed"
+        ? {
+            status: "failed",
+            profileId,
+            errorCode: "profile_import_failed",
+            error: "Chrome profile import failed. The incomplete identity was removed.",
+            cleanup,
+          }
+        : {
+            status: "failed",
+            profileId,
+            errorCode: "cleanup_failed",
+            error: "Chrome profile import failed. Automatic rollback was not completed because private-data cleanup failed. Restart Tacit and retry cleanup.",
+            cleanup,
+          });
+    }
+  }
+  return { source: "chrome", results };
+}
+
 export function deriveMacChromiumKey(password: string): Buffer {
   return pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
 }
@@ -256,7 +380,7 @@ export function chromiumTimestampToUnixSeconds(value: number): number | undefine
   return value / 1_000_000 - CHROMIUM_COOKIE_EPOCH_OFFSET_SECONDS;
 }
 
-function isSafeProfileId(profileId: string): boolean {
+export function isSafeProfileId(profileId: string): boolean {
   return (
     profileId === path.basename(profileId) &&
     (profileId === "Default" || /^Profile \d+$/.test(profileId))
