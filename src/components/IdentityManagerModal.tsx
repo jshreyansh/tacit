@@ -262,7 +262,7 @@ export function IdentityManagerModal() {
         detail: { identityId: targetIdentity.id },
       }));
       setBrowserStatus(
-        `Imported ${result.importedCookies.toLocaleString()} signed-in session cookies from “${result.profileName}” into “${targetIdentity.name}”. Browser nodes using this identity were refreshed.`,
+        `Imported ${result.importedCookies.toLocaleString()} session cookies from “${result.profileName}” into “${targetIdentity.name}” (${result.skippedCookies.toLocaleString()} expired or unsupported, ${result.failedCookies.toLocaleString()} failed). Browser nodes using this identity were reopened.`,
       );
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Chrome import failed");
@@ -494,6 +494,20 @@ export function IdentityManagerModal() {
                   Imports login cookies now. Saved-password and browsing-history import will follow; passwords are not read in this version.
                 </p>
 
+                {browserStatus && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="tc-meta sticky top-0 z-10 mt-2 rounded-md border border-[var(--border)] px-2.5 py-2"
+                    style={{
+                      color: "var(--text-secondary)",
+                      background: "var(--surface)",
+                    }}
+                  >
+                    {browserStatus}
+                  </div>
+                )}
+
                 <div className="mt-2 space-y-1.5">
                   {loadingImportProfiles ? (
                     <div className="tc-meta rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--text-muted)]">
@@ -643,11 +657,6 @@ export function IdentityManagerModal() {
                   </div>
                 </details>
 
-                {browserStatus && (
-                  <p role="status" className="tc-timestamp mt-2" style={{ color: "var(--text-muted)" }}>
-                    {browserStatus}
-                  </p>
-                )}
               </div>
             </div>
           </section>

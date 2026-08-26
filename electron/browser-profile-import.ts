@@ -94,7 +94,7 @@ export function discoverChromeProfiles(
 
 export async function importChromeProfileCookies(
   profileId: string,
-  targetCookies: Pick<Cookies, "set">,
+  targetCookies: Pick<Cookies, "set" | "remove">,
   deps: BrowserProfileImportDeps = {},
 ): Promise<BrowserProfileImportResult> {
   const chromeRoot = deps.chromeRoot ?? defaultChromeRoot();
@@ -163,11 +163,24 @@ export async function importChromeProfileCookies(
           skippedCookies += 1;
           continue;
         }
+        const cookieUrl = `${row.is_secure ? "https" : "http"}://${host}${normalizeCookiePath(row.path)}`;
+        // Remove an older equivalent first. Besides making repeated imports
+        // deterministic, this cleans up cookies imported by 0.39.12, which
+        // incorrectly turned host-only cookies into domain cookies.
+        try {
+          await targetCookies.remove(cookieUrl, row.name);
+        } catch {
+          // Absence/removal failure must not prevent the source cookie from
+          // being written. Electron's set call below remains authoritative.
+        }
         await targetCookies.set({
-          url: `${row.is_secure ? "https" : "http"}://${host}${normalizeCookiePath(row.path)}`,
+          url: cookieUrl,
           name: row.name,
           value,
-          domain: row.host_key,
+          // A host key without a leading dot is deliberately host-only.
+          // Supplying Electron's `domain` field would broaden it to
+          // subdomains and makes `__Host-` authentication cookies invalid.
+          ...(row.host_key.startsWith(".") ? { domain: row.host_key } : {}),
           path: normalizeCookiePath(row.path),
           secure: Boolean(row.is_secure),
           httpOnly: Boolean(row.is_httponly),

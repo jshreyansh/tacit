@@ -2,6 +2,11 @@
 
 All notable changes to TermCanvas will be documented in this file.
 
+## [0.39.13] - 2026-08-26
+
+### Fixed
+- **Chrome login import completion**: host-only and `__Host-` authentication cookies retain their exact Chrome scope instead of being broadened or rejected. Re-imports remove the malformed 0.39.12 equivalent first, browser nodes are recreated against the updated identity partition, and import progress/results remain visible above the profile list.
+
 ## [0.39.12] - 2026-08-26
 
 ### Added

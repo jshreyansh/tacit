@@ -89,6 +89,7 @@ test("Chrome session import reads and decrypts a real SQLite cookie database", a
   const privateValue = "synthetic-private-value";
   const databasePath = path.join(root, "Default", "Cookies");
   const written: Array<Record<string, unknown>> = [];
+  const removed: Array<{ url: string; name: string }> = [];
   try {
     writeRealCookieDatabase(
       databasePath,
@@ -96,7 +97,10 @@ test("Chrome session import reads and decrypts a real SQLite cookie database", a
     );
     const result = await importChromeProfileCookies(
       "Default",
-      { set: async (cookie) => { written.push(cookie); } },
+      {
+        set: async (cookie) => { written.push(cookie); },
+        remove: async (url, name) => { removed.push({ url, name }); },
+      },
       {
         chromeRoot: root,
         isChromeRunning: async () => false,
@@ -109,6 +113,8 @@ test("Chrome session import reads and decrypts a real SQLite cookie database", a
     assert.equal(JSON.stringify(result).includes(privateValue), false);
     assert.equal(written[0]?.url, "https://example.com/");
     assert.equal(written[0]?.value, privateValue);
+    assert.equal(written[0]?.domain, ".example.com");
+    assert.deepEqual(removed, [{ url: "https://example.com/", name: "session" }]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -117,10 +123,14 @@ test("Chrome session import reads and decrypts a real SQLite cookie database", a
 test("Chrome session import writes only counts back and refuses a running browser", async () => {
   const root = chromeFixture();
   const written: Array<Record<string, unknown>> = [];
+  const removed: Array<{ url: string; name: string }> = [];
   try {
     const result = await importChromeProfileCookies(
       "Default",
-      { set: async (cookie) => { written.push(cookie); } },
+      {
+        set: async (cookie) => { written.push(cookie); },
+        remove: async (url, name) => { removed.push({ url, name }); },
+      },
       {
         chromeRoot: root,
         isChromeRunning: async () => false,
@@ -136,20 +146,38 @@ test("Chrome session import writes only counts back and refuses a running browse
             is_secure: 1,
             is_httponly: 1,
             samesite: -1,
+          }, {
+            host_key: "chatgpt.com",
+            name: "__Host-session",
+            path: "/",
+            value: "host-only-private-value",
+            encrypted_value_hex: "",
+            expires_utc: 0,
+            is_secure: 1,
+            is_httponly: 1,
+            samesite: 1,
           }],
         }),
       },
     );
-    assert.equal(result.importedCookies, 1);
+    assert.equal(result.importedCookies, 2);
     assert.equal(result.skippedCookies, 0);
     assert.equal(JSON.stringify(result).includes("private-value"), false);
     assert.equal(written[0]?.url, "https://example.com/");
     assert.equal(written[0]?.value, "private-value");
+    assert.equal(written[0]?.domain, ".example.com");
+    assert.equal(written[1]?.url, "https://chatgpt.com/");
+    assert.equal(written[1]?.domain, undefined);
+    assert.equal(written[1]?.value, "host-only-private-value");
+    assert.deepEqual(removed, [
+      { url: "https://example.com/", name: "session" },
+      { url: "https://chatgpt.com/", name: "__Host-session" },
+    ]);
 
     await assert.rejects(
       importChromeProfileCookies(
         "Default",
-        { set: async () => {} },
+        { set: async () => {}, remove: async () => {} },
         { chromeRoot: root, isChromeRunning: async () => true },
       ),
       /Quit Google Chrome completely/,

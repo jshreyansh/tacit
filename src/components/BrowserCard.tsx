@@ -73,6 +73,7 @@ export function BrowserCard({ card }: Props) {
   }, [card.h, card.w, card.x, card.y, cardId, register, unregister]);
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [identityImportEpoch, setIdentityImportEpoch] = useState(0);
 
   const t = useT();
   const identities = useIdentityStore((s) => s.identities);
@@ -107,7 +108,10 @@ export function BrowserCard({ card }: Props) {
       const identityId = (event as CustomEvent<{ identityId?: unknown }>).detail?.identityId;
       if (identityId !== card.identityId) return;
       setLoadError(null);
-      webviewRef.current?.reload();
+      // Recreate the webview rather than calling reload(). The partition is
+      // bound at element creation, and a fresh renderer reliably observes a
+      // newly populated persistent cookie store.
+      setIdentityImportEpoch((epoch) => epoch + 1);
     };
     window.addEventListener("tacit:browser-identity-imported", handleImportedIdentity);
     return () => window.removeEventListener("tacit:browser-identity-imported", handleImportedIdentity);
@@ -439,7 +443,7 @@ export function BrowserCard({ card }: Props) {
           // Electron only honors `partition` at first mount — changing it
           // on a live element does not re-partition it — so keying on the
           // identity forces a remount when the user switches identities.
-          key={card.identityId}
+          key={`${card.identityId}:${identityImportEpoch}`}
           ref={webviewRef as React.Ref<HTMLElement>}
           src={card.url}
           partition={partitionForIdentity(card.identityId)}
