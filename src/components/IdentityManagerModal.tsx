@@ -13,6 +13,7 @@ import type {
   ConnectedBrowserConnection,
   ConnectedTabBinding,
 } from "../../shared/browser-connection";
+import type { ImportableBrowserProfile } from "../../shared/browser-profile-import";
 
 interface PairingOffer {
   endpoint: string;
@@ -146,6 +147,9 @@ export function IdentityManagerModal() {
   const [authorizedTabs, setAuthorizedTabs] = useState<AuthorizedBrowserTab[]>([]);
   const [browserStatus, setBrowserStatus] = useState<string | null>(null);
   const [loadingBrowsers, setLoadingBrowsers] = useState(false);
+  const [importProfiles, setImportProfiles] = useState<ImportableBrowserProfile[]>([]);
+  const [loadingImportProfiles, setLoadingImportProfiles] = useState(false);
+  const [importingProfileId, setImportingProfileId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const refreshAuthorizedTabs = useCallback(async () => {
@@ -157,6 +161,17 @@ export function IdentityManagerModal() {
       setBrowserStatus(error instanceof Error ? error.message : "Could not read connected tabs");
     } finally {
       setLoadingBrowsers(false);
+    }
+  }, []);
+
+  const refreshImportProfiles = useCallback(async () => {
+    setLoadingImportProfiles(true);
+    try {
+      setImportProfiles(await window.termcanvas.browserIdentity.listImportProfiles());
+    } catch (error) {
+      setBrowserStatus(error instanceof Error ? error.message : "Could not find Chrome profiles");
+    } finally {
+      setLoadingImportProfiles(false);
     }
   }, []);
 
@@ -181,6 +196,7 @@ export function IdentityManagerModal() {
   useEffect(() => {
     if (!open) return;
     void refreshAuthorizedTabs();
+    void refreshImportProfiles();
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (editingId) {
@@ -196,7 +212,7 @@ export function IdentityManagerModal() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, editingId, confirmDeleteId, closeManager, refreshAuthorizedTabs]);
+  }, [open, editingId, confirmDeleteId, closeManager, refreshAuthorizedTabs, refreshImportProfiles]);
 
   useEffect(() => {
     if (!open || !pairingOffer) return;
@@ -231,6 +247,29 @@ export function IdentityManagerModal() {
     addConnectedBrowserCardToScene(entry.binding, entry.connection);
     setBrowserStatus(`Added “${entry.binding.tab.title || entry.binding.tab.url}” to the canvas.`);
   }, []);
+
+  const importChromeProfile = useCallback(async (profile: ImportableBrowserProfile) => {
+    const targetIdentity = identitiesById[activeIdentityId];
+    if (!targetIdentity) return;
+    setImportingProfileId(profile.profileId);
+    setBrowserStatus(`Importing signed-in sessions from “${profile.name}”…`);
+    try {
+      const result = await window.termcanvas.browserIdentity.importChromeProfile({
+        profileId: profile.profileId,
+        partitionName: partitionForIdentity(targetIdentity.id),
+      });
+      window.dispatchEvent(new CustomEvent("tacit:browser-identity-imported", {
+        detail: { identityId: targetIdentity.id },
+      }));
+      setBrowserStatus(
+        `Imported ${result.importedCookies.toLocaleString()} signed-in session cookies from “${result.profileName}” into “${targetIdentity.name}”. Browser nodes using this identity were refreshed.`,
+      );
+    } catch (error) {
+      setBrowserStatus(error instanceof Error ? error.message : "Chrome import failed");
+    } finally {
+      setImportingProfileId(null);
+    }
+  }, [activeIdentityId, identitiesById]);
 
   const commitRename = useCallback(() => {
     if (!editingId) return;
@@ -445,41 +484,89 @@ export function IdentityManagerModal() {
                 <BrowserLinkGlyph />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="tc-ui" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-                    Use your signed-in browser
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void refreshAuthorizedTabs()}
-                    disabled={loadingBrowsers}
-                    className="tc-meta rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
-                  >
-                    {loadingBrowsers ? "Checking…" : "Refresh"}
-                  </button>
-                </div>
+                <span className="tc-ui" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                  Bring in your Chrome sessions
+                </span>
                 <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  Connect one tab from Chrome, Edge, or Brave. Tacit controls only tabs you explicitly share; it never copies your profile or cookies.
+                  One-time import into <strong>{identitiesById[activeIdentityId]?.name ?? "the selected identity"}</strong>. Quit Chrome first; Tacit copies signed-in website sessions into its own private browser storage and never changes Chrome.
                 </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const folder = await window.termcanvas.browserConnection.openExtensionFolder();
-                      await navigator.clipboard.writeText(folder);
-                      setBrowserStatus("Extension folder opened and its path copied. In your browser’s Extensions page, choose “Load unpacked” and select it.");
-                    } catch (error) {
-                      setBrowserStatus(error instanceof Error ? error.message : "Could not open the extension folder");
-                    }
-                  }}
-                  className="tc-meta mt-1 underline decoration-[var(--border-hover)] underline-offset-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                >
-                  Install the Tacit browser extension
-                </button>
+                <p className="tc-timestamp mt-1" style={{ color: "var(--text-faint)" }}>
+                  Imports login cookies now. Saved-password and browsing-history import will follow; passwords are not read in this version.
+                </p>
 
-                {authorizedTabs.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {authorizedTabs.map((entry) => (
+                <div className="mt-2 space-y-1.5">
+                  {loadingImportProfiles ? (
+                    <div className="tc-meta rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--text-muted)]">
+                      Finding Chrome profiles…
+                    </div>
+                  ) : importProfiles.length === 0 ? (
+                    <div className="tc-meta rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--text-muted)]">
+                      No local Chrome profiles found.
+                    </div>
+                  ) : importProfiles.map((profile) => (
+                    <div
+                      key={profile.profileId}
+                      className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2.5 py-2"
+                      style={{ background: "var(--bg)" }}
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
+                          {profile.name}
+                        </div>
+                        <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                          Chrome · {profile.profileId}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={importingProfileId !== null}
+                        onClick={() => void importChromeProfile(profile)}
+                        className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)] disabled:opacity-40"
+                      >
+                        {importingProfileId === profile.profileId ? "Importing…" : "Import sessions"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <details className="mt-3 border-t border-[var(--border)] pt-2">
+                  <summary className="tc-meta cursor-pointer select-none text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                    Connect one live Chrome tab instead (optional)
+                  </summary>
+                  <div className="mt-2 pl-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="tc-timestamp leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                        The extension shares only a tab you explicitly approve. Use this for a live system-browser tab, not normal onboarding.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void refreshAuthorizedTabs()}
+                        disabled={loadingBrowsers}
+                        className="tc-meta shrink-0 rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+                      >
+                        {loadingBrowsers ? "Checking…" : "Refresh tabs"}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const folder = await window.termcanvas.browserConnection.openExtensionFolder();
+                          await navigator.clipboard.writeText(folder);
+                          setBrowserStatus("Extension folder opened and its path copied. In your browser’s Extensions page, choose “Load unpacked” and select it.");
+                        } catch (error) {
+                          setBrowserStatus(error instanceof Error ? error.message : "Could not open the extension folder");
+                        }
+                      }}
+                      className="tc-meta mt-1 underline decoration-[var(--border-hover)] underline-offset-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      Install the optional Tacit browser extension
+                    </button>
+
+                    {authorizedTabs.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {authorizedTabs.map((entry) => (
                       <div
                         key={entry.binding.id}
                         className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5"
@@ -502,57 +589,59 @@ export function IdentityManagerModal() {
                           Add to canvas
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
+                        ))}
+                      </div>
+                    )}
 
-                {pairingOffer ? (
-                  <div
-                    className="mt-2 rounded-md border px-2 py-2"
-                    style={{ borderColor: pairingExpired ? "var(--red)" : "color-mix(in srgb, var(--accent) 25%, transparent)" }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <code
-                        className="min-w-0 flex-1 truncate text-[11px]"
-                        style={{ color: pairingExpired ? "var(--text-faint)" : "var(--text-secondary)" }}
+                    {pairingOffer ? (
+                      <div
+                        className="mt-2 rounded-md border px-2 py-2"
+                        style={{ borderColor: pairingExpired ? "var(--red)" : "color-mix(in srgb, var(--accent) 25%, transparent)" }}
                       >
-                        {pairingOffer.endpoint}#{pairingOffer.code}
-                      </code>
-                      {!pairingExpired && (
+                        <div className="flex items-center gap-2">
+                          <code
+                            className="min-w-0 flex-1 truncate text-[11px]"
+                            style={{ color: pairingExpired ? "var(--text-faint)" : "var(--text-secondary)" }}
+                          >
+                            {pairingOffer.endpoint}#{pairingOffer.code}
+                          </code>
+                          {!pairingExpired && (
+                            <button
+                              type="button"
+                              onClick={() => void copyPairingOffer()}
+                              className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)]"
+                            >
+                              Copy connection
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void beginBrowserPairing()}
+                            className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                          >
+                            {pairingExpired ? "Generate new code" : "New code"}
+                          </button>
+                        </div>
+                        <p
+                          className="tc-timestamp mt-1"
+                          style={{ color: pairingExpired ? "var(--red)" : "var(--text-faint)" }}
+                        >
+                          {pairingExpired
+                            ? "Expired or already used? Generate a fresh one-time code."
+                            : `One-time code · expires in ${pairingRemainingMinutes}:${String(pairingRemainingSeconds).padStart(2, "0")}`}
+                        </p>
+                      </div>
+                    ) : (
                         <button
                           type="button"
-                          onClick={() => void copyPairingOffer()}
-                          className="tc-ui shrink-0 rounded-md bg-[var(--text-primary)] px-2.5 py-1 text-[var(--surface)]"
+                          onClick={() => void beginBrowserPairing()}
+                          className="tc-ui mt-2 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
                         >
-                          Copy connection
+                          Pair a system browser
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void beginBrowserPairing()}
-                        className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-                      >
-                        {pairingExpired ? "Generate new code" : "New code"}
-                      </button>
-                    </div>
-                    <p
-                      className="tc-timestamp mt-1"
-                      style={{ color: pairingExpired ? "var(--red)" : "var(--text-faint)" }}
-                    >
-                      {pairingExpired
-                        ? "Expired or already used? Generate a fresh one-time code."
-                        : `One-time code · expires in ${pairingRemainingMinutes}:${String(pairingRemainingSeconds).padStart(2, "0")}`}
-                    </p>
+                    )}
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void beginBrowserPairing()}
-                    className="tc-ui mt-2 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-                  >
-                    Pair a system browser
-                  </button>
-                )}
+                </details>
 
                 {browserStatus && (
                   <p role="status" className="tc-timestamp mt-2" style={{ color: "var(--text-muted)" }}>

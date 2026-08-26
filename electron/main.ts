@@ -32,6 +32,10 @@ import {
 import { ApiServer } from "./api-server";
 import { BrowserConnectionRegistry } from "./browser-connection-registry";
 import { ConnectedBrowserBroker } from "./connected-browser-broker";
+import {
+  discoverChromeProfiles,
+  importChromeProfileCookies,
+} from "./browser-profile-import";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -1856,6 +1860,38 @@ function setupIpc() {
         throw new Error(`refused to clear non-identity partition: ${partitionName}`);
       }
       await session.fromPartition(partitionName).clearStorageData();
+    },
+  );
+
+  ipcMain.handle("browser-profile-import:list", () =>
+    discoverChromeProfiles(),
+  );
+
+  ipcMain.handle(
+    "browser-profile-import:chrome",
+    async (
+      _event,
+      input: { profileId?: unknown; partitionName?: unknown },
+    ) => {
+      const profileId = input?.profileId;
+      const partitionName = input?.partitionName;
+      if (typeof profileId !== "string" || !profileId) {
+        throw new Error("A Chrome profile is required");
+      }
+      if (
+        typeof partitionName !== "string" ||
+        !partitionName.startsWith("persist:identity-")
+      ) {
+        throw new Error("Refused to import into a non-identity partition");
+      }
+      const targetSession = session.fromPartition(partitionName);
+      const result = await importChromeProfileCookies(
+        profileId,
+        targetSession.cookies,
+      );
+      await targetSession.cookies.flushStore();
+      await targetSession.flushStorageData();
+      return result;
     },
   );
 

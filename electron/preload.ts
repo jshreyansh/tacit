@@ -664,6 +664,17 @@ contextBridge.exposeInMainWorld("termcanvas", {
         "browser-identity:clear-data",
         partitionName,
       ) as Promise<void>,
+    listImportProfiles: () =>
+      ipcRenderer.invoke("browser-profile-import:list") as Promise<
+        import("../shared/browser-profile-import").ImportableBrowserProfile[]
+      >,
+    importChromeProfile: (input: {
+      profileId: string;
+      partitionName: string;
+    }) =>
+      ipcRenderer.invoke("browser-profile-import:chrome", input) as Promise<
+        import("../shared/browser-profile-import").BrowserProfileImportResult
+      >,
   },
   fs: {
     listDir: (dirPath: string) =>

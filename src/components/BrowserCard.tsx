@@ -102,6 +102,18 @@ export function BrowserCard({ card }: Props) {
   }, [card.id]);
 
   useEffect(() => {
+    if (connectedBinding) return;
+    const handleImportedIdentity = (event: Event) => {
+      const identityId = (event as CustomEvent<{ identityId?: unknown }>).detail?.identityId;
+      if (identityId !== card.identityId) return;
+      setLoadError(null);
+      webviewRef.current?.reload();
+    };
+    window.addEventListener("tacit:browser-identity-imported", handleImportedIdentity);
+    return () => window.removeEventListener("tacit:browser-identity-imported", handleImportedIdentity);
+  }, [card.identityId, connectedBinding]);
+
+  useEffect(() => {
     const wv = webviewRef.current;
     if (!wv) return;
     const onTitle = (e: Electron.PageTitleUpdatedEvent) => {

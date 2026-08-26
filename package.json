@@ -1,6 +1,6 @@
 {
   "name": "tacit",
-  "version": "0.39.11",
+  "version": "0.39.12",
   "packageManager": "pnpm@10.33.0",
   "description": "An infinite canvas desktop app for visually managing terminals",
   "main": "dist-electron/main.js",
@@ -20,7 +20,7 @@
     "postinstall": "node scripts/postinstall.mjs",
     "typecheck": "tsc --noEmit",
     "test:security": "tsx --test tests/update-modal-security.test.ts tests/api-server-auth.test.ts",
-    "test:browser": "tsx --test tests/browser-connection-registry.test.ts tests/browser-controller.test.ts tests/connected-browser-broker.test.ts tests/browser-extension-security.test.ts",
+    "test:browser": "tsx --test tests/browser-profile-import.test.ts tests/browser-connection-registry.test.ts tests/browser-controller.test.ts tests/connected-browser-broker.test.ts tests/browser-extension-security.test.ts",
     "typecheck:headless": "tsc --noEmit -p tsconfig.headless.json",
     "build:headless": "tsc -p tsconfig.headless.build.json",
     "test:hydra": "tsx --test hydra/tests/standalone-e2e.test.ts hydra/tests/workflow-lead.test.ts hydra/tests/cleanup.test.ts",

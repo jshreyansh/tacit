@@ -962,6 +962,15 @@ export interface TermCanvasAPI {
   };
   browserIdentity: {
     clearData: (partitionName: string) => Promise<void>;
+    listImportProfiles: () => Promise<
+      import("../../shared/browser-profile-import").ImportableBrowserProfile[]
+    >;
+    importChromeProfile: (input: {
+      profileId: string;
+      partitionName: string;
+    }) => Promise<
+      import("../../shared/browser-profile-import").BrowserProfileImportResult
+    >;
   };
   fs: {
     listDir: (

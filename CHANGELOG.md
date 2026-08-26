@@ -2,6 +2,14 @@
 
 All notable changes to TermCanvas will be documented in this file.
 
+## [0.39.12] - 2026-08-26
+
+### Added
+- **One-time Chrome session import**: Browser identities now discover local Chrome profiles and can import their signed-in website sessions into Tacit's private, persistent identity storage. Chrome remains untouched, cookie values never enter the renderer or logs, and existing browser nodes refresh after a successful import.
+
+### Changed
+- **Extension pairing is optional**: the per-tab connected-browser extension now sits behind an optional live-tab disclosure instead of being the primary browser onboarding path.
+
 ## [0.39.11] - 2026-08-26
 
 ### Fixed
