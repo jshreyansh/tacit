@@ -747,6 +747,29 @@ function coerceIdentities(value: Record<string, unknown>): {
   return { identities, activeIdentityId };
 }
 
+function repairSceneIdentityReferences(
+  scene: SceneDocument,
+  identities: BrowserIdentity[],
+  activeIdentityId: string,
+): SceneDocument {
+  const identityIds = new Set(identities.map((identity) => identity.id));
+  return {
+    ...scene,
+    browserCards: Object.fromEntries(
+      Object.entries(scene.browserCards).map(([cardId, card]) => {
+        if (card.backend?.kind === "connected-tab") return [cardId, card];
+        const requestedIdentityId = card.backend?.kind === "managed"
+          ? card.backend.identityId
+          : card.identityId;
+        const identityId = isValidBrowserIdentityId(requestedIdentityId) && identityIds.has(requestedIdentityId)
+          ? requestedIdentityId
+          : activeIdentityId;
+        return [cardId, { ...card, identityId, backend: managedBrowserBinding(identityId) }];
+      }),
+    ),
+  };
+}
+
 function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
   if (!isRecord(value)) return null;
   const rawCanvases = Array.isArray(value.canvases) ? value.canvases : null;
@@ -762,34 +785,16 @@ function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
       ? requestedActive
       : canvases[0].id;
   const { identities, activeIdentityId } = coerceIdentities(value);
-  const identityIds = new Set(identities.map((identity) => identity.id));
   const repairedCanvases = canvases.map((canvas) => ({
     ...canvas,
-    scene: {
-      ...canvas.scene,
-      browserCards: Object.fromEntries(
-        Object.entries(canvas.scene.browserCards).map(([cardId, card]) => {
-          if (card.backend?.kind === "connected-tab") return [cardId, card];
-          const requestedIdentityId = card.backend?.kind === "managed"
-            ? card.backend.identityId
-            : card.identityId;
-          const identityId = isValidBrowserIdentityId(requestedIdentityId) && identityIds.has(requestedIdentityId)
-            ? requestedIdentityId
-            : activeIdentityId;
-          return [cardId, {
-            ...card,
-            identityId,
-            backend: managedBrowserBinding(identityId),
-          }];
-        }),
-      ),
-    },
+    scene: repairSceneIdentityReferences(canvas.scene, identities, activeIdentityId),
   }));
   return { version: 3, activeCanvasId, canvases: repairedCanvases, identities, activeIdentityId };
 }
 
 function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {
   const id = generateCanvasId();
+  const { identities, activeIdentityId } = defaultIdentities();
   return {
     version: 3,
     activeCanvasId: id,
@@ -798,10 +803,11 @@ function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {
         id,
         name: DEFAULT_CANVAS_NAME,
         createdAt: Date.now(),
-        scene,
+        scene: repairSceneIdentityReferences(scene, identities, activeIdentityId),
       },
     ],
-    ...defaultIdentities(),
+    identities,
+    activeIdentityId,
   };
 }
 
@@ -872,10 +878,12 @@ export function readWorkspaceSnapshot(
       return null;
     }
 
+    const workspace = wrapSceneAsWorkspace(scene);
+    const repairedScene = pickActiveScene(workspace);
     return {
-      legacy: legacySnapshotFromScene(scene),
-      scene,
-      workspace: wrapSceneAsWorkspace(scene),
+      legacy: legacySnapshotFromScene(repairedScene),
+      scene: repairedScene,
+      workspace,
       sourceVersion: 2,
     };
   }
@@ -886,10 +894,12 @@ export function readWorkspaceSnapshot(
       return null;
     }
 
+    const workspace = wrapSceneAsWorkspace(scene);
+    const repairedScene = pickActiveScene(workspace);
     return {
-      legacy: legacySnapshotFromScene(scene),
-      scene,
-      workspace: wrapSceneAsWorkspace(scene),
+      legacy: legacySnapshotFromScene(repairedScene),
+      scene: repairedScene,
+      workspace,
       sourceVersion: 2,
     };
   }
@@ -897,10 +907,12 @@ export function readWorkspaceSnapshot(
   if (looksLikeLegacyWorkspaceSnapshot(parsed)) {
     const legacy = migrateLegacySnapshot(parsed);
     const scene = buildSceneDocumentFromLegacyState(legacy);
+    const workspace = wrapSceneAsWorkspace(scene);
+    const repairedScene = pickActiveScene(workspace);
     return {
-      legacy,
-      scene,
-      workspace: wrapSceneAsWorkspace(scene),
+      legacy: legacySnapshotFromScene(repairedScene),
+      scene: repairedScene,
+      workspace,
       sourceVersion: 1,
     };
   }

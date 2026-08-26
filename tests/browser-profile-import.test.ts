@@ -14,6 +14,7 @@ import {
   importChromeProfilesAsIdentities,
 } from "../electron/browser-profile-import";
 import { isValidBrowserIdentityId, partitionForBrowserIdentity } from "../shared/browser-profile-import";
+import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "../electron/browser-profile-ipc";
 
 function chromeFixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-chrome-profile-test-"));
@@ -203,6 +204,53 @@ test("identity partitions use the shared strict id rule", () => {
   assert.throws(() => partitionForBrowserIdentity("identity-../../Default"));
 });
 
+test("IPC validation keeps identity resolution in main and permits explicit Default deletion", () => {
+  assert.equal(resolveIdentityClearPartition("identity-default"), "persist:identity-identity-default");
+  assert.equal(resolveIdentityClearPartition("identity-safe-1"), "persist:identity-identity-safe-1");
+  assert.throws(() => resolveIdentityClearPartition("persist:identity-default"), /invalid/i);
+  assert.deepEqual(validateChromeProfileImportRequest({
+    profileIds: ["Default"], existingIdentityNames: ["Default"],
+  }), { profileIds: ["Default"], existingIdentityNames: ["Default"] });
+  assert.throws(() => validateChromeProfileImportRequest({ profileIds: [], existingIdentityNames: [] }));
+  assert.throws(() => validateChromeProfileImportRequest({ profileIds: ["Default"], existingIdentityNames: [42] }));
+  assert.throws(() => validateChromeProfileImportRequest({ profileIds: Array(101).fill("Default"), existingIdentityNames: [] }));
+});
+
+test("all app-bound cookies create an identity with unsupported cookie status", async () => {
+  const root = chromeFixture();
+  let keychainRead = false;
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default"], [], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readChromeSafeStoragePassword: async () => { keychainRead = true; throw new Error("must not read"); },
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "", encrypted_value_hex: Buffer.from("v20app-bound").toString("hex"), expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: () => ({ cookies: { set: async () => {}, remove: async () => {} }, flushStorageData: async () => {}, clearStorageData: async () => { throw new Error("must not clear"); } }),
+    });
+    assert.equal(keychainRead, false);
+    assert.equal(result.results[0]?.status, "completed");
+    assert.equal(result.results[0]?.status === "completed" ? result.results[0].identity.provenance.categories.cookies.status : "", "unsupported");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("all expired cookies create an identity with empty cookie status", async () => {
+  const root = chromeFixture();
+  let keychainRead = false;
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default"], [], {
+      chromeRoot: root, isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readChromeSafeStoragePassword: async () => { keychainRead = true; throw new Error("must not read"); },
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "old", path: "/", value: "", encrypted_value_hex: Buffer.from("v10expired").toString("hex"), expires_utc: 11_644_473_601_000_000, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: () => ({ cookies: { set: async () => {}, remove: async () => {} }, flushStorageData: async () => {}, clearStorageData: async () => { throw new Error("must not clear"); } }),
+    });
+    assert.equal(result.results[0]?.status, "completed");
+    assert.equal(keychainRead, false);
+    assert.equal(result.results[0]?.status === "completed" ? result.results[0].identity.provenance.categories.cookies.status : "", "empty");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("batch import creates isolated identities, disambiguates names, and reports unsupported categories", async () => {
   const root = chromeFixture();
   fs.writeFileSync(path.join(root, "Local State"), JSON.stringify({ profile: { info_cache: {
@@ -262,6 +310,27 @@ test("batch import rolls back a failed identity while preserving another success
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("failed profiles do not reserve a display name", async () => {
+  const root = chromeFixture();
+  fs.writeFileSync(path.join(root, "Local State"), JSON.stringify({ profile: { info_cache: {
+    Default: { name: "Work" }, "Profile 2": { name: "Work" },
+  } } }));
+  let partitionNumber = 0;
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default", "Profile 2"], [], {
+      chromeRoot: root, isChromeRunning: async () => false,
+      createIdentityId: () => `00000000-0000-4000-8000-00000000000${++partitionNumber}`,
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "private", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      fromPartition: (partitionName) => ({
+        cookies: { set: async () => { if (partitionName.endsWith("1")) throw new Error("write failed"); }, remove: async () => {} },
+        flushStorageData: async () => {}, clearStorageData: async () => {},
+      }),
+    });
+    assert.equal(result.results[0]?.status, "failed");
+    assert.equal(result.results[1]?.status === "completed" ? result.results[1].identity.name : "", "Work");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("batch import does not expose snapshot filesystem paths in failure results", async () => {

@@ -32,7 +32,7 @@ Every result contains a truthful status for each category (`imported`, `partial`
 
 ## UX
 
-The manager says **Import from Chrome**, lists source profiles with name/avatar/account hint where available, supports selecting profiles and **Import selected** / **Import all**, and shows progress per profile. Successful rows say which new Tacit identity was created and summarize each category. Failed rows remain retryable and do not appear in the identity list. Existing identities and Default remain unchanged.
+The manager says **Import from Chrome**, lists source profiles with name/avatar/account hint where available, supports selecting profiles and **Import selected** / **Import all**, and shows batch progress followed by a result for each profile. Successful rows say which new Tacit identity was created and summarize each category. Failed rows remain retryable and do not appear in the identity list. Existing identities and Default remain unchanged.
 
 The normal browser-node identity menu includes the newly imported identities. Selecting one reopens that managed node on the identity's persistent partition. The optional connected-tab extension stays separate and clearly labeled as a live-tab path.
 

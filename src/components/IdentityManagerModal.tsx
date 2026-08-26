@@ -324,12 +324,13 @@ export function IdentityManagerModal() {
     setDeleting(true);
     try {
       await window.termcanvas.browserIdentity.clearData(confirmDeleteId);
-    } catch (err) {
-      console.error("[IdentityManagerModal] failed to clear session data", err);
+      deleteIdentity(confirmDeleteId);
+      setConfirmDeleteId(null);
+    } catch {
+      setBrowserStatus("That identity could not be removed because its saved browser data could not be erased.");
+    } finally {
+      setDeleting(false);
     }
-    deleteIdentity(confirmDeleteId);
-    setDeleting(false);
-    setConfirmDeleteId(null);
   }, [confirmDeleteId, deleteIdentity]);
 
   if (!open) return null;

@@ -118,7 +118,8 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
   registerImportedIdentity: (identity) => {
     const { identities } = get();
     if (identities[identity.id]) return;
-    set({ identities: { ...identities, [identity.id]: identity }, activeIdentityId: identity.id });
+    const finalIdentity = { ...identity, name: uniqueIdentityName(identity.name, Object.values(identities)) };
+    set({ identities: { ...identities, [identity.id]: finalIdentity }, activeIdentityId: identity.id });
     markDirty();
   },
 

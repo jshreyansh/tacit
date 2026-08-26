@@ -36,7 +36,7 @@ import {
   discoverChromeProfiles,
   importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
-import { isValidBrowserIdentityId, partitionForBrowserIdentity } from "../shared/browser-profile-import";
+import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "./browser-profile-ipc";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -1852,10 +1852,8 @@ function setupIpc() {
   ipcMain.handle(
     "browser-identity:clear-data",
     async (_event, identityId: unknown) => {
-      if (!isValidBrowserIdentityId(identityId) || identityId === "identity-default") {
-        throw new Error("Refused to clear an invalid or default identity");
-      }
-      await session.fromPartition(partitionForBrowserIdentity(identityId)).clearStorageData();
+      const partitionName = resolveIdentityClearPartition(identityId);
+      await session.fromPartition(partitionName).clearStorageData();
     },
   );
 
@@ -1867,12 +1865,12 @@ function setupIpc() {
     "browser-profile-import:chrome",
     async (
       _event,
-      input: { profileIds?: unknown; existingIdentityNames?: unknown },
+      input: unknown,
     ) => {
-      if (!Array.isArray(input?.profileIds) || !input.profileIds.every((id) => typeof id === "string")) throw new Error("Chrome profile ids are required");
-      if (!Array.isArray(input?.existingIdentityNames) || input.existingIdentityNames.length > 1000 || !input.existingIdentityNames.every((name) => typeof name === "string" && name.length <= 200)) throw new Error("Existing identity names are invalid");
-      return importChromeProfilesAsIdentities(input.profileIds, input.existingIdentityNames, {
+      const request = validateChromeProfileImportRequest(input);
+      return importChromeProfilesAsIdentities(request.profileIds, request.existingIdentityNames, {
         fromPartition: (partitionName) => session.fromPartition(partitionName),
+        diagnostic: (event) => console.warn("[browser-profile-import]", event),
       });
     },
   );

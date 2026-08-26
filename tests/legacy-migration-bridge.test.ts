@@ -128,3 +128,20 @@ test("readWorkspaceSnapshot preserves explicit free-canvas v2 fields", () => {
   assert.equal(terminal.height, 600);
   assert.ok(terminal.tags.includes("custom:foo"));
 });
+
+test("v2 restore repairs invalid managed browser identity references", () => {
+  const restored = readWorkspaceSnapshot({
+    version: 2,
+    scene: {
+      version: 2,
+      camera: { x: 0, y: 0, zoom: 1 },
+      annotations: [], projects: [],
+      browserCards: {
+        unsafe: { id: "unsafe", title: "Unsafe", url: "https://example.com", x: 0, y: 0, w: 640, h: 480, identityId: "identity-../../escape", backend: { kind: "managed", identityId: "identity-../../escape" } },
+      },
+    },
+  });
+  assert.ok(restored && "scene" in restored);
+  assert.equal(restored.scene.browserCards.unsafe.identityId, "identity-default");
+  assert.deepEqual(restored.scene.browserCards.unsafe.backend, { kind: "managed", engine: "legacy-webview", identityId: "identity-default" });
+});

@@ -61,6 +61,8 @@ export interface CookieImportCounts {
   importedCookies: number;
   skippedCookies: number;
   failedCookies: number;
+  unsupportedCookies: number;
+  expiredCookies: number;
 }
 
 export interface IdentityImportSession {
@@ -73,6 +75,11 @@ export interface BrowserIdentityImportDeps extends BrowserProfileImportDeps {
   fromPartition: (partitionName: string) => IdentityImportSession;
   createIdentityId?: () => string;
   now?: () => number;
+  diagnostic?: (event: {
+    category: "profile-import" | "rollback";
+    profileId: string;
+    errorType: string;
+  }) => void;
 }
 
 export function defaultChromeRoot(): string {
@@ -152,6 +159,7 @@ export async function importChromeProfileCookies(
   if (!sourceCookieDb) return {
     source: "chrome", profileId: profile.profileId, profileName: profile.name,
     importedCookies: 0, skippedCookies: 0, failedCookies: 0,
+    unsupportedCookies: 0, expiredCookies: 0,
   };
 
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-chrome-import-"));
@@ -169,32 +177,46 @@ export async function importChromeProfileCookies(
     }
     const readRows = deps.readCookieRows ?? readChromiumCookieRows;
     const { rows, schemaVersion } = await readRows(copiedCookieDb);
-    const encryptedRows = rows.some((row) => row.encrypted_value_hex.length > 0);
+    const portableEncryptedRows = rows.some((row) => {
+      const expirationDate = chromiumTimestampToUnixSeconds(row.expires_utc);
+      if (expirationDate !== undefined && expirationDate <= Date.now() / 1_000) return false;
+      const prefix = Buffer.from(row.encrypted_value_hex, "hex").subarray(0, 3).toString("ascii");
+      return prefix === "v10" || prefix === "v11";
+    });
     const readPassword =
       deps.readChromeSafeStoragePassword ?? defaultReadChromeSafeStoragePassword;
-    const key = encryptedRows
+    const key = portableEncryptedRows
       ? deriveMacChromiumKey(await readPassword())
       : null;
 
     let importedCookies = 0;
     let skippedCookies = 0;
     let failedCookies = 0;
+    let unsupportedCookies = 0;
+    let expiredCookies = 0;
     for (const row of rows) {
+      const expirationDate = chromiumTimestampToUnixSeconds(row.expires_utc);
+      if (expirationDate !== undefined && expirationDate <= Date.now() / 1_000) {
+        skippedCookies += 1;
+        expiredCookies += 1;
+        continue;
+      }
+      const encryptedPrefix = Buffer.from(row.encrypted_value_hex, "hex").subarray(0, 3).toString("ascii");
+      if (!row.value && row.encrypted_value_hex && encryptedPrefix !== "v10" && encryptedPrefix !== "v11") {
+        skippedCookies += 1;
+        unsupportedCookies += 1;
+        continue;
+      }
       const value = row.value || (key
         ? decryptChromiumCookie(row.encrypted_value_hex, key, row.host_key, schemaVersion)
         : null);
       if (value === null) {
-        skippedCookies += 1;
+        failedCookies += 1;
         continue;
       }
       try {
         const host = row.host_key.replace(/^\./, "");
         if (!host || !row.name) {
-          skippedCookies += 1;
-          continue;
-        }
-        const expirationDate = chromiumTimestampToUnixSeconds(row.expires_utc);
-        if (expirationDate !== undefined && expirationDate <= Date.now() / 1_000) {
           skippedCookies += 1;
           continue;
         }
@@ -231,7 +253,7 @@ export async function importChromeProfileCookies(
       }
     }
 
-    if (importedCookies === 0 && rows.length > 0) {
+    if (importedCookies === 0 && failedCookies > 0) {
       throw new Error(
         "Chrome's cookies could not be decrypted. No browser data was changed.",
       );
@@ -243,6 +265,8 @@ export async function importChromeProfileCookies(
       importedCookies,
       skippedCookies,
       failedCookies,
+      unsupportedCookies,
+      expiredCookies,
     };
   } finally {
     // Exact mkdtemp-owned path only; no user profile files are ever changed.
@@ -279,7 +303,6 @@ export async function importChromeProfilesAsIdentities(
     for (let suffix = 2; takenNames.has(identityName.toLocaleLowerCase()); suffix += 1) {
       identityName = `${profile.name.trim() || profile.profileId} ${suffix}`;
     }
-    takenNames.add(identityName.toLocaleLowerCase());
     try {
       const cookieResult = await importChromeProfileCookies(profileId, targetSession.cookies, {
         ...deps,
@@ -288,12 +311,12 @@ export async function importChromeProfilesAsIdentities(
       await targetSession.cookies.flushStore?.();
       await targetSession.flushStorageData();
       const cookieStatus = cookieResult.importedCookies === 0
-        ? "empty"
+        ? cookieResult.unsupportedCookies > 0 ? "unsupported" : "empty"
         : cookieResult.failedCookies > 0 || cookieResult.skippedCookies > 0 ? "partial" : "imported";
       const unsupported = (detail: string) => ({ status: "unsupported" as const, count: 0, detail });
       const categories: BrowserProfileCategorySummary = {
         profileMetadata: { status: "imported", count: 1 },
-        cookies: { status: cookieStatus, count: cookieResult.importedCookies, ...(cookieResult.skippedCookies + cookieResult.failedCookies > 0 ? { detail: `${cookieResult.skippedCookies} unsupported or expired; ${cookieResult.failedCookies} failed` } : {}) },
+        cookies: { status: cookieStatus, count: cookieResult.importedCookies, ...(cookieResult.skippedCookies + cookieResult.failedCookies > 0 ? { detail: `${cookieResult.unsupportedCookies} unsupported; ${cookieResult.expiredCookies} expired; ${cookieResult.failedCookies} failed` } : {}) },
         siteStorage: unsupported("Portable staged storage adapter is not available yet"),
         history: unsupported("Tacit browsing metadata import is not available yet"),
         bookmarks: unsupported("Tacit bookmark import is not available yet"),
@@ -312,12 +335,15 @@ export async function importChromeProfilesAsIdentities(
           provenance: { source: "chrome", sourceProfileId: profileId, sourceProfileName: profile.name, importedAt: createdAt, categories },
         },
       });
-    } catch {
+      takenNames.add(identityName.toLocaleLowerCase());
+    } catch (error) {
+      deps.diagnostic?.({ category: "profile-import", profileId, errorType: error instanceof Error ? error.name : "UnknownError" });
       let cleanup: "completed" | "failed" = "completed";
       try {
         await targetSession.clearStorageData();
-      } catch {
+      } catch (error) {
         cleanup = "failed";
+        deps.diagnostic?.({ category: "rollback", profileId, errorType: error instanceof Error ? error.name : "UnknownError" });
       }
       results.push(cleanup === "completed"
         ? {
