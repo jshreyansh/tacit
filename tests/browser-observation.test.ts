@@ -7,6 +7,7 @@ import {
   elementLabel,
   elementRole,
   isSecretField,
+  isNearDuplicateText,
   isWellFormedObservation,
   normalizeLabel,
   normalizePageText,
@@ -208,4 +209,48 @@ test("popups open on the canvas, except where only the real browser can finish",
     resolve("javascript:fetch('//accounts.google.com')", "identity-a"),
     { action: "ignore" },
   );
+});
+
+test("a live page is not recorded once per render", () => {
+  // Shapes taken from a real session, where exact-match de-duplication let one
+  // page be written 104 times.
+  const base = "y".repeat(6806);
+  assert.equal(isNearDuplicateText(base, base + "7"), true, "a ticking counter is the same screen");
+  // Similarity is proportional, so a badge tick is noise in a real page and
+  // meaningful in a tiny one. Page text is thousands of characters; a 16-char
+  // "page" where one character is 6% of the content is correctly a change.
+  const inbox = (n: number) => `Inbox (${n})\n` + "message subject line\n".repeat(60);
+  assert.equal(isNearDuplicateText(inbox(3), inbox(4)), true, "an unread badge is not news");
+  assert.equal(isNearDuplicateText("Inbox (3)", "Inbox (4)"), false, "but in nine characters it is");
+  assert.equal(isNearDuplicateText(`spinner ${"z".repeat(400)} end`, `spinnee ${"z".repeat(400)} end`), true);
+
+  // But a reply actually arriving must survive: this is the case the rate
+  // limit alone would lose, and the whole point of the record.
+  assert.equal(isNearDuplicateText("Conversation with Gemini", "Conversation with Gemini\n\nHere is the answer"), false);
+  assert.equal(isNearDuplicateText("a".repeat(100), "b".repeat(100)), false);
+  assert.equal(isNearDuplicateText("", "anything"), false);
+  assert.equal(isNearDuplicateText("same", "same"), true);
+});
+
+test("the store drops re-renders but keeps a page that changed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "obs-"));
+  const lines: string[] = [];
+  const s = store(root, lines);
+  const page = { type: "page_text" as const, url: "https://chat.test/c/1", title: "T", truncated: false, at: 1 };
+  try {
+    assert.equal(s.record("identity-a", { ...page, text: "Reply: " + "x".repeat(500) }).written, true);
+    // Same screen, one character different — the case that used to be written.
+    assert.equal(
+      s.record("identity-a", { ...page, text: "Reply: " + "x".repeat(500) + "y" }).written,
+      false,
+    );
+    // Genuinely new content.
+    assert.equal(s.record("identity-a", { ...page, text: "Reply: " + "z".repeat(900) }).written, true);
+    // Same text, different page: a different screen, so it is recorded.
+    assert.equal(
+      s.record("identity-a", { ...page, url: "https://chat.test/c/2", text: "Reply: " + "z".repeat(900) }).written,
+      true,
+    );
+    assert.equal(lines.length, 3);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

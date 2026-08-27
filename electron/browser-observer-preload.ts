@@ -25,13 +25,32 @@ import {
   BROWSER_OBSERVATION_CHANNEL,
   elementLabel,
   elementRole,
+  isNearDuplicateText,
   normalizePageText,
   type BrowserInteractionKind,
   type BrowserObservation,
 } from "../shared/browser-observation";
 
-/** Page text is re-read this long after things stop changing. */
-const TEXT_SETTLE_MS = 1_200;
+/**
+ * Page text is re-read this long after things stop changing.
+ *
+ * Generous on purpose. Reading `innerText` forces a synchronous layout of the
+ * whole document, so doing it while a page is still working is not merely
+ * wasteful — it competes with the page for the main thread. An earlier, much
+ * shorter settle made streaming chat apps visibly stutter and re-paint.
+ */
+const TEXT_SETTLE_MS = 3_000;
+
+/**
+ * And never more often than this, however busy the page is.
+ *
+ * The settle timer alone does not bound anything: an app that mutates the DOM
+ * forever (a streaming reply, a live feed) reaches the quiet window over and
+ * over. This is the actual ceiling on how much work observation can impose on
+ * a page, and it is what keeps the record a history of screens rather than of
+ * frames.
+ */
+const TEXT_MIN_INTERVAL_MS = 20_000;
 /** Scroll depth is reported this long after scrolling stops. */
 const SCROLL_SETTLE_MS = 600;
 /** Below this change in depth, a scroll is not worth an entry. */
@@ -130,7 +149,20 @@ function safely<E extends Event>(handler: (event: E) => void): (event: E) => voi
 }
 
 let lastText = "";
+let lastCaptureAt = 0;
 let textTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Run during idle time where the browser offers it, so the forced layout that
+ * `innerText` costs lands in a gap rather than in front of the page's own work.
+ */
+function whenIdle(run: () => void): void {
+  const ric = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
+  }).requestIdleCallback;
+  if (typeof ric === "function") ric(run, { timeout: 2_000 });
+  else run();
+}
 
 function capturePageText(): void {
   try {
@@ -138,17 +170,18 @@ function capturePageText(): void {
     if (!body) return;
     // innerText is what a person can actually see, and input values are
     // structurally absent from it — an important part of why no masking pass
-    // is needed here.
+    // is needed here. It is also the expensive call, hence the guards above.
     const { text, truncated } = normalizePageText(body.innerText ?? "");
-    if (!text || text === lastText) return;
+    if (!text || isNearDuplicateText(text, lastText)) return;
     lastText = text;
+    lastCaptureAt = Date.now();
     post({
       type: "page_text",
       url: location.href,
       title: document.title ?? "",
       text,
       truncated,
-      at: Date.now(),
+      at: lastCaptureAt,
     });
   } catch {
     // Some pages throw on innerText mid-teardown.
@@ -157,7 +190,17 @@ function capturePageText(): void {
 
 function scheduleTextCapture(): void {
   if (textTimer) clearTimeout(textTimer);
-  textTimer = setTimeout(capturePageText, TEXT_SETTLE_MS);
+  const sinceLast = Date.now() - lastCaptureAt;
+  // Wait out the remainder of the interval rather than dropping the request,
+  // so the last state of a page that churned and then stopped still lands.
+  const delay = Math.max(TEXT_SETTLE_MS, TEXT_MIN_INTERVAL_MS - sinceLast);
+  textTimer = setTimeout(() => whenIdle(capturePageText), delay);
+}
+
+/** A navigation is a new screen: the previous page is no longer the baseline. */
+function resetTextBaseline(): void {
+  lastText = "";
+  lastCaptureAt = 0;
 }
 
 function scrollDepth(): number {

@@ -189,6 +189,45 @@ export function normalizePageText(raw: string): { text: string; truncated: boole
 }
 
 /**
+ * Whether two captures of a page are the same screen, rather than the same
+ * bytes.
+ *
+ * Exact-match de-duplication is useless on anything live: a streaming reply, a
+ * clock, an unread count, or a re-render caught mid-flight all differ by a few
+ * characters, so every capture looks new. The first version of this recorded a
+ * page 104 times in one session that way, including several intermediate
+ * render states of one screen.
+ *
+ * The test is cheap on purpose — this runs per capture, and the cost of a false
+ * "different" is one extra line, not a wrong answer.
+ */
+export function isNearDuplicateText(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+
+  const shorter = a.length < b.length ? a : b;
+  const longer = shorter === a ? b : a;
+  // A page that grew or shrank by more than a couple of percent said something
+  // new. This is what keeps a real reply arriving from being swallowed.
+  if (shorter.length / longer.length < 0.98) return false;
+
+  let prefix = 0;
+  while (prefix < shorter.length && a[prefix] === b[prefix]) prefix += 1;
+  if (prefix === shorter.length) return true;
+
+  let suffix = 0;
+  while (
+    suffix < shorter.length - prefix &&
+    a[a.length - 1 - suffix] === b[b.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+  // Everything but a small island in the middle matched: a counter ticked, a
+  // timestamp moved, a spinner changed frame.
+  return (prefix + suffix) / shorter.length >= 0.98;
+}
+
+/**
  * Whether an observation is structurally safe to record.
  *
  * A last gate before anything is written, so a mistake in the preload cannot
