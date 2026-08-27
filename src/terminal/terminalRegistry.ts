@@ -36,6 +36,20 @@ export function refreshRegisteredTerminalViewports(id?: string) {
   }
 }
 
+/**
+ * Where the terminal's viewport currently sits inside its buffer, or null when
+ * no live renderer is registered for that id. Used by the canvas wheel router
+ * to decide whether a scroll gesture still has scrollback to travel.
+ */
+export function getTerminalScrollPosition(
+  id: string,
+): { viewportY: number; baseY: number } | null {
+  const entry = registry.get(id);
+  if (!entry) return null;
+  const buffer = entry.xterm.buffer.active;
+  return { viewportY: buffer.viewportY, baseY: buffer.baseY };
+}
+
 export function serializeTerminal(id: string): string | null {
   const entry = registry.get(id);
   if (!entry) return null;

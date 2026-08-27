@@ -42,6 +42,13 @@ import { PetOverlay } from "../pet/PetOverlay";
 import { useBoxSelect } from "../hooks/useBoxSelect";
 import { useTrackpadSwipeFocus } from "./trackpadSwipeFocus";
 import {
+  resolveTerminalWheelConsumer,
+  scrollRoomFromScrollElement,
+  scrollRoomFromXtermBuffer,
+  type TerminalScrollRoom,
+} from "./terminalWheelRouting";
+import { getTerminalScrollPosition } from "../terminal/terminalRegistry";
+import {
   publishTerminalGeometry,
   unpublishTerminalGeometry,
 } from "../terminal/terminalGeometryRegistry";
@@ -771,13 +778,53 @@ function XyFlowCanvasInner() {
     await promptAndAddProjectToScene(t);
   }, [t]);
 
+  // Terminal renderers mount into one of these hosts: the xterm engine into
+  // `.tc-xterm-host`, the wterm engine into `.tc-wterm-host`. Both have to be
+  // recognised here — a host this selector misses can never receive a wheel
+  // event, because the capture-phase handler below swallows everything it does
+  // not explicitly hand off.
+  const resolveWheelConsumerForEvent = useCallback((event: WheelEvent) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return "canvas" as const;
+    }
+
+    const host = target.closest(".tc-xterm-host, .tc-wterm-host");
+    const tile = host?.closest("[data-handoff-terminal-id]");
+    if (!host || !tile) {
+      return "canvas" as const;
+    }
+
+    const terminalId = tile.getAttribute("data-handoff-terminal-id");
+    const bufferPosition = terminalId
+      ? getTerminalScrollPosition(terminalId)
+      : null;
+
+    let room: TerminalScrollRoom | null = null;
+    if (bufferPosition) {
+      room = scrollRoomFromXtermBuffer(bufferPosition);
+    } else if (host instanceof HTMLElement) {
+      // wterm renders into a plain DOM scroll container rather than an xterm
+      // buffer, so its remaining travel comes off the element itself.
+      room = scrollRoomFromScrollElement(host);
+    }
+
+    return resolveTerminalWheelConsumer({
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      overTerminal: true,
+      terminalFocused: tile.getAttribute("data-focused") === "true",
+      room,
+    });
+  }, []);
+
   const handleWheelCapture = useCallback(
     (event: WheelEvent) => {
       if (useCanvasStore.getState().focusMode.active) {
         // Focus view owns the wheel entirely: pinch/pan do nothing, only a
         // quick 2-finger horizontal flick pages to the next/previous node.
         // Only exempt genuinely vertical-dominant gestures (real scrollback
-        // intent) to the focused terminal's own scroll — a horizontal swipe
+        // intent) to the terminal under the cursor — a horizontal swipe
         // must always reach the pager below, even while the cursor sits on
         // top of the focused node's content (which it will, immediately
         // after the very first page, since focus view zooms that node to
@@ -786,15 +833,11 @@ function XyFlowCanvasInner() {
         // without needing to nudge the cursor between them.
         const isVerticalDominant =
           Math.abs(event.deltaY) >= Math.abs(event.deltaX);
-        if (isVerticalDominant) {
-          const target = event.target;
-          if (target instanceof Element) {
-            const xtermHost = target.closest(".tc-xterm-host");
-            const tile = xtermHost?.closest("[data-handoff-terminal-id]");
-            if (tile?.getAttribute("data-focused") === "true") {
-              return;
-            }
-          }
+        if (
+          isVerticalDominant &&
+          resolveWheelConsumerForEvent(event) === "terminal"
+        ) {
+          return;
         }
 
         event.preventDefault();
@@ -837,20 +880,14 @@ function XyFlowCanvasInner() {
         return;
       }
 
-      // Non-pinch wheel: this handler now owns ALL canvas pan, since
-      // React Flow's panOnScroll is disabled. The single exception is
-      // when the cursor is over the xterm rendering area of a *focused*
-      // terminal — that's the only condition under which the terminal
-      // is "active" and gets to consume wheel events as scrollback.
-      // Unfocused terminals are passive elements on the canvas, like
-      // images in Figma; wheel over them pans the canvas.
-      const target = event.target;
-      if (target instanceof Element) {
-        const xtermHost = target.closest(".tc-xterm-host");
-        const tile = xtermHost?.closest("[data-handoff-terminal-id]");
-        if (tile?.getAttribute("data-focused") === "true") {
-          return;
-        }
+      // Non-pinch wheel: this handler owns ALL canvas pan, since React Flow's
+      // panOnScroll is disabled. The exception is a terminal under the cursor
+      // that can consume the gesture as scrollback — the focused tile always
+      // can, an unfocused one only while it still has buffer left to travel in
+      // that direction, after which the gesture chains on to the camera.
+      // See terminalWheelRouting.ts for the full rule.
+      if (resolveWheelConsumerForEvent(event) === "terminal") {
+        return;
       }
 
       event.preventDefault();
@@ -871,7 +908,14 @@ function XyFlowCanvasInner() {
         y: Math.round(current.y - event.deltaY * PAN_SPEED),
       });
     },
-    [leftPanelCollapsed, leftPanelWidth, taskDrawerOpen, viewport, goToOffset],
+    [
+      leftPanelCollapsed,
+      leftPanelWidth,
+      taskDrawerOpen,
+      viewport,
+      goToOffset,
+      resolveWheelConsumerForEvent,
+    ],
   );
 
   // Attached as a real native listener (not JSX onWheelCapture) because
