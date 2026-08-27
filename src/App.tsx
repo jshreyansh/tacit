@@ -43,6 +43,15 @@ import {
   removeBrowserCardFromScene,
 } from "./actions/sceneCardActions";
 import { findBrowserCardByWebContentsId } from "./canvas/browserWebviewRegistry";
+import {
+  openBrowserNodeFind,
+  resetBrowserNodeZoom,
+  stepBrowserNodeZoom,
+} from "./browser/browserNodeCommands";
+import {
+  downloadDoneNotice,
+  downloadStartedNotice,
+} from "./browser/downloadNotice";
 import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
 import { BrowserController } from "./browser/browserController";
@@ -417,6 +426,56 @@ export function App() {
         addPopupBrowserCardToScene({ url, identityId: profileId, sourceCardId, position });
       },
     );
+  }, []);
+  // The half of ⌘F / ⌘± that the renderer can never see for itself: once the
+  // user clicks into a page, its keys go to the guest and stop there. Main
+  // recognises the four chords and sends the name back; matching it to a tile
+  // is the same webContents-id lookup the popup path uses.
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onGuestShortcut) return;
+    return window.termcanvas.browser.onGuestShortcut(
+      ({ shortcut, sourceWebContentsId }) => {
+        const cardId = findBrowserCardByWebContentsId(sourceWebContentsId);
+        if (!cardId) return;
+        if (shortcut === "find") openBrowserNodeFind(cardId);
+        else if (shortcut === "zoom-in") stepBrowserNodeZoom(cardId, "in");
+        else if (shortcut === "zoom-out") stepBrowserNodeZoom(cardId, "out");
+        else resetBrowserNodeZoom(cardId);
+      },
+    );
+  }, []);
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onDownloadEvent) return;
+    return window.termcanvas.browser.onDownloadEvent((event) => {
+      const notice =
+        event.phase === "started"
+          ? downloadStartedNotice(event.filename)
+          : downloadDoneNotice(event.outcome ?? "interrupted", event.filename);
+      if (notice) {
+        useNotificationStore.getState().notify(notice.type, notice.message);
+      }
+      if (event.phase !== "done" || event.outcome !== "completed") return;
+      // A file the user now has is a choice point, not activity: it is the
+      // one thing from a browsing session that outlives the session. Recorded
+      // only when it can be attributed to a node — an entry with no node to
+      // hang off joins to nothing.
+      const cardId =
+        event.sourceWebContentsId === null
+          ? undefined
+          : findBrowserCardByWebContentsId(event.sourceWebContentsId);
+      if (!cardId) return;
+      const card = useBrowserCardStore.getState().cards[cardId];
+      recordDecision({
+        kind: "browser_action",
+        node: `browser:${cardId}`,
+        action: "download",
+        backend: "managed",
+        by: "user",
+        ok: true,
+        url: event.url,
+        ...(card ? { profile: card.identityId } : {}),
+      });
+    });
   }, []);
   useEffect(() => {
     if (!window.termcanvas?.menu) return;

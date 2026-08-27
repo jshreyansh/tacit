@@ -27,6 +27,12 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { useShortcutStore, matchesShortcut } from "../stores/shortcutStore";
 import { useTerminalFindStore } from "../stores/terminalFindStore";
+import { getFocusedBrowserCardId } from "../browser/browserNodeFocus";
+import {
+  openBrowserNodeFind,
+  resetBrowserNodeZoom,
+  stepBrowserNodeZoom,
+} from "../browser/browserNodeCommands";
 import { useT } from "../i18n/useT";
 import { useComposerStore } from "../stores/composerStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -479,6 +485,31 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // Zoom, of which there are two. A browser node that holds the keyboard
+      // takes Cmd+= / Cmd+- / Cmd+0 for *page* zoom, which reflows the page and
+      // leaves canvas scale alone; everything else falls through to the
+      // Figma-style canvas zoom below. Cmd+1 is not claimed: it means
+      // "canvas at 100%", and a page has no equivalent worth stealing it for.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !isEditableTarget(e.target)) {
+        // Key first, focus second: this runs on every modified keypress, and
+        // resolving the focused node reads three stores.
+        const zoomKey =
+          e.key === "=" || e.key === "+"
+            ? "in"
+            : e.key === "-" || e.key === "_"
+              ? "out"
+              : e.key === "0"
+                ? "reset"
+                : null;
+        const browserCardId = zoomKey ? getFocusedBrowserCardId() : null;
+        if (browserCardId && zoomKey) {
+          consumeShortcut();
+          if (zoomKey === "reset") resetBrowserNodeZoom(browserCardId);
+          else stepBrowserNodeZoom(browserCardId, zoomKey);
+          return;
+        }
+      }
+
       // Figma-style canvas zoom: Cmd+0 fit, Cmd+1 100%, Cmd+= / Cmd+-
       // step. Skip when focus is in an editable target so Monaco /
       // textareas / inputs keep their own Cmd+0/=/- semantics —
@@ -616,6 +647,15 @@ export function useKeyboardShortcuts() {
         (!isEditableTarget(e.target) || isTerminalShortcutTarget(e.target))
       ) {
         consumeShortcut();
+        // Same chord, whichever kind of node has the keyboard. The other half
+        // of this — the press that happens while the page itself has focus,
+        // which never reaches this listener — arrives from main; see
+        // electron/browser-guest-shortcuts.ts.
+        const browserCardId = getFocusedBrowserCardId();
+        if (browserCardId) {
+          openBrowserNodeFind(browserCardId);
+          return;
+        }
         const list = getAllTerminals();
         const focusedIdx = getFocusedTerminalIndex(list);
         if (focusedIdx !== -1) {

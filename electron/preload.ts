@@ -1003,6 +1003,43 @@ contextBridge.exposeInMainWorld("termcanvas", {
       return () =>
         ipcRenderer.removeListener("browser:popup-requested", listener);
     },
+    /**
+     * A chord the page swallowed before the renderer could see it. Main has
+     * already resolved which one it was; only the name crosses.
+     */
+    onGuestShortcut: (
+      callback: (payload: {
+        shortcut: import("../src/types").BrowserGuestShortcut;
+        sourceWebContentsId: number;
+      }) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: {
+          shortcut: import("../src/types").BrowserGuestShortcut;
+          sourceWebContentsId: number;
+        },
+      ) => callback(payload);
+      ipcRenderer.on("browser:guest-shortcut", listener);
+      return () =>
+        ipcRenderer.removeListener("browser:guest-shortcut", listener);
+    },
+    /**
+     * A download in a browser node started or ended. Main owns the file and
+     * its location; the renderer is told a name so it can say something true
+     * about it, and never a path.
+     */
+    onDownloadEvent: (
+      callback: (payload: import("../src/types").BrowserDownloadEvent) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").BrowserDownloadEvent,
+      ) => callback(payload);
+      ipcRenderer.on("browser:download-event", listener);
+      return () =>
+        ipcRenderer.removeListener("browser:download-event", listener);
+    },
   },
   app: {
     homePath: process.env.HOME ?? process.env.USERPROFILE ?? "",

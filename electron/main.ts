@@ -1,9 +1,11 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   crashReporter,
   ipcMain,
   dialog,
+  Menu,
   nativeImage,
   shell,
   safeStorage,
@@ -39,6 +41,12 @@ import {
 import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "./browser-profile-ipc";
 import { BrowserObservationStore } from "./browser-observation-store";
 import { resolvePopupDisposition } from "./browser-popup";
+import {
+  buildBrowserContextMenu,
+  type BrowserContextMenuAction,
+} from "./browser-context-menu";
+import { resolveGuestShortcut } from "./browser-guest-shortcuts";
+import { resolveDownloadSavePath } from "./browser-downloads";
 import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
 import { identityIdFromPartition } from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
@@ -505,7 +513,56 @@ function guestObserverPreloadPath(): string {
 function rememberGuestPartition(partition: unknown): void {
   const identityId = identityIdFromPartition(partition);
   if (!identityId || typeof partition !== "string") return;
-  guestSessionProfiles.set(session.fromPartition(partition), identityId);
+  const guestSession = session.fromPartition(partition);
+  guestSessionProfiles.set(guestSession, identityId);
+  installGuestDownloads(guestSession);
+}
+
+/** Sessions already carrying a download handler; attaching twice fires twice. */
+const downloadHandledSessions = new WeakSet<Electron.Session>();
+
+/**
+ * Downloads inside a browser node.
+ *
+ * Without this a download does nothing visible at all, which reads as "this
+ * browser can't", and the repair is Chrome — taking the rest of the session out
+ * of the record with it. The rules that make it safe to just *work* live in
+ * browser-downloads.ts: the OS Downloads folder always, a name sanitised down
+ * to one path segment, no overwrite, and nothing opened afterwards.
+ */
+function installGuestDownloads(guestSession: Electron.Session): void {
+  if (downloadHandledSessions.has(guestSession)) return;
+  downloadHandledSessions.add(guestSession);
+
+  guestSession.on("will-download", (_event, item, webContents) => {
+    const { filePath, filename } = resolveDownloadSavePath({
+      directory: app.getPath("downloads"),
+      suggested: item.getFilename(),
+      exists: (candidate) => fs.existsSync(candidate),
+    });
+    // Setting a path also suppresses Electron's save dialog. That is the
+    // intent: a dialog per download is friction, and the destination was never
+    // the page's to propose.
+    item.setSavePath(filePath);
+
+    const url = item.getURL();
+    const sourceWebContentsId = webContents?.id ?? null;
+    sendToWindow(mainWindow, "browser:download-event", {
+      phase: "started",
+      filename,
+      url,
+      sourceWebContentsId,
+    });
+    item.once("done", (_doneEvent, state) => {
+      sendToWindow(mainWindow, "browser:download-event", {
+        phase: "done",
+        filename,
+        url,
+        sourceWebContentsId,
+        outcome: state,
+      });
+    });
+  });
 }
 
 function installBrowserObservation(): void {
@@ -3144,7 +3201,10 @@ app.whenReady().then(async () => {
       // somewhere Tacit cannot see, and made the app stop feeling like the
       // place the work happens. The popup inherits the source node's
       // profile, so it opens as the same signed-in person.
-      contents.setWindowOpenHandler(({ url }) => {
+      //
+      // Shared with the context menu below, so "Open Link in New Node" and a
+      // target="_blank" click cannot disagree about where a link belongs.
+      const routeOpenedUrl = (url: string): void => {
         const disposition = resolvePopupDisposition({
           url,
           profileId: guestSessionProfiles.get(contents.session),
@@ -3163,7 +3223,72 @@ app.whenReady().then(async () => {
             sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
           }
         }
+      };
+
+      contents.setWindowOpenHandler(({ url }) => {
+        routeOpenedUrl(url);
         return { action: "deny" };
+      });
+
+      // Right-click. Built here, in main, from Chromium's own report of what
+      // was clicked — the renderer neither builds it nor learns that it
+      // happened, and the page cannot ask for an item it was not offered.
+      // "Open Link in New Node" deliberately goes through the same routing as
+      // a target="_blank" popup, so an auth-blocked link still round-trips to
+      // the real browser instead of opening a dead-end tile.
+      contents.on("context-menu", (_contextEvent, params) => {
+        const entries = buildBrowserContextMenu({
+          linkUrl: params.linkURL,
+          isEditable: params.isEditable,
+          canCopy: params.editFlags.canCopy,
+          canPaste: params.editFlags.canPaste,
+          canGoBack: contents.navigationHistory.canGoBack(),
+          canGoForward: contents.navigationHistory.canGoForward(),
+          hasProfile: guestSessionProfiles.has(contents.session),
+          isDev,
+        });
+        const run = (action: BrowserContextMenuAction): void => {
+          if (contents.isDestroyed()) return;
+          switch (action) {
+            case "back": return contents.navigationHistory.goBack();
+            case "forward": return contents.navigationHistory.goForward();
+            case "reload": return contents.reload();
+            case "copy": return contents.copy();
+            case "paste": return contents.paste();
+            case "copy-link": return clipboard.writeText(params.linkURL);
+            case "open-link-in-node": return routeOpenedUrl(params.linkURL);
+            case "inspect": return contents.inspectElement(params.x, params.y);
+          }
+        };
+        const menu = Menu.buildFromTemplate(
+          entries.map((entry) =>
+            entry.kind === "separator"
+              ? { type: "separator" as const }
+              : {
+                  label: entry.label,
+                  enabled: entry.enabled,
+                  click: () => run(entry.action),
+                },
+          ),
+        );
+        // Anchored to the app window: a guest's webContents is not one, and
+        // `popup()` with no window puts the menu on whatever is focused.
+        menu.popup(mainWindow ? { window: mainWindow } : undefined);
+      });
+
+      // ⌘F and the zoom chords, pressed while the page owns the keyboard.
+      // Nothing else is inspected and nothing but the resolved name is
+      // forwarded — see browser-guest-shortcuts.ts on why this is kept that
+      // tight. The renderer matches the webContents id back to a tile the same
+      // way it does for popups.
+      contents.on("before-input-event", (inputEvent, input) => {
+        const shortcut = resolveGuestShortcut(input, process.platform);
+        if (!shortcut) return;
+        inputEvent.preventDefault();
+        sendToWindow(mainWindow, "browser:guest-shortcut", {
+          shortcut,
+          sourceWebContentsId: contents.id,
+        });
       });
     }
   });

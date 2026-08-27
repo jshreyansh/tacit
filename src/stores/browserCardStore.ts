@@ -16,6 +16,12 @@ export interface BrowserCardData {
   identityId: string;
   /** Provider-neutral runtime binding. Missing only on pre-migration snapshots. */
   backend?: BrowserNodeBinding;
+  /**
+   * Page zoom for this node's guest, as a factor where 1 is 100%. Nothing to
+   * do with canvas scale — see src/browser/pageZoom.ts. Absent means 100%,
+   * which is every card saved before this existed.
+   */
+  pageZoom?: number;
 }
 
 interface BrowserCardStore {

@@ -21,6 +21,15 @@ import {
   unregisterBrowserWebview,
 } from "../canvas/browserWebviewRegistry";
 import { recordDecision } from "../capture";
+import { BrowserFindBar } from "./BrowserFindBar";
+import { useBrowserFindStore } from "../stores/browserFindStore";
+import {
+  DEFAULT_BROWSER_ZOOM,
+  clampBrowserZoom,
+  formatBrowserZoom,
+  isDefaultBrowserZoom,
+} from "../browser/pageZoom";
+import { resetBrowserNodeZoom } from "../browser/browserNodeCommands";
 
 declare global {
   namespace JSX {
@@ -98,8 +107,14 @@ export function BrowserCard({ card }: Props) {
     const wv = webviewRef.current;
     if (!wv) return;
     registerBrowserWebview(card.id, wv);
-    return () => unregisterBrowserWebview(card.id);
-  }, [card.id]);
+    return () => {
+      unregisterBrowserWebview(card.id);
+      // The guest this card's find was running against is gone — either the
+      // node closed or the profile switch remounted it. Anything still on
+      // screen would be counting matches in a page that no longer exists.
+      useBrowserFindStore.getState().detach(card.id);
+    };
+  }, [card.id, card.identityId]);
 
   useEffect(() => {
     const wv = webviewRef.current;
@@ -133,17 +148,50 @@ export function BrowserCard({ card }: Props) {
       if (!e.isMainFrame || e.errorCode === -3) return;
       setLoadError(e.errorDescription);
     }) as EventListener;
+    // Chromium counts the matches, we only display them.
+    const onFoundInPage = ((e: Event & {
+      result: { activeMatchOrdinal: number; matches: number };
+    }) => {
+      useBrowserFindStore.getState().reportResult(card.id, e.result);
+    }) as EventListener;
     wv.addEventListener("page-title-updated", onTitle);
     wv.addEventListener("did-navigate", onNavigate);
     wv.addEventListener("did-navigate-in-page", onNavigate);
     wv.addEventListener("did-fail-load", onFailLoad);
+    wv.addEventListener("found-in-page", onFoundInPage);
     return () => {
       wv.removeEventListener("page-title-updated", onTitle);
       wv.removeEventListener("did-navigate", onNavigate);
       wv.removeEventListener("did-navigate-in-page", onNavigate);
       wv.removeEventListener("did-fail-load", onFailLoad);
+      wv.removeEventListener("found-in-page", onFoundInPage);
     };
-  }, [card.id]);
+  }, [card.id, card.identityId]);
+
+  // Page zoom, pushed from the card rather than left on the guest. Electron
+  // persists a zoom factor per origin within a session, so two nodes on the
+  // same profile and site would otherwise inherit each other's zoom; re-applying
+  // this card's own value on every attach and navigation keeps the card the
+  // authority on what it shows.
+  const pageZoom = clampBrowserZoom(card.pageZoom ?? DEFAULT_BROWSER_ZOOM);
+  useEffect(() => {
+    const wv = webviewRef.current;
+    if (!wv) return;
+    const apply = () => {
+      try {
+        wv.setZoomFactor(pageZoom);
+      } catch {
+        // Throws until the guest attaches; `dom-ready` below is the retry.
+      }
+    };
+    apply();
+    wv.addEventListener("dom-ready", apply);
+    wv.addEventListener("did-navigate", apply);
+    return () => {
+      wv.removeEventListener("dom-ready", apply);
+      wv.removeEventListener("did-navigate", apply);
+    };
+  }, [card.id, card.identityId, pageZoom]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -342,6 +390,22 @@ export function BrowserCard({ card }: Props) {
           onMouseDown={(e) => e.stopPropagation()}
         />
 
+        {/* Only while zoom is off default — otherwise it is a permanent "100%"
+            badge on every node, which is chrome charging rent. Clicking it is
+            the discoverable way back, for the user who zoomed a page days ago
+            and no longer remembers why it looks like that. */}
+        {!connectedBinding && !isDefaultBrowserZoom(pageZoom) && (
+          <button
+            type="button"
+            className="tc-meta tc-mono shrink-0 px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]"
+            title="Reset page zoom to 100%"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => resetBrowserNodeZoom(card.id)}
+          >
+            {formatBrowserZoom(pageZoom)}
+          </button>
+        )}
+
         <div className="relative" ref={identityMenuRef}>
           <button
             type="button"
@@ -439,6 +503,7 @@ export function BrowserCard({ card }: Props) {
           className="w-full h-full"
           style={{ border: "none" }}
         />}
+        {!connectedBinding && <BrowserFindBar cardId={card.id} />}
         {!connectedBinding && loadError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface)] text-[var(--text-muted)]">
             <p className="tc-body-sm mb-2">Failed to load page</p>

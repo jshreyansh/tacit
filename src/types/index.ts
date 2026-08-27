@@ -80,6 +80,27 @@ export interface BrowserBridgeCallEvent {
 }
 
 /**
+ * A comfort chord a browser node's page swallowed before the renderer's own
+ * shortcut listener could see it — see electron/browser-guest-shortcuts.ts.
+ */
+export type BrowserGuestShortcut = "find" | "zoom-in" | "zoom-out" | "zoom-reset";
+
+/**
+ * A download started or finished inside a browser node. Carries the name main
+ * actually wrote and never the path it wrote it to; the renderer's job is to
+ * say something true about it, not to reach it.
+ */
+export interface BrowserDownloadEvent {
+  phase: "started" | "done";
+  filename: string;
+  url: string;
+  /** Which guest asked for it, matched back to a tile by webContents id. */
+  sourceWebContentsId: number | null;
+  /** Present on `done` only. */
+  outcome?: "completed" | "cancelled" | "interrupted";
+}
+
+/**
  * Fired by electron/api-server.ts's nodeEmit handler around each connected
  * endpoint an emit_event call notifies, one event per (source, target) pair
  * — so the canvas can pulse any connection an event travels across, not
@@ -1214,6 +1235,15 @@ export interface TermCanvasAPI {
         profileId: string;
         sourceWebContentsId: number;
       }) => void,
+    ) => () => void;
+    onGuestShortcut: (
+      callback: (payload: {
+        shortcut: BrowserGuestShortcut;
+        sourceWebContentsId: number;
+      }) => void,
+    ) => () => void;
+    onDownloadEvent: (
+      callback: (payload: BrowserDownloadEvent) => void,
     ) => () => void;
   };
   app: {
