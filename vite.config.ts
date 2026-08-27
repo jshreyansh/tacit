@@ -8,17 +8,23 @@ import path from "path";
 import { build as esbuild, context as esbuildCtx, type Plugin as EsbuildPlugin } from "esbuild";
 import { ensureCliLauncher } from "./electron/cli-launchers";
 
-function buildPreload(): Plugin {
+/**
+ * `entry` is the app's own preload; `guest` is the observer injected into pages
+ * loaded in browser nodes. They are built the same way but are emphatically not
+ * the same thing — the guest runs inside pages the user is logged into and
+ * exposes no bridge at all (electron/browser-observer-preload.ts).
+ */
+function buildPreload(entry: string, outfile: string): Plugin {
   const opts = {
-    entryPoints: ["electron/preload.ts"],
-    outfile: "dist-electron/preload.cjs",
+    entryPoints: [entry],
+    outfile,
     format: "cjs" as const,
     platform: "node" as const,
     bundle: true,
     external: ["electron"],
   };
   return {
-    name: "build-preload",
+    name: `build-preload:${path.basename(outfile)}`,
     async buildStart() {
       if (this.meta.watchMode) {
         const ctx = await esbuildCtx(opts);
@@ -186,7 +192,11 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    buildPreload(),
+    buildPreload("electron/preload.ts", "dist-electron/preload.cjs"),
+    buildPreload(
+      "electron/browser-observer-preload.ts",
+      "dist-electron/browser-observer-preload.cjs",
+    ),
     buildCli(),
     buildHydra(),
     buildBrowse(),

@@ -37,6 +37,9 @@ import {
   importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
 import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "./browser-profile-ipc";
+import { BrowserObservationStore } from "./browser-observation-store";
+import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
+import { identityIdFromPartition } from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -473,7 +476,54 @@ function openPinPreviewWindow(repo: string, pinId: string): void {
   void win.loadURL(initialUrl);
 }
 
+/**
+ * Browser observation (tier 2 of the record). Main owns the whole path: it
+ * chooses the guest preload, decides which session belongs to which profile,
+ * and is the only place observations are written. The renderer is not involved
+ * and never sees page contents.
+ */
+let observationStore: BrowserObservationStore | null = null;
+
+/**
+ * Guest session → profile id. A WeakMap so a session that goes away takes its
+ * entry with it, and keyed on the session object because Electron has no API
+ * to ask a session what partition named it.
+ */
+const guestSessionProfiles = new WeakMap<Electron.Session, string>();
+
+function guestObserverPreloadPath(): string {
+  return path.join(__dirname, "browser-observer-preload.cjs");
+}
+
+/**
+ * Records which profile a partition belongs to, at attach time, while the
+ * partition name is still in hand. `fromPartition` returns the cached instance
+ * for a given name, so the session resolved here is object-identical to the one
+ * the guest ends up running on.
+ */
+function rememberGuestPartition(partition: unknown): void {
+  const identityId = identityIdFromPartition(partition);
+  if (!identityId || typeof partition !== "string") return;
+  guestSessionProfiles.set(session.fromPartition(partition), identityId);
+}
+
+function installBrowserObservation(): void {
+  if (observationStore) return;
+  observationStore = new BrowserObservationStore({
+    rootDir: path.join(app.getPath("userData"), "browser-observations"),
+  });
+  ipcMain.on(BROWSER_OBSERVATION_CHANNEL, (event, observation) => {
+    // Any renderer can post on this channel; only guests running on a known
+    // profile partition are recorded. The main window's own session is not one,
+    // so a compromised renderer cannot write into a profile's stream.
+    const profileId = guestSessionProfiles.get(event.sender.session);
+    if (!profileId) return;
+    observationStore?.record(profileId, observation);
+  });
+}
+
 function createWindow() {
+  installBrowserObservation();
   const isMac = process.platform === "darwin";
   const isWin = process.platform === "win32";
 
@@ -525,7 +575,13 @@ function createWindow() {
   mainWindow.webContents.on("will-attach-webview", (_event, webPreferences) => {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
-    delete webPreferences.preload;
+    // The guest preload is chosen here, in main, and never taken from the
+    // renderer's attributes — a renderer-supplied path would be an arbitrary
+    // script running inside the user's authenticated pages. It observes only;
+    // see electron/browser-observer-preload.ts for what it may and may not do.
+    // contextIsolation above is what keeps it unreachable from page scripts.
+    webPreferences.preload = guestObserverPreloadPath();
+    rememberGuestPartition(webPreferences.partition);
   });
 
   mainWindow.webContents.on("before-input-event", (event, input) => {

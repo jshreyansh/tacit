@@ -88,3 +88,20 @@ export function partitionForBrowserIdentity(identityId: string): string {
   if (!isValidBrowserIdentityId(identityId)) throw new Error("Invalid browser identity id");
   return `persist:identity-${identityId}`;
 }
+
+/**
+ * The inverse, for main-process code that is handed a partition and needs to
+ * know whose it is — observation entries are filed per profile, and the guest
+ * that produced one is identified by its session's partition.
+ *
+ * Returns null rather than throwing: a partition that is not one of ours (a
+ * connected tab, or anything Electron created for its own reasons) is a normal
+ * thing to be asked about, not an error.
+ */
+export function identityIdFromPartition(partition: unknown): string | null {
+  if (typeof partition !== "string") return null;
+  const prefix = "persist:identity-";
+  if (!partition.startsWith(prefix)) return null;
+  const identityId = partition.slice(prefix.length);
+  return isValidBrowserIdentityId(identityId) ? identityId : null;
+}
