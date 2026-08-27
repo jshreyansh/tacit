@@ -38,9 +38,11 @@ import { useProjectStore, generateId } from "./stores/projectStore";
 import { useBrowserCardStore } from "./stores/browserCardStore";
 import {
   addBrowserCardToScene,
+  addPopupBrowserCardToScene,
   updateBrowserCardInScene,
   removeBrowserCardFromScene,
 } from "./actions/sceneCardActions";
+import { findBrowserCardByWebContentsId } from "./canvas/browserWebviewRegistry";
 import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
 import { BrowserController } from "./browser/browserController";
@@ -397,6 +399,24 @@ export function App() {
           `Opened ${host} in your browser to sign in — the embedded browser can't complete Google/Microsoft-style sign-in.`,
         );
     });
+  }, []);
+  useEffect(() => {
+    if (!window.termcanvas?.browser?.onPopupRequested) return;
+    return window.termcanvas.browser.onPopupRequested(
+      ({ url, profileId, sourceWebContentsId }) => {
+        const sourceCardId =
+          findBrowserCardByWebContentsId(sourceWebContentsId) ?? null;
+        const source = sourceCardId
+          ? useBrowserCardStore.getState().cards[sourceCardId]
+          : undefined;
+        // Offset from the opener so the new tile is visibly related to it and
+        // does not land exactly on top, the way a stacked window would.
+        const position = source
+          ? { x: source.x + 48, y: source.y + 48 }
+          : undefined;
+        addPopupBrowserCardToScene({ url, identityId: profileId, sourceCardId, position });
+      },
+    );
   }, []);
   useEffect(() => {
     if (!window.termcanvas?.menu) return;

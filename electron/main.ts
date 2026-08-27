@@ -38,6 +38,7 @@ import {
 } from "./browser-profile-import";
 import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "./browser-profile-ipc";
 import { BrowserObservationStore } from "./browser-observation-store";
+import { resolvePopupDisposition } from "./browser-popup";
 import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
 import { identityIdFromPartition } from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
@@ -3135,11 +3136,32 @@ app.whenReady().then(async () => {
       // Some sites open sign-in in a popup rather than a top-level
       // redirect — this needs the same auth-domain check, or those
       // popups silently land in the user's real browser with no
-      // explanation. Anything else keeps opening externally as before.
+      // explanation.
+      //
+      // Everything else now opens as a new canvas node instead of being
+      // handed to the real browser. Ejecting on every target="_blank" was
+      // the single largest hole in the record: a link click moved the work
+      // somewhere Tacit cannot see, and made the app stop feeling like the
+      // place the work happens. The popup inherits the source node's
+      // profile, so it opens as the same signed-in person.
       contents.setWindowOpenHandler(({ url }) => {
-        redirectAuthToSystemBrowser(url);
-        if (!isEmbeddedAuthBlockedUrl(url) && isSafeExternalUrl(url)) {
-          void shell.openExternal(url);
+        const disposition = resolvePopupDisposition({
+          url,
+          profileId: guestSessionProfiles.get(contents.session),
+          isAuthBlocked: isEmbeddedAuthBlockedUrl,
+          isSafeExternal: isSafeExternalUrl,
+        });
+        if (disposition.action === "canvas-node") {
+          sendToWindow(mainWindow, "browser:popup-requested", {
+            url: disposition.url,
+            profileId: disposition.profileId,
+            sourceWebContentsId: contents.id,
+          });
+        } else if (disposition.action === "system-browser") {
+          void shell.openExternal(disposition.url);
+          if (disposition.reason === "auth") {
+            sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
+          }
         }
         return { action: "deny" };
       });

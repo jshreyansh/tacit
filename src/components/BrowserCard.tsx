@@ -119,6 +119,10 @@ export function BrowserCard({ card }: Props) {
         by: "system",
         ok: true,
         url: e.url,
+        // Names the activity stream holding what was clicked and read on this
+        // page, so the two tiers of the record can be joined without either
+        // one carrying the other's contents.
+        profile: card.identityId,
       });
     }) as EventListener;
     const onFailLoad = ((e: Event & {

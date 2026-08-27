@@ -17,6 +17,7 @@ import {
 import { isRedactedUrl, redactionRuleFor } from "../shared/browser-redaction";
 import { identityIdFromPartition, partitionForBrowserIdentity } from "../shared/browser-profile-import";
 import { BrowserObservationStore } from "../electron/browser-observation-store";
+import { resolvePopupDisposition } from "../electron/browser-popup";
 
 /** Minimal stand-in for a DOM element; the preload passes a real one. */
 function el(
@@ -167,4 +168,44 @@ test("the store refuses unusable profile ids and malformed observations", () => 
     assert.deepEqual(s.record("identity-a", click), { written: true, redacted: false });
     assert.equal(s.fileFor("identity-a"), path.join(root, "identity-a.jsonl"));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("popups open on the canvas, except where only the real browser can finish", () => {
+  const authHosts = ["accounts.google.com", "login.microsoftonline.com"];
+  const isAuthBlocked = (url: string) => authHosts.some((h) => url.includes(h));
+  const isSafeExternal = (url: string) => url.startsWith("https://") || url.startsWith("http://");
+  const resolve = (url: string, profileId: string | undefined) =>
+    resolvePopupDisposition({ url, profileId, isAuthBlocked, isSafeExternal });
+
+  // The case the whole change exists for: an ordinary target="_blank" stays.
+  assert.deepEqual(resolve("https://docs.test/page", "identity-a"), {
+    action: "canvas-node",
+    url: "https://docs.test/page",
+    profileId: "identity-a",
+  });
+
+  // Sign-in must still leave, or it lands on a dead-end page inside the node.
+  assert.deepEqual(resolve("https://accounts.google.com/signin", "identity-a"), {
+    action: "system-browser",
+    url: "https://accounts.google.com/signin",
+    reason: "auth",
+  });
+
+  // A guest with no profile of ours has no partition to inherit.
+  assert.deepEqual(resolve("https://docs.test/page", undefined), {
+    action: "system-browser",
+    url: "https://docs.test/page",
+    reason: "no-profile",
+  });
+
+  // A canvas tile is not a safer home for a hostile scheme than anywhere else.
+  assert.deepEqual(resolve("file:///etc/passwd", "identity-a"), { action: "ignore" });
+  assert.deepEqual(resolve("javascript:alert(1)", "identity-a"), { action: "ignore" });
+  assert.deepEqual(resolve("javascript:alert(1)", undefined), { action: "ignore" });
+
+  // Auth on an unsafe scheme is refused rather than opened for being auth.
+  assert.deepEqual(
+    resolve("javascript:fetch('//accounts.google.com')", "identity-a"),
+    { action: "ignore" },
+  );
 });

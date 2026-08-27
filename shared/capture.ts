@@ -108,6 +108,15 @@ export type CaptureEvent =
       ok: boolean;
       url?: string;
       error?: string;
+      /**
+       * Which browser profile this happened as, and therefore which activity
+       * stream holds the detail (electron/browser-observation-store.ts). This
+       * is the join between the two tiers of the record: the choice point
+       * stays here, and what was clicked and read on the way to it lives in
+       * that profile's stream, referenced rather than copied in. Absent for
+       * connected tabs, which Tacit does not observe.
+       */
+      profile?: string;
     }
   | {
       kind: "topology";

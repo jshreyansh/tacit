@@ -983,6 +983,26 @@ contextBridge.exposeInMainWorld("termcanvas", {
       return () =>
         ipcRenderer.removeListener("browser:external-auth-redirect", listener);
     },
+    /**
+     * A page in a browser node asked to open a window. Main has already
+     * decided it belongs on the canvas rather than in the real browser; the
+     * renderer's job is to place it and give it the same profile.
+     */
+    onPopupRequested: (
+      callback: (payload: {
+        url: string;
+        profileId: string;
+        sourceWebContentsId: number;
+      }) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { url: string; profileId: string; sourceWebContentsId: number },
+      ) => callback(payload);
+      ipcRenderer.on("browser:popup-requested", listener);
+      return () =>
+        ipcRenderer.removeListener("browser:popup-requested", listener);
+    },
   },
   app: {
     homePath: process.env.HOME ?? process.env.USERPROFILE ?? "",

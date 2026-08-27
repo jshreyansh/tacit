@@ -66,6 +66,36 @@ export function addBrowserCardToScene(
   return id;
 }
 
+/**
+ * A page in a browser tile opened a window, and it lands on the canvas instead
+ * of in the user's real browser.
+ *
+ * Two things make it a popup rather than just another tile. It inherits the
+ * opener's profile, so the new page opens as the same signed-in person — a
+ * popup that arrived signed out would be worse than the ejection it replaces.
+ * And it is recorded with the opener as its parent, which is the cross-node
+ * structure the decision record exists to hold: "this tab came from that one"
+ * is exactly what a transcript of either page alone can never say.
+ */
+export function addPopupBrowserCardToScene(options: {
+  url: string;
+  identityId: string;
+  sourceCardId: string | null;
+  position?: { x: number; y: number };
+}): string {
+  const { url, identityId, sourceCardId, position } = options;
+  const id = useBrowserCardStore.getState().addCard(url, identityId, position);
+  recordDecision({
+    kind: "spawn",
+    node: `browser:${id}`,
+    // The user clicked the link. The page merely relayed it.
+    by: "user",
+    parent: sourceCardId ? `browser:${sourceCardId}` : null,
+    detail: url,
+  });
+  return id;
+}
+
 export function addConnectedBrowserCardToScene(
   binding: ConnectedTabBinding,
   connection: ConnectedBrowserConnection,

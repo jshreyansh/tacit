@@ -1208,6 +1208,13 @@ export interface TermCanvasAPI {
     onExternalAuthRedirect: (
       callback: (payload: { url: string }) => void,
     ) => () => void;
+    onPopupRequested: (
+      callback: (payload: {
+        url: string;
+        profileId: string;
+        sourceWebContentsId: number;
+      }) => void,
+    ) => () => void;
   };
   app: {
     homePath: string;
