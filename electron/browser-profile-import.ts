@@ -207,9 +207,16 @@ export async function importChromeProfileCookies(
         unsupportedCookies += 1;
         continue;
       }
-      const value = row.value || (key
-        ? decryptChromiumCookie(row.encrypted_value_hex, key, row.host_key, schemaVersion)
-        : null);
+      // A row with neither a plaintext nor an encrypted value holds an empty
+      // cookie value, which Chromium stores by short-circuiting encryption on
+      // empty plaintext. There is nothing to decrypt, so this must not be
+      // counted as a decryption failure: doing so hard-fails an otherwise
+      // importable profile whose remaining cookies are all app-bound.
+      const value = row.value || (!row.encrypted_value_hex
+        ? ""
+        : key
+          ? decryptChromiumCookie(row.encrypted_value_hex, key, row.host_key, schemaVersion)
+          : null);
       if (value === null) {
         failedCookies += 1;
         continue;

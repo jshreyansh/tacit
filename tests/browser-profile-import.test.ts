@@ -251,6 +251,35 @@ test("all expired cookies create an identity with empty cookie status", async ()
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("an empty-valued cookie is imported rather than counted as a decryption failure", async () => {
+  const root = chromeFixture();
+  const written: string[] = [];
+  let cleared = false;
+  try {
+    // Chromium short-circuits encryption on empty plaintext, so an empty-valued
+    // cookie persists with neither a plaintext nor an encrypted value. Such a
+    // row alongside app-bound cookies must not hard-fail the whole profile.
+    const result = await importChromeProfilesAsIdentities(["Default"], [], {
+      chromeRoot: root, isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readChromeSafeStoragePassword: async () => { throw new Error("must not read"); },
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [
+        { host_key: ".example.com", name: "blank", path: "/", value: "", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 },
+        { host_key: ".example.com", name: "protected", path: "/", value: "", encrypted_value_hex: Buffer.from("v20app-bound").toString("hex"), expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 },
+      ] }),
+      fromPartition: () => ({
+        cookies: { set: async (c: { name: string }) => { written.push(c.name); }, remove: async () => {} },
+        flushStorageData: async () => {},
+        clearStorageData: async () => { cleared = true; },
+      }),
+    });
+    assert.equal(result.results[0]?.status, "completed");
+    assert.equal(cleared, false, "the identity must not be rolled back");
+    assert.deepEqual(written, ["blank"]);
+    assert.equal(result.results[0]?.status === "completed" ? result.results[0].identity.provenance.categories.cookies.status : "", "partial");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("batch import creates isolated identities, disambiguates names, and reports unsupported categories", async () => {
   const root = chromeFixture();
   fs.writeFileSync(path.join(root, "Local State"), JSON.stringify({ profile: { info_cache: {
