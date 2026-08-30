@@ -229,6 +229,75 @@ Provenance parsing must also degrade per-field. It currently requires an exact
 category count, so adding a category silently destroys all provenance on the next
 load — including the fingerprint the whole lifecycle depends on.
 
+## Agents and profiles
+
+An agent working in an imported profile can do anything the user can: send mail
+as them, post as them, spend their money. That is a real escalation over an
+agent driving an empty browser, and it arrives the moment adoption works. So
+which profile an agent acts as is a permission question, not a defaulting
+question, and it is answered in two places with two different scopes.
+
+**Global, at import: may agents work as this profile at all?** A per-profile
+toggle, editable at any time in the profile manager, applying to every canvas
+immediately. It restricts *agents only* — the user can always open a node on any
+profile themselves. That asymmetry is the point: a personal mailbox stays one
+click away for its owner and permanently out of reach for an agent.
+
+The toggle arrives **on**. Off-by-default is the safer setting and is the one
+this document originally argued for; the product decision is that a first agent
+browser task hitting a permission wall is the worse failure. The mitigation is
+placement rather than default: the toggle appears on the import result row, so
+the choice is made while the user is already reviewing each profile, not
+discovered later in a settings screen.
+
+**Per canvas, at first use: which allowed profile is the default here?** Asked
+once, the first time an agent needs a browser on a canvas — never during import.
+The default is per-canvas but import is global and one-off, so asking at import
+means answering a question about a canvas that does not exist yet, inside a flow
+that is already heavy enough to be clicked through. Asked in place, on a canvas
+that is usually one kind of work, the answer is obvious. If only one profile is
+allowed, nothing is asked.
+
+### Resolution
+
+Most specific intent wins:
+
+1. The agent named a profile.
+2. The agent is already driving a browser node — use that node's profile, so a
+   task that started in one identity stays in it.
+3. The canvas default.
+4. Exactly one allowed profile holds a session for the target site.
+5. Guest, stated out loud.
+
+With one refinement at (3): the canvas default wins **unless it has no session
+for the site and exactly one other allowed profile does**, in which case that
+profile is used and the reason is reported. Explicit intent normally beats a
+heuristic, but not when following it produces the signed-out page this whole
+project exists to prevent.
+
+Whatever is chosen is visible: the node shows the profile it opened as, and the
+agent states it in its reply. Silent selection is how a signed-out node reaches
+a user who assumed otherwise.
+
+### Revocation
+
+Turning a profile off stops agents from starting **any new action** on it,
+across every canvas and node, at once. Actions already in flight cannot be
+recalled — that limit is stated rather than papered over with a claim of
+atomicity the implementation cannot keep.
+
+Nodes are not destroyed. Revoking means agents may no longer act as this person;
+it does not mean erasing the page. The node keeps its session and becomes the
+user's alone, to finish by hand or close. Destroying it would discard work and
+punish the user for tightening a permission.
+
+Agents receive a typed refusal naming the cause, so a revoked profile reports as
+a stuck task rather than an inexplicable failure — the same discipline the
+assignment contract applies elsewhere. On resume, the offer is to restart the
+work as another profile or for the user to take it over; it is never presented
+as continuing, because a workflow half-completed as one identity does not
+continue as a different one.
+
 ## Staying inside
 
 These are not polish. Each one is a mechanism that moves work out of the record.
@@ -298,7 +367,13 @@ together rather than in sequence.
    of text and no visible change.
 5. **Address-bar suggestions** from imported history and bookmarks.
 6. **Re-adopt from Chrome, per site** — the repair path for forced ejections.
-7. **Recall over browsing.** Extend the existing recall layer to query tier 2:
+7. **Agents and profiles.** The permission model above: the global allow-list
+   and its import-row placement, the per-canvas default asked once at first use,
+   the resolution cascade, `spawn_browser` gaining a profile and a tool to list
+   permitted profiles, revocation, and the profile shown on the node. Ordered
+   here because it is what lets an agent do the user's real work rather than
+   demonstrate on a signed-out page.
+8. **Recall over browsing.** Extend the existing recall layer to query tier 2:
    what was worked on, where work repeats, what an agent needs to act.
 
 ## Acceptance criteria
@@ -326,9 +401,15 @@ together rather than in sequence.
    injection layer. Redacted-category sites produce tier 1 entries and no tier 2
    text.
 10. A popup opens as a canvas node rather than ejecting to the system browser.
-11. Existing profiles, connected tabs, browser cards, snapshots and old
+11. An agent cannot open or drive a node on a profile that is not allow-listed,
+    including by naming it explicitly. Revoking a profile stops new agent
+    actions on it everywhere without destroying any node, and the refusal names
+    the cause. The user's own access is unaffected by the allow-list.
+12. The profile an agent resolved to is visible on the node and stated in the
+    agent's reply, including when it fell through to Guest.
+13. Existing profiles, connected tabs, browser cards, snapshots and old
     workspaces continue to work.
-12. Typecheck, browser tests, full suite, production build, and a **packaged-app
+14. Typecheck, browser tests, full suite, production build, and a **packaged-app
     smoke test** pass before a build is handed off. The packaged smoke test has
     never yet been run and is not closed by the green suite.
 
