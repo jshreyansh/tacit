@@ -305,6 +305,10 @@ export class ApiServer {
       const id = pathname.split("/")[2];
       return this.spawnBrowser(id, body);
     }
+    if (method === "GET" && pathname.match(/^\/terminal\/[^/]+\/browser-profiles$/)) {
+      const id = pathname.split("/")[2];
+      return this.listBrowserProfiles(id);
+    }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/spawn-note$/)) {
       const id = pathname.split("/")[2];
       return this.spawnNote(id, body);
@@ -1380,14 +1384,27 @@ export class ApiServer {
     if (!url || typeof url !== "string") {
       throw Object.assign(new Error("url is required"), { status: 400 });
     }
+    const profile = body?.profile;
+    if (profile !== undefined && typeof profile !== "string") {
+      throw Object.assign(new Error("profile must be a string"), { status: 400 });
+    }
     return this.execRenderer(
       `window.__tcApi.spawnBrowser(${JSON.stringify({
         requesterTerminalId: terminalId,
         url,
         position: body?.position,
         connectTo: body?.connectTo,
+        // A profile name or id. Resolved in the renderer, where the identity
+        // registry and this canvas's default both live — never defaulted here.
+        profile,
       })})`,
     );
+  }
+
+  /** Backs the list_browser_profiles MCP tool. */
+  private async listBrowserProfiles(terminalId: string) {
+    await this.requireWorkspaceManager(terminalId);
+    return this.execRenderer(`window.__tcApi.listAgentBrowserProfiles()`);
   }
 
   /** Backs the spawn_note MCP tool. */

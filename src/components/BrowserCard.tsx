@@ -13,6 +13,9 @@ import { useCardLayoutStore } from "../stores/cardLayoutStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSelectionStore } from "../stores/selectionStore";
 import { useIdentityStore, partitionForIdentity } from "../stores/identityStore";
+import { isAgentAllowed } from "../types/workspace";
+import { isGuestProfile, profileSwatch } from "../browser/profileColor";
+import { ProfileDot } from "./ProfileDot";
 import { managedBrowserBinding } from "../../shared/browser-controller";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import { useT } from "../i18n/useT";
@@ -86,6 +89,14 @@ export function BrowserCard({ card }: Props) {
   const t = useT();
   const identities = useIdentityStore((s) => s.identities);
   const currentIdentity = identities[card.identityId];
+  const onGuestProfile = !connectedBinding && isGuestProfile(card.identityId);
+  const identitySwatch = profileSwatch(card.identityId);
+  const identityChipBorder = connectedBinding || onGuestProfile
+    ? "var(--border)"
+    : `color-mix(in srgb, ${identitySwatch.color} 45%, var(--border))`;
+  const identityChipBackground = connectedBinding || onGuestProfile
+    ? "transparent"
+    : identitySwatch.soft;
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
   const identityMenuRef = useRef<HTMLDivElement>(null);
 
@@ -437,31 +448,67 @@ export function BrowserCard({ card }: Props) {
         )}
 
         <div className="relative" ref={identityMenuRef}>
+          {/* Which profile this node is signed in as, legible at canvas zoom:
+              a colour you can tell apart when the label is too small to read,
+              and a hollow dot with a dashed outline when it is Guest — the one
+              case where the node is signed into nothing at all, and the one a
+              user must never mistake for their own account. */}
           <button
             type="button"
-            className="tc-meta px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] max-w-[100px] truncate"
-            title={connectedBinding ? "Connected system-browser profile" : t.browser_identity_picker_title}
+            className={`tc-meta flex items-center gap-1.5 px-1.5 py-0.5 rounded border max-w-[170px] hover:border-[var(--border-hover)] ${
+              onGuestProfile ? "border-dashed" : ""
+            }`}
+            style={{
+              borderColor: identityChipBorder,
+              background: identityChipBackground,
+              color: onGuestProfile ? "var(--text-faint)" : "var(--text-secondary)",
+            }}
+            title={
+              connectedBinding
+                ? "Connected system-browser profile"
+                : onGuestProfile
+                  ? t.browser_identity_guest_hint
+                  : t.browser_identity_picker_title
+            }
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => { if (!connectedBinding) setIdentityMenuOpen((v) => !v); }}
           >
-            {connectedBinding
-              ? `${connectedBinding.browser} · ${connectedBinding.profileLabel}`
-              : currentIdentity?.name ?? t.browser_identity_unknown}
+            {!connectedBinding && <ProfileDot identityId={card.identityId} />}
+            <span className="truncate">
+              {connectedBinding
+                ? `${connectedBinding.browser} · ${connectedBinding.profileLabel}`
+                : currentIdentity?.name ?? t.browser_identity_unknown}
+            </span>
+            {/* Said in words as well as in colour: a node signed into nothing
+                is the one state a user must never read as their own account. */}
+            {onGuestProfile && (
+              <span
+                className="shrink-0 text-[9px] uppercase tracking-wide"
+                style={{ color: "var(--text-faint)" }}
+              >
+                {t.browser_identity_signed_out}
+              </span>
+            )}
           </button>
           {identityMenuOpen && !connectedBinding && (
             <div
-              className="absolute right-0 top-full mt-1 w-[160px] max-h-52 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-lg z-20 tc-enter-fade-quick"
+              className="absolute right-0 top-full mt-1 w-[200px] max-h-52 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-lg z-20 tc-enter-fade-quick"
               onMouseDown={(e) => e.stopPropagation()}
             >
               {Object.values(identities).map((identity) => (
                 <button
                   key={identity.id}
                   type="button"
-                  className={`w-full text-left px-2.5 py-1.5 tc-meta truncate transition-colors duration-quick ${
+                  className={`w-full flex items-center gap-1.5 text-left px-2.5 py-1.5 tc-meta transition-colors duration-quick ${
                     identity.id === card.identityId
                       ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
                   }`}
+                  title={
+                    isAgentAllowed(identity)
+                      ? undefined
+                      : t.browser_identity_agent_withheld
+                  }
                   onClick={() => {
                     updateBrowserCardInScene(card.id, {
                       identityId: identity.id,
@@ -470,7 +517,18 @@ export function BrowserCard({ card }: Props) {
                     setIdentityMenuOpen(false);
                   }}
                 >
-                  {identity.name}
+                  <ProfileDot identityId={identity.id} size={6} />
+                  <span className="truncate flex-1">{identity.name}</span>
+                  {/* The user may open any profile; only agents are held back,
+                      so this is a note on the row, not a disabled state. */}
+                  {!isAgentAllowed(identity) && (
+                    <span
+                      className="shrink-0 text-[9px] uppercase tracking-wide"
+                      style={{ color: "var(--text-faint)" }}
+                    >
+                      {t.browser_identity_agent_withheld_short}
+                    </span>
+                  )}
                 </button>
               ))}
               <div className="border-t border-[var(--border)]">

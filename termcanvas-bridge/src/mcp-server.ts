@@ -332,14 +332,20 @@ export function createTermcanvasBridgeServer(): McpServer {
     {
       title: "Spawn a new browser tile (workspace manager only)",
       description:
-        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Only the workspace manager can call this.",
+        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Pass profile to choose which browser profile (signed-in identity) it opens as — call list_browser_profiles first if the task needs the user's real session, because the wrong choice means a signed-out page. The result always states which profile was used and why. Only the workspace manager can call this.",
       inputSchema: {
         url: z.string().describe("URL to open"),
         position: positionSchema,
         connectTo: connectToSchema,
+        profile: z
+          .string()
+          .optional()
+          .describe(
+            "Browser profile to open as — its name (as shown on the node and by list_browser_profiles) or its id. Omit to let the canvas decide; it may refuse and ask you to pick.",
+          ),
       },
     },
-    async ({ url, position, connectTo }) => {
+    async ({ url, position, connectTo, profile }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
         return textResult("Not running inside a Tacit terminal.");
@@ -347,7 +353,7 @@ export function createTermcanvasBridgeServer(): McpServer {
       const result = (await apiRequest(
         "POST",
         `/terminal/${encodeURIComponent(terminalId)}/spawn-browser`,
-        { url, position, connectTo },
+        { url, position, connectTo, profile },
       )) as { ok?: boolean; id?: string };
       // Say the capability out loud in the result. The canvas normally
       // announces a terminal↔browser wire by pushing a turn into the
@@ -358,7 +364,34 @@ export function createTermcanvasBridgeServer(): McpServer {
         result?.ok && !connectTo
           ? "\n\nThis browser is now yours to drive: browser_read, browser_navigate, browser_click, browser_eval all target it."
           : "";
-      return textResult(JSON.stringify(result, null, 2) + note);
+      // The profile is never chosen silently: the canvas reports which one it
+      // opened as and why, and that has to reach the user through your reply,
+      // not sit in a JSON field you skim past.
+      const profileNote = (result as { note?: string })?.note
+        ? `\n\n${(result as { note?: string }).note}\nState this profile in your reply — the user cannot see which identity a node opened as unless you say so.`
+        : "";
+      return textResult(JSON.stringify(result, null, 2) + profileNote + note);
+    },
+  );
+
+  server.registerTool(
+    "list_browser_profiles",
+    {
+      title: "List browser profiles you may use (workspace manager only)",
+      description:
+        "Lists the browser profiles (signed-in identities) you are permitted to open a browser tile as, with the id and name to pass to spawn_browser's profile parameter, which one is this canvas's default, and whether it came from the user's Chrome — a Chrome-imported profile is where their real logged-in sessions are. Profiles the user has withheld from agents are not listed and cannot be used; if a task needs one of those, ask the user. Call this before spawn_browser whenever the work depends on being signed in. Only the workspace manager can call this.",
+      inputSchema: {},
+    },
+    async () => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "GET",
+        `/terminal/${encodeURIComponent(terminalId)}/browser-profiles`,
+      );
+      return textResult(JSON.stringify(result, null, 2));
     },
   );
 

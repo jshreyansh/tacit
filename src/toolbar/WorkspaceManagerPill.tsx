@@ -74,7 +74,7 @@ const AGENT_ICON: Record<WorkspaceManagerAgentType, string> = {
 // resolve that internally, so the agent never needs to know it.
 const WORKSPACE_MANAGER_BRIEFING = [
   "You've been assigned the workspace manager role for this canvas.",
-  "You now have access to Tacit's workspace-manager tools: list_nodes, get_node_state, query_memory, get_workspace_summary, spawn_terminal, spawn_browser, spawn_note, connect_nodes, and log_activity.",
+  "You now have access to Tacit's workspace-manager tools: list_nodes, get_node_state, query_memory, get_workspace_summary, spawn_terminal, spawn_browser, list_browser_profiles, spawn_note, connect_nodes, and log_activity.",
   "Start by calling get_workspace_summary — it returns what's already on this canvas plus the most recent entries from the workspace's continuity journal, written by anyone who held this role before you (including a past version of you, if you're being reassigned back after being swapped out).",
   "Call log_activity after spawning/wiring nodes or making a real decision, so a future agent who picks up this role — even a different underlying CLI — can actually pick up where you left off instead of starting cold.",
 ].join(" ");

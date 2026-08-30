@@ -24,9 +24,17 @@ function removeCardSelection(cardId: string) {
 export function createBrowserCardInScene(
   url: string,
   position?: { x: number; y: number },
+  /**
+   * Which profile the tile opens as. Omitted means "whatever the user is
+   * currently working as", which is right for a person clicking Browser and
+   * wrong for an agent: an agent's profile is a permission decision resolved
+   * by shared/browser-agent-profiles.ts before it ever reaches here, so that
+   * path passes the answer in explicitly rather than inheriting the UI's.
+   */
+  identityId?: string,
 ): string {
-  const identityId = useIdentityStore.getState().activeIdentityId;
-  return useBrowserCardStore.getState().addCard(url, identityId, position);
+  const resolved = identityId ?? useIdentityStore.getState().activeIdentityId;
+  return useBrowserCardStore.getState().addCard(url, resolved, position);
 }
 
 /**
@@ -46,11 +54,13 @@ export function addBrowserCardToScene(
    * context menu, the command palette.
    */
   by: CaptureActor = "user",
+  /** Resolved profile for agent spawns; see createBrowserCardInScene. */
+  identityId?: string,
 ): string {
   if (!usePreferencesStore.getState().browserEnabled) {
     usePreferencesStore.getState().setBrowserEnabled(true);
   }
-  const id = createBrowserCardInScene(url, position);
+  const id = createBrowserCardInScene(url, position, identityId);
   // Recorded here rather than at the call sites, the same way terminals are
   // recorded inside createTerminalInScene. Sitting only on the agent's path
   // meant a browser you opened yourself appeared in the record from nowhere —

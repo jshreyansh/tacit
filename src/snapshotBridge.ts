@@ -734,8 +734,8 @@ function defaultIdentities(): {
 
 /**
  * Parses `identities`/`activeIdentityId` if present (a save from after this
- * feature shipped), otherwise seeds a single "Default" identity — so a save
- * from before browser identities existed still loads instead of crashing.
+ * feature shipped), otherwise seeds the single built-in Guest profile — so a
+ * save from before browser profiles existed still loads instead of crashing.
  */
 function coerceIdentities(value: Record<string, unknown>): {
   identities: BrowserIdentity[];

@@ -13,6 +13,8 @@ import type {
   ConnectedTabBinding,
 } from "../../shared/browser-connection";
 import type { BrowserProfileImportResult, ImportableBrowserProfile } from "../../shared/browser-profile-import";
+import { isAgentAllowed } from "../types/workspace";
+import { ProfileDot } from "./ProfileDot";
 
 interface PairingOffer {
   endpoint: string;
@@ -100,15 +102,89 @@ function ActiveDotGlyph() {
   );
 }
 
+/**
+ * "May agents work as this profile?"
+ *
+ * It arrives on, because a first agent browser task hitting a permission wall
+ * is the worse failure — so the mitigation is placement, not the default: this
+ * control sits on the import result row, where the user is already reviewing
+ * each profile, as well as here in the manager.
+ */
+function AgentAccessToggle({
+  identityId,
+  name,
+  allowed,
+  onToggle,
+}: {
+  identityId: string;
+  name: string;
+  allowed: boolean;
+  onToggle: (allowed: boolean) => void;
+}) {
+  const t = useT();
+  const label = allowed
+    ? t["identity.manager.agentAllowedOn"](name)
+    : t["identity.manager.agentAllowedOff"](name);
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={allowed}
+      aria-label={label}
+      title={label}
+      data-identity-id={identityId}
+      onClick={() => onToggle(!allowed)}
+      className="tc-meta shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 transition-colors duration-quick"
+      style={{
+        borderColor: allowed
+          ? "color-mix(in srgb, var(--accent) 35%, transparent)"
+          : "var(--border)",
+        background: allowed ? "var(--accent-soft)" : "transparent",
+        color: allowed ? "var(--text-secondary)" : "var(--text-faint)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{
+          background: allowed ? "var(--accent)" : "transparent",
+          border: allowed ? "none" : "1px solid var(--text-faint)",
+        }}
+      />
+      {t["identity.manager.agentLabel"]}
+    </button>
+  );
+}
+
 function ImportResultSummary({ result }: { result?: BrowserProfileImportResult }) {
+  const identities = useIdentityStore((s) => s.identities);
+  const setAgentAllowed = useIdentityStore((s) => s.setAgentAllowed);
   if (!result) return null;
   if (result.status === "failed") {
     return <div className="tc-timestamp mt-1" style={{ color: "var(--danger)" }}>{result.error} — retry available</div>;
   }
   const cookies = result.identity.provenance.categories.cookies;
+  const registered = identities[result.identity.id];
   return (
-    <div className="tc-timestamp mt-1" style={{ color: "var(--text-muted)" }}>
-      Created “{result.identity.name}” · cookies {cookies.status} ({cookies.count}) · passwords unsupported
+    <div className="mt-1">
+      <div className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
+        Created “{result.identity.name}” · cookies {cookies.status} ({cookies.count}) · passwords unsupported
+      </div>
+      {registered && (
+        <div className="mt-1 flex items-center gap-2">
+          <AgentAccessToggle
+            identityId={registered.id}
+            name={registered.name}
+            allowed={isAgentAllowed(registered)}
+            onToggle={(allowed) => setAgentAllowed(registered.id, allowed)}
+          />
+          <span className="tc-timestamp" style={{ color: "var(--text-faint)" }}>
+            {isAgentAllowed(registered)
+              ? "Agents may work as this profile"
+              : "Yours alone — you can still open it"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -150,6 +226,7 @@ export function IdentityManagerModal() {
   const renameIdentity = useIdentityStore((s) => s.renameIdentity);
   const deleteIdentity = useIdentityStore((s) => s.deleteIdentity);
   const setActiveIdentity = useIdentityStore((s) => s.setActiveIdentity);
+  const setAgentAllowed = useIdentityStore((s) => s.setAgentAllowed);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -270,7 +347,7 @@ export function IdentityManagerModal() {
     if (importLockRef.current || profileIds.length === 0) return;
     importLockRef.current = true;
     setImporting(true);
-    setBrowserStatus(`Importing ${profileIds.length} Chrome profile${profileIds.length === 1 ? "" : "s"} into fresh identities…`);
+    setBrowserStatus(`Importing ${profileIds.length} Chrome profile${profileIds.length === 1 ? "" : "s"} into fresh profiles…`);
     try {
       const batch = await window.termcanvas.browserIdentity.importChromeProfiles({
         profileIds,
@@ -288,8 +365,8 @@ export function IdentityManagerModal() {
       const cleanupFailed = failures.length - cleaned;
       const failureSummary = failures.length === 0
         ? ""
-        : `; ${failures.length} failed (${cleaned} incomplete ${cleaned === 1 ? "identity was" : "identities were"} removed${cleanupFailed > 0 ? `; cleanup failed for ${cleanupFailed}` : ""})`;
-      setBrowserStatus(`Created ${completed} new browser ${completed === 1 ? "identity" : "identities"}${failureSummary}.`);
+        : `; ${failures.length} failed (${cleaned} incomplete ${cleaned === 1 ? "profile was" : "profiles were"} removed${cleanupFailed > 0 ? `; cleanup failed for ${cleanupFailed}` : ""})`;
+      setBrowserStatus(`Created ${completed} new browser ${completed === 1 ? "profile" : "profiles"}${failureSummary}.`);
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Chrome import failed");
     } finally {
@@ -327,7 +404,7 @@ export function IdentityManagerModal() {
       deleteIdentity(confirmDeleteId);
       setConfirmDeleteId(null);
     } catch {
-      setBrowserStatus("That identity could not be removed because its saved browser data could not be erased.");
+      setBrowserStatus("That profile could not be removed because its saved browser data could not be erased.");
     } finally {
       setDeleting(false);
     }
@@ -407,6 +484,7 @@ export function IdentityManagerModal() {
                         />
                       )}
                     </span>
+                    <ProfileDot identityId={identity.id} />
                     {isEditing ? (
                       <input
                         ref={editInputRef}
@@ -445,6 +523,12 @@ export function IdentityManagerModal() {
                         {identity.name}
                       </button>
                     )}
+                    <AgentAccessToggle
+                      identityId={identity.id}
+                      name={identity.name}
+                      allowed={isAgentAllowed(identity)}
+                      onToggle={(allowed) => setAgentAllowed(identity.id, allowed)}
+                    />
                     <button
                       type="button"
                       onClick={() => {
@@ -514,7 +598,7 @@ export function IdentityManagerModal() {
                   Import from Chrome
                 </span>
                 <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  Each selected Chrome profile becomes its own persistent Tacit identity. Default and existing identities stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
+                  Each selected Chrome profile becomes its own persistent Tacit profile. Guest and your existing profiles stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
                 </p>
                 <p className="tc-timestamp mt-1" style={{ color: "var(--text-faint)" }}>
                   Portable cookies are imported. Storage, history, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.

@@ -43,6 +43,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { useHubStore } from "../../stores/hubStore";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useCanvasManagerStore } from "../../stores/canvasManagerStore";
+import { useAgentProfilePromptStore } from "../../stores/agentProfilePromptStore";
 import { useIdentityManagerStore } from "../../stores/identityManagerStore";
 import { resetWebGL } from "../../terminal/webglContextPool";
 import { refreshRegisteredTerminalViewports } from "../../terminal/terminalRegistry";
@@ -489,6 +490,9 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     title: ctx.t["identity.command.manage"],
     keywords: [
       "browser",
+      "profile",
+      "chrome",
+      "import",
       "identity",
       "login",
       "session",
@@ -498,6 +502,26 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     ],
     perform: () => {
       useIdentityManagerStore.getState().openManager();
+    },
+  });
+
+  // The per-canvas question normally arrives when an agent first needs a
+  // browser here. This is the way to answer it — or change the answer —
+  // without waiting to be asked.
+  list.push({
+    id: "identity:canvas-default",
+    section: "canvas",
+    title: ctx.t["agentProfile.command.setCanvasDefault"],
+    keywords: [
+      "agent",
+      "browser",
+      "profile",
+      "canvas",
+      "default",
+      "permission",
+    ],
+    perform: () => {
+      useAgentProfilePromptStore.getState().requestCanvasDefault();
     },
   });
 

@@ -5,6 +5,7 @@ import type { BrowserIdentity } from "../types/workspace";
 import {
   DEFAULT_IDENTITY_ID,
   DEFAULT_IDENTITY_NAME,
+  isAgentAllowed,
 } from "../types/workspace";
 import { managedBrowserBinding } from "../../shared/browser-controller";
 import { partitionForBrowserIdentity, type ImportedBrowserIdentity } from "../../shared/browser-profile-import";
@@ -70,6 +71,14 @@ interface IdentityActions {
    */
   deleteIdentity: (id: string) => void;
   setActiveIdentity: (id: string) => void;
+  /**
+   * Allow or withhold this profile from agents. Global — it applies to every
+   * canvas at once, and takes effect for the next action rather than
+   * recalling one already in flight. It restricts agents only: the user can
+   * still open a node on a withheld profile themselves, which is the whole
+   * point of the asymmetry.
+   */
+  setAgentAllowed: (id: string, allowed: boolean) => void;
 }
 
 export type IdentityStore = IdentityState & IdentityActions;
@@ -99,7 +108,7 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
     const list = Object.values(identities);
     const id = generateIdentityId();
     const finalName = uniqueIdentityName(
-      name?.trim() || `Identity ${list.length + 1}`,
+      name?.trim() || `Profile ${list.length + 1}`,
       list,
     );
     const identity: BrowserIdentity = {
@@ -177,6 +186,17 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
     const { identities, activeIdentityId } = get();
     if (id === activeIdentityId || !identities[id]) return;
     set({ activeIdentityId: id });
+    markDirty();
+  },
+
+  setAgentAllowed: (id, allowed) => {
+    const { identities } = get();
+    const target = identities[id];
+    if (!target) return;
+    if (isAgentAllowed(target) === allowed) return;
+    set({
+      identities: { ...identities, [id]: { ...target, agentAllowed: allowed } },
+    });
     markDirty();
   },
 }));

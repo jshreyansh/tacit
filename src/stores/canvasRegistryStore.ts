@@ -75,6 +75,13 @@ interface CanvasRegistryActions {
   /** Assign (or clear, with `null`) which terminal holds the workspace
    * manager role for canvas `id`. See docs/workspace_project_manager.md. */
   setWorkspaceManager: (id: string, terminalId: string | null) => void;
+  /**
+   * Record this canvas's answer to "which profile do agents work as here?".
+   * `null` is not the same as never setting it: it records that the question
+   * was asked and dismissed, so it is not re-asked at every action. Absent —
+   * the state this never writes — is the only one that shows the prompt.
+   */
+  setAgentDefaultIdentity: (id: string, identityId: string | null) => void;
 }
 
 export type CanvasRegistryStore = CanvasRegistryState & CanvasRegistryActions;
@@ -225,6 +232,17 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
         recordManagerRoleChange(id, terminalId);
       }
     },
+
+    setAgentDefaultIdentity: (id, identityId) => {
+      const { canvases } = get();
+      if (!canvases.some((c) => c.id === id)) return;
+      set({
+        canvases: canvases.map((c) =>
+          c.id === id ? { ...c, agentDefaultIdentityId: identityId } : c,
+        ),
+      });
+      markDirty();
+    },
   }),
 );
 
@@ -242,6 +260,22 @@ export function getWorkspaceManagerTerminalId(canvasId?: string): string | null 
   const targetId = canvasId ?? activeCanvasId;
   const canvas = canvases.find((c) => c.id === targetId);
   return canvas?.workspaceManagerTerminalId ?? null;
+}
+
+/**
+ * This canvas's agent profile default, in three states: a string is the
+ * answer, `null` means asked and dismissed, and `undefined` means never
+ * asked — which is what makes the prompt appear. Do not collapse the last two
+ * with `?? null`; dismissing would then re-ask forever.
+ */
+export function getAgentDefaultIdentityId(
+  canvasId?: string,
+): string | null | undefined {
+  const { canvases, activeCanvasId } = useCanvasRegistryStore.getState();
+  const targetId = canvasId ?? activeCanvasId;
+  const canvas = canvases.find((c) => c.id === targetId);
+  if (!canvas || !("agentDefaultIdentityId" in canvas)) return undefined;
+  return canvas.agentDefaultIdentityId;
 }
 
 /** The canvas (if any) whose workspace manager is `terminalId`. Used to

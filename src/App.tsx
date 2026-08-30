@@ -54,7 +54,12 @@ import {
 } from "./browser/downloadNotice";
 import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
-import { BrowserController } from "./browser/browserController";
+import { BrowserController, resolveBrowserNodeBinding } from "./browser/browserController";
+import {
+  checkAgentActionOnCard,
+  decideSpawnProfile,
+  listAgentBrowserProfiles,
+} from "./browser/agentBrowserProfiles";
 import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
 import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { usePinStore } from "./stores/pinStore";
@@ -95,6 +100,7 @@ import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
 import { IdentityManagerModal } from "./components/IdentityManagerModal";
+import { AgentProfilePromptModal } from "./components/AgentProfilePromptModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
 import { logSlowRendererPath } from "./utils/devPerf";
@@ -931,19 +937,46 @@ export function App() {
         return { ok: true, id: terminal.id, x: terminal.x, y: terminal.y };
       },
 
+      // Backs the list_browser_profiles MCP tool. Withheld profiles are
+      // absent, not marked — a name an agent can read is a name it can use.
+      listAgentBrowserProfiles: () => ({
+        profiles: listAgentBrowserProfiles(),
+      }),
+
       // Backs the spawn_browser MCP tool.
       spawnBrowser: (opts: {
         requesterTerminalId: string;
         url: string;
         position?: { x: number; y: number };
         connectTo?: ConnectionEndpoint;
+        profile?: string;
       }) => {
+        // Which identity an agent works as is a permission decision, so it is
+        // resolved before anything is created and the answer is reported back.
+        // This used to inherit whatever profile the *user* was last working
+        // as, silently — which is how an agent opened a signed-out page and
+        // said nothing about it.
+        const decision = decideSpawnProfile({
+          requesterTerminalId: opts.requesterTerminalId,
+          profile: opts.profile,
+        });
+        if (!decision.ok) {
+          // No node is created. A browser on the wrong identity is worse than
+          // no browser: the agent can re-call once it knows which to use.
+          return {
+            ok: false,
+            code: decision.code,
+            reason: decision.message,
+            ...(decision.choices ? { choices: decision.choices } : {}),
+          };
+        }
         // addBrowserCardToScene records the spawn itself — passing the
         // requester is what makes it read as the agent's rather than yours.
         const id = addBrowserCardToScene(
           opts.position,
           opts.url,
           `terminal:${opts.requesterTerminalId}`,
+          decision.profileId,
         );
         if (opts.connectTo) {
           createConnectionInScene({ kind: "browser", id }, opts.connectTo, {
@@ -958,7 +991,20 @@ export function App() {
           // previous browser wire; see wireSpawnedBrowser.
           wireSpawnedBrowser(opts.requesterTerminalId, id);
         }
-        return { ok: true, id };
+        return {
+          ok: true,
+          id,
+          profile: {
+            id: decision.profileId,
+            name: decision.profileName,
+            reason: decision.reason,
+            isGuest: decision.isGuest,
+            ...(decision.overrodeCanvasDefault
+              ? { overrodeCanvasDefault: decision.overrodeCanvasDefault }
+              : {}),
+          },
+          note: decision.summary,
+        };
       },
 
       spawnNote: async (opts: {
@@ -1011,6 +1057,24 @@ export function App() {
       ) => {
         const card = useBrowserCardStore.getState().cards[id];
         if (!card) throw new Error(`Browser card not found: ${id}`);
+        // Re-checked here, on every single action, rather than once when the
+        // node was spawned: revoking a profile has to stop a task that is
+        // already running, and a permission decided minutes ago is worth
+        // nothing by then. The node is never closed — the user tightened a
+        // permission, they did not ask to lose the page.
+        const permission = checkAgentActionOnCard(id);
+        if (!permission.allowed) {
+          recordDecision({
+            kind: "browser_action",
+            node: `browser:${id}`,
+            action,
+            backend: resolveBrowserNodeBinding(card).kind,
+            by: actor,
+            ok: false,
+            error: `${permission.code}: ${permission.message}`,
+          });
+          throw new Error(`${permission.code}: ${permission.message}`);
+        }
         const result = await browserController.execute(card, action, params);
         recordDecision({
           kind: "browser_action",
@@ -1067,6 +1131,7 @@ export function App() {
       <Hub />
       <CanvasManagerModal />
       <IdentityManagerModal />
+      <AgentProfilePromptModal />
     </div>
   );
 }
