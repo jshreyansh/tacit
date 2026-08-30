@@ -1,6 +1,6 @@
 /// <reference types="electron" />
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import {
   removeBrowserCardFromScene,
   updateBrowserCardInScene,
@@ -193,6 +193,29 @@ export function BrowserCard({ card }: Props) {
     };
   }, [card.id, card.identityId, pageZoom]);
 
+  /**
+   * What the guest is *told* to load, as opposed to where it has since gone.
+   *
+   * A `<webview>`'s `src` is a navigation command, not a display of state: any
+   * change to the attribute makes Electron load that URL. `card.url` mean-
+   * while tracks where the page actually went, updated from `did-navigate`.
+   * Binding one to the other closed a loop — a single-page app routing in
+   * place (Gemini opening a conversation on send, say) updated `card.url`,
+   * React wrote the new value to `src`, and the guest performed a *full* load
+   * of it, destroying the state the page had just built. It read as the page
+   * reloading itself the instant you interacted with it.
+   *
+   * So this is recomputed only when the element is about to be remounted for a
+   * profile switch, and never when the page navigates itself. `card.url` is
+   * deliberately not a dependency: reading its latest value at remount is the
+   * point, reacting to it is the bug.
+   */
+  const mountUrl = useMemo(
+    () => card.url,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [card.identityId],
+  );
+
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
@@ -306,6 +329,13 @@ export function BrowserCard({ card }: Props) {
     updateBrowserCardInScene(card.id, { url });
     setUrlInput(url);
     if (connectedBinding) void runConnectedAction("navigate", { url });
+    // Navigation is commanded explicitly rather than by letting `src` follow
+    // `card.url`. See `mountUrl` — the attribute is a navigation trigger, so
+    // driving it from observed state made pages reload themselves.
+    else webviewRef.current?.loadURL(url).catch(() => {
+      // A guest that went away mid-navigation; the address bar already shows
+      // the attempt, and did-fail-load reports anything the user must see.
+    });
   };
 
   return (
@@ -497,7 +527,7 @@ export function BrowserCard({ card }: Props) {
           // identity forces a remount when the user switches identities.
           key={card.identityId}
           ref={webviewRef as React.Ref<HTMLElement>}
-          src={card.url}
+          src={mountUrl}
           partition={partitionForIdentity(card.identityId)}
           allowpopups
           className="w-full h-full"
