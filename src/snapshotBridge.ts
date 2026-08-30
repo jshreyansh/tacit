@@ -677,7 +677,15 @@ function coerceWorkspaceCanvas(value: unknown): WorkspaceCanvas | null {
     typeof value.workspaceManagerTerminalId === "string"
       ? value.workspaceManagerTerminalId
       : null;
-  return { id, name, createdAt, scene, workspaceManagerTerminalId };
+  // Three states, not two: a valid id is the canvas's answer, `null` records
+  // that the question was asked and dismissed, and absent means never asked —
+  // which is the only one that makes the prompt appear again.
+  const agentDefaultIdentityId = isValidBrowserIdentityId(value.agentDefaultIdentityId)
+    ? { agentDefaultIdentityId: value.agentDefaultIdentityId as string }
+    : value.agentDefaultIdentityId === null
+      ? { agentDefaultIdentityId: null }
+      : {};
+  return { id, name, createdAt, scene, workspaceManagerTerminalId, ...agentDefaultIdentityId };
 }
 
 function coerceBrowserIdentity(value: unknown): BrowserIdentity | null {
@@ -705,7 +713,11 @@ function coerceBrowserIdentity(value: unknown): BrowserIdentity | null {
   const provenance = rawProvenance?.source === "chrome" && sourceProfileId && sourceProfileName && importedAt !== null && categories && Object.keys(categories).length === categoryNames.length
     ? { source: "chrome" as const, sourceProfileId, sourceProfileName, importedAt, categories: categories as BrowserProfileCategorySummary }
     : undefined;
-  return { id, name, createdAt, ...(provenance ? { provenance } : {}) };
+  // Only an explicit `false` withholds a profile from agents. Anything else —
+  // absent, or a value from a future version this build cannot read — leaves it
+  // allowed, matching `isAgentAllowed` so old workspaces keep working.
+  const agentAllowed = value.agentAllowed === false ? { agentAllowed: false } : {};
+  return { id, name, createdAt, ...agentAllowed, ...(provenance ? { provenance } : {}) };
 }
 
 function defaultIdentities(): {
