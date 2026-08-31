@@ -25,11 +25,13 @@ function el(
   tagName: string,
   attrs: Record<string, string> = {},
   textContent?: string,
+  childElementCount = 0,
 ): ObservableElement {
   return {
     tagName,
     getAttribute: (name: string) => attrs[name] ?? null,
     textContent: textContent ?? null,
+    childElementCount,
   };
 }
 
@@ -253,4 +255,42 @@ test("the store drops re-renders but keeps a page that changed", () => {
     );
     assert.equal(lines.length, 3);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a label is a name, not a subtree", () => {
+  // Regression for a real leak: clicking Google's search area recorded
+  // "Press / to jump to the search box" + the typed query + "Listening…".
+  // No field value was read; the click landed on a container whose subtree
+  // contained the rendered query. Containers therefore never lend their text.
+  const searchRegion = el(
+    "DIV",
+    { role: "search" },
+    "Press / to jump to the search boxlinear Listening…Transcribing…",
+    6,
+  );
+  const label = elementLabel(searchRegion);
+  assert.equal(label, undefined, "a search container must not lend its subtree as a name");
+  assert.ok(!(label ?? "").includes("linear"), "the typed query must not survive");
+
+  // A stylesheet reached the record from a div wrapping a <style> tag.
+  const styled = el("DIV", {}, ".vt6azd{margin:0px 0px 30px}.VDgVie{text-align:center}", 2);
+  assert.equal(elementLabel(styled), undefined);
+
+  // Whole search results concatenated with their URL.
+  const result = el("A", { href: "/x" }, "Linear – The system for product developmentLinearhttps://linear.app", 7);
+  assert.equal(elementLabel(result), undefined, "too many children to be a name");
+
+  // Still works for the things that genuinely are names.
+  assert.equal(elementLabel(el("BUTTON", {}, "Send message")), "Send message");
+  assert.equal(elementLabel(el("BUTTON", {}, "Send message", 2)), "Send message", "a button wrapping an icon is fine");
+  assert.equal(elementLabel(el("A", { href: "/x" }, "Download Linear", 1)), "Download Linear");
+  // An explicit name always wins, however big the element.
+  assert.equal(elementLabel(el("DIV", { role: "search", "aria-label": "Search" }, "everything", 9)), "Search");
+});
+
+test("code that leaked into a text node is rejected, not trimmed", () => {
+  assert.equal(elementLabel(el("BUTTON", {}, "a{color:red}")), undefined);
+  assert.equal(elementLabel(el("BUTTON", {}, "@media (max-width:600px)")), undefined);
+  assert.equal(elementLabel(el("BUTTON", {}, "onClick => { doThing() }")), undefined);
+  assert.equal(elementLabel(el("BUTTON", {}, "Save 50% today")), "Save 50% today", "ordinary punctuation survives");
 });

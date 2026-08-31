@@ -98,6 +98,8 @@ export interface BrowserDownloadEvent {
   sourceWebContentsId: number | null;
   /** Present on `done` only. */
   outcome?: "completed" | "cancelled" | "interrupted";
+  /** Opaque handle for revealing the file; absent unless completed. */
+  revealToken?: string | null;
 }
 
 /**
@@ -1229,6 +1231,7 @@ export interface TermCanvasAPI {
     onExternalAuthRedirect: (
       callback: (payload: { url: string }) => void,
     ) => () => void;
+    revealDownload: (token: string) => Promise<boolean>;
     onPopupRequested: (
       callback: (payload: {
         url: string;

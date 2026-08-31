@@ -118,12 +118,32 @@ function describe(el: Element): { role: string; label?: string; href?: string } 
   return { role, label, href };
 }
 
+/**
+ * The last interaction posted, so a run of identical ones collapses.
+ *
+ * Clicking a search box six times in a row is one fact about the session, not
+ * six. Keyed on what actually reaches the record rather than on the element,
+ * because two different nodes that describe identically are, for our purposes,
+ * the same event.
+ */
+let lastSignature = "";
+let lastSignatureAt = 0;
+const DUPLICATE_WINDOW_MS = 4_000;
+
 function emitInteraction(
   kind: BrowserInteractionKind,
   el: Element | null,
   extra?: { depth?: number },
 ): void {
   const described = el ? describe(el) : { role: "document" as const, label: undefined, href: undefined };
+  const signature = `${kind}|${described.role}|${described.label ?? ""}|${described.href ?? ""}`;
+  const now = Date.now();
+  if (signature === lastSignature && now - lastSignatureAt < DUPLICATE_WINDOW_MS) {
+    lastSignatureAt = now;
+    return;
+  }
+  lastSignature = signature;
+  lastSignatureAt = now;
   post({
     type: "interaction",
     kind,

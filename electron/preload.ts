@@ -1040,6 +1040,9 @@ contextBridge.exposeInMainWorld("termcanvas", {
       return () =>
         ipcRenderer.removeListener("browser:download-event", listener);
     },
+    /** Reveal a finished download. The token resolves to a path in main only. */
+    revealDownload: (token: string) =>
+      ipcRenderer.invoke("browser:reveal-download", token) as Promise<boolean>,
   },
   app: {
     homePath: process.env.HOME ?? process.env.USERPROFILE ?? "",

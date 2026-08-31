@@ -458,7 +458,16 @@ export function App() {
           ? downloadStartedNotice(event.filename)
           : downloadDoneNotice(event.outcome ?? "interrupted", event.filename);
       if (notice) {
-        useNotificationStore.getState().notify(notice.type, notice.message);
+        // "Show in Finder" goes back through main by token — the renderer is
+        // never given the path, so it cannot end up in state or a snapshot.
+        const token = event.revealToken;
+        const action = token
+          ? {
+              label: "Show in Finder",
+              run: () => { void window.termcanvas?.browser?.revealDownload?.(token); },
+            }
+          : undefined;
+        useNotificationStore.getState().notify(notice.type, notice.message, action);
       }
       if (event.phase !== "done" || event.outcome !== "completed") return;
       // A file the user now has is a choice point, not activity: it is the
@@ -944,7 +953,7 @@ export function App() {
       }),
 
       // Backs the spawn_browser MCP tool.
-      spawnBrowser: (opts: {
+      spawnBrowser: async (opts: {
         requesterTerminalId: string;
         url: string;
         position?: { x: number; y: number };
@@ -956,7 +965,10 @@ export function App() {
         // This used to inherit whatever profile the *user* was last working
         // as, silently — which is how an agent opened a signed-out page and
         // said nothing about it.
-        const decision = decideSpawnProfile({
+        // Awaited: when the canvas has no default yet this opens the prompt
+        // and waits for the answer, rather than refusing and leaving the agent
+        // to ask the same question again in its own terminal.
+        const decision = await decideSpawnProfile({
           requesterTerminalId: opts.requesterTerminalId,
           profile: opts.profile,
         });

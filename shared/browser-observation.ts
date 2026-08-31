@@ -86,6 +86,53 @@ export interface ObservableElement {
   tagName: string;
   getAttribute(name: string): string | null;
   textContent?: string | null;
+  /**
+   * How many element children this has. A label is a name, not a subtree —
+   * see `elementLabel` for why reading a container's text is how a search
+   * query ends up in the record.
+   */
+  childElementCount?: number;
+}
+
+/**
+ * Elements that group other things rather than being a thing themselves.
+ * Their text is everything inside them, which is never a name.
+ */
+const CONTAINER_TAGS = new Set([
+  "div", "section", "main", "nav", "form", "ul", "ol", "table", "tbody",
+  "thead", "tr", "article", "aside", "header", "footer", "fieldset", "body",
+]);
+
+/** Roles that describe a region, for the same reason. */
+const CONTAINER_ROLES = new Set([
+  "search", "form", "group", "region", "navigation", "main", "banner",
+  "contentinfo", "list", "table", "grid", "toolbar", "menu", "menubar",
+  "presentation", "none", "generic", "document", "application",
+]);
+
+/** Above this many element children, text is a subtree rather than a name. */
+const MAX_LABEL_CHILDREN = 3;
+
+/** Stylesheet or script text that leaked into a text node. */
+const LOOKS_LIKE_CODE = /\{[^{}]*:[^{}]*[;}]|@media|function\s*\(|=>\s*\{/;
+
+/**
+ * Whether this element's own text may stand in as its name.
+ *
+ * The rule exists because of a real leak: clicking Google's search area
+ * recorded `Press / to jump to the search box` **linear** `Listening…` — where
+ * `linear` was the user's typed query. No field value was read; the click
+ * simply landed on a container whose subtree contained the rendered query.
+ * Never reading `.value` is not sufficient on its own, so text is only trusted
+ * from something small enough to be a name.
+ */
+function mayUseOwnText(el: ObservableElement): boolean {
+  if (CONTAINER_TAGS.has(el.tagName.toLowerCase())) return false;
+  const role = el.getAttribute("role");
+  if (role && CONTAINER_ROLES.has(role.trim().toLowerCase().split(/\s+/)[0] ?? "")) {
+    return false;
+  }
+  return (el.childElementCount ?? 0) <= MAX_LABEL_CHILDREN;
 }
 
 /** True when the element handles a secret and must never be described richly. */
@@ -165,8 +212,13 @@ export function elementLabel(
   // element is, by construction, the one place a secret is being typed.
   if (isSecretField(el)) return normalizeLabel(el.getAttribute("placeholder"));
 
-  const text = normalizeLabel(el.textContent);
-  if (text) return text;
+  if (mayUseOwnText(el)) {
+    const text = normalizeLabel(el.textContent);
+    // A stylesheet reached the record this way once, from a div wrapping a
+    // <style> tag. Rejected rather than trimmed: there is no useful name
+    // hiding inside a rule set.
+    if (text && !LOOKS_LIKE_CODE.test(text)) return text;
+  }
 
   return normalizeLabel(el.getAttribute("placeholder"))
     ?? normalizeLabel(el.getAttribute("name"))

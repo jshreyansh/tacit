@@ -554,21 +554,53 @@ function installGuestDownloads(guestSession: Electron.Session): void {
       sourceWebContentsId,
     });
     item.once("done", (_doneEvent, state) => {
+      // The renderer is told a token, never the path — so "Show in Finder"
+      // can work without an absolute path ever reaching renderer state, logs
+      // or a workspace snapshot. Main holds the mapping and reveals on
+      // request; the token is meaningless anywhere else.
+      const revealToken = state === "completed" ? randomUUID() : null;
+      if (revealToken) rememberRevealableDownload(revealToken, filePath);
       sendToWindow(mainWindow, "browser:download-event", {
         phase: "done",
         filename,
         url,
         sourceWebContentsId,
         outcome: state,
+        revealToken,
       });
     });
   });
+}
+
+/**
+ * Completed downloads the user may still ask to reveal, keyed by an opaque
+ * token. Bounded because this is a convenience, not a history: the oldest
+ * entries fall off, and a stale token simply does nothing.
+ */
+const revealableDownloads = new Map<string, string>();
+const MAX_REVEALABLE_DOWNLOADS = 50;
+
+function rememberRevealableDownload(token: string, filePath: string): void {
+  revealableDownloads.set(token, filePath);
+  while (revealableDownloads.size > MAX_REVEALABLE_DOWNLOADS) {
+    const oldest = revealableDownloads.keys().next().value;
+    if (oldest === undefined) break;
+    revealableDownloads.delete(oldest);
+  }
 }
 
 function installBrowserObservation(): void {
   if (observationStore) return;
   observationStore = new BrowserObservationStore({
     rootDir: path.join(app.getPath("userData"), "browser-observations"),
+  });
+  ipcMain.handle("browser:reveal-download", (_event, token: unknown) => {
+    // Only tokens main itself minted resolve to anything, so a renderer cannot
+    // ask for an arbitrary path to be opened.
+    const filePath = typeof token === "string" ? revealableDownloads.get(token) : undefined;
+    if (!filePath || !fs.existsSync(filePath)) return false;
+    shell.showItemInFolder(filePath);
+    return true;
   });
   ipcMain.on(BROWSER_OBSERVATION_CHANNEL, (event, observation) => {
     // Any renderer can post on this channel; only guests running on a known

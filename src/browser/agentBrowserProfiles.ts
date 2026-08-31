@@ -98,24 +98,65 @@ export function listAgentBrowserProfiles(): AgentProfileListEntry[] {
  * asked and declined, and re-opening a modal the user just dismissed at every
  * subsequent spawn would turn a permission into nagging.
  */
-export function decideSpawnProfile(options: {
+/** How long the spawn waits for the user to answer the profile prompt. */
+const CANVAS_DEFAULT_PROMPT_TIMEOUT_MS = 120_000;
+
+function decideOnce(options: {
   requesterTerminalId?: string | null;
   profile?: string | null;
 }): AgentProfileDecision {
-  const decision = decideAgentProfileForSpawn({
+  return decideAgentProfileForSpawn({
     requested: options.profile ?? null,
     inherited: inheritedAgentProfileId(options.requesterTerminalId),
     canvasDefault: canvasAgentDefaultProfileId(),
     candidates: agentProfileCandidates(),
   });
+}
+
+/**
+ * Resolves once the canvas has an answer — chosen or dismissed — or the wait
+ * times out. Watching the canvas rather than the modal's own state means a
+ * default set from anywhere else (the command palette, another node) also
+ * releases the waiting spawn.
+ */
+function awaitCanvasDefault(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+    const timer = setTimeout(finish, CANVAS_DEFAULT_PROMPT_TIMEOUT_MS);
+    const unsubscribe = useAgentProfilePromptStore.subscribe(() => {
+      if (getAgentDefaultIdentityId() !== undefined) finish();
+    });
+    if (getAgentDefaultIdentityId() !== undefined) finish();
+  });
+}
+
+export async function decideSpawnProfile(options: {
+  requesterTerminalId?: string | null;
+  profile?: string | null;
+}): Promise<AgentProfileDecision> {
+  const decision = decideOnce(options);
   if (
-    !decision.ok &&
-    decision.code === "profile_choice_required" &&
-    getAgentDefaultIdentityId() === undefined
+    decision.ok ||
+    decision.code !== "profile_choice_required" ||
+    getAgentDefaultIdentityId() !== undefined
   ) {
-    useAgentProfilePromptStore.getState().requestCanvasDefault();
+    return decision;
   }
-  return decision;
+
+  // Ask the user, and wait for the answer rather than refusing immediately.
+  // Returning the refusal here as well made the agent ask a second time in its
+  // own terminal, so the user answered the same question twice — once in the
+  // modal and once in prose — with no sign the first answer had landed.
+  useAgentProfilePromptStore.getState().requestCanvasDefault();
+  await awaitCanvasDefault();
+  return decideOnce(options);
 }
 
 /**

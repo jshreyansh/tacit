@@ -13,7 +13,12 @@ function ToastItem({
   n,
   dismiss,
 }: {
-  n: { id: string; type: "error" | "warn" | "info"; message: string };
+  n: {
+    id: string;
+    type: "error" | "warn" | "info";
+    message: string;
+    action?: { label: string; run: () => void };
+  };
   dismiss: (id: string) => void;
 }) {
   const config = typeConfig[n.type];
@@ -65,7 +70,24 @@ function ToastItem({
         >
           {config.label}
         </div>
-        <span className="tc-body-sm break-words">{n.message}</span>
+        <span className="tc-body-sm break-words">
+          {n.message}
+          {n.action && (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="tc-body-sm underline underline-offset-2 hover:no-underline focus-visible:outline focus-visible:outline-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  n.action?.run();
+                }}
+              >
+                {n.action.label}
+              </button>
+            </>
+          )}
+        </span>
       </div>
       <button
         className="shrink-0 text-[var(--text-faint)] hover:text-[var(--text-primary)] transition-colors p-0.5"
