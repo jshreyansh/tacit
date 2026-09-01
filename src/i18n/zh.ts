@@ -703,6 +703,16 @@ export const zh = {
   connection_endpoint_unknown_terminal: "已不存在的终端",
   connection_endpoint_unknown_browser: "已不存在的浏览器",
   connection_endpoint_unknown_note: "已不存在的便签",
+  connection_change_type: "修改类型…",
+  connection_type_menu_aria_label: "连接类型",
+  connection_type_label_aria: "连接类型：{type}。点击修改。",
+  connection_type_inactive_note: "已记录并绘制。目前只有“controls”会真正生效。",
+  connection_type_custom_title: "传递过程中做什么",
+  connection_type_custom_placeholder: "例如：只发送最终摘要",
+  connection_type_custom_apply: "应用",
+  connection_type_custom_remaining: "还可输入 {n} 个字符",
+  connection_type_custom_caveat:
+    "这句话由模型解读，结果可能与你设想的不完全一致；并且这条连接每次传递都会消耗一次模型调用。",
 
   canvas_empty_eyebrow: "空白画布",
   canvas_empty_line_lead: "画布空着。",

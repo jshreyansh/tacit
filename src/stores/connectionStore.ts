@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useWorkspaceStore } from "./workspaceStore";
+import { normalizeCustomPrompt, type ConnectionType } from "../../shared/connection-types";
 
 // "note" endpoints use the pin's own id, which buildPinFlowNodes
 // (src/canvas/nodeProjection.ts) already uses as the canvas node id, so it
@@ -30,6 +31,17 @@ export interface ConnectionData {
   to: ConnectionEndpoint;
   createdAt: number;
   origin?: ConnectionOrigin;
+  /**
+   * What this wire means — see shared/connection-types.ts.
+   *
+   * Absent means "infer from the endpoints", which is how every wire drawn
+   * before types existed keeps behaving exactly as it did: a terminal-to-browser
+   * connection infers `controls`, the behaviour such a wire always had. Read it
+   * through `resolveConnectionType`, never directly, so the inference is applied.
+   */
+  type?: ConnectionType;
+  /** The sentence the user wrote. Only meaningful when `type` is "custom". */
+  customPrompt?: string;
 }
 
 interface PendingConnection {
@@ -47,6 +59,16 @@ interface ConnectionStore {
     origin?: ConnectionOrigin,
   ) => string | null;
   removeConnection: (id: string) => void;
+  /**
+   * Change what a wire means. Recorded as a new fact rather than a rewrite —
+   * the record is append-only, so a wire that used to feed context and now
+   * merely relates still happened both ways, in that order.
+   */
+  setConnectionType: (
+    id: string,
+    type: ConnectionType,
+    customPrompt?: string,
+  ) => void;
   startPending: (from: ConnectionEndpoint, cursor: { x: number; y: number }) => void;
   updatePendingCursor: (cursor: { x: number; y: number }) => void;
   /**
@@ -110,6 +132,20 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     }));
     markDirty();
     return id;
+  },
+
+  setConnectionType: (id, type, customPrompt) => {
+    const existing = get().connections[id];
+    if (!existing) return;
+    const prompt = type === "custom" ? normalizeCustomPrompt(customPrompt) : undefined;
+    if (existing.type === type && existing.customPrompt === prompt) return;
+    const next: ConnectionData = { ...existing, type };
+    // Dropped rather than kept when the type moves off custom, so a stale
+    // instruction cannot come back to life if the user switches back later.
+    if (prompt) next.customPrompt = prompt;
+    else delete next.customPrompt;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
   },
 
   removeConnection: (id) => {

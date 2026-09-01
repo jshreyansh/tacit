@@ -719,6 +719,22 @@ export const en = {
   connection_endpoint_unknown_terminal: "a terminal that no longer exists",
   connection_endpoint_unknown_browser: "a browser that no longer exists",
   connection_endpoint_unknown_note: "a note that no longer exists",
+  connection_change_type: "Change type…",
+  connection_type_menu_aria_label: "Connection type",
+  // Formatted with the wire's current type — the label on the wire is a
+  // button, so it needs to say what pressing it does.
+  connection_type_label_aria: "Connection type: {type}. Change it.",
+  // Only `controls` has a behaviour today. Everything else is recorded and
+  // drawn, which is real, but saying more than this would be a promise.
+  connection_type_inactive_note:
+    "Recorded and drawn. Only “controls” drives anything so far.",
+  connection_type_custom_title: "What happens in transit",
+  connection_type_custom_placeholder: "e.g. send only the final summary",
+  connection_type_custom_apply: "Apply",
+  // Formatted with the remaining character count.
+  connection_type_custom_remaining: "{n} characters left",
+  connection_type_custom_caveat:
+    "Interpreted, so it may not do exactly what you pictured — and it costs one model call each time this wire delivers something.",
 
   canvas_empty_eyebrow: "Empty Canvas",
   canvas_empty_line_lead: "An empty canvas.",

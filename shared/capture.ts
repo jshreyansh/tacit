@@ -87,6 +87,31 @@ export type CaptureEvent =
       to: CaptureNodeRef;
       origin: string;
       by: CaptureActor;
+      /**
+       * What the wire means — see shared/connection-types.ts.
+       *
+       * This is the field that makes the record's cross-node structure worth
+       * having. "This research fed context to that agent" and "this agent
+       * handed off to that one" are different facts, and neither is
+       * recoverable from a transcript afterwards; drawing the line is what
+       * writes the distinction down. Optional because entries written before
+       * types existed carry none, and a reader must treat absence as
+       * "inferred from the endpoints" rather than as no relationship.
+       */
+      connection_type?: string;
+    }
+  | {
+      /**
+       * A wire's meaning changed. Recorded rather than rewritten: the record
+       * is append-only, so a wire that fed context and now merely relates
+       * happened both ways, in that order, and the history says so.
+       */
+      kind: "retype_wire";
+      from: CaptureNodeRef;
+      to: CaptureNodeRef;
+      connection_type: string;
+      previous_type: string;
+      by: CaptureActor;
     }
   | {
       kind: "unwire";
@@ -199,6 +224,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "browser_action": return event.node;
     case "manager": return event.node;
     case "wire":
+    case "retype_wire":
     case "unwire": return event.from;
     case "topology": return null;
   }

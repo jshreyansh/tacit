@@ -12,6 +12,10 @@ import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStor
 import { findTerminal, getLivePtyId } from "./terminalLookup";
 import { captureRef, recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
+import {
+  resolveConnectionType,
+  type ConnectionType,
+} from "../../shared/connection-types";
 
 interface CreateConnectionOptions {
   origin?: ConnectionOrigin;
@@ -64,9 +68,44 @@ export function createConnectionInScene(
       to: captureRef(to),
       origin,
       by: options.by ?? "user",
+      // Resolved rather than read, so a wire that never had a type stamped
+      // still records the meaning it actually has.
+      connection_type: resolveConnectionType({ from, to }),
     });
   }
   return id;
+}
+
+/**
+ * Change what a wire means, and record that it changed.
+ *
+ * Lives here rather than in the store because the store has no business
+ * knowing about the record — the same split every other scene action uses.
+ * The previous meaning is resolved before the change so the entry says what it
+ * was, which is the whole point of recording a retype instead of a rewrite.
+ */
+export function setConnectionTypeInScene(
+  id: string,
+  type: ConnectionType,
+  customPrompt?: string,
+  by: CaptureActor = "user",
+): void {
+  const existing = useConnectionStore.getState().connections[id];
+  if (!existing) return;
+  const previous = resolveConnectionType(existing);
+  useConnectionStore.getState().setConnectionType(id, type, customPrompt);
+  const applied = useConnectionStore.getState().connections[id];
+  // The store no-ops when nothing actually changed; recording anyway would
+  // put a decision in the log that the user never made.
+  if (!applied || resolveConnectionType(applied) === previous) return;
+  recordDecision({
+    kind: "retype_wire",
+    from: captureRef(existing.from),
+    to: captureRef(existing.to),
+    connection_type: type,
+    previous_type: previous,
+    by,
+  });
 }
 
 /**

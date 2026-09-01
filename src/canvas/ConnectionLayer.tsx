@@ -32,6 +32,18 @@ import { ContextMenu } from "../components/ContextMenu";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { useT } from "../i18n/useT";
 import { describeEndpoint, type EndpointLabelContext } from "./connectionLabels";
+import {
+  connectionFamily,
+  connectionTypeSpec,
+  resolveConnectionType,
+} from "../../shared/connection-types";
+import {
+  connectionStrokeStyle,
+  formatConnectionTypeLabel,
+  hasCustomMarker,
+} from "./connectionTypeStyle";
+import { connectionLabelLayout } from "./connectionLabelScale";
+import { ConnectionTypeMenu } from "./ConnectionTypeMenu";
 
 /**
  * Draws every connection between canvas items — terminals, browser tiles and
@@ -213,6 +225,67 @@ function elbowPath(p1: Point, p2: Point): string {
   return `M${p1.x},${p1.y} L${midX},${p1.y} L${midX},${p2.y} L${p2.x},${p2.y}`;
 }
 
+/**
+ * Middle of the elbow's vertical leg, which is the one segment of the path that
+ * is always present and never overlaps either endpoint — the label and the
+ * custom marker both anchor here so they never sit on top of a card.
+ */
+function elbowMidpoint(p1: Point, p2: Point): Point {
+  return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+}
+
+/** The same point on the map view's quadratic curve (t = 0.5). */
+function curveMidpoint(a: EndpointRect, b: EndpointRect): Point {
+  const x1 = a.x + a.w / 2;
+  const y1 = a.y + a.h / 2;
+  const x2 = b.x + b.w / 2;
+  const y2 = b.y + b.h / 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  // Mirrors curvedPath's control point exactly; a marker floating off the
+  // curve it is meant to be marking would read as a separate object.
+  const offset = Math.min(80, len * 0.18);
+  const cx = (x1 + x2) / 2 + (-dy / len) * offset;
+  const cy = (y1 + y2) / 2 + (dx / len) * offset;
+  return { x: 0.25 * x1 + 0.5 * cx + 0.25 * x2, y: 0.25 * y1 + 0.5 * cy + 0.25 * y2 };
+}
+
+/**
+ * The hand-written marker: a small hollow diamond straddling the wire.
+ *
+ * Hollow and unfilled so it reads as an annotation on the line rather than the
+ * activity pulse (a filled circle), and diamond rather than round so the two are
+ * still distinguishable when both are on the same wire.
+ */
+function CustomMarker({
+  at,
+  scale,
+  color,
+  opacity,
+}: {
+  at: Point;
+  scale: number;
+  color: string;
+  opacity: number;
+}) {
+  const half = 3.5 / scale;
+  return (
+    <rect
+      x={at.x - half}
+      y={at.y - half}
+      width={half * 2}
+      height={half * 2}
+      transform={`rotate(45 ${at.x} ${at.y})`}
+      fill="none"
+      stroke={color}
+      strokeWidth={1}
+      vectorEffect="non-scaling-stroke"
+      style={{ opacity, transition: "opacity 0.15s ease" }}
+    />
+  );
+}
+
 export function ConnectionLayer() {
   // useNodes()'s generic is a type hint only — it does not filter at
   // runtime, and the node tree now also holds "pin" (note) nodes, so this
@@ -250,6 +323,13 @@ export function ConnectionLayer() {
     connectionId: string;
   } | null>(null);
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
+  // Opened by clicking a wire's type label — a separate piece of state from
+  // `menu` (the right-click one) so the two can never fight over one anchor.
+  const [typeMenu, setTypeMenu] = useState<{
+    x: number;
+    y: number;
+    connectionId: string;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -390,6 +470,21 @@ export function ConnectionLayer() {
           : null;
     return { sentence, effect };
   }, [pendingRemoval, labelContext, t]);
+
+  // One layout for every label on the canvas — they all share a zoom.
+  const labelLayout = useMemo(
+    () => connectionLabelLayout(viewport.scale),
+    [viewport.scale],
+  );
+
+  // Resolved rather than stored, so a wire deleted while its menu is open
+  // closes the menu instead of leaving it pointed at nothing.
+  const typeMenuTarget = useMemo(() => {
+    if (!typeMenu) return null;
+    const connection = connections[typeMenu.connectionId];
+    if (!connection) return null;
+    return { x: typeMenu.x, y: typeMenu.y, connection };
+  }, [typeMenu, connections]);
 
   const { spawnKeys, attachedKeys } = useMemo(
     () => getHoverFamily(connections, hoveredKey),
@@ -541,6 +636,15 @@ export function ConnectionLayer() {
               ? ATTACHED_COLOR
               : LINEAGE_COLOR;
 
+            // What the wire means, drawn into the stroke so it survives all the
+            // way out to map zoom where the label is gone. Read through
+            // resolveConnectionType, so an untyped wire shows its inferred
+            // meaning rather than nothing.
+            const family = connectionFamily(connection);
+            const workingStroke = connectionStrokeStyle(family, "working");
+            const overviewStroke = connectionStrokeStyle(family, "overview");
+            const isCustom = hasCustomMarker(connection);
+
             return (
               <g key={connection.id}>
                 <path
@@ -567,12 +671,25 @@ export function ConnectionLayer() {
                     d={elbowPath(p1, p2)}
                     fill="none"
                     stroke={isActive ? pulseColor : "var(--accent)"}
-                    strokeWidth={(isActive ? 2.5 : 1.5) / viewport.scale}
+                    strokeWidth={
+                      (isActive ? 2.5 : workingStroke.width) / viewport.scale
+                    }
+                    strokeDasharray={workingStroke.dash ?? undefined}
                     vectorEffect="non-scaling-stroke"
                     style={{
-                      opacity: (isActive ? 1 : 0.8) * (1 - overviewOpacity),
+                      opacity:
+                        (isActive ? 1 : workingStroke.opacity) *
+                        (1 - overviewOpacity),
                       transition: "stroke 0.15s ease, opacity 0.15s ease",
                     }}
+                  />
+                )}
+                {overviewOpacity < 1 && isCustom && (
+                  <CustomMarker
+                    at={elbowMidpoint(p1, p2)}
+                    scale={viewport.scale}
+                    color={isActive ? pulseColor : "var(--accent)"}
+                    opacity={1 - overviewOpacity}
                   />
                 )}
                 {isOverview && (
@@ -584,14 +701,30 @@ export function ConnectionLayer() {
                         ? `color-mix(in srgb, ${highlightColor} 70%, transparent)`
                         : "var(--text-faint)"
                     }
-                    strokeWidth={1}
-                    strokeDasharray={isHighlighted ? undefined : "3 3"}
+                    strokeWidth={overviewStroke.width}
+                    // Family, not highlight state, decides the dash out here:
+                    // colour and opacity already carry "is this in the hovered
+                    // set", and losing the dash on hover would make a knowledge
+                    // wire momentarily claim to be an action.
+                    strokeDasharray={overviewStroke.dash ?? undefined}
                     vectorEffect="non-scaling-stroke"
                     style={{
-                      opacity: (isHighlighted ? 0.85 : 0.5) * overviewOpacity,
+                      opacity:
+                        (isHighlighted ? 0.85 : overviewStroke.opacity) *
+                        overviewOpacity,
                       transition:
                         "stroke var(--duration-quick) var(--ease-out-soft), opacity var(--duration-quick) var(--ease-out-soft)",
                     }}
+                  />
+                )}
+                {isOverview && isCustom && (
+                  <CustomMarker
+                    at={curveMidpoint(from, to)}
+                    scale={viewport.scale}
+                    color={
+                      isHighlighted ? highlightColor : "var(--text-secondary)"
+                    }
+                    opacity={0.7 * overviewOpacity}
                   />
                 )}
                 {isActive && (
@@ -785,16 +918,126 @@ export function ConnectionLayer() {
         </g>
       </svg>
 
+      {/* Type labels, as HTML rather than SVG <text>: they are buttons, they
+          need to be tab-reachable and hoverable, and their size is decided in
+          screen pixels (see connectionLabelScale) — so they are positioned in
+          screen space instead of riding the SVG's canvas transform. */}
+      {labelLayout.visible && (
+        <div className="absolute inset-0" style={{ pointerEvents: "none" }}>
+          {Object.values(connections).map((connection) => {
+            const from = rectByKey.get(endpointKey(connection.from));
+            const to = rectByKey.get(endpointKey(connection.to));
+            if (!from || !to) return null;
+            const [p1, p2] = facingAnchors(from, to);
+            // Labels outlive the start of the map-view crossfade by a little,
+            // and the two renderings have different midpoints, so the anchor
+            // travels between them rather than letting the label detach from
+            // whichever line is currently the prominent one.
+            const elbowMid = elbowMidpoint(p1, p2);
+            const curveMid = curveMidpoint(from, to);
+            const mid = {
+              x: elbowMid.x + (curveMid.x - elbowMid.x) * overviewOpacity,
+              y: elbowMid.y + (curveMid.y - elbowMid.y) * overviewOpacity,
+            };
+            const type = resolveConnectionType(connection);
+            const spec = connectionTypeSpec(type);
+            const isCustom = type === "custom";
+
+            return (
+              <button
+                key={`type-label:${connection.id}`}
+                type="button"
+                data-scene-box-select-block
+                aria-label={t.connection_type_label_aria.replace(
+                  "{type}",
+                  spec.label,
+                )}
+                className="absolute rounded border transition-colors duration-quick"
+                style={{
+                  left: viewport.x + mid.x * viewport.scale,
+                  top: viewport.y + mid.y * viewport.scale,
+                  transform: "translate(-50%, -50%)",
+                  pointerEvents: "auto",
+                  fontFamily: '"Geist Mono", monospace',
+                  fontSize: labelLayout.fontPx,
+                  lineHeight: 1.2,
+                  padding: "1px 5px",
+                  whiteSpace: "nowrap",
+                  maxWidth: 220,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  background: "var(--surface)",
+                  borderColor: "var(--border)",
+                  // Structural wires say nothing runs, so their label recedes
+                  // the same way their stroke does.
+                  color:
+                    spec.family === "structural"
+                      ? "var(--text-muted)"
+                      : "var(--text-secondary)",
+                  opacity: labelLayout.opacity,
+                  cursor: "pointer",
+                }}
+                onMouseDown={(event) => {
+                  // Capture-phase marquee box-select is already blocked by the
+                  // data attribute; this stops the canvas from starting a pan.
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setTypeMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    connectionId: connection.id,
+                  });
+                }}
+              >
+                {/* Echoes the diamond drawn on the wire, so the label and the
+                    marker read as one thing rather than two coincidences. */}
+                {isCustom ? "◇ " : ""}
+                {formatConnectionTypeLabel(connection)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Outside the <svg> because both are HTML, and inside a
           pointer-events: auto wrapper because this layer's root disables
           pointer events for everything that isn't a wire or a handle.
           ConfirmDialog portals to document.body, so it escapes that anyway. */}
+      {typeMenuTarget && (
+        <div style={{ pointerEvents: "auto" }}>
+          <ConnectionTypeMenu
+            x={typeMenuTarget.x}
+            y={typeMenuTarget.y}
+            connectionId={typeMenuTarget.connection.id}
+            fromKind={typeMenuTarget.connection.from.kind}
+            toKind={typeMenuTarget.connection.to.kind}
+            current={resolveConnectionType(typeMenuTarget.connection)}
+            currentPrompt={typeMenuTarget.connection.customPrompt}
+            onClose={() => setTypeMenu(null)}
+          />
+        </div>
+      )}
+
       {menu && (
         <div style={{ pointerEvents: "auto" }}>
           <ContextMenu
             x={menu.x}
             y={menu.y}
             items={[
+              // The label is the primary way in; this exists for the case
+              // where the label is too small to aim at, or hidden.
+              {
+                label: t.connection_change_type,
+                onClick: () =>
+                  setTypeMenu({
+                    x: menu.x,
+                    y: menu.y,
+                    connectionId: menu.connectionId,
+                  }),
+              },
+              { type: "separator" },
               {
                 label: t.connection_remove,
                 danger: true,
