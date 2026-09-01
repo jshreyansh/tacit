@@ -1,5 +1,6 @@
 import type { SceneDocument } from "./scene";
 import type { BrowserIdentityProvenance } from "../../shared/browser-profile-import";
+import type { ChatInputOverride } from "../../shared/chat-delivery";
 
 export interface WorkspaceCanvas {
   id: string;
@@ -56,6 +57,13 @@ export interface WorkspaceDocument {
   canvases: WorkspaceCanvas[];
   identities: BrowserIdentity[];
   activeIdentityId: string;
+  /**
+   * Message boxes the user pointed at, per host — see
+   * src/stores/chatInputOverrideStore.ts. Absent in every save from before
+   * reply delivery existed, and absent whenever the heuristic has never been
+   * wrong, which is the common case.
+   */
+  chatInputOverrides?: ChatInputOverride[];
 }
 
 export const DEFAULT_CANVAS_NAME = "Default";

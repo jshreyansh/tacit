@@ -31,6 +31,10 @@ import {
   resolveSessionFile,
   type SessionType,
 } from "./session-watcher";
+import {
+  readFinalAssistantReply,
+  type FinalReplyResult,
+} from "./reply-transcript";
 import { ApiServer } from "./api-server";
 import { BrowserConnectionRegistry } from "./browser-connection-registry";
 import { ConnectedBrowserBroker } from "./connected-browser-broker";
@@ -1590,6 +1594,28 @@ function setupIpc() {
   ipcMain.handle("session:unwatch", (_event, sessionId: string) => {
     sessionWatcher.unwatch(sessionId);
   });
+
+  // What the agent finished by saying, for a `sends-replies-to` wire to hand
+  // on. Deliberately narrow: the renderer names a session and gets back one
+  // message or a reason there isn't one, never a transcript path and never
+  // more of the history than the part that was addressed to a person.
+  ipcMain.handle(
+    "session:final-reply",
+    (
+      _event,
+      input: { sessionId: string; provider: string; cwd: string },
+    ): FinalReplyResult => {
+      try {
+        return readFinalAssistantReply(input);
+      } catch (err) {
+        // A throw here would reach the renderer as a rejected invoke and be
+        // reported to the user as a delivery failure, which is the wrong
+        // story: nothing was attempted.
+        console.error("[session:final-reply] failed", err);
+        return { status: "unavailable", reason: "read-failed" };
+      }
+    },
+  );
 
   ipcMain.handle(
     "telemetry:attach-session",

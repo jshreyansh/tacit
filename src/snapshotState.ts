@@ -1,8 +1,10 @@
 import { useCanvasRegistryStore } from "./stores/canvasRegistryStore";
 import { useIdentityStore } from "./stores/identityStore";
+import { useChatInputOverrideStore } from "./stores/chatInputOverrideStore";
 import { applyCanvasSceneToLive } from "./canvas/canvasSceneIO";
 import { logSlowRendererPath } from "./utils/devPerf";
 import { DEFAULT_IDENTITY_ID, DEFAULT_IDENTITY_NAME } from "./types/workspace";
+import type { WorkspaceDocument } from "./types/workspace";
 import {
   readWorkspaceSnapshot,
   type RestoredWorkspaceSnapshot,
@@ -25,12 +27,15 @@ export function restoreWorkspaceSnapshot(
   useIdentityStore
     .getState()
     .hydrate(workspace.identities, workspace.activeIdentityId);
+  useChatInputOverrideStore
+    .getState()
+    .hydrate(workspace.chatInputOverrides ?? []);
   applyCanvasSceneToLive(snapshot.scene);
 }
 
 function wrapSceneAsDefaultWorkspace(
   scene: RestoredWorkspaceSnapshot["scene"],
-) {
+): WorkspaceDocument {
   const id = `canvas-default-${Date.now().toString(36)}`;
   return {
     version: 3 as const,
@@ -80,6 +85,7 @@ function buildMultiCanvasSnapshot(): MultiCanvasWorkspaceSnapshot {
   });
 
   const { identities, activeIdentityId } = useIdentityStore.getState();
+  const { overrides: chatInputOverrides } = useChatInputOverrideStore.getState();
 
   return {
     version: 3,
@@ -89,6 +95,9 @@ function buildMultiCanvasSnapshot(): MultiCanvasWorkspaceSnapshot {
       canvases,
       identities: Object.values(identities),
       activeIdentityId,
+      // Omitted entirely when empty, so a workspace where the box was never
+      // mis-detected carries no trace of the feature.
+      ...(chatInputOverrides.length > 0 ? { chatInputOverrides } : {}),
     },
     scene: active.scene,
   };

@@ -60,6 +60,7 @@ import {
   decideSpawnProfile,
   listAgentBrowserProfiles,
 } from "./browser/agentBrowserProfiles";
+import { installReplyDelivery } from "./browser/chatReplyDelivery";
 import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
 import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { usePinStore } from "./stores/pinStore";
@@ -424,6 +425,10 @@ export function App() {
       },
     );
   }, []);
+  // A `sends-replies-to` wire fires here: the agent finishes, its answer is
+  // typed into the chat page at the other end and submitted, and that is the
+  // whole interaction — nothing reads the response back.
+  useEffect(() => installReplyDelivery(), []);
   useEffect(() => {
     if (!window.termcanvas?.browser?.onDownloadEvent) return;
     return window.termcanvas.browser.onDownloadEvent((event) => {

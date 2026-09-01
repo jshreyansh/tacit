@@ -117,6 +117,17 @@ contextBridge.exposeInMainWorld("termcanvas", {
       }>,
     unwatch: (sessionId: string) =>
       ipcRenderer.invoke("session:unwatch", sessionId),
+    finalReply: (input: {
+      sessionId: string;
+      provider: string;
+      cwd: string;
+    }) =>
+      ipcRenderer.invoke("session:final-reply", input) as Promise<
+        | { status: "ready"; text: string }
+        | { status: "mid-task" }
+        | { status: "no-reply" }
+        | { status: "unavailable"; reason: string }
+      >,
     onTurnComplete: (callback: (sessionId: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, sessionId: string) =>
         callback(sessionId);

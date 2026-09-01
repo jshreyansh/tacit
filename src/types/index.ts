@@ -643,6 +643,21 @@ export interface TermCanvasAPI {
     ) => Promise<{ ok: boolean; reason?: string }>;
     unwatch: (sessionId: string) => Promise<void>;
     onTurnComplete: (callback: (sessionId: string) => void) => () => void;
+    /**
+     * The message this session ended on, or why there isn't one. Read in main
+     * because transcripts are files; see electron/reply-transcript.ts for why
+     * only the final message crosses back.
+     */
+    finalReply: (input: {
+      sessionId: string;
+      provider: string;
+      cwd: string;
+    }) => Promise<
+      | { status: "ready"; text: string }
+      | { status: "mid-task" }
+      | { status: "no-reply" }
+      | { status: "unavailable"; reason: string }
+    >;
   };
   telemetry: {
     attachSession: (input: {

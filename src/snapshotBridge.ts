@@ -15,6 +15,7 @@ import type {
   WorkspaceDocument,
 } from "./types/workspace";
 import type { BrowserProfileCategorySummary } from "../shared/browser-profile-import";
+import type { ChatInputOverride } from "../shared/chat-delivery";
 import { isValidBrowserIdentityId } from "../shared/browser-profile-import";
 import { managedBrowserBinding } from "../shared/browser-controller";
 import {
@@ -782,6 +783,26 @@ function repairSceneIdentityReferences(
   };
 }
 
+/**
+ * Per-host message boxes the user pointed at.
+ *
+ * One entry per host, last wins — a duplicated host in the file (hand-edited,
+ * or merged from two saves) would otherwise let a stale selector shadow the
+ * correction the user made most recently.
+ */
+function coerceChatInputOverrides(value: unknown): ChatInputOverride[] {
+  if (!Array.isArray(value)) return [];
+  const byHost = new Map<string, ChatInputOverride>();
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const host = typeof entry.host === "string" ? entry.host.trim().toLowerCase() : "";
+    const selector = typeof entry.selector === "string" ? entry.selector.trim() : "";
+    if (!host || !selector) continue;
+    byHost.set(host, { host, selector });
+  }
+  return [...byHost.values()];
+}
+
 function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
   if (!isRecord(value)) return null;
   const rawCanvases = Array.isArray(value.canvases) ? value.canvases : null;
@@ -801,7 +822,15 @@ function coerceWorkspaceDocument(value: unknown): WorkspaceDocument | null {
     ...canvas,
     scene: repairSceneIdentityReferences(canvas.scene, identities, activeIdentityId),
   }));
-  return { version: 3, activeCanvasId, canvases: repairedCanvases, identities, activeIdentityId };
+  const chatInputOverrides = coerceChatInputOverrides(value.chatInputOverrides);
+  return {
+    version: 3,
+    activeCanvasId,
+    canvases: repairedCanvases,
+    identities,
+    activeIdentityId,
+    ...(chatInputOverrides.length > 0 ? { chatInputOverrides } : {}),
+  };
 }
 
 function wrapSceneAsWorkspace(scene: SceneDocument): WorkspaceDocument {
