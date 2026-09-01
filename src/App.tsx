@@ -81,10 +81,8 @@ import { usePinPreloader } from "./hooks/usePinPreloader";
 import { useT } from "./i18n/useT";
 import { loadAllDownloadedFonts } from "./terminal/fontLoader";
 import { startAutoSummaryWatcher } from "./terminal/summaryScheduler";
-import {
-  shouldRunAutoSaveBackstop,
-  useWorkspaceStore,
-} from "./stores/workspaceStore";
+import { useWorkspaceStore } from "./stores/workspaceStore";
+import { startAutoSaveScheduler } from "./stores/autoSaveScheduler";
 import {
   readWorkspaceSnapshot,
   restoreWorkspaceSnapshot,
@@ -229,7 +227,6 @@ function useAutoSave() {
   useEffect(() => {
     if (!window.termcanvas) return;
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const saveSnapshot = async () => {
       const startedAt = performance.now();
       try {
@@ -253,38 +250,19 @@ function useAutoSave() {
       }
     };
 
-    const unsubscribe = useWorkspaceStore.subscribe((state, prev) => {
-      if (state.dirty && state.lastDirtyAt !== prev.lastDirtyAt) {
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-        }
-        debounceTimer = setTimeout(() => {
-          void saveSnapshot();
-        }, 5000);
-      }
-
-      if (!state.dirty && prev.dirty && debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-    });
-
-    const backstopTimer = setInterval(() => {
-      const { dirty, lastDirtyAt, lastSavedAt } = useWorkspaceStore.getState();
-      if (shouldRunAutoSaveBackstop({ dirty, lastDirtyAt, lastSavedAt })) {
+    const scheduler = startAutoSaveScheduler({
+      source: useWorkspaceStore,
+      save: () => {
         void saveSnapshot();
-      }
-    }, 60_000);
+      },
+    });
 
     // Closes the gap where a quit shortly after a change loses that change
     // even on a clean quit — see requestFinalFlushAndWait in
     // electron/main.ts's "will-quit" handler, which pushes this event and
     // waits (with a timeout) for the ack below before destroying any PTYs.
     const unsubscribeFlush = window.termcanvas.state.onFlushBeforeQuit(() => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
+      scheduler.cancelPendingSave();
       // Uses the refreshing variant (not plain saveSnapshot/snapshotState)
       // per its own doc comment: close-time saves should re-read live
       // Claude session state from disk first, so a /resume switch or
@@ -305,12 +283,8 @@ function useAutoSave() {
     });
 
     return () => {
-      unsubscribe();
+      scheduler.stop();
       unsubscribeFlush();
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      clearInterval(backstopTimer);
     };
   }, []);
 }

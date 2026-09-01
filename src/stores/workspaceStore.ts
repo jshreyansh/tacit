@@ -33,7 +33,13 @@ export function shouldRunAutoSaveBackstop({
 }): boolean {
   return (
     hasPendingSnapshot(dirty, lastDirtyAt, lastSavedAt) &&
-    (!lastSavedAt || now - lastSavedAt > intervalMs)
+    // `>=`, not `>`: the caller polls this on an interval of exactly
+    // `intervalMs`, so a tick landing precisely one interval after the last
+    // save is the normal case, not an early one. With a strict `>` that tick
+    // always missed by zero milliseconds and the backstop ran every *two*
+    // intervals — a busy canvas that keeps restarting the 5s debounce could
+    // then go two minutes without a write instead of one.
+    (!lastSavedAt || now - lastSavedAt >= intervalMs)
   );
 }
 

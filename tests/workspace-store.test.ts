@@ -65,6 +65,21 @@ test("shouldRunAutoSaveBackstop only runs for unsnapshotted changes after the in
     true,
   );
 
+  // The tick that lands exactly one interval after the last save counts.
+  // The backstop is polled on an interval of exactly this length, so with a
+  // strict `>` every other tick missed by zero milliseconds and the effective
+  // period doubled — see the comment in shouldRunAutoSaveBackstop.
+  assert.equal(
+    shouldRunAutoSaveBackstop({
+      dirty: true,
+      lastDirtyAt: 20_000,
+      lastSavedAt: 10_000,
+      now: 70_000,
+      intervalMs: 60_000,
+    }),
+    true,
+  );
+
   assert.equal(
     shouldRunAutoSaveBackstop({
       dirty: true,

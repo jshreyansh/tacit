@@ -50,6 +50,37 @@ function seedDefaultIdentity(): {
   };
 }
 
+/** The name the built-in profile shipped with before it became "Guest". */
+const LEGACY_DEFAULT_IDENTITY_NAME = "Default";
+
+/**
+ * Existing workspaces store the built-in profile's name, so renaming the
+ * constant only reached workspaces created after it changed. Rename it on
+ * load — but only when it still carries the exact shipped name: a user who
+ * renamed the built-in profile themselves has said what they want it called,
+ * and that outranks our rename.
+ *
+ * A profile already called "Guest" (an imported Chrome profile can be) also
+ * stops the migration, so the list never shows the same name twice.
+ */
+export function migrateBuiltInIdentityName(
+  identities: readonly BrowserIdentity[],
+): BrowserIdentity[] {
+  const builtIn = identities.find((i) => i.id === DEFAULT_IDENTITY_ID);
+  if (!builtIn || builtIn.name.trim() !== LEGACY_DEFAULT_IDENTITY_NAME) {
+    return [...identities];
+  }
+  const nameTaken = identities.some(
+    (i) =>
+      i.id !== DEFAULT_IDENTITY_ID &&
+      i.name.trim().toLowerCase() === DEFAULT_IDENTITY_NAME.toLowerCase(),
+  );
+  if (nameTaken) return [...identities];
+  return identities.map((i) =>
+    i.id === DEFAULT_IDENTITY_ID ? { ...i, name: DEFAULT_IDENTITY_NAME } : i,
+  );
+}
+
 interface IdentityState {
   identities: Record<string, BrowserIdentity>;
   activeIdentityId: string;
@@ -96,7 +127,9 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
       return;
     }
     const byId: Record<string, BrowserIdentity> = {};
-    for (const identity of identities) byId[identity.id] = identity;
+    for (const identity of migrateBuiltInIdentityName(identities)) {
+      byId[identity.id] = identity;
+    }
     const activeId = byId[activeIdentityId]
       ? activeIdentityId
       : identities[0].id;
