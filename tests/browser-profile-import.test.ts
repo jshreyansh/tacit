@@ -15,6 +15,12 @@ import {
 } from "../electron/browser-profile-import";
 import { isValidBrowserIdentityId, partitionForBrowserIdentity } from "../shared/browser-profile-import";
 import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "../electron/browser-profile-ipc";
+import {
+  BrowserPartitionStore,
+  partitionsRootFor,
+} from "../electron/browser-partition-store";
+import { partitionDirNameForIdentity } from "../shared/browser-partition-registry";
+import { identityIdFromPartition } from "../shared/browser-profile-import";
 
 function chromeFixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-chrome-profile-test-"));
@@ -408,5 +414,80 @@ test("rollback failure stays profile-scoped and does not discard other batch res
     assert.equal(result.results[0]?.status === "failed" ? result.results[0].cleanup : "", "failed");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed import leaves no partition directory and nothing in the registry", async () => {
+  const root = chromeFixture();
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-import-partitions-"));
+  const partitionsRoot = partitionsRootFor(userDataDir);
+  fs.mkdirSync(partitionsRoot, { recursive: true });
+  const store = new BrowserPartitionStore({ userDataDir });
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default", "Profile 2"], [], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "private", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      registerPartition: (identityId, label) =>
+        store.register(identityId, { origin: "import", label }),
+      reapPartition: (identityId) => store.erase(identityId) !== "pending",
+      fromPartition: (partitionName) => {
+        // Electron materialises the directory here, before any cookie is
+        // written — which is exactly why registration has to happen first.
+        const identityId = identityIdFromPartition(partitionName)!;
+        fs.mkdirSync(path.join(partitionsRoot, partitionDirNameForIdentity(identityId)), { recursive: true });
+        return {
+          cookies: { set: async () => { throw new Error("write failed"); }, remove: async () => {} },
+          flushStorageData: async () => {},
+          clearStorageData: async () => {},
+        };
+      },
+    });
+    assert.deepEqual(result.results.map((entry) => entry.status), ["failed", "failed"]);
+    assert.deepEqual(fs.readdirSync(partitionsRoot), []);
+    assert.deepEqual(store.snapshot().partitions, []);
+    assert.deepEqual(store.snapshot().pendingReaps, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("a successful import registers its partition under the name the user will see", async () => {
+  const root = chromeFixture();
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-import-partitions-"));
+  const partitionsRoot = partitionsRootFor(userDataDir);
+  fs.mkdirSync(partitionsRoot, { recursive: true });
+  const store = new BrowserPartitionStore({ userDataDir });
+  try {
+    const result = await importChromeProfilesAsIdentities(["Default"], ["Personal"], {
+      chromeRoot: root,
+      isChromeRunning: async () => false,
+      createIdentityId: () => "00000000-0000-4000-8000-000000000001",
+      readCookieRows: async () => ({ schemaVersion: 24, rows: [{ host_key: ".example.com", name: "session", path: "/", value: "private", encrypted_value_hex: "", expires_utc: 0, is_secure: 1, is_httponly: 1, samesite: -1 }] }),
+      registerPartition: (identityId, label) =>
+        store.register(identityId, { origin: "import", label }),
+      reapPartition: (identityId) => store.erase(identityId) !== "pending",
+      fromPartition: (partitionName) => {
+        const identityId = identityIdFromPartition(partitionName)!;
+        fs.mkdirSync(path.join(partitionsRoot, partitionDirNameForIdentity(identityId)), { recursive: true });
+        return {
+          cookies: { set: async () => {}, remove: async () => {}, flushStore: async () => {} },
+          flushStorageData: async () => {},
+          clearStorageData: async () => {},
+        };
+      },
+    });
+    assert.equal(result.results[0]?.status, "completed");
+    const identityId = result.results[0]?.status === "completed" ? result.results[0].identity.id : "";
+    assert.deepEqual(store.snapshot().partitions.map((entry) => entry.identityId), [identityId]);
+    // "Personal" was taken, so the profile — and its registry label — is the
+    // deduplicated name the user actually sees.
+    assert.equal(store.snapshot().partitions[0].label, "Personal 2");
+    assert.equal(store.snapshot().partitions[0].origin, "import");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });

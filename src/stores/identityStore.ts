@@ -110,6 +110,14 @@ interface IdentityActions {
    * point of the asymmetry.
    */
   setAgentAllowed: (id: string, allowed: boolean) => void;
+  /**
+   * Put a profile back for storage that outlived its entry in the workspace —
+   * an orphaned partition the user chose to keep. The id is the one the
+   * partition is already named after, because that id *is* the link to the
+   * cookies on disk; a new id would make a second empty profile and leave the
+   * real one orphaned still. Returns the name it ended up with.
+   */
+  restoreOrphanIdentity: (id: string, createdAt: number, name: string) => string;
 }
 
 export type IdentityStore = IdentityState & IdentityActions;
@@ -213,6 +221,21 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
         activeIdentityId === id ? fallback.id : activeIdentityId,
     });
     markDirty();
+  },
+
+  restoreOrphanIdentity: (id, createdAt, name) => {
+    const { identities } = get();
+    const existing = identities[id];
+    if (existing) return existing.name;
+    const finalName = uniqueIdentityName(name, Object.values(identities));
+    set({
+      identities: {
+        ...identities,
+        [id]: { id, name: finalName, createdAt: createdAt || Date.now() },
+      },
+    });
+    markDirty();
+    return finalName;
   },
 
   setActiveIdentity: (id) => {

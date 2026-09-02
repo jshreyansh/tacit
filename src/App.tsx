@@ -7,6 +7,8 @@ import { AddNodeDock } from "./toolbar/AddNodeDock";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
 import { useNotificationStore } from "./stores/notificationStore";
+import { useIdentityStore } from "./stores/identityStore";
+import { useIdentityManagerStore } from "./stores/identityManagerStore";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
@@ -368,6 +370,23 @@ export function App() {
   useEffect(() => {
     if (!window.termcanvas?.browser?.onBridgeCall) return;
     return initBridgeActivityIPC();
+  }, []);
+  // What browser data is on disk, against the profiles this workspace knows.
+  // Run at startup and again whenever the profile list changes — a restore that
+  // dropped every imported profile is exactly the case this catches, and the
+  // workspace only finishes loading after mount. Nothing is acted on: these
+  // folders hold real sign-ins, so the manager suggests and the user decides.
+  useEffect(() => {
+    if (!window.termcanvas?.browserIdentity?.listOrphanPartitions) return;
+    const refresh = () => void useIdentityManagerStore.getState().refreshOrphans();
+    refresh();
+    let known = Object.keys(useIdentityStore.getState().identities).sort().join();
+    return useIdentityStore.subscribe((state) => {
+      const next = Object.keys(state.identities).sort().join();
+      if (next === known) return;
+      known = next;
+      refresh();
+    });
   }, []);
   useEffect(() => {
     if (!window.termcanvas?.browser?.onCanvasBridgeEvent) return;

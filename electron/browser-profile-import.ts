@@ -75,6 +75,20 @@ export interface BrowserIdentityImportDeps extends BrowserProfileImportDeps {
   fromPartition: (partitionName: string) => IdentityImportSession;
   createIdentityId?: () => string;
   now?: () => number;
+  /**
+   * Records the partition before it is materialised, so an import that fails
+   * afterwards still leaves something that knows the directory exists.
+   * `fromPartition` creates the directory whether or not the cookie import
+   * throws, and a directory nothing knows about is exactly the orphan this
+   * whole registry exists to prevent.
+   */
+  registerPartition?: (identityId: string, label: string) => void;
+  /**
+   * Removes the partition directory after a failed import. Returns false when
+   * the directory could not go yet — the caller has recorded it for the next
+   * start, so the rollback is still complete from the user's side.
+   */
+  reapPartition?: (identityId: string) => boolean;
   diagnostic?: (event: {
     category: "profile-import" | "rollback";
     profileId: string;
@@ -304,12 +318,16 @@ export async function importChromeProfilesAsIdentities(
     const profile = byId.get(profileId)!;
     const identityId = `identity-${(deps.createIdentityId ?? randomUUID)()}`;
     const partitionName = partitionForBrowserIdentity(identityId);
-    const targetSession = deps.fromPartition(partitionName);
     const createdAt = (deps.now ?? Date.now)();
     let identityName = profile.name.trim() || profile.profileId;
     for (let suffix = 2; takenNames.has(identityName.toLocaleLowerCase()); suffix += 1) {
       identityName = `${profile.name.trim() || profile.profileId} ${suffix}`;
     }
+    // Registration comes first, and the name is settled before it, so the
+    // record of this directory carries something a user can recognise even if
+    // nothing else about the import survives.
+    deps.registerPartition?.(identityId, identityName);
+    const targetSession = deps.fromPartition(partitionName);
     try {
       const cookieResult = await importChromeProfileCookies(profileId, targetSession.cookies, {
         ...deps,
@@ -348,6 +366,10 @@ export async function importChromeProfilesAsIdentities(
       let cleanup: "completed" | "failed" = "completed";
       try {
         await targetSession.clearStorageData();
+        // Clearing empties the partition but leaves its directory. Removing it
+        // is what makes a failed import leave nothing behind; a directory that
+        // cannot go yet is recorded by the caller and collected at next start.
+        deps.reapPartition?.(identityId);
       } catch (error) {
         cleanup = "failed";
         deps.diagnostic?.({ category: "rollback", profileId, errorType: error instanceof Error ? error.name : "UnknownError" });

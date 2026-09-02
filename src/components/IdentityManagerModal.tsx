@@ -13,8 +13,35 @@ import type {
   ConnectedTabBinding,
 } from "../../shared/browser-connection";
 import type { BrowserProfileImportResult, ImportableBrowserProfile } from "../../shared/browser-profile-import";
+import type { OrphanPartitionSummary } from "../../shared/browser-partition-registry";
 import { isAgentAllowed } from "../types/workspace";
 import { ProfileDot } from "./ProfileDot";
+
+/**
+ * How big an orphan is, said the way a person would. Deliberately coarse: this
+ * is the only thing we are willing to say about a folder we refuse to look
+ * inside, and a precise byte count would suggest we had.
+ */
+function formatPartitionSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+function formatPartitionDate(createdAt: number): string {
+  if (!createdAt) return "an unknown date";
+  return new Date(createdAt).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 interface PairingOffer {
   endpoint: string;
@@ -232,6 +259,13 @@ export function IdentityManagerModal() {
   const [draftName, setDraftName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const orphans = useIdentityManagerStore((s) => s.orphans);
+  const refreshOrphans = useIdentityManagerStore((s) => s.refreshOrphans);
+  const eraseOrphan = useIdentityManagerStore((s) => s.eraseOrphan);
+  const restoreOrphanIdentity = useIdentityStore((s) => s.restoreOrphanIdentity);
+  const [confirmEraseId, setConfirmEraseId] = useState<string | null>(null);
+  const [erasing, setErasing] = useState(false);
+  const [orphanStatus, setOrphanStatus] = useState<string | null>(null);
   const [pairingOffer, setPairingOffer] = useState<PairingOffer | null>(null);
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   const [authorizedTabs, setAuthorizedTabs] = useState<AuthorizedBrowserTab[]>([]);
@@ -292,6 +326,7 @@ export function IdentityManagerModal() {
     if (!open) return;
     void refreshAuthorizedTabs();
     void refreshImportProfiles();
+    void refreshOrphans();
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (editingId) {
@@ -300,14 +335,14 @@ export function IdentityManagerModal() {
           setDraftName("");
           return;
         }
-        if (confirmDeleteId) return;
+        if (confirmDeleteId || confirmEraseId) return;
         e.preventDefault();
         closeManager();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, editingId, confirmDeleteId, closeManager, refreshAuthorizedTabs, refreshImportProfiles]);
+  }, [open, editingId, confirmDeleteId, confirmEraseId, closeManager, refreshAuthorizedTabs, refreshImportProfiles, refreshOrphans]);
 
   useEffect(() => {
     if (!open || !pairingOffer) return;
@@ -398,22 +433,63 @@ export function IdentityManagerModal() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!confirmDeleteId) return;
+    const name = identities.find((i) => i.id === confirmDeleteId)?.name ?? "";
     setDeleting(true);
     try {
-      await window.termcanvas.browserIdentity.clearData(confirmDeleteId);
+      const result = await window.termcanvas.browserIdentity.clearData(confirmDeleteId);
       deleteIdentity(confirmDeleteId);
       setConfirmDeleteId(null);
+      // The data is gone either way; only the folder can lag, and saying so is
+      // the difference between the copy being true and being nearly true.
+      setBrowserStatus(
+        result?.directory === "pending" ? t["identity.delete.pending"](name) : null,
+      );
+      void refreshOrphans();
     } catch {
       setBrowserStatus("That profile could not be removed because its saved browser data could not be erased.");
     } finally {
       setDeleting(false);
     }
-  }, [confirmDeleteId, deleteIdentity]);
+  }, [confirmDeleteId, deleteIdentity, identities, refreshOrphans, t]);
+
+  const handleRestoreOrphan = useCallback(
+    (orphan: OrphanPartitionSummary) => {
+      const name = restoreOrphanIdentity(
+        orphan.identityId,
+        orphan.createdAt,
+        orphan.label || t["identity.orphans.restoredName"],
+      );
+      setOrphanStatus(t["identity.orphans.restored"](name));
+      void refreshOrphans();
+    },
+    [restoreOrphanIdentity, refreshOrphans, t],
+  );
+
+  const handleConfirmErase = useCallback(async () => {
+    if (!confirmEraseId) return;
+    setErasing(true);
+    try {
+      const result = await eraseOrphan(confirmEraseId);
+      setOrphanStatus(
+        result.directory === "pending"
+          ? t["identity.orphans.erasePending"]
+          : t["identity.orphans.erased"],
+      );
+      setConfirmEraseId(null);
+    } catch {
+      setOrphanStatus(t["identity.orphans.eraseFailed"]);
+    } finally {
+      setErasing(false);
+    }
+  }, [confirmEraseId, eraseOrphan, t]);
 
   if (!open) return null;
 
   const deleteTarget = confirmDeleteId
     ? (identities.find((i) => i.id === confirmDeleteId) ?? null)
+    : null;
+  const eraseTarget = confirmEraseId
+    ? (orphans.find((entry) => entry.identityId === confirmEraseId) ?? null)
     : null;
   const pairingRemainingMs = pairingOffer
     ? Math.max(0, Date.parse(pairingOffer.expiresAt) - pairingNow)
@@ -584,6 +660,62 @@ export function IdentityManagerModal() {
               </span>
             </button>
           </div>
+
+          {orphans.length > 0 && (
+            <section className="border-t border-[var(--border)] px-4 py-3">
+              <span className="tc-ui" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                {t["identity.orphans.title"]}
+              </span>
+              <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                {t["identity.orphans.body"](orphans.length)}
+              </p>
+              {orphanStatus && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="tc-meta mt-2 rounded-md border border-[var(--border)] px-2.5 py-2"
+                  style={{ color: "var(--text-secondary)", background: "var(--bg)" }}
+                >
+                  {orphanStatus}
+                </div>
+              )}
+              <div className="mt-2 space-y-1.5">
+                {orphans.map((orphan) => (
+                  <div
+                    key={orphan.identityId}
+                    className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2.5 py-2"
+                    style={{ background: "var(--bg)" }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
+                        {orphan.label || t["identity.orphans.restoredName"]}
+                      </div>
+                      <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                        {t["identity.orphans.entry"](
+                          formatPartitionDate(orphan.createdAt),
+                          formatPartitionSize(orphan.sizeBytes),
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreOrphan(orphan)}
+                      className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                    >
+                      {t["identity.orphans.restore"]}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmEraseId(orphan.identityId)}
+                      className="tc-ui shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-[var(--text-muted)] hover:text-[var(--red)] hover:bg-[var(--surface-hover)]"
+                    >
+                      {t["identity.orphans.erase"]}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="border-t border-[var(--border)] px-4 py-3">
             <div className="flex items-start gap-3">
@@ -815,6 +947,25 @@ export function IdentityManagerModal() {
         confirmTone="danger"
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={() => void handleConfirmDelete()}
+      />
+
+      <ConfirmDialog
+        open={confirmEraseId !== null}
+        title={t["identity.orphans.confirmTitle"]}
+        body={
+          eraseTarget
+            ? t["identity.orphans.confirmBody"](
+                formatPartitionDate(eraseTarget.createdAt),
+                formatPartitionSize(eraseTarget.sizeBytes),
+              )
+            : ""
+        }
+        confirmLabel={t["identity.orphans.confirm"]}
+        busyLabel={t["identity.orphans.erasing"]}
+        busy={erasing}
+        confirmTone="danger"
+        onCancel={() => setConfirmEraseId(null)}
+        onConfirm={() => void handleConfirmErase()}
       />
     </>,
     document.body,

@@ -1053,6 +1053,7 @@ export const zh = {
   "canvas.command.switchTo": (name: string) => `切换到画布:${name}`,
   "canvas.command.switchSubtitle": (n: number) => `该画布上有 ${n} 个项目`,
   "hub.identities.manage": "管理浏览器配置文件",
+  "hub.identities.orphans": (n: number) => `${n} 份未认领`,
   "identity.manager.title": "浏览器配置文件",
   "identity.manager.subtitle": (n: number) => `${n} 个配置文件`,
   "identity.manager.setDefaultTooltip": "新建浏览器节点时使用此配置文件",
@@ -1069,9 +1070,28 @@ export const zh = {
     `代理不能使用“${name}”。你自己仍可随时打开它。`,
   "identity.delete.title": "删除配置文件?",
   "identity.delete.body": (name: string) =>
-    `“${name}”及其登录的一切都会被清除。使用它的浏览器节点会回退到其他配置文件。此操作无法撤销。`,
+    `“${name}”会被移除,其 Cookie、缓存与已保存的登录信息也会从磁盘上清除。使用它的浏览器节点会回退到其他配置文件。此操作无法撤销。`,
   "identity.delete.confirm": "删除配置文件",
   "identity.delete.confirming": "正在删除…",
+  "identity.delete.pending": (name: string) =>
+    `“${name}”已退出登录,数据已清除。因为浏览器仍占用着它的文件夹,该文件夹将在下次启动 Tacit 时删除。`,
+  "identity.orphans.title": "没有配置文件的浏览器数据",
+  "identity.orphans.body": (n: number) =>
+    `这台 Mac 上有 ${n} 个已保存的浏览器数据文件夹,不属于此工作区中的任何配置文件,其中可能仍保存着真实的登录状态。可将其恢复为配置文件继续使用,或彻底清除。`,
+  "identity.orphans.entry": (created: string, size: string) =>
+    `创建于 ${created} · ${size}`,
+  "identity.orphans.restore": "恢复为配置文件",
+  "identity.orphans.restored": (name: string) => `已恢复为“${name}”。`,
+  "identity.orphans.erase": "清除",
+  "identity.orphans.erasing": "正在清除…",
+  "identity.orphans.erased": "已清除。该数据已从这台 Mac 上消失。",
+  "identity.orphans.erasePending": "已清除。文件夹本身将在下次启动 Tacit 时删除。",
+  "identity.orphans.eraseFailed": "无法清除该数据。",
+  "identity.orphans.confirmTitle": "清除这份浏览器数据?",
+  "identity.orphans.confirmBody": (created: string, size: string) =>
+    `${size} 的已保存浏览器数据,创建于 ${created},其中可能仍保存着真实的登录状态。清除会删除 Cookie、缓存以及文件夹本身。此操作无法撤销。`,
+  "identity.orphans.confirm": "彻底清除",
+  "identity.orphans.restoredName": "已恢复的配置文件",
   "identity.command.manage": "管理浏览器配置文件…",
   browser_identity_picker_title: "此节点当前使用的配置文件",
   browser_identity_unknown: "配置文件",

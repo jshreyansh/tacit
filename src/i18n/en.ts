@@ -1100,6 +1100,8 @@ export const en = {
   "canvas.command.prev": "Switch to previous canvas",
   "canvas.command.switchTo": (name: string) => `Switch to canvas: ${name}`,
   "hub.identities.manage": "Manage browser profiles",
+  "hub.identities.orphans": (n: number) =>
+    `${n} unclaimed`,
   "identity.manager.title": "Browser profiles",
   "identity.manager.subtitle": (n: number) =>
     `${n} profile${n === 1 ? "" : "s"}`,
@@ -1117,9 +1119,29 @@ export const en = {
     `Agents may not work as ${name}. You can still open it yourself.`,
   "identity.delete.title": "Delete profile?",
   "identity.delete.body": (name: string) =>
-    `"${name}" will be removed and everything it is signed into erased. Browser nodes using it fall back to another profile. This cannot be undone.`,
+    `"${name}" will be removed, and its cookies, caches and saved sign-ins erased from disk. Browser nodes using it fall back to another profile. This cannot be undone.`,
   "identity.delete.confirm": "Delete profile",
   "identity.delete.confirming": "Deleting…",
+  "identity.delete.pending": (name: string) =>
+    `"${name}" is signed out and its data erased. Its folder goes the next time Tacit starts, because the browser still has it open.`,
+  "identity.orphans.title": "Browser data with no profile",
+  "identity.orphans.body": (n: number) =>
+    `${n} folder${n === 1 ? "" : "s"} of saved browser data on this Mac ${n === 1 ? "belongs" : "belong"} to no profile in this workspace. ${n === 1 ? "It" : "They"} may hold real sign-ins. Restore it as a profile to use it again, or erase it for good.`,
+  "identity.orphans.entry": (created: string, size: string) =>
+    `Made ${created} · ${size}`,
+  "identity.orphans.restore": "Restore as profile",
+  "identity.orphans.restored": (name: string) => `Restored as "${name}".`,
+  "identity.orphans.erase": "Erase",
+  "identity.orphans.erasing": "Erasing…",
+  "identity.orphans.erased": "Erased. That data is gone from this Mac.",
+  "identity.orphans.erasePending":
+    "Erased. The folder itself goes the next time Tacit starts.",
+  "identity.orphans.eraseFailed": "That data could not be erased.",
+  "identity.orphans.confirmTitle": "Erase this browser data?",
+  "identity.orphans.confirmBody": (created: string, size: string) =>
+    `${size} of saved browser data, made ${created}. It may still hold real sign-ins. Erasing removes the cookies, caches and the folder itself. This cannot be undone.`,
+  "identity.orphans.confirm": "Erase for good",
+  "identity.orphans.restoredName": "Recovered profile",
   "identity.command.manage": "Manage browser profiles…",
   browser_identity_picker_title: "The profile this node is signed in as",
   browser_identity_unknown: "Profile",

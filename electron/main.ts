@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  webContents,
   crashReporter,
   ipcMain,
   dialog,
@@ -42,7 +43,13 @@ import {
   discoverChromeProfiles,
   importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
-import { resolveIdentityClearPartition, validateChromeProfileImportRequest } from "./browser-profile-ipc";
+import {
+  resolveIdentityClearPartition,
+  validateChromeProfileImportRequest,
+  validateOrphanPartitionDiffRequest,
+  validateOrphanPartitionEraseRequest,
+} from "./browser-profile-ipc";
+import { BrowserPartitionStore } from "./browser-partition-store";
 import { BrowserObservationStore } from "./browser-observation-store";
 import { resolvePopupDisposition } from "./browser-popup";
 import {
@@ -52,7 +59,10 @@ import {
 import { resolveGuestShortcut } from "./browser-guest-shortcuts";
 import { resolveDownloadSavePath } from "./browser-downloads";
 import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
-import { identityIdFromPartition } from "../shared/browser-profile-import";
+import {
+  identityIdFromPartition,
+  partitionForBrowserIdentity,
+} from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -504,6 +514,46 @@ let observationStore: BrowserObservationStore | null = null;
  */
 const guestSessionProfiles = new WeakMap<Electron.Session, string>();
 
+/**
+ * What browser profile storage exists on disk, as opposed to what the workspace
+ * remembers. Main owns it because main is the only side that may name a path:
+ * the renderer sees counts, names and ids, never a directory.
+ *
+ * `isPartitionInUse` is answered from the guest map above rather than by asking
+ * Electron for a session — asking would materialise the partition, recreating
+ * the very directory a reap is trying to remove.
+ */
+const browserPartitionStore = new BrowserPartitionStore({
+  userDataDir: app.getPath("userData"),
+  isPartitionInUse: (identityId) =>
+    webContents
+      .getAllWebContents()
+      .some(
+        (contents) =>
+          !contents.isDestroyed() &&
+          guestSessionProfiles.get(contents.session) === identityId,
+      ),
+  log: (event) => console.warn("[browser-partitions]", event),
+});
+
+/**
+ * Erases everything the session itself holds. `clearStorageData` alone was the
+ * old behaviour, and it is what made the delete copy untrue: caches keep
+ * fetched pages, auth caches keep HTTP credentials, and the directory outlives
+ * both. This clears all of it; the directory is the partition store's job.
+ */
+async function eraseIdentitySessionData(identityId: string): Promise<void> {
+  const identitySession = session.fromPartition(
+    partitionForBrowserIdentity(identityId),
+  );
+  await identitySession.clearStorageData();
+  await identitySession.clearCache();
+  await identitySession.clearAuthCache();
+  // An empty url list means every entry in the code cache directory.
+  await identitySession.clearCodeCaches({ urls: [] });
+  await identitySession.clearHostResolverCache();
+}
+
 function guestObserverPreloadPath(): string {
   return path.join(__dirname, "browser-observer-preload.cjs");
 }
@@ -517,6 +567,10 @@ function guestObserverPreloadPath(): string {
 function rememberGuestPartition(partition: unknown): void {
   const identityId = identityIdFromPartition(partition);
   if (!identityId || typeof partition !== "string") return;
+  // Registered before the session is resolved: `fromPartition` is what creates
+  // the directory, so anything that recorded it afterwards would miss a crash
+  // in between and leave a partition nothing knows about.
+  browserPartitionStore.register(identityId, { origin: "session" });
   const guestSession = session.fromPartition(partition);
   guestSessionProfiles.set(guestSession, identityId);
   installGuestDownloads(guestSession);
@@ -2025,9 +2079,33 @@ function setupIpc() {
     "browser-identity:clear-data",
     async (_event, identityId: unknown) => {
       const partitionName = resolveIdentityClearPartition(identityId);
-      await session.fromPartition(partitionName).clearStorageData();
+      // Non-null: resolveIdentityClearPartition has already refused anything
+      // that is not a valid identity partition.
+      const validIdentityId = identityIdFromPartition(partitionName)!;
+      await eraseIdentitySessionData(validIdentityId);
+      // Only after the clear succeeds. A directory removed while its data is
+      // still live would be the one failure worse than the orphan: the profile
+      // gone from the list with its cookies still on disk.
+      const directory = browserPartitionStore.erase(validIdentityId);
+      return { identityId: validIdentityId, directory };
     },
   );
+
+  ipcMain.handle(
+    "browser-partition:list-orphans",
+    (_event, input: unknown) =>
+      browserPartitionStore.listOrphans(
+        validateOrphanPartitionDiffRequest(input).identityIds,
+      ),
+  );
+
+  ipcMain.handle("browser-partition:erase", (_event, input: unknown) => {
+    // No session is touched here. An orphan has no profile, so nothing has
+    // opened it this run, and resolving its session would recreate the very
+    // directory this is removing.
+    const { identityId } = validateOrphanPartitionEraseRequest(input);
+    return { identityId, directory: browserPartitionStore.erase(identityId) };
+  });
 
   ipcMain.handle("browser-profile-import:list", () =>
     discoverChromeProfiles(),
@@ -2042,6 +2120,10 @@ function setupIpc() {
       const request = validateChromeProfileImportRequest(input);
       return importChromeProfilesAsIdentities(request.profileIds, request.existingIdentityNames, {
         fromPartition: (partitionName) => session.fromPartition(partitionName),
+        registerPartition: (identityId, label) =>
+          browserPartitionStore.register(identityId, { origin: "import", label }),
+        reapPartition: (identityId) =>
+          browserPartitionStore.erase(identityId) !== "pending",
         diagnostic: (event) => console.warn("[browser-profile-import]", event),
       });
     },
@@ -3190,6 +3272,14 @@ app.whenReady().then(async () => {
     platform: process.platform,
     user_data_path: app.getPath("userData"),
   });
+
+  // Before any window exists, so nothing is holding a partition open: adopt
+  // directories that predate the registry, drop entries whose directory is
+  // gone, and collect removals the last run could not finish. The diff against
+  // the workspace happens later, in the renderer, because the workspace is what
+  // the renderer owns — and it only ever suggests.
+  const partitionReport = browserPartitionStore.start();
+  renderDiagnostics.recordMainEvent("browser_partitions_reconciled", { ...partitionReport });
 
   // Serve pin attachments and canvas background images from disk.
   // Path-traversal guard: resolved disk path must stay under one of these

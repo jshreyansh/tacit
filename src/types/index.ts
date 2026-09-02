@@ -999,7 +999,22 @@ export interface TermCanvasAPI {
     pickBackgroundImage: () => Promise<string | null>;
   };
   browserIdentity: {
-    clearData: (identityId: string) => Promise<void>;
+    clearData: (
+      identityId: string,
+    ) => Promise<
+      import("../../shared/browser-partition-registry").BrowserPartitionEraseResult
+    >;
+    listOrphanPartitions: (
+      identityIds: string[],
+    ) => Promise<
+      import("../../shared/browser-partition-registry").OrphanPartitionSummary[]
+    >;
+    eraseOrphanPartition: (input: {
+      identityId: string;
+      identityIds: string[];
+    }) => Promise<
+      import("../../shared/browser-partition-registry").BrowserPartitionEraseResult
+    >;
     listImportProfiles: () => Promise<
       import("../../shared/browser-profile-import").ImportableBrowserProfile[]
     >;

@@ -674,7 +674,22 @@ contextBridge.exposeInMainWorld("termcanvas", {
       ipcRenderer.invoke(
         "browser-identity:clear-data",
         identityId,
-      ) as Promise<void>,
+      ) as Promise<
+        import("../shared/browser-partition-registry").BrowserPartitionEraseResult
+      >,
+    listOrphanPartitions: (identityIds: string[]) =>
+      ipcRenderer.invoke("browser-partition:list-orphans", {
+        identityIds,
+      }) as Promise<
+        import("../shared/browser-partition-registry").OrphanPartitionSummary[]
+      >,
+    eraseOrphanPartition: (input: {
+      identityId: string;
+      identityIds: string[];
+    }) =>
+      ipcRenderer.invoke("browser-partition:erase", input) as Promise<
+        import("../shared/browser-partition-registry").BrowserPartitionEraseResult
+      >,
     listImportProfiles: () =>
       ipcRenderer.invoke("browser-profile-import:list") as Promise<
         import("../shared/browser-profile-import").ImportableBrowserProfile[]

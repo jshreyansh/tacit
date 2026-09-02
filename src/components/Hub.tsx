@@ -420,6 +420,10 @@ export function Hub() {
   const t = useT();
   const open = useHubStore((s) => s.open);
   const closeHub = useHubStore((s) => s.closeHub);
+  // Browser data on disk with no profile to claim it. Surfaced here because the
+  // manager is where it can be restored or erased, and a count is the whole of
+  // what this row is allowed to say about it.
+  const orphanPartitionCount = useIdentityManagerStore((s) => s.orphans.length);
 
   // Bucket-shift counter — re-renders the activity feed when the 30s grid
   // advances, without subscribing to every byte of PTY output. wallTick
@@ -1061,6 +1065,17 @@ export function Hub() {
                 >
                   {t["hub.identities.manage"]}
                 </span>
+                {orphanPartitionCount > 0 && (
+                  <span
+                    className="tc-meta shrink-0 rounded-full border px-1.5"
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    {t["hub.identities.orphans"](orphanPartitionCount)}
+                  </span>
+                )}
               </button>
             </li>
           </ul>
