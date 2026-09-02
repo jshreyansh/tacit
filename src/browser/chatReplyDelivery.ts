@@ -398,9 +398,49 @@ const CAPTURE_SCRIPT = `(async () => {
  * anything expensive: a terminal with no `sends-replies-to` wire — which is
  * nearly all of them, nearly all the time — costs one map lookup and returns.
  */
+/**
+ * How long an agent must stay quiet before its reply is treated as final.
+ *
+ * A turn boundary is not a task boundary. An agent waiting on background work
+ * genuinely ends its turn — the transcript shows a complete assistant message
+ * with nothing pending — and then starts a new one when the work reports back.
+ * Nothing distinguishes that from being finished, so waiting for silence is the
+ * only signal that actually means "done".
+ *
+ * Observed in the failure this fixes: three background agents reporting ~7s
+ * apart produced turns the gate could not tell from a finished task, and the
+ * chat received "shared/ reported in: 21. Waiting on electron/ and src/."
+ * instead of the final table. The window is well clear of that spacing.
+ *
+ * The cost is that every delivery is late by this much, which is the right
+ * trade here: these land in a chat the user comes back to, not one they are
+ * watching.
+ */
+export const QUIET_PERIOD_MS = 30_000;
+
+interface PendingDelivery {
+  timer: ReturnType<typeof setTimeout>;
+  sessionId: string | null;
+}
+
+/**
+ * One pending delivery per terminal. A new turn replaces the previous timer
+ * rather than queueing beside it, so a task made of many turns delivers once,
+ * carrying whatever the agent said last.
+ */
+const pending = new Map<string, PendingDelivery>();
+
+/** Cancel anything waiting — used on teardown so a timer cannot outlive the app. */
+function cancelPending(): void {
+  for (const entry of pending.values()) clearTimeout(entry.timer);
+  pending.clear();
+}
+
 export async function handleAgentTurnComplete(signal: {
   terminalId?: string | null;
   sessionId?: string | null;
+  /** Skips the quiet period. Tests drive the debounce explicitly. */
+  immediate?: boolean;
 }): Promise<void> {
   const terminalId =
     signal.terminalId ??
@@ -415,13 +455,31 @@ export async function handleAgentTurnComplete(signal: {
   );
   if (targets.length === 0) return;
 
-  if (inFlight.has(terminalId)) return;
-  inFlight.add(terminalId);
-  try {
-    await deliverForTerminal(terminalId, targets, signal.sessionId ?? null);
-  } finally {
-    inFlight.delete(terminalId);
+  // Supersede any pending delivery for this terminal: the agent spoke again,
+  // so whatever it said before was not its last word.
+  const existing = pending.get(terminalId);
+  if (existing) clearTimeout(existing.timer);
+
+  const run = async () => {
+    pending.delete(terminalId);
+    if (inFlight.has(terminalId)) return;
+    inFlight.add(terminalId);
+    try {
+      await deliverForTerminal(terminalId, targets, signal.sessionId ?? null);
+    } finally {
+      inFlight.delete(terminalId);
+    }
+  };
+
+  if (signal.immediate) {
+    await run();
+    return;
   }
+
+  pending.set(terminalId, {
+    sessionId: signal.sessionId ?? null,
+    timer: setTimeout(() => { void run(); }, QUIET_PERIOD_MS),
+  });
 }
 
 async function deliverForTerminal(
@@ -552,5 +610,6 @@ export function installReplyDelivery(): () => void {
 
   return () => {
     for (const dispose of disposers) dispose();
+    cancelPending();
   };
 }
