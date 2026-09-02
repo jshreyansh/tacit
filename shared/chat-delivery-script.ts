@@ -12,7 +12,7 @@
  * is also why those functions must stay closure-free.
  */
 
-import { scoreChatInput } from "./chat-delivery";
+import { AMBIGUITY_RATIO, scoreChatInput } from "./chat-delivery";
 
 /**
  * Everything the script needs, serialized in. Kept to plain data so the whole
@@ -32,7 +32,12 @@ export interface ChatDeliveryRequest {
  */
 export interface ChatDeliveryScriptResult {
   ok: boolean;
-  reason?: "no-input-found" | "page-not-ready" | "empty-reply" | "submit-failed";
+  reason?:
+    | "no-input-found"
+    | "ambiguous-input"
+    | "page-not-ready"
+    | "empty-reply"
+    | "submit-failed";
   /** Which route found the box, for telling the user why it went where it did. */
   via?: "override" | "heuristic";
 }
@@ -50,6 +55,7 @@ export function buildChatDeliveryScript(request: ChatDeliveryRequest): string {
   return `(async () => {
   const req = ${payload};
   const score = ${String(scoreChatInput)};
+  const AMBIGUITY_RATIO = ${AMBIGUITY_RATIO};
 
   if (!document.body) return { ok: false, reason: "page-not-ready" };
   if (!req.text || !req.text.trim()) return { ok: false, reason: "empty-reply" };
@@ -108,13 +114,21 @@ export function buildChatDeliveryScript(request: ChatDeliveryRequest): string {
         hasNearbySend: nearbySend(el),
       };
     });
-    let best = -Infinity, bestIndex = -1;
+    const scored = [];
     candidates.forEach((c, i) => {
       const s = score(c);
-      if (s === null || s <= best) return;
-      best = s; bestIndex = i;
+      if (s !== null) scored.push({ i, s });
     });
-    if (bestIndex >= 0) target = nodes[bestIndex];
+    scored.sort((a, b) => b.s - a.s || a.i - b.i);
+
+    // Two boxes that score alike is the one failure the user cannot see: the
+    // reply lands somewhere plausible and silently wrong. Asking costs one
+    // click, once per site, so an unclear winner is reported rather than
+    // guessed at.
+    if (scored.length > 1 && scored[0].s > 0 && scored[1].s / scored[0].s >= AMBIGUITY_RATIO) {
+      return { ok: false, reason: "ambiguous-input" };
+    }
+    if (scored.length > 0) target = nodes[scored[0].i];
   }
 
   if (!target) return { ok: false, reason: "no-input-found" };

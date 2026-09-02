@@ -133,10 +133,25 @@ export function BrowserCard({ card }: Props) {
     const onTitle = (e: Electron.PageTitleUpdatedEvent) => {
       updateBrowserCardInScene(card.id, { title: e.title });
     };
+    // A single navigation fires both `did-navigate` and `did-navigate-in-page`
+    // on many pages, and recording each one wrote the same URL to the record
+    // twice a second apart. Harmless in itself, but it inflated the record and
+    // made a genuine reload indistinguishable from ordinary routing — an agent
+    // reading the log misdiagnosed a spontaneous reload because of it.
+    let lastRecordedUrl = "";
+    let lastRecordedAt = 0;
+    const NAVIGATION_DEDUPE_MS = 1_500;
+
     const onNavigate = ((e: Event & { url: string }) => {
       setUrlInput(e.url);
       setLoadError(null);
       updateBrowserCardInScene(card.id, { url: e.url });
+      const now = Date.now();
+      if (e.url === lastRecordedUrl && now - lastRecordedAt < NAVIGATION_DEDUPE_MS) {
+        return;
+      }
+      lastRecordedUrl = e.url;
+      lastRecordedAt = now;
       recordDecision({
         kind: "browser_action",
         node: `browser:${card.id}`,

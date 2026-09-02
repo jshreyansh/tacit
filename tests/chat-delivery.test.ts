@@ -4,6 +4,7 @@ import {
   chatDeliveryFailureMessage,
   overrideForUrl,
   pickChatInput,
+  pickChatInputWithConfidence,
   resolveReplyTargets,
   scoreChatInput,
   type ChatInputCandidate,
@@ -118,4 +119,45 @@ test("the script is one expression carrying the scorer and the payload", () => {
   // Submitting is the default; opting out must be explicit.
   assert.ok(buildChatDeliveryScript({ text: "x" }).includes('"submit":true'));
   assert.ok(buildChatDeliveryScript({ text: "x", submit: false }).includes('"submit":false'));
+});
+
+test("a close second means ask, not guess", () => {
+  // Two comparable boxes is the failure the user cannot see: the reply lands
+  // somewhere plausible and silently wrong. One click, once per site, is cheap
+  // by comparison — so an unclear winner is reported rather than picked.
+  const twin = () => input({ hasNearbySend: true, width: 600, bottomGap: 100 });
+  const close = pickChatInputWithConfidence([twin(), twin()]);
+  assert.equal(close.ambiguous, true);
+  assert.equal(close.index, 0, "a winner is still identified, in document order");
+
+  // A real composer against a search box at the top is not a close call.
+  const clear = pickChatInputWithConfidence([
+    input({ width: 900, bottomGap: 850, hasNearbySend: false }),
+    input({ width: 500, bottomGap: 90, hasNearbySend: true }),
+  ]);
+  assert.equal(clear.ambiguous, false);
+  assert.equal(clear.index, 1);
+
+  // One candidate can never be ambiguous, and none is not a close call either.
+  assert.deepEqual(pickChatInputWithConfidence([twin()]), { index: 0, ambiguous: false });
+  assert.deepEqual(pickChatInputWithConfidence([]), { index: null, ambiguous: false });
+
+  // Unusable candidates are excluded before the margin is measured, so a
+  // disabled twin cannot make a clear winner look contested.
+  const withDisabled = pickChatInputWithConfidence([twin(), input({ disabled: true })]);
+  assert.equal(withDisabled.ambiguous, false);
+});
+
+test("the script reports ambiguity rather than picking", () => {
+  const script = buildChatDeliveryScript({ text: "x" });
+  assert.ok(script.includes("ambiguous-input"), "the script can report a close call");
+  assert.ok(script.includes("AMBIGUITY_RATIO"), "the threshold is inlined, not duplicated by hand");
+});
+
+test("both fixable failures offer the click-to-point recovery", () => {
+  const ambiguous = chatDeliveryFailureMessage("ambiguous-input", "Notion");
+  assert.match(ambiguous, /Notion/);
+  assert.match(ambiguous, /click the one you mean/i);
+  // Not site-specific: the same recovery is offered anywhere.
+  assert.match(ambiguous, /remember it for that site/i);
 });

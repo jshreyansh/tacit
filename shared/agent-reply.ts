@@ -274,7 +274,11 @@ export function replyDeliveryNotification(
   return {
     type: "error",
     message: chatDeliveryFailureMessage(outcome.reason, targetLabel),
-    offerCapture: outcome.reason === "no-input-found",
+    // Both are failures the user can actually fix by pointing, and pointing
+    // once fixes the site for good. Ambiguity is the more important of the two:
+    // a wrong-but-plausible guess is the failure nobody notices.
+    offerCapture:
+      outcome.reason === "no-input-found" || outcome.reason === "ambiguous-input",
   };
 }
 

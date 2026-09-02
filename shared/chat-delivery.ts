@@ -34,6 +34,7 @@ export type ChatDeliveryOutcome =
       /** A closed set, so the message shown is never a raw page error. */
       reason:
         | "no-input-found"
+        | "ambiguous-input"
         | "page-not-ready"
         | "empty-reply"
         | "submit-failed"
@@ -53,7 +54,9 @@ export function chatDeliveryFailureMessage(
 ): string {
   switch (reason) {
     case "no-input-found":
-      return `Couldn't find the message box in ${targetLabel}. Open it, click the box once, and Tacit will remember it for that site.`;
+      return `Couldn't find the message box in ${targetLabel}. Click the box once and Tacit will remember it for that site.`;
+    case "ambiguous-input":
+      return `More than one box in ${targetLabel} could be the one. Click the one you mean and Tacit will remember it for that site.`;
     case "page-not-ready":
       return `${targetLabel} wasn't ready, so the reply wasn't sent.`;
     case "empty-reply":
@@ -158,6 +161,39 @@ export function pickChatInput(
     bestIndex = index;
   });
   return bestIndex;
+}
+
+/**
+ * How close the runner-up may be before the choice is called too close.
+ *
+ * Guessing between two comparable boxes is the one failure the user cannot
+ * detect: the reply goes somewhere plausible and silently wrong. Asking costs
+ * one click and is asked once per site, so the trade is heavily in favour of
+ * asking — the threshold is deliberately cautious rather than tuned to keep
+ * the prompt rare.
+ */
+export const AMBIGUITY_RATIO = 0.85;
+
+/**
+ * The best candidate, plus whether it actually stood out.
+ *
+ * Kept alongside `pickChatInput` rather than replacing it: the script needs
+ * the margin, everything else only needs the winner.
+ */
+export function pickChatInputWithConfidence(
+  candidates: readonly ChatInputCandidate[],
+): { index: number | null; ambiguous: boolean } {
+  const scored = candidates
+    .map((candidate, index) => ({ index, score: scoreChatInput(candidate) }))
+    .filter((entry): entry is { index: number; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const best = scored[0];
+  if (!best) return { index: null, ambiguous: false };
+  const runnerUp = scored[1];
+  const ambiguous =
+    runnerUp !== undefined && best.score > 0 && runnerUp.score / best.score >= AMBIGUITY_RATIO;
+  return { index: best.index, ambiguous };
 }
 
 /** Per-host box the user pointed at, when the heuristic needed correcting. */
