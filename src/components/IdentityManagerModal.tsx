@@ -733,7 +733,7 @@ export function IdentityManagerModal() {
                   Each selected Chrome profile becomes its own persistent Tacit profile. Guest and your existing profiles stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
                 </p>
                 <p className="tc-timestamp mt-1" style={{ color: "var(--text-faint)" }}>
-                  Portable cookies are imported. Storage, history, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.
+                  Portable cookies and site storage are imported, so signed-in sessions and per-site app state carry over. A profile that is signed out in Chrome stays signed out here. History, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.
                 </p>
 
                 {browserStatus && (

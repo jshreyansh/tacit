@@ -40,16 +40,21 @@ import { ApiServer } from "./api-server";
 import { BrowserConnectionRegistry } from "./browser-connection-registry";
 import { ConnectedBrowserBroker } from "./connected-browser-broker";
 import {
+  defaultChromeRoot,
   discoverChromeProfiles,
   importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
+import { stageChromeLocalStorage } from "./browser-site-storage-import";
 import {
   resolveIdentityClearPartition,
   validateChromeProfileImportRequest,
   validateOrphanPartitionDiffRequest,
   validateOrphanPartitionEraseRequest,
 } from "./browser-profile-ipc";
-import { BrowserPartitionStore } from "./browser-partition-store";
+import {
+  BrowserPartitionStore,
+  resolvePartitionDirectory,
+} from "./browser-partition-store";
 import { BrowserObservationStore } from "./browser-observation-store";
 import { resolvePopupDisposition } from "./browser-popup";
 import {
@@ -2122,6 +2127,14 @@ function setupIpc() {
         fromPartition: (partitionName) => session.fromPartition(partitionName),
         registerPartition: (identityId, label) =>
           browserPartitionStore.register(identityId, { origin: "import", label }),
+        // The partition directory is named here rather than inside the import,
+        // so the one path builder that is allowed to turn an identity id into a
+        // directory stays the one in the partition store.
+        stageSiteStorage: ({ profileId, identityId }) =>
+          stageChromeLocalStorage(
+            path.join(defaultChromeRoot(), profileId),
+            resolvePartitionDirectory(browserPartitionStore.partitionsRoot, identityId),
+          ),
         reapPartition: (identityId) =>
           browserPartitionStore.erase(identityId) !== "pending",
         diagnostic: (event) => console.warn("[browser-profile-import]", event),

@@ -16,6 +16,7 @@ import type {
   ImportableBrowserProfile,
 } from "../shared/browser-profile-import";
 import { partitionForBrowserIdentity } from "../shared/browser-profile-import";
+import type { SiteStorageStageResult } from "./browser-site-storage-import";
 
 const execFileAsync = promisify(execFile);
 const CHROME_SAFE_STORAGE_SERVICE = "Chrome Safe Storage";
@@ -89,6 +90,17 @@ export interface BrowserIdentityImportDeps extends BrowserProfileImportDeps {
    * start, so the rollback is still complete from the user's side.
    */
   reapPartition?: (identityId: string) => boolean;
+  /**
+   * Copies the profile's Local Storage into the partition directory. Separate
+   * from the cookie path because it moves files rather than records, and it
+   * must happen before any session opens the partition — see the call site.
+   *
+   * Absent, site storage is reported unsupported and only cookies are imported.
+   */
+  stageSiteStorage?: (input: {
+    profileId: string;
+    identityId: string;
+  }) => SiteStorageStageResult;
   diagnostic?: (event: {
     category: "profile-import" | "rollback";
     profileId: string;
@@ -327,6 +339,29 @@ export async function importChromeProfilesAsIdentities(
     // record of this directory carries something a user can recognise even if
     // nothing else about the import survives.
     deps.registerPartition?.(identityId, identityName);
+    // Staged before the session exists, deliberately. Chromium opens a
+    // partition's Local Storage database lazily and then holds it for the life
+    // of the process, so a copy made after `fromPartition` would either be
+    // ignored or land underneath a live writer.
+    //
+    // A failure here is not a failed import: site storage is what makes Google
+    // and Gmail work, but cookies are what make everything else work, and
+    // losing the former is not a reason to discard the latter. The reason is
+    // recorded on the identity's provenance instead.
+    let siteStorage: SiteStorageStageResult | null = null;
+    if (deps.stageSiteStorage) {
+      try {
+        siteStorage = deps.stageSiteStorage({ profileId, identityId });
+      } catch (error) {
+        siteStorage = {
+          status: "failed",
+          origins: 0,
+          files: 0,
+          bytes: 0,
+          detail: `Site storage could not be staged (${error instanceof Error ? error.name : "UnknownError"})`,
+        };
+      }
+    }
     const targetSession = deps.fromPartition(partitionName);
     try {
       const cookieResult = await importChromeProfileCookies(profileId, targetSession.cookies, {
@@ -342,7 +377,13 @@ export async function importChromeProfilesAsIdentities(
       const categories: BrowserProfileCategorySummary = {
         profileMetadata: { status: "imported", count: 1 },
         cookies: { status: cookieStatus, count: cookieResult.importedCookies, ...(cookieResult.skippedCookies + cookieResult.failedCookies > 0 ? { detail: `${cookieResult.unsupportedCookies} unsupported; ${cookieResult.expiredCookies} expired; ${cookieResult.failedCookies} failed` } : {}) },
-        siteStorage: unsupported("Portable staged storage adapter is not available yet"),
+        siteStorage: siteStorage
+          ? {
+              status: siteStorage.status,
+              count: siteStorage.origins,
+              ...(siteStorage.detail ? { detail: siteStorage.detail } : {}),
+            }
+          : unsupported("Portable staged storage adapter is not available yet"),
         history: unsupported("Tacit browsing metadata import is not available yet"),
         bookmarks: unsupported("Tacit bookmark import is not available yet"),
         savedPasswords: unsupported("Secure vault and explicit autofill are not available; passwords were not read"),

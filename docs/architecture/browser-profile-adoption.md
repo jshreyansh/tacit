@@ -138,7 +138,7 @@ Every result carries a truthful per-category status (`imported`, `partial`,
 |---|---|
 | Profile name, avatar, account hint | Create profile metadata and provenance. The avatar is already discovered and must actually be rendered; a Chrome directory key like `Profile 3` is never shown to a human. |
 | Cookies | Decrypt portable v10/v11 through the Keychain and re-save through Electron. Read the Safe Storage password **once per batch**, not once per profile. App-bound values remain unsupported. |
-| Local Storage | **Copy the LevelDB directory into the fresh partition, behind a format gate.** Measured as portable: identical comparator, identical schema version, values are plain UTF-8 with no V8 serialization. This is where SPA and OIDC auth tokens live, so cookies alone do not restore a logged-in state for token-based sites. |
+| Local Storage | **Copy the LevelDB directory into the fresh partition, behind a format gate.** *Shipped.* Measured as portable: identical comparator, identical schema version, values are plain UTF-8 with no V8 serialization. This is where SPA and OIDC auth tokens live, so cookies alone do not restore a logged-in state for token-based sites. |
 | IndexedDB | **Not copied.** Measured as destructive: Chrome writes a newer V8 wire format than the pinned Electron, and opening such a store wipes and rebuilds it silently, with no error raised. Reported `unsupported`. |
 | Session Storage | Not copied. Keyed by per-session namespace GUIDs that mean nothing in the destination. |
 | History, favicons, bookmarks | Imported into Tacit-owned browsing metadata that powers address-bar suggestions. Read-only: Tacit never becomes a second place to maintain bookmarks. |
@@ -149,18 +149,60 @@ Every result carries a truthful per-category status (`imported`, `partial`,
 | Open tabs | Offered after import as canvas nodes. |
 | Passkeys, payment methods, extensions, device-bound tokens | Never copied. The UI states which sites will need one fresh sign-in. |
 
+### Measured: what cookies alone already restore
+
+Google is a cookie session, not a token one. A cookies-only import (before site
+storage shipped) signed a profile into Google and Gmail: 21 `google.com` cookies
+written in one second by the import, and `__Secure-1PSIDTS` minted by Google on
+the next page load from the imported `SID`. The rotating `PSIDTS` cookies are
+re-issued server-side and are neither importable nor needed.
+
+So site storage is not what unlocks Google, and the import copy must not claim
+it is. Its value is the token-based sites that keep credentials in
+`localStorage` rather than cookies, plus per-site app state — drafts,
+preferences, last-opened — that makes a restored profile feel continuous rather
+than merely authenticated.
+
+A corollary worth stating because it looks like a bug: a Chrome profile that is
+signed out of Google imports as signed out. Two of the eight profiles on the
+development machine had no `PSIDTS` at all, and the first import test picked one
+of them.
+
 ### The format gate
 
-The Local Storage copy proceeds only if the source's comparator and schema
-version match what the running Electron itself writes. The destination's expected
-values are obtained by writing a throwaway entry into the fresh partition and
-reading the stamp back off disk — never hardcoded — so the gate stays correct
-across Electron upgrades. Chrome must be fully quit, since LevelDB holds an
-exclusive lock. The copy must complete before any node mounts the partition;
-main currently has no signal for "no webview is using partition X" and needs one.
+The copy proceeds only if the source MANIFEST declares LevelDB's default
+`leveldb.BytewiseComparator`. That name is fixed in LevelDB's own source rather
+than chosen by Chromium, so every Chromium linking LevelDB writes it for Local
+Storage and comparing against it is comparing against what the destination
+writes. It is also what refuses the destructive case: Chrome's IndexedDB is a
+LevelDB one directory away, and it declares `idb_cmp1` — verified against real
+profiles on disk, not assumed.
 
-When the gate fails, the fallback is cookies-only with `siteStorage: unsupported`
-— which is exactly today's shipped behavior, and already honest.
+The gate is about the honesty of the record, not about preventing damage. An
+unopenable database leaves Chromium with empty Local Storage rather than a
+broken profile, which is the asymmetry against IndexedDB that makes this copy
+worth doing at all. What the gate prevents is provenance reporting `imported`
+for a profile that is in fact signed out.
+
+Also excluded from the copy: `LOCK`, which belongs to whichever process opens
+the database, and `LOG`/`LOG.old`, which embed absolute source paths.
+
+When the gate refuses, the result is cookies-only with `siteStorage:
+unsupported` and a stated reason.
+
+**Not built — the schema-version half.** The design called for stamping the
+destination by writing a throwaway entry and reading its version back off disk,
+so the gate would stay correct across Electron upgrades without hardcoding
+anything. Local Storage has been schema version 1 since M69 and both sides are
+far past it, so that check has nothing to catch today. It becomes necessary the
+next time Chromium changes the version, and until then a schema mismatch would
+be reported as `imported` while the profile came up signed out.
+
+Chrome must be fully quit, since LevelDB holds an exclusive lock — already
+enforced once per batch for cookies. The open question of a "no webview is using
+partition X" signal is resolved by ordering rather than by a signal: staging runs
+before `session.fromPartition`, the only point at which no session can yet have
+opened the partition.
 
 ## Profile lifecycle
 
@@ -386,8 +428,9 @@ together rather than in sequence.
    other profiles in the same batch may still succeed.
 3. A profile whose cookies are entirely protected or expired still becomes a
    usable profile with a truthful category status, and is never destroyed.
-4. Local Storage import is gated on a stamp read back from the destination, and a
-   gate failure degrades to cookies-only with an honest status.
+4. Local Storage import is gated on the comparator declared by the source, a
+   gate failure degrades to cookies-only with an honest status, and a copy that
+   cannot finish leaves no partial database behind.
 5. Duplicate names are deterministically disambiguated. Provenance, including the
    source fingerprint and account hint, survives snapshot save and restore, and
    degrades per-field rather than all-or-nothing.
