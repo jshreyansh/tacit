@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   connectionFamily,
   connectionTypeSpec,
+  connectionRuns,
+  isPendingBehaviour,
   defaultConnectionType,
   isConnectionType,
   MAX_CUSTOM_PROMPT_LENGTH,
@@ -119,4 +121,56 @@ test("changing a wire's type persists, and a stale custom prompt cannot come bac
 
   store.getState().setConnectionType(id!, "custom");
   assert.equal(store.getState().connections[id!]!.customPrompt, undefined);
+});
+
+test("which wires actually run is pinned per pair, so shrinking the gap is deliberate", () => {
+  // A statement about the build, not the design. Keyed by pair because the same
+  // type runs at one pair and not another: `sends replies to` delivers into a
+  // browser node and does nothing between two terminals.
+  const running: string[] = [];
+  const pending: string[] = [];
+  const kinds: ConnectionEndpointKind[] = ["terminal", "browser", "note"];
+  for (const from of kinds) {
+    for (const to of kinds) {
+      for (const type of validConnectionTypes(from, to)) {
+        const pair = `${type} ${from}>${to}`;
+        if (connectionRuns(type, from, to)) running.push(pair);
+        if (isPendingBehaviour(type, from, to)) pending.push(pair);
+      }
+    }
+  }
+
+  assert.deepEqual(running.sort(), [
+    "controls terminal>browser",
+    "sends-replies-to terminal>browser",
+    "writes-to terminal>note",
+  ]);
+
+  // Every offerable wire that looks like it acts but does not. Landing a
+  // behaviour deletes a line here in the same commit that adds one above.
+  assert.deepEqual(pending.sort(), [
+    "custom browser>browser",
+    "custom browser>note",
+    "custom browser>terminal",
+    "custom note>browser",
+    "custom note>note",
+    "custom note>terminal",
+    "custom terminal>browser",
+    "custom terminal>note",
+    "custom terminal>terminal",
+    "feeds-context-to browser>terminal",
+    "hands-off-to terminal>terminal",
+    "instructs note>terminal",
+    "sends-page-to browser>browser",
+    "sends-replies-to terminal>terminal",
+    "writes-to browser>note",
+  ]);
+
+  // `relates-to` never carries the mark: it does not run by design, and its
+  // structural stroke already says so.
+  for (const from of kinds) {
+    for (const to of kinds) {
+      assert.equal(isPendingBehaviour("relates-to", from, to), false, `${from}>${to}`);
+    }
+  }
 });

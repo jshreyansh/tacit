@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MAX_CUSTOM_PROMPT_LENGTH,
   connectionTypeSpec,
+  isPendingBehaviour,
   validConnectionTypes,
   type ConnectionEndpointKind,
   type ConnectionType,
@@ -192,15 +193,29 @@ export function ConnectionTypeMenu({
                   apply(type);
                 }}
               >
-                {spec.label}
-                {spec.needsInput ? "…" : ""}
+                <span className="flex items-baseline justify-between gap-3">
+                  <span>
+                    {spec.label}
+                    {spec.needsInput ? "…" : ""}
+                  </span>
+                  {isPendingBehaviour(type, fromKind, toKind) && (
+                    <span className="text-[10px] text-[var(--text-faint)]">
+                      {t.connection_type_pending_row}
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}
-          {/* Honest about how much of this is wired up. Only `controls` has a
-              behaviour today; the rest are recorded and drawn, which is real
-              but is not the same as running. Kept to one faint line rather
-              than a badge per row. */}
+          {/* Honest about how much of this is wired up. A wire that is only
+              recorded is still doing real work — the relationship survives
+              where a transcript would lose it — but that is not the same as
+              running, and the two must not look alike.
+
+              This was one faint line for the whole menu. It could not say
+              *which* rows were inert, and it went stale the moment
+              `sends replies to` started running. The mark now sits on the rows
+              it describes, and disappears from each as its behaviour lands. */}
           <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1 text-[10px] leading-snug text-[var(--text-faint)]">
             {t.connection_type_inactive_note}
           </div>

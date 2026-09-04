@@ -724,10 +724,12 @@ export const en = {
   // Formatted with the wire's current type — the label on the wire is a
   // button, so it needs to say what pressing it does.
   connection_type_label_aria: "Connection type: {type}. Change it.",
-  // Only `controls` has a behaviour today. Everything else is recorded and
-  // drawn, which is real, but saying more than this would be a promise.
+  // Which rows run is now marked per row, because a single line could not say
+  // *which* ones and went stale the moment `sends replies to` landed. This
+  // explains the marker rather than restating the list.
   connection_type_inactive_note:
-    "Recorded and drawn. Only “controls” drives anything so far.",
+    "Marked rows are recorded and drawn, but nothing runs yet.",
+  connection_type_pending_row: "not yet",
   connection_type_custom_title: "What happens in transit",
   connection_type_custom_placeholder: "e.g. send only the final summary",
   connection_type_custom_apply: "Apply",

@@ -42,6 +42,11 @@ import {
   telemetrySaysBusy,
 } from "../../shared/agent-reply";
 import { useConnectionStore } from "../stores/connectionStore";
+import { usePinStore } from "../stores/pinStore";
+import {
+  appendToNoteBody,
+  resolveNoteWriteTargets,
+} from "../../shared/note-writing";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -449,11 +454,13 @@ export async function handleAgentTurnComplete(signal: {
       : null);
   if (!terminalId) return;
 
-  const targets = resolveReplyTargets(
-    terminalId,
-    Object.values(useConnectionStore.getState().connections),
-  );
-  if (targets.length === 0) return;
+  const wires = Object.values(useConnectionStore.getState().connections);
+  const targets = resolveReplyTargets(terminalId, wires);
+  // A `writes-to` wire rides the same signal: one completed turn, one quiet
+  // period, one reading of the transcript, whether the answer is going into a
+  // chat page, into a note, or into both.
+  const noteTargets = resolveNoteWriteTargets(terminalId, wires);
+  if (targets.length === 0 && noteTargets.length === 0) return;
 
   // Supersede any pending delivery for this terminal: the agent spoke again,
   // so whatever it said before was not its last word.
@@ -465,7 +472,7 @@ export async function handleAgentTurnComplete(signal: {
     if (inFlight.has(terminalId)) return;
     inFlight.add(terminalId);
     try {
-      await deliverForTerminal(terminalId, targets, signal.sessionId ?? null);
+      await deliverForTerminal(terminalId, targets, noteTargets, signal.sessionId ?? null);
     } finally {
       inFlight.delete(terminalId);
     }
@@ -482,9 +489,70 @@ export async function handleAgentTurnComplete(signal: {
   });
 }
 
+/**
+ * Append one agent's answer to every note it writes to.
+ *
+ * The note is re-read from the store at write time rather than captured when
+ * the wire was drawn, because the user may have been editing it during the
+ * thirty seconds this delivery was waiting out.
+ */
+async function writeReplyToNotes(
+  noteTargets: ReturnType<typeof resolveNoteWriteTargets>,
+  sourceTitle: string,
+  text: string,
+): Promise<void> {
+  if (noteTargets.length === 0) return;
+  const at = new Date().toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  for (const target of noteTargets) {
+    const pin = findPinById(target.id);
+    if (!pin) {
+      notify("warn", `The note this wire writes to is gone, so nothing was saved.`);
+      continue;
+    }
+    const appended = appendToNoteBody(pin.body, { source: sourceTitle, at, text });
+    if (!appended.ok) {
+      // `empty` and `duplicate` are ordinary and not the user's problem. A note
+      // that has hit its ceiling is, because it means writes are being dropped
+      // from here on and only the user can decide what to do about it.
+      if (appended.reason === "too-long") {
+        notify("warn", `“${pin.title}” is full, so ${sourceTitle}'s reply wasn't added.`);
+      }
+      continue;
+    }
+    try {
+      const updated = await window.termcanvas?.pins?.update?.(pin.repo, pin.id, {
+        body: appended.body,
+      });
+      // The drawer's subscription only runs while the drawer is mounted, so the
+      // store is updated here rather than relying on the broadcast.
+      if (updated) usePinStore.getState().upsertPin(pin.repo, updated);
+      notify("info", `Saved ${sourceTitle}'s reply to “${pin.title}”.`);
+    } catch (err) {
+      notify(
+        "warn",
+        `Couldn't write ${sourceTitle}'s reply to “${pin.title}”: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
+/** A note node is a pin; the store holds them per project, not by id. */
+function findPinById(pinId: string) {
+  for (const pins of Object.values(usePinStore.getState().pinsByProject)) {
+    const found = pins.find((pin) => pin.id === pinId);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function deliverForTerminal(
   terminalId: string,
   targets: ReturnType<typeof resolveReplyTargets>,
+  noteTargets: ReturnType<typeof resolveNoteWriteTargets>,
   signalSessionId: string | null,
 ): Promise<void> {
   const located = locateTerminal(terminalId);
@@ -524,7 +592,10 @@ async function deliverForTerminal(
   if (reply.status === "unavailable") {
     // This one *is* worth saying. The user drew a wire and is entitled to know
     // it did not fire, even though the reason is ours rather than theirs.
-    const label = targets.map((t) => targetLabelFor(t.kind, t.id)).join(", ");
+    const label = [
+      ...targets.map((t) => targetLabelFor(t.kind, t.id)),
+      ...noteTargets.map((t) => targetLabelFor("note", t.id)),
+    ].join(", ");
     notify(
       "warn",
       `Couldn't read ${getTerminalDisplayTitle(terminal)}'s reply, so nothing was sent to ${label}.`,
@@ -534,6 +605,8 @@ async function deliverForTerminal(
 
   if (lastDelivered.get(terminalId) === reply.text) return;
   lastDelivered.set(terminalId, reply.text);
+
+  await writeReplyToNotes(noteTargets, getTerminalDisplayTitle(terminal), reply.text);
 
   for (const target of targets) {
     if (target.kind !== "browser") {

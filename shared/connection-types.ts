@@ -86,6 +86,60 @@ export function isConnectionType(value: unknown): value is ConnectionType {
   return typeof value === "string" && value in SPECS;
 }
 
+/**
+ * The wires that actually do something, as `type from>to`.
+ *
+ * Keyed by the pair and not by the type alone, because the same type runs at
+ * one pair and not another and the difference is not cosmetic. `sends replies
+ * to` delivers into a browser node and does nothing at all between two
+ * terminals — the delivery code says so out loud when it hits that case.
+ * `writes to` appends an agent's answer to a note, but a browser node has no
+ * completion signal to fire on, so the same label between a page and a note is
+ * a relationship the canvas records rather than a behaviour it runs.
+ *
+ * This is a statement about the build, not about the design, which is why it is
+ * a table here rather than a field on the spec: a family says what a
+ * relationship *means* and is permanent; this says what this build *does* and is
+ * expected to shrink. Add a line in the same commit that lands the behaviour.
+ */
+const RUNNING: ReadonlySet<string> = new Set([
+  "controls terminal>browser",
+  "sends-replies-to terminal>browser",
+  "writes-to terminal>note",
+]);
+
+/** Whether drawing this wire, between these two kinds, makes something happen. */
+export function connectionRuns(
+  type: ConnectionType,
+  from: ConnectionEndpointKind,
+  to: ConnectionEndpointKind,
+): boolean {
+  return RUNNING.has(`${type} ${pairKey(from, to)}`);
+}
+
+/**
+ * Whether this wire reads as though it does something but does not do it yet.
+ *
+ * Not simply the inverse of `connectionRuns`. `relates-to` does not run either,
+ * but it says so — its label is a relationship and its family is the faint
+ * hairline that already means "nothing happens here". Marking it would report a
+ * gap that is not one.
+ *
+ * What needs marking is the wire whose label makes a promise the build does not
+ * keep: "hands off to" drawn as a solid action line, doing nothing. That is the
+ * set the UI decorates, and it empties as behaviours land.
+ */
+export function isPendingBehaviour(
+  type: ConnectionType,
+  from: ConnectionEndpointKind,
+  to: ConnectionEndpointKind,
+): boolean {
+  return (
+    !connectionRuns(type, from, to) &&
+    connectionTypeSpec(type).family !== "structural"
+  );
+}
+
 /** `from-kind → to-kind`, the key both tables below are indexed by. */
 function pairKey(
   from: ConnectionEndpointKind,

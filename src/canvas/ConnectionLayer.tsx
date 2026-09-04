@@ -35,6 +35,7 @@ import { describeEndpoint, type EndpointLabelContext } from "./connectionLabels"
 import {
   connectionFamily,
   connectionTypeSpec,
+  isPendingBehaviour,
   resolveConnectionType,
 } from "../../shared/connection-types";
 import {
@@ -942,6 +943,13 @@ export function ConnectionLayer() {
             const type = resolveConnectionType(connection);
             const spec = connectionTypeSpec(type);
             const isCustom = type === "custom";
+            // Pair-aware: the same label runs at one pair and not another, so
+            // the endpoints decide the mark, not the type on its own.
+            const pending = isPendingBehaviour(
+              type,
+              connection.from.kind,
+              connection.to.kind,
+            );
 
             return (
               <button
@@ -968,10 +976,18 @@ export function ConnectionLayer() {
                   textOverflow: "ellipsis",
                   background: "var(--surface)",
                   borderColor: "var(--border)",
+                  // A type whose behaviour has not landed gets a dashed border:
+                  // the label still says what the wire means, because that is
+                  // recorded and true, while the broken outline says the words
+                  // are not yet a promise the app keeps. The stroke itself is
+                  // left alone — family is what the relationship *means*, and
+                  // encoding a temporary fact about the build in the permanent
+                  // visual vocabulary would have to be unwound later.
+                  borderStyle: pending ? "dashed" : "solid",
                   // Structural wires say nothing runs, so their label recedes
                   // the same way their stroke does.
                   color:
-                    spec.family === "structural"
+                    spec.family === "structural" || pending
                       ? "var(--text-muted)"
                       : "var(--text-secondary)",
                   opacity: labelLayout.opacity,
