@@ -399,6 +399,32 @@ export const en = {
   drawing_toggle: "Drawing tools",
   drawing_toggle_desc:
     "Experimental. Freehand drawing and annotation on the canvas",
+  settings_browser: "Browser",
+  settings_browser_subtitle:
+    "The built-in browser, the profiles it signs in with, and what it has recorded.",
+  browser_profiles_label: "Browser profiles",
+  browser_profiles_desc:
+    "Imported Chrome profiles, which agents may use them, and storage no profile owns any more.",
+  browser_profiles_manage: "Manage profiles",
+  browser_activity_label: "Recorded browsing",
+  browser_activity_desc:
+    "Pages visited in a browser node are written to this Mac so agents can be asked about them later. Nothing is ever sent anywhere, and it is never included in a workspace snapshot.",
+  browser_activity_none: "Nothing recorded",
+  browser_activity_summary: (entries: string, size: string) =>
+    `${entries} entries · ${size}`,
+  browser_activity_erase: "Erase",
+  browser_activity_erasing: "Erasing…",
+  browser_activity_confirm_title: "Erase recorded browsing?",
+  browser_activity_confirm_body: (entries: string, size: string) =>
+    `${entries} entries (${size}) will be deleted from this Mac. Agents will no longer be able to answer questions about pages you have already visited. Your profiles and their sign-ins are not affected.`,
+  browser_activity_confirm: "Erase everything",
+  browser_activity_erased: "Recorded browsing erased.",
+  browser_chat_boxes_label: "Remembered message boxes",
+  browser_chat_boxes_desc:
+    "Sites where you pointed at the message box once so replies could be delivered there.",
+  browser_chat_boxes_none: "None remembered",
+  browser_chat_boxes_count: (n: string) => `${n} sites`,
+  browser_chat_boxes_forget: "Forget all",
   browser_toggle: "Built-in browser shortcut",
   browser_toggle_desc:
     "Experimental. Shows the open-browser button in the top toolbar when enabled",

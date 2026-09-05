@@ -26,6 +26,10 @@ import { FONT_REGISTRY } from "../terminal/fontRegistry";
 import { loadFont } from "../terminal/fontLoader";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useUpdaterStore } from "../stores/updaterStore";
+import { useIdentityManagerStore } from "../stores/identityManagerStore";
+import { useChatInputOverrideStore } from "../stores/chatInputOverrideStore";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import type { BrowserObservationSummary } from "../../shared/browser-observation";
 
 const platform = window.termcanvas?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
@@ -621,9 +625,112 @@ const TAB_LABEL_KEYS: Record<Tab, string> = {
   general: "settings_general",
   appearance: "settings_appearance",
   features: "settings_features",
+  browser: "settings_browser",
   agent: "settings_agent",
   shortcuts: "settings_shortcuts",
 };
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+/**
+ * What the browser sensor has written, and the button that deletes it.
+ *
+ * This exists because the app records what the user browses and, until it did,
+ * offered no way to see how much or to erase any of it. An app that watches a
+ * browser and cannot answer "what do you have on me" is asking for trust it has
+ * not earned — so the number is shown before the button that acts on it, and
+ * the confirmation says what erasing costs (agents lose the ability to answer
+ * about past pages) and what it does not touch (profiles and their sign-ins).
+ */
+function BrowserActivityRow() {
+  const t = useT();
+  const notify = useNotificationStore((s) => s.notify);
+  const [summary, setSummary] = useState<BrowserObservationSummary | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [erasing, setErasing] = useState(false);
+
+  const refresh = useCallback(() => {
+    window.termcanvas?.browser?.observationSummary?.()
+      .then(setSummary)
+      // A summary that cannot be read is reported as nothing recorded rather
+      // than as an error: the row is a description, and a broken description
+      // must not become a modal the user has to dismiss to reach Settings.
+      .catch(() => setSummary({ profiles: [], totalEntries: 0, totalBytes: 0 }));
+  }, []);
+
+  useEffect(refresh, [refresh]);
+
+  const entries = summary?.totalEntries ?? 0;
+  const detail =
+    entries === 0
+      ? t.browser_activity_none
+      : t.browser_activity_summary(
+          String(entries),
+          formatBytes(summary?.totalBytes ?? 0),
+        );
+
+  const handleErase = useCallback(async () => {
+    setErasing(true);
+    try {
+      await window.termcanvas?.browser?.clearObservations?.();
+      notify("info", t.browser_activity_erased);
+    } catch (error) {
+      notify("warn", error instanceof Error ? error.message : String(error));
+    } finally {
+      setErasing(false);
+      setConfirming(false);
+      refresh();
+    }
+  }, [notify, refresh, t]);
+
+  return (
+    <>
+      <SettingsRow
+        label={t.browser_activity_label}
+        description={t.browser_activity_desc}
+        align="start"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-[var(--text-metadata)] tabular-nums whitespace-nowrap">
+            {detail}
+          </span>
+          <button
+            type="button"
+            disabled={entries === 0}
+            className="text-[11px] text-[var(--text-metadata)] hover:text-[var(--danger,#e5484d)] disabled:opacity-40 disabled:hover:text-[var(--text-metadata)] transition-colors duration-quick"
+            onClick={() => setConfirming(true)}
+          >
+            {t.browser_activity_erase}
+          </button>
+        </div>
+      </SettingsRow>
+      <ConfirmDialog
+        open={confirming}
+        title={t.browser_activity_confirm_title}
+        body={t.browser_activity_confirm_body(
+          String(entries),
+          formatBytes(summary?.totalBytes ?? 0),
+        )}
+        confirmLabel={t.browser_activity_confirm}
+        busyLabel={t.browser_activity_erasing}
+        busy={erasing}
+        confirmTone="danger"
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => void handleErase()}
+      />
+    </>
+  );
+}
 
 export function SettingsModal({ onClose }: Props) {
   useBodyScrollLock(true);
@@ -694,11 +801,14 @@ export function SettingsModal({ onClose }: Props) {
   >(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
 
+  const chatInputOverrides = useChatInputOverrideStore((s) => s.overrides);
+
   const tabs = useMemo<Tab[]>(() => {
     return [
       "general",
       "appearance",
       "features",
+      "browser",
       "agent",
       "shortcuts",
     ];
@@ -1330,15 +1440,6 @@ export function SettingsModal({ onClose }: Props) {
                       />
                     </SettingsRow>
                     <SettingsRow
-                      label={t.browser_toggle}
-                      description={t.browser_toggle_desc}
-                    >
-                      <OnOffSegment
-                        value={browserEnabled}
-                        onChange={setBrowserEnabled}
-                      />
-                    </SettingsRow>
-                    <SettingsRow
                       label={t.worktree_compact_columns}
                       description={t.worktree_compact_columns_desc}
                     >
@@ -1437,6 +1538,77 @@ export function SettingsModal({ onClose }: Props) {
                       </SettingsRow>
                     </div>
                   )}
+                </div>
+              </section>
+            )}
+
+            {tab === "browser" && (
+              <section>
+                <SectionHeader
+                  title={t.settings_browser}
+                  subtitle={t.settings_browser_subtitle}
+                />
+                <div className="flex flex-col gap-6">
+                  <SettingsRow
+                    label={t.browser_toggle}
+                    description={t.browser_toggle_desc}
+                  >
+                    <OnOffSegment
+                      value={browserEnabled}
+                      onChange={setBrowserEnabled}
+                    />
+                  </SettingsRow>
+
+                  <SettingsRow
+                    label={t.browser_profiles_label}
+                    description={t.browser_profiles_desc}
+                    align="start"
+                  >
+                    <button
+                      type="button"
+                      className="text-[11px] text-[var(--text-metadata)] hover:text-[var(--text-primary)] transition-colors duration-quick whitespace-nowrap"
+                      onClick={() => {
+                        // Settings closes first: the profile manager is a modal
+                        // of its own, and two stacked dialogs leave the user
+                        // guessing which Escape dismisses which.
+                        onClose();
+                        useIdentityManagerStore.getState().openManager();
+                      }}
+                    >
+                      {t.browser_profiles_manage}
+                    </button>
+                  </SettingsRow>
+
+                  <BrowserActivityRow />
+
+                  <SettingsRow
+                    label={t.browser_chat_boxes_label}
+                    description={t.browser_chat_boxes_desc}
+                    align="start"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-[var(--text-metadata)] tabular-nums whitespace-nowrap">
+                        {chatInputOverrides.length === 0
+                          ? t.browser_chat_boxes_none
+                          : t.browser_chat_boxes_count(
+                              String(chatInputOverrides.length),
+                            )}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={chatInputOverrides.length === 0}
+                        className="text-[11px] text-[var(--text-metadata)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:hover:text-[var(--text-metadata)] transition-colors duration-quick"
+                        onClick={() => {
+                          const store = useChatInputOverrideStore.getState();
+                          for (const override of [...store.overrides]) {
+                            store.forget(override.host);
+                          }
+                        }}
+                      >
+                        {t.browser_chat_boxes_forget}
+                      </button>
+                    </div>
+                  </SettingsRow>
                 </div>
               </section>
             )}

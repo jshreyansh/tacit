@@ -69,6 +69,20 @@ export type BrowserObservation =
   | BrowserPageTextObservation;
 
 /**
+ * What the user is told they have on disk.
+ *
+ * Counts and bytes only, and it lives here rather than beside the store because
+ * it is the one observation shape that crosses into a renderer. Describing the
+ * stream by opening it would mean reading the pages back out to say how many
+ * there are, which is the thing the two-tier split exists to prevent.
+ */
+export interface BrowserObservationSummary {
+  profiles: Array<{ profileId: string; entries: number; bytes: number }>;
+  totalEntries: number;
+  totalBytes: number;
+}
+
+/**
  * Input types whose mere presence we refuse to describe in any detail beyond
  * "a secret field". The label of a password box is safe ("Password"); this
  * list exists so nothing downstream is tempted to treat them as ordinary.

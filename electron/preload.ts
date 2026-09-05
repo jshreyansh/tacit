@@ -1069,6 +1069,19 @@ contextBridge.exposeInMainWorld("termcanvas", {
     /** Reveal a finished download. The token resolves to a path in main only. */
     revealDownload: (token: string) =>
       ipcRenderer.invoke("browser:reveal-download", token) as Promise<boolean>,
+    /**
+     * What the browser sensor has recorded. Counts and bytes; the entries
+     * themselves never cross into a renderer.
+     */
+    observationSummary: () =>
+      ipcRenderer.invoke(
+        "browser-observations:summary",
+      ) as Promise<import("../src/types").BrowserObservationSummary>,
+    /** Erase recorded activity, for one profile or for every profile. */
+    clearObservations: (identityId?: string) =>
+      ipcRenderer.invoke("browser-observations:clear", {
+        identityId: identityId ?? null,
+      }) as Promise<{ cleared: number }>,
   },
   app: {
     homePath: process.env.HOME ?? process.env.USERPROFILE ?? "",

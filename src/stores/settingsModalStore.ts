@@ -4,6 +4,7 @@ type SettingsTab =
   | "general"
   | "appearance"
   | "features"
+  | "browser"
   | "agent"
   | "shortcuts";
 

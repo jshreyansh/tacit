@@ -66,6 +66,7 @@ import { resolveDownloadSavePath } from "./browser-downloads";
 import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
 import {
   identityIdFromPartition,
+  isValidBrowserIdentityId,
   partitionForBrowserIdentity,
 } from "../shared/browser-profile-import";
 import { PinStore } from "./pin-store";
@@ -652,10 +653,29 @@ function rememberRevealableDownload(token: string, filePath: string): void {
   }
 }
 
+function browserObservationsDir(): string {
+  return path.join(app.getPath("userData"), "browser-observations");
+}
+
+/**
+ * The store, for describing and erasing what was recorded.
+ *
+ * Separate from `installBrowserObservation` because those two operations must
+ * work when the browser feature is switched off: a user who turns it off is
+ * exactly the user who wants to delete what it wrote, and refusing them until
+ * they switch it back on would be absurd.
+ */
+function observationStoreForManagement(): BrowserObservationStore {
+  if (!observationStore) {
+    observationStore = new BrowserObservationStore({ rootDir: browserObservationsDir() });
+  }
+  return observationStore;
+}
+
 function installBrowserObservation(): void {
   if (observationStore) return;
   observationStore = new BrowserObservationStore({
-    rootDir: path.join(app.getPath("userData"), "browser-observations"),
+    rootDir: browserObservationsDir(),
   });
   ipcMain.handle("browser:reveal-download", (_event, token: unknown) => {
     // Only tokens main itself minted resolve to anything, so a renderer cannot
@@ -2115,6 +2135,29 @@ function setupIpc() {
   ipcMain.handle("browser-profile-import:list", () =>
     discoverChromeProfiles(),
   );
+
+  // What the browser sensor has written, and the way to erase it. Counts and
+  // bytes only cross this boundary — describing the stream never means handing
+  // its contents back to a renderer.
+  ipcMain.handle("browser-observations:summary", () =>
+    observationStoreForManagement().summary(),
+  );
+
+  ipcMain.handle("browser-observations:clear", (_event, input: unknown) => {
+    const identityId =
+      input && typeof input === "object"
+        ? (input as Record<string, unknown>).identityId
+        : undefined;
+    if (identityId === undefined || identityId === null) {
+      return observationStoreForManagement().clear();
+    }
+    // Validated against the same rule the rest of the app uses before it can
+    // name a file to delete, even though the store re-checks it too.
+    if (!isValidBrowserIdentityId(identityId)) {
+      throw new Error("Refused to erase activity for an invalid profile id");
+    }
+    return observationStoreForManagement().clear(identityId);
+  });
 
   ipcMain.handle(
     "browser-profile-import:chrome",

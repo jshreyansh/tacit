@@ -23,7 +23,7 @@ import type { BrowserWindow } from "electron";
 import { sendToWindow } from "./window-events";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
 
-const GITHUB_OWNER = "blueberrycongee";
+const GITHUB_OWNER = "jshreyansh";
 const GITHUB_REPO = "tacit";
 const MAX_DOWNLOAD_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 2000;

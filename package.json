@@ -20,7 +20,7 @@
     "postinstall": "node scripts/postinstall.mjs",
     "typecheck": "tsc --noEmit",
     "test:security": "tsx --test tests/update-modal-security.test.ts tests/api-server-auth.test.ts",
-    "test:browser": "tsx --test tests/browser-agent-profiles.test.ts tests/browser-agent-profile-access.test.ts tests/browser-observation.test.ts tests/browser-comfort.test.ts tests/browser-profile-import.test.ts tests/browser-site-storage-import.test.ts tests/browser-connection-registry.test.ts tests/browser-controller.test.ts tests/connected-browser-broker.test.ts tests/browser-extension-security.test.ts",
+    "test:browser": "tsx --test tests/browser-agent-profiles.test.ts tests/browser-agent-profile-access.test.ts tests/browser-observation.test.ts tests/browser-observation-store.test.ts tests/browser-comfort.test.ts tests/browser-profile-import.test.ts tests/browser-site-storage-import.test.ts tests/browser-connection-registry.test.ts tests/browser-controller.test.ts tests/connected-browser-broker.test.ts tests/browser-extension-security.test.ts",
     "typecheck:headless": "tsc --noEmit -p tsconfig.headless.json",
     "build:headless": "tsc -p tsconfig.headless.build.json",
     "test:hydra": "tsx --test hydra/tests/standalone-e2e.test.ts hydra/tests/workflow-lead.test.ts hydra/tests/cleanup.test.ts",
@@ -37,16 +37,16 @@
     "developer-tools"
   ],
   "author": {
-    "name": "blueberrycongee",
-    "email": "blueberrycongee@users.noreply.github.com"
+    "name": "jshreyansh",
+    "email": "jshreyansh34@gmail.com"
   },
-  "homepage": "https://github.com/blueberrycongee/termcanvas",
+  "homepage": "https://github.com/jshreyansh/tacit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/blueberrycongee/termcanvas.git"
+    "url": "https://github.com/jshreyansh/tacit.git"
   },
   "bugs": {
-    "url": "https://github.com/blueberrycongee/termcanvas/issues"
+    "url": "https://github.com/jshreyansh/tacit/issues"
   },
   "license": "MIT",
   "type": "module",

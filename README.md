@@ -6,8 +6,8 @@
 
 **Your terminals, on an infinite canvas.**
 
-[![GitHub release](https://img.shields.io/github/v/release/blueberrycongee/termcanvas)](https://github.com/blueberrycongee/termcanvas/releases)
-[![Downloads](https://img.shields.io/github/downloads/blueberrycongee/termcanvas/total?label=downloads)](https://github.com/blueberrycongee/termcanvas/releases)
+[![GitHub release](https://img.shields.io/github/v/release/jshreyansh/tacit)](https://github.com/jshreyansh/tacit/releases)
+[![Downloads](https://img.shields.io/github/downloads/jshreyansh/tacit/total?label=downloads)](https://github.com/jshreyansh/tacit/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)]()
 [![Website](https://img.shields.io/badge/website-termcanvas-e8b840)](https://website-ten-mu-37.vercel.app)
@@ -42,7 +42,7 @@ It organizes everything in a **Project → Worktree → Terminal** hierarchy tha
 
 ## Quick Start
 
-**Download** — grab the latest build from [GitHub Releases](https://github.com/blueberrycongee/termcanvas/releases).
+**Download** — grab the latest build from [GitHub Releases](https://github.com/jshreyansh/tacit/releases).
 
 > [!IMPORTANT]
 > **Apple Silicon (M-series) Macs — pick the file with `arm64` in its name**
@@ -65,8 +65,8 @@ It organizes everything in a **Project → Worktree → Terminal** hierarchy tha
 This workspace uses `pnpm`, and `pnpm-lock.yaml` is the canonical lockfile.
 
 ```bash
-git clone https://github.com/blueberrycongee/termcanvas.git
-cd termcanvas
+git clone https://github.com/jshreyansh/tacit.git
+cd tacit
 pnpm install
 pnpm dev
 ```
@@ -398,10 +398,16 @@ The goal is simple: **you describe intent, Tacit handles the rest.** Your canvas
 
 **Contributing** — fork, branch, and open a PR. Licensed under [MIT](LICENSE).
 
+## Credits
+
+Tacit began as a fork of [TermCanvas](https://github.com/blueberrycongee/termcanvas)
+by blueberrycongee, and is distributed under the same MIT license. The upstream
+copyright notice is preserved in [LICENSE](LICENSE).
+
 <div align="center">
 
 <img src="docs/QQ.jpg" width="240" alt="QQ Group" />
 
-[![Star History Chart](https://api.star-history.com/svg?repos=blueberrycongee/termcanvas&type=Date)](https://star-history.com/#blueberrycongee/termcanvas&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=jshreyansh/tacit&type=Date)](https://star-history.com/#jshreyansh/tacit&Date)
 
 </div>

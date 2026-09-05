@@ -11,6 +11,7 @@ import type {
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
 import type { CaptureEvent, CaptureHealth } from "../../shared/capture";
+import type { BrowserObservationSummary } from "../../shared/browser-observation";
 import type { ManagerSessionRow, ManagerTenure } from "../../shared/manager-role";
 import type {
   Pin,
@@ -1262,6 +1263,8 @@ export interface TermCanvasAPI {
       callback: (payload: { url: string }) => void,
     ) => () => void;
     revealDownload: (token: string) => Promise<boolean>;
+    observationSummary: () => Promise<BrowserObservationSummary>;
+    clearObservations: (identityId?: string) => Promise<{ cleared: number }>;
     onPopupRequested: (
       callback: (payload: {
         url: string;
