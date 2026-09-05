@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { CSSProperties } from "react";
+import { ONBOARDING_STEP_COUNT } from "../../shared/onboarding";
 import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { useT } from "../i18n/useT";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
@@ -36,10 +37,28 @@ export function CanvasEmptyState({ isDragOver = false }: CanvasEmptyStateProps) 
         style={{ ...STAGGER_STYLE, width: "min(360px, 80vw)" }}
       >
         <div
-          className="tc-enter-fade-up tc-eyebrow"
-          style={{ color: "var(--text-faint)", marginBottom: 20 }}
+          className="tc-enter-fade-up flex items-center gap-3"
+          style={{ marginBottom: 20 }}
         >
-          {t.canvas_empty_eyebrow}
+          {/* The same dots the guide shows on steps two and three. Without
+              them the first screen reads as the whole of the setup rather
+              than the start of it. */}
+          <span className="flex items-center gap-1.5" aria-hidden>
+            {Array.from({ length: ONBOARDING_STEP_COUNT }, (_, dot) => (
+              <span
+                key={dot}
+                className="rounded-full"
+                style={{
+                  width: 5,
+                  height: 5,
+                  background: dot === 0 ? "var(--accent)" : "var(--border)",
+                }}
+              />
+            ))}
+          </span>
+          <span className="tc-eyebrow" style={{ color: "var(--text-faint)" }}>
+            {t.canvas_empty_eyebrow}
+          </span>
         </div>
         <div
           className="tc-enter-fade-up tc-hero"

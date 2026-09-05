@@ -41,7 +41,12 @@ function visibleCenterPoint(): { x: number; y: number } {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
 
-function addTerminal(type: TerminalType) {
+/**
+ * Exported so the getting-started guide can offer the same action the dock
+ * does. Placement logic lives here (see the note above `visibleCenterPoint`),
+ * and a second copy of it would drift the moment either one is tuned.
+ */
+export function addTerminal(type: TerminalType) {
   const { focusedProjectId, focusedWorktreeId, projects } =
     useProjectStore.getState();
   let projectId = focusedProjectId;

@@ -40,6 +40,8 @@ interface PreferencesStore {
   composerEnabled: boolean;
   drawingEnabled: boolean;
   browserEnabled: boolean;
+  /** Set once the user waves the getting-started guide away. */
+  onboardingDismissed: boolean;
   summaryEnabled: boolean;
   globalSearchEnabled: boolean;
   petEnabled: boolean;
@@ -83,6 +85,7 @@ interface PreferencesStore {
   setComposerEnabled: (value: boolean) => void;
   setDrawingEnabled: (value: boolean) => void;
   setBrowserEnabled: (value: boolean) => void;
+  setOnboardingDismissed: (value: boolean) => void;
   setSummaryEnabled: (value: boolean) => void;
   setGlobalSearchEnabled: (value: boolean) => void;
   setPetEnabled: (value: boolean) => void;
@@ -114,6 +117,7 @@ interface SavedPrefs {
   composerEnabled: boolean;
   drawingEnabled: boolean;
   browserEnabled: boolean;
+  onboardingDismissed: boolean;
   summaryEnabled: boolean;
   globalSearchEnabled: boolean;
   petEnabled: boolean;
@@ -243,6 +247,11 @@ function loadPreferences(): SavedPrefs {
       let browserEnabled = false;
       if (parsed.browserEnabled === true) browserEnabled = true;
 
+      // Absent means never dismissed, which is right for both a fresh install
+      // and a workspace written by a build that predates the guide.
+      let onboardingDismissed = false;
+      if (parsed.onboardingDismissed === true) onboardingDismissed = true;
+
       let summaryEnabled = false;
       if (parsed.summaryEnabled === true) summaryEnabled = true;
 
@@ -301,6 +310,7 @@ function loadPreferences(): SavedPrefs {
         composerEnabled,
         drawingEnabled,
         browserEnabled,
+        onboardingDismissed,
         summaryEnabled,
         globalSearchEnabled,
         petEnabled,
@@ -330,6 +340,7 @@ function loadPreferences(): SavedPrefs {
     composerEnabled: false,
     drawingEnabled: false,
     browserEnabled: false,
+    onboardingDismissed: false,
     summaryEnabled: false,
     globalSearchEnabled: false,
     petEnabled: false,
@@ -439,6 +450,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     composerEnabled: state.composerEnabled,
     drawingEnabled: state.drawingEnabled,
     browserEnabled: state.browserEnabled,
+    onboardingDismissed: state.onboardingDismissed,
     summaryEnabled: state.summaryEnabled,
     globalSearchEnabled: state.globalSearchEnabled,
     petEnabled: state.petEnabled,
@@ -469,6 +481,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   composerEnabled: initialPrefs.composerEnabled,
   drawingEnabled: initialPrefs.drawingEnabled,
   browserEnabled: initialPrefs.browserEnabled,
+  onboardingDismissed: initialPrefs.onboardingDismissed,
   summaryEnabled: initialPrefs.summaryEnabled,
   globalSearchEnabled: initialPrefs.globalSearchEnabled,
   petEnabled: initialPrefs.petEnabled,
@@ -532,6 +545,10 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   setBrowserEnabled: (value) => {
     set({ browserEnabled: value });
     savePreferences(getSaveState({ ...get(), browserEnabled: value }));
+  },
+  setOnboardingDismissed: (value) => {
+    set({ onboardingDismissed: value });
+    savePreferences(getSaveState({ ...get(), onboardingDismissed: value }));
   },
   setSummaryEnabled: (value) => {
     set({ summaryEnabled: value });
