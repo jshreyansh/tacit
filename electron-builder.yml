@@ -72,6 +72,27 @@ mac:
         - x64
         - arm64
 
+# The default disk image is two unlabelled icons and an arrow. Everyone who
+# installs Mac software often reads that instantly; nobody else does. The
+# background states the instruction, and the geometry here must stay in step
+# with scripts/generate-dmg-background.py, which draws the arrow between these
+# two slots.
+dmg:
+  background: build/dmg-background.png
+  window:
+    width: 560
+    height: 400
+  iconSize: 96
+  iconTextSize: 12
+  contents:
+    - x: 150
+      y: 225
+      type: file
+    - x: 410
+      y: 225
+      type: link
+      path: /Applications
+
 linux:
   category: Development
   icon: build/icon.png
