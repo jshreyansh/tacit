@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime exceptions. Notarization requires the hardened runtime,
+    and the hardened runtime forbids several things Electron and this app
+    genuinely need, so each of these is an explicit hole with a reason.
+    Nothing here is speculative: removing any one of them breaks a feature.
+  -->
+
+  <!-- V8 compiles JavaScript at runtime. Without JIT, Electron will not run. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!--
+    V8's older code paths and some of Electron's allocators write to pages that
+    are later executed. Apple's own Electron guidance pairs this with allow-jit.
+  -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!--
+    node-pty ships a native module, and terminals are launched with an
+    environment this app assembles (PATH entries for the agent shims, among
+    others). Library validation would refuse to load a native module not signed
+    by the same team, and DYLD variables are how the child environment is set.
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!--
+    The app spawns real shells and CLIs (claude, codex, git, lazygit, tmux) as
+    child processes. Inheriting the runtime is what lets those children run
+    under the same signed context instead of being refused.
+  -->
+  <key>com.apple.security.inherit</key>
+  <true/>
+</dict>
+</plist>

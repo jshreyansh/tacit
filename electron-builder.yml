@@ -44,9 +44,24 @@ asarUnpack:
   - node_modules/node-pty/**/*
 
 mac:
-  identity: "-"
   category: public.app-category.developer-tools
   icon: build/icon.icns
+  # Notarization requires the hardened runtime; the hardened runtime requires
+  # the exceptions in the entitlements file. See docs/releasing.md.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Skipped because the app is notarized: assessing an unstapled bundle mid-build
+  # fails for the wrong reason and tells you nothing useful.
+  gatekeeperAssess: false
+  # Reads APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID from the
+  # environment. Absent those, electron-builder skips notarizing and says so —
+  # which is what a local unsigned build should do.
+  notarize: true
+  # No `identity` key on purpose: electron-builder finds the Developer ID
+  # Application certificate in the keychain, or takes CSC_LINK/CSC_KEY_PASSWORD
+  # in CI. Pinning it here would make every machine without that exact
+  # certificate name fail to build at all.
   target:
     - target: dmg
       arch:
