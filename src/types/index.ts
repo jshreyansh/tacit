@@ -753,6 +753,7 @@ export interface TacitAPI {
   };
   project: {
     selectDirectory: () => Promise<string | null>;
+    createDirectory: () => Promise<string | null>;
     scan: (dirPath: string) => Promise<{
       name: string;
       path: string;

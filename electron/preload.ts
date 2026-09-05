@@ -270,6 +270,8 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   project: {
     selectDirectory: () => ipcRenderer.invoke("project:select-directory"),
+    createDirectory: () =>
+      ipcRenderer.invoke("project:create-directory") as Promise<string | null>,
     scan: (dirPath: string) => ipcRenderer.invoke("project:scan", dirPath),
     listChildGitRepos: (dirPath: string) =>
       ipcRenderer.invoke("project:list-child-git-repos", dirPath) as Promise<

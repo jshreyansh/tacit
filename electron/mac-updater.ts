@@ -22,6 +22,7 @@ import { spawn, execFile } from "child_process";
 import type { BrowserWindow } from "electron";
 import { sendToWindow } from "./window-events";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
+import { UpdaterLog } from "./updater-log";
 
 const GITHUB_OWNER = "jshreyansh";
 const GITHUB_REPO = "tacit";
@@ -210,8 +211,18 @@ function extractZip(zipPath: string, destDir: string): Promise<void> {
   return new Promise((resolve, reject) => {
     mkdirSync(destDir, { recursive: true });
     execFile("ditto", ["-xk", zipPath, destDir], (err) => {
-      if (err) reject(new Error(`Failed to extract update: ${err.message}`));
-      else resolve();
+      if (!err) {
+        resolve();
+        return;
+      }
+      // A full disk is the one failure here a user can actually act on, and
+      // ditto reports it as one ENOSPC line followed by several confusing
+      // "Couldn't read pkzip signature" lines from the truncated output. Saying
+      // so plainly beats forwarding four lines that describe the symptom.
+      const message = err.message.includes("No space left on device")
+        ? "Not enough disk space to install the update. Free up about 1 GB and try again."
+        : `Failed to extract update: ${err.message}`;
+      reject(new Error(message));
     });
   });
 }
@@ -488,10 +499,17 @@ export class MacCustomUpdater {
   private downloading = false;
   private installing = false;
   private locationWarningSent = false;
+  private readonly log: UpdaterLog;
 
   constructor(window: BrowserWindow) {
     this.window = window;
+    this.log = new UpdaterLog(app.getPath("userData"));
     this.restorePendingUpdate();
+  }
+
+  /** Where the decision record lives, for the UI to point at. */
+  get logPath(): string {
+    return this.log.path;
   }
 
   /**
@@ -509,7 +527,11 @@ export class MacCustomUpdater {
   }
 
   async checkForUpdates(): Promise<UpdateCheckOutcome> {
-    if (this.downloading) return "skipped";
+    const currentVersion = app.getVersion();
+    if (this.downloading) {
+      this.log.record({ outcome: "skipped", reason: "already-downloading", currentVersion });
+      return "skipped";
+    }
 
     // Skip updates when the .app is on a read-only volume (e.g. mounted DMG)
     // or in a TCC-restricted location like ~/Downloads. Notify the UI once so
@@ -521,6 +543,12 @@ export class MacCustomUpdater {
           bundlePath: getAppBundlePath(),
         });
       }
+      this.log.record({
+        outcome: "skipped",
+        reason: "location-not-writable",
+        currentVersion,
+        detail: getAppBundlePath(),
+      });
       return "skipped";
     }
 
@@ -529,8 +557,19 @@ export class MacCustomUpdater {
       const yml = await fetchText(ymlUrl);
       const release = parseLatestYml(yml);
 
-      if (!release.version) return "skipped";
-      if (!isNewerVersion(release.version, app.getVersion())) return "up-to-date";
+      if (!release.version) {
+        this.log.record({ outcome: "skipped", reason: "manifest-has-no-version", currentVersion });
+        return "skipped";
+      }
+      if (!isNewerVersion(release.version, currentVersion)) {
+        this.log.record({
+          outcome: "up-to-date",
+          reason: "not-newer",
+          currentVersion,
+          remoteVersion: release.version,
+        });
+        return "up-to-date";
+      }
 
       // If a pending update already matches the latest, just re-notify the UI
       if (
@@ -541,6 +580,12 @@ export class MacCustomUpdater {
           version: this.pendingUpdate.version,
           releaseNotes: this.pendingUpdate.releaseNotes,
           releaseDate: this.pendingUpdate.releaseDate,
+        });
+        this.log.record({
+          outcome: "newer",
+          reason: "already-downloaded-awaiting-install",
+          currentVersion,
+          remoteVersion: release.version,
         });
         return "newer";
       }
@@ -562,7 +607,19 @@ export class MacCustomUpdater {
         releaseDate: release.releaseDate,
       });
 
+      this.log.record({
+        outcome: "newer",
+        reason: "download-started",
+        currentVersion,
+        remoteVersion: release.version,
+      });
       await this.downloadUpdate(release, releaseNotes);
+      this.log.record({
+        outcome: "newer",
+        reason: "download-finished",
+        currentVersion,
+        remoteVersion: release.version,
+      });
       return "newer";
     } catch (error) {
       // If we already have a valid pending update (e.g. offline), surface it
@@ -578,6 +635,12 @@ export class MacCustomUpdater {
       sendToWindow(this.window, "updater:error", {
         message: error instanceof Error ? error.message : String(error),
       });
+      this.log.record({
+        outcome: "skipped",
+        reason: "check-failed",
+        currentVersion,
+        detail: error instanceof Error ? error.message : String(error),
+      });
       return "skipped";
     }
   }
@@ -586,6 +649,27 @@ export class MacCustomUpdater {
     if (!this.pendingUpdate) return;
     this.installing = true;
     this.runInstallScript(true);
+    this.log.record({
+      outcome: "newer",
+      reason: "install-requested",
+      currentVersion: app.getVersion(),
+      remoteVersion: this.pendingUpdate.version,
+    });
+    // If the app is still running once the installer's own deadline has passed,
+    // the installer has given up. `installing` must not stay set: it also gates
+    // the before-quit fallback, so leaving it latched disabled *both* ways of
+    // applying the update for the rest of the session — which is exactly how a
+    // failed "Restart & Update" made a later ⌘Q do nothing either.
+    setTimeout(() => {
+      if (!this.installing) return;
+      this.installing = false;
+      this.log.record({
+        outcome: "skipped",
+        reason: "install-did-not-run",
+        currentVersion: app.getVersion(),
+        detail: "app still running past the installer deadline; will retry on quit",
+      });
+    }, (INSTALL_WAIT_TIMEOUT_S + 5) * 1000);
     app.quit();
   }
 
@@ -756,26 +840,41 @@ export class MacCustomUpdater {
     const stagingDir = getStagingDir();
     const pid = process.pid;
 
+    // The script outlives the app, so anything it decides is lost unless it
+    // writes it down. A silent `exit 1` here is what made a failed update
+    // indistinguishable from an update that was never attempted.
+    const scriptLog = this.log.path;
+    const say = (message: string) =>
+      `printf '%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ) [install] ${message}" >> "${scriptLog}" 2>/dev/null`;
+
     const lines = [
       "#!/bin/bash",
       "",
+      say("waiting for pid " + pid + " to exit"),
       "# Wait for the app to exit (with timeout)",
       `ELAPSED=0`,
       `while kill -0 ${pid} 2>/dev/null; do`,
       `  sleep 0.5`,
       `  ELAPSED=$((ELAPSED + 1))`,
-      `  if [ $ELAPSED -ge ${INSTALL_WAIT_TIMEOUT_S * 2} ]; then exit 1; fi`,
+      `  if [ $ELAPSED -ge ${INSTALL_WAIT_TIMEOUT_S * 2} ]; then`,
+      `    ${say("gave up: app still running after " + INSTALL_WAIT_TIMEOUT_S + "s")}`,
+      `    exit 1`,
+      `  fi`,
       `done`,
       "",
       "# Backup old app so we can recover on failure",
-      `mv "${currentAppPath}" "${currentAppPath}.backup" || exit 1`,
+      `if ! mv "${currentAppPath}" "${currentAppPath}.backup"; then`,
+      `  ${say("failed: could not move the installed app aside")}`,
+      `  exit 1`,
+      `fi`,
       "",
       "# Install new app",
       `if mv "${newAppPath}" "${currentAppPath}"; then`,
       `  xattr -cr "${currentAppPath}" 2>/dev/null`,
       `  rm -rf "${currentAppPath}.backup"`,
       `  rm -rf "${stagingDir}"`,
-    ];
+      `  ${say("installed successfully")}`,
+    ]
 
     if (relaunch) {
       lines.push(`  open "${currentAppPath}"`);
@@ -785,6 +884,7 @@ export class MacCustomUpdater {
       `else`,
       `  # Restore backup on failure`,
       `  mv "${currentAppPath}.backup" "${currentAppPath}" 2>/dev/null`,
+      `  ${say("failed: could not move the new app into place; restored the old one")}`,
       `  exit 1`,
       `fi`,
     );

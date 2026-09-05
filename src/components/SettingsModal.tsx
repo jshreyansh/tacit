@@ -405,18 +405,21 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
 
   return (
     <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-3 border-t border-[var(--border)]">
-      <div className="flex flex-col gap-0.5 min-w-0">
+      {/* The version never truncates. It is nine characters, it is the one
+          thing on this row someone came here to read, and "v0.39.…" answers
+          nothing. The status control beside it is the flexible half. */}
+      <div className="flex flex-col gap-0.5 shrink-0">
         <span className="tc-eyebrow" style={MONO_STYLE}>
           {t.settings_version}
         </span>
         <span
-          className="text-[12px] text-[var(--text-metadata)] tabular-nums truncate"
+          className="text-[12px] text-[var(--text-metadata)] tabular-nums whitespace-nowrap"
           style={MONO_STYLE}
         >
           v{appVersion ?? "unknown"}
         </span>
       </div>
-      {statusEl}
+      <div className="min-w-0 text-right">{statusEl}</div>
     </div>
   );
 }

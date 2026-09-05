@@ -1124,10 +1124,40 @@ function setupIpc() {
 
   ipcMain.handle("project:select-directory", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
-      properties: ["openDirectory"],
+      // `createDirectory` puts macOS's own New Folder button in the sheet, so
+      // someone who meant to start something new is not forced to leave and
+      // make the folder in Finder first.
+      properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  /**
+   * Make a new folder to work in, named and placed by the user.
+   *
+   * A save sheet rather than an open sheet: it is the one native dialog that
+   * asks for a name and a location together, which is exactly the question
+   * "where should this live and what is it called". The directory is created
+   * here rather than left to the caller so a cancelled sheet and a failed
+   * mkdir are distinguishable — null means the user backed out.
+   */
+  ipcMain.handle("project:create-directory", async () => {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: "Create a space",
+      buttonLabel: "Create",
+      nameFieldLabel: "Name:",
+      properties: ["createDirectory"],
+    });
+    if (result.canceled || !result.filePath) return null;
+    // Refuse rather than adopt: picking an existing folder is what the other
+    // path is for, and silently reusing one would make "create" a lie the
+    // second time someone runs it.
+    if (fs.existsSync(result.filePath)) {
+      throw new Error("That name is already taken. Choose another, or open the existing folder instead.");
+    }
+    fs.mkdirSync(result.filePath, { recursive: false });
+    return result.filePath;
   });
 
   ipcMain.handle("project:scan", async (_event, dirPath: string) => {
@@ -3627,17 +3657,26 @@ app.on("will-quit", (event) => {
     platform: process.platform,
   });
   void (async () => {
-    await requestFinalFlushAndWait(mainWindow);
-    outputBatcher.dispose();
-    await ptyManager.destroyAll();
-    gitWatcher.unwatchAll();
-    fileTreeWatcher.unwatchAll();
-    sessionWatcher.unwatchAll();
-    hookReceiver.stop();
-    stopAutoUpdater();
-    apiServer.stop();
-    cleanupPortFile();
-    app.quit();
+    // Every step is best-effort. Without the finally, one throw anywhere in
+    // here means `app.quit()` is never reached and the app sits half-quit
+    // forever — window alive, unable to exit, and any pending update installer
+    // waiting on a process that will never die.
+    try {
+      await requestFinalFlushAndWait(mainWindow);
+      outputBatcher.dispose();
+      await ptyManager.destroyAll();
+      gitWatcher.unwatchAll();
+      fileTreeWatcher.unwatchAll();
+      sessionWatcher.unwatchAll();
+      hookReceiver.stop();
+      stopAutoUpdater();
+      apiServer.stop();
+      cleanupPortFile();
+    } catch (error) {
+      console.error("[Tacit] teardown failed; quitting anyway:", error);
+    } finally {
+      app.quit();
+    }
   })();
 });
 

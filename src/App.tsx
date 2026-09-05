@@ -4,7 +4,7 @@ import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
 import { Toolbar } from "./toolbar/Toolbar";
 import { BottomToolbar } from "./toolbar/BottomToolbar";
 import { AddNodeDock } from "./toolbar/AddNodeDock";
-import { OnboardingGuide } from "./components/OnboardingGuide";
+import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
 import { useNotificationStore } from "./stores/notificationStore";
@@ -1123,7 +1123,7 @@ export function App() {
       <CanvasRoot />
       <BottomToolbar />
       <AddNodeDock />
-      <OnboardingGuide />
+      <OnboardingModal />
       <WorkspaceManagerPill />
       {drawingEnabled && <DrawingPanel />}
       {completionGlowEnabled && <CompletionGlow />}
