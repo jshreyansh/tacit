@@ -185,7 +185,7 @@ export const useBridgeActivityStore = create<BridgeActivityStore>((set, get) => 
 }));
 
 export function initBridgeActivityIPC(): () => void {
-  return window.termcanvas.browser.onBridgeCall(
+  return window.tacit.browser.onBridgeCall(
     (payload: BrowserBridgeCallEvent) => {
       const { startCall, endCall } = useBridgeActivityStore.getState();
       if (payload.phase === "start") {
@@ -198,7 +198,7 @@ export function initBridgeActivityIPC(): () => void {
 }
 
 export function initCanvasBridgeEventIPC(): () => void {
-  return window.termcanvas.browser.onCanvasBridgeEvent(
+  return window.tacit.browser.onCanvasBridgeEvent(
     (payload: CanvasBridgeEvent) => {
       const { startConnectionEvent, endConnectionEvent } =
         useBridgeActivityStore.getState();

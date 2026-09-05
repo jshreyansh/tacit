@@ -1,4 +1,4 @@
-import * as tc from "../termcanvas.ts";
+import * as tc from "../tacit.ts";
 import type {
   HydraRuntime,
   RuntimeTelemetrySnapshot,
@@ -13,15 +13,15 @@ import type {
  * re-exposes the old module functions under the HydraRuntime interface so
  * standalone and TC paths can be swapped without touching call sites.
  */
-export class TermCanvasRuntime implements HydraRuntime {
-  readonly name = "termcanvas" as const;
+export class TacitRuntime implements HydraRuntime {
+  readonly name = "tacit" as const;
 
   isAvailable(): boolean {
-    return tc.isTermCanvasRunning();
+    return tc.isTacitRunning();
   }
 
   getCurrentLeadId(): string | undefined {
-    return process.env.TERMCANVAS_TERMINAL_ID;
+    return process.env.TACIT_TERMINAL_ID;
   }
 
   ensureProjectTracked(repoPath: string): { id: string; path: string } {

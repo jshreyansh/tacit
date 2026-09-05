@@ -4,9 +4,9 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import {
-  getTermCanvasDataDir,
-  resolveTermCanvasPortFile,
-} from "../shared/termcanvas-instance.ts";
+  getTacitDataDir,
+  resolveTacitPortFile,
+} from "../shared/tacit-instance.ts";
 
 test("save writes atomically via tmp+rename", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tc-state-"));
@@ -39,33 +39,33 @@ test("save with skipRestore flag", () => {
   fs.rmSync(dir, { recursive: true });
 });
 
-test("getTermCanvasDataDir separates prod and dev state directories", () => {
+test("getTacitDataDir separates prod and dev state directories", () => {
   assert.equal(
-    getTermCanvasDataDir("prod"),
-    path.join(os.homedir(), ".termcanvas"),
+    getTacitDataDir("prod"),
+    path.join(os.homedir(), ".tacit"),
   );
   assert.equal(
-    getTermCanvasDataDir("dev"),
-    path.join(os.homedir(), ".termcanvas-dev"),
-  );
-});
-
-test("resolveTermCanvasPortFile defaults to the prod instance port file", () => {
-  assert.equal(
-    resolveTermCanvasPortFile({}),
-    path.join(os.homedir(), ".termcanvas", "port"),
+    getTacitDataDir("dev"),
+    path.join(os.homedir(), ".tacit-dev"),
   );
 });
 
-test("resolveTermCanvasPortFile respects TERMCANVAS_INSTANCE and TERMCANVAS_PORT_FILE", () => {
+test("resolveTacitPortFile defaults to the prod instance port file", () => {
   assert.equal(
-    resolveTermCanvasPortFile({ TERMCANVAS_INSTANCE: "dev" }),
-    path.join(os.homedir(), ".termcanvas-dev", "port"),
+    resolveTacitPortFile({}),
+    path.join(os.homedir(), ".tacit", "port"),
+  );
+});
+
+test("resolveTacitPortFile respects TACIT_INSTANCE and TACIT_PORT_FILE", () => {
+  assert.equal(
+    resolveTacitPortFile({ TACIT_INSTANCE: "dev" }),
+    path.join(os.homedir(), ".tacit-dev", "port"),
   );
   assert.equal(
-    resolveTermCanvasPortFile({
-      TERMCANVAS_INSTANCE: "prod",
-      TERMCANVAS_PORT_FILE: "/tmp/custom-port-file",
+    resolveTacitPortFile({
+      TACIT_INSTANCE: "prod",
+      TACIT_PORT_FILE: "/tmp/custom-port-file",
     }),
     "/tmp/custom-port-file",
   );

@@ -6,7 +6,7 @@ import path from "node:path";
 import { buildPinComposerPayload } from "../electron/pin-dispatch.ts";
 
 function freshAttachmentsDir(pinId: string) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-pin-dispatch-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-pin-dispatch-"));
   const dir = path.join(root, `${pinId}.attachments`);
   fs.mkdirSync(dir, { recursive: true });
   return dir;

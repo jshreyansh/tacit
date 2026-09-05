@@ -32,21 +32,21 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   init: async () => {
     // @ts-expect-error -- auth API added by preload agent
-    if (!window.termcanvas?.auth) {
+    if (!window.tacit?.auth) {
       set({ loading: false });
       return;
     }
     try {
       const [user, deviceId] = await Promise.all([
         // @ts-expect-error -- auth API added by preload agent
-        window.termcanvas.auth.getUser(),
+        window.tacit.auth.getUser(),
         // @ts-expect-error -- auth API added by preload agent
-        window.termcanvas.auth.getDeviceId(),
+        window.tacit.auth.getDeviceId(),
       ]);
       set({ user, deviceId, loading: false });
 
       // @ts-expect-error -- auth API added by preload agent
-      window.termcanvas.auth.onAuthStateChange((user: AuthUser | null) => {
+      window.tacit.auth.onAuthStateChange((user: AuthUser | null) => {
         set({ user });
       });
     } catch {
@@ -56,11 +56,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   login: async () => {
     // @ts-expect-error -- auth API added by preload agent
-    if (!window.termcanvas?.auth) return;
+    if (!window.tacit?.auth) return;
     set({ loginPending: true });
     try {
       // @ts-expect-error -- auth API added by preload agent
-      const result = await window.termcanvas.auth.login();
+      const result = await window.tacit.auth.login();
       set({
         loginPending: false,
         loginError: result.ok ? null : (result.error ?? null),
@@ -73,9 +73,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   logout: async () => {
     // @ts-expect-error -- auth API added by preload agent
-    if (!window.termcanvas?.auth) return;
+    if (!window.tacit?.auth) return;
     // @ts-expect-error -- auth API added by preload agent
-    await window.termcanvas.auth.logout();
+    await window.tacit.auth.logout();
     set({ user: null });
   },
 

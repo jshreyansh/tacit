@@ -48,7 +48,7 @@ const watchers = new Map<string, WatcherHandle>();
 
 function ensureWatcher(worktreePath: string): void {
   if (watchers.has(worktreePath)) return;
-  const tc = window.termcanvas;
+  const tc = window.tacit;
   if (!tc) return;
 
   tc.fs.watchDir(worktreePath);
@@ -70,7 +70,7 @@ function ensureWatcher(worktreePath: string): void {
 function dropWatcher(worktreePath: string): void {
   const handle = watchers.get(worktreePath);
   if (!handle) return;
-  const tc = window.termcanvas;
+  const tc = window.tacit;
   if (tc) tc.fs.unwatchDir(worktreePath);
   handle.unsubFs();
   handle.unsubGit();
@@ -147,7 +147,7 @@ export const useWorktreeFilesStore = create<WorktreeFilesStore>((set, get) => ({
   },
 
   refresh: async (worktreePath) => {
-    const tc = window.termcanvas;
+    const tc = window.tacit;
     if (!tc) return;
     const initial = get().byWorktree[worktreePath];
     if (!initial) return;

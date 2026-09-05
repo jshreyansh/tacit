@@ -1,10 +1,10 @@
 {
-  "name": "@termcanvas/termcanvas-bridge",
+  "name": "@tacit/tacit-bridge",
   "version": "0.1.0",
   "description": "MCP server exposing canvas-native tools to a terminal's agent: driving a wired browser tile (see src/canvas/ConnectionLayer.tsx), emitting events to connected nodes, saving durable memory notes, and (workspace manager only) querying/spawning/wiring canvas nodes",
   "type": "module",
   "bin": {
-    "termcanvas-bridge": "./dist/termcanvas-bridge.js"
+    "tacit-bridge": "./dist/tacit-bridge.js"
   },
   "scripts": {
     "build": "node --experimental-strip-types build.ts",

@@ -4,7 +4,7 @@ import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 import { useCanvasStore, COLLAPSED_TAB_WIDTH } from "../stores/canvasStore";
 import { shouldIgnoreShortcutTarget } from "../hooks/shortcutTarget";
 
-const platform = window.termcanvas?.app.platform ?? "darwin";
+const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 export function ShortcutHints() {

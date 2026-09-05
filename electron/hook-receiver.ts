@@ -24,9 +24,9 @@ export function getHookSocketPath(
   tmpDir: string = os.tmpdir(),
 ): string {
   if (platform === "win32") {
-    return `\\\\.\\pipe\\termcanvas-${pid}`;
+    return `\\\\.\\pipe\\tacit-${pid}`;
   }
-  return `${tmpDir}/termcanvas-${pid}.sock`;
+  return `${tmpDir}/tacit-${pid}.sock`;
 }
 
 export class HookReceiver {

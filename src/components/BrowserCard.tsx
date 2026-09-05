@@ -308,7 +308,7 @@ export function BrowserCard({ card }: Props) {
     if (!connectedBinding) return;
     setLoadError(null);
     try {
-      const result = await window.termcanvas.browserConnection.execute({
+      const result = await window.tacit.browserConnection.execute({
         bindingId: connectedBinding.tabBindingId,
         action,
         params,
@@ -395,14 +395,14 @@ export function BrowserCard({ card }: Props) {
       // hand-drawn terminal↔browser wire only highlights from one side.
       onMouseEnter={() => {
         window.dispatchEvent(
-          new CustomEvent("termcanvas:node-hover", {
+          new CustomEvent("tacit:node-hover", {
             detail: { kind: "browser", id: card.id },
           }),
         );
       }}
       onMouseLeave={() => {
         window.dispatchEvent(
-          new CustomEvent("termcanvas:node-hover", { detail: null }),
+          new CustomEvent("tacit:node-hover", { detail: null }),
         );
       }}
     >

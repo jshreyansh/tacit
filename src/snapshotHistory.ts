@@ -70,7 +70,7 @@ interface AppendOptions {
 export async function appendSnapshotToHistory(
   options: AppendOptions = {},
 ): Promise<SnapshotHistoryEntry | null> {
-  if (!window.termcanvas?.snapshots) return null;
+  if (!window.tacit?.snapshots) return null;
 
   const now = Date.now();
   if (!options.force && now - lastHistoryWriteAt < MIN_HISTORY_INTERVAL_MS) {
@@ -94,7 +94,7 @@ export async function appendSnapshotToHistory(
   const body = JSON.parse(snapshotState()) as unknown;
 
   try {
-    const entry = await window.termcanvas.snapshots.append({
+    const entry = await window.tacit.snapshots.append({
       savedAt: now,
       terminalCount: stats.terminalCount,
       projectCount: stats.projectCount,

@@ -56,8 +56,8 @@ function IconCommand({ size = 14 }: { size?: number }) {
 
 function detectIsMac(): boolean {
   if (typeof window === "undefined") return false;
-  if (window.termcanvas?.app.platform) {
-    return window.termcanvas.app.platform === "darwin";
+  if (window.tacit?.app.platform) {
+    return window.tacit.app.platform === "darwin";
   }
   return /Mac|iPhone|iPad/.test(window.navigator.userAgent);
 }

@@ -67,7 +67,7 @@ test("buildComposerImagePath writes staged pngs into the request directory", () 
     buildComposerImagePath("/repo/worktree", "req-123", 1),
     path.join(
       "/repo/worktree",
-      ".termcanvas",
+      ".tacit",
       "composer",
       "req-123",
       "image-2.png",
@@ -240,7 +240,7 @@ test("shell reports PTY write failures with stage details", async () => {
 
 test("submitComposerRequest cleans up old composer request dirs", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc-cleanup-"));
-  const composerDir = path.join(tmpDir, ".termcanvas", "composer");
+  const composerDir = path.join(tmpDir, ".tacit", "composer");
   const oldReqDir = path.join(composerDir, "req-old-aaa");
   fs.mkdirSync(oldReqDir, { recursive: true });
   fs.writeFileSync(path.join(oldReqDir, "image-1.png"), "old-image");

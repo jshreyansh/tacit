@@ -131,7 +131,7 @@ export function PinDetailDrawer() {
       if (!composingForPin) return;
       setBusy(true);
       try {
-        const created = await window.termcanvas.pins.create({
+        const created = await window.tacit.pins.create({
           repo: composingForPin,
           title: editTitle.trim() || t["pin.untitled"],
           body: editBody,
@@ -148,7 +148,7 @@ export function PinDetailDrawer() {
     if (!pin) return;
     setBusy(true);
     try {
-      const updated = await window.termcanvas.pins.update(pin.repo, pin.id, {
+      const updated = await window.tacit.pins.update(pin.repo, pin.id, {
         title: editTitle.trim() || pin.title,
         body: editBody,
       });
@@ -181,7 +181,7 @@ export function PinDetailDrawer() {
       if (!pin || busy) return;
       setBusy(true);
       try {
-        const updated = await window.termcanvas.pins.update(pin.repo, pin.id, {
+        const updated = await window.tacit.pins.update(pin.repo, pin.id, {
           status,
         });
         upsertPin(pin.repo, updated);
@@ -206,7 +206,7 @@ export function PinDetailDrawer() {
           targetRepo = pin.repo;
           targetId = pin.id;
         } else if (isComposing && composingForPin) {
-          const created = await window.termcanvas.pins.create({
+          const created = await window.tacit.pins.create({
             repo: composingForPin,
             title: editTitle.trim() || t["pin.untitled"],
             body: editBody,
@@ -223,7 +223,7 @@ export function PinDetailDrawer() {
           return;
         }
         const buffer = await file.arrayBuffer();
-        const result = await window.termcanvas.pins.saveAttachment(
+        const result = await window.tacit.pins.saveAttachment(
           targetRepo,
           targetId,
           file.name || "image",
@@ -306,7 +306,7 @@ export function PinDetailDrawer() {
     if (!pin || busy) return;
     setBusy(true);
     try {
-      await window.termcanvas.pins.remove(pin.repo, pin.id);
+      await window.tacit.pins.remove(pin.repo, pin.id);
       removePin(pin.repo, pin.id);
       setShowDeleteConfirm(false);
       closeDetail();
@@ -319,7 +319,7 @@ export function PinDetailDrawer() {
     if (!pin || previewBusy) return;
     setPreviewBusy(true);
     try {
-      await window.termcanvas.pins.openPreview(pin.repo, pin.id);
+      await window.tacit.pins.openPreview(pin.repo, pin.id);
     } finally {
       setPreviewBusy(false);
     }
@@ -430,16 +430,16 @@ export function PinDetailDrawer() {
           onDragStart={(e) => {
             if (!pin || isEditing) return;
             e.dataTransfer.setData(
-              "application/x-termcanvas-pin",
+              "application/x-tacit-pin",
               JSON.stringify({ repo: pin.repo, id: pin.id }),
             );
             e.dataTransfer.effectAllowed = "copy";
             usePinDragStore.getState().setActive(true);
-            window.dispatchEvent(new CustomEvent("termcanvas:pin-drag-active"));
+            window.dispatchEvent(new CustomEvent("tacit:pin-drag-active"));
           }}
           onDragEnd={() => {
             usePinDragStore.getState().setActive(false);
-            window.dispatchEvent(new CustomEvent("termcanvas:pin-drag-end"));
+            window.dispatchEvent(new CustomEvent("tacit:pin-drag-end"));
           }}
           style={{ cursor: pin && !isEditing ? "grab" : undefined }}
         >

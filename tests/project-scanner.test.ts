@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { ProjectScanner } from "../electron/project-scanner.ts";
 
 test("listChildGitRepos returns direct child repositories only", async () => {
-  const rootDir = mkdtempSync(path.join(os.tmpdir(), "termcanvas-project-scanner-"));
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "tacit-project-scanner-"));
   const scanner = new ProjectScanner();
 
   try {

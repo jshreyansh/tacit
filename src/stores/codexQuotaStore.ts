@@ -15,12 +15,12 @@ export const useCodexQuotaStore = create<CodexQuotaStore>((set, get) => ({
 
   fetch: async () => {
     if (get().loading) return;
-    if (!window.termcanvas?.codexQuota) return;
+    if (!window.tacit?.codexQuota) return;
 
     set({ loading: true });
 
     try {
-      const result = await window.termcanvas.codexQuota.fetch();
+      const result = await window.tacit.codexQuota.fetch();
       if (result.ok) {
         set({ quota: result.data, loading: false, error: null });
       } else if (result.rateLimited) {

@@ -1,7 +1,7 @@
 import type { RenderDiagnosticEventInput } from "../../shared/render-diagnostics";
 import { useCanvasStore } from "../stores/canvasStore";
 
-const DIAGNOSTICS_STORAGE_KEY = "termcanvas-render-diagnostics";
+const DIAGNOSTICS_STORAGE_KEY = "tacit-render-diagnostics";
 
 let renderDiagnosticsEnabled: boolean | null = null;
 
@@ -19,12 +19,12 @@ function isRenderDiagnosticsEnabled(): boolean {
   const env = (
     import.meta as unknown as {
       env?: {
-        VITE_TERMCANVAS_RENDER_DIAGNOSTICS?: string | boolean;
+        VITE_TACIT_RENDER_DIAGNOSTICS?: string | boolean;
       };
     }
   ).env;
 
-  if (isTruthyFlag(env?.VITE_TERMCANVAS_RENDER_DIAGNOSTICS)) {
+  if (isTruthyFlag(env?.VITE_TACIT_RENDER_DIAGNOSTICS)) {
     renderDiagnosticsEnabled = true;
     return true;
   }
@@ -74,7 +74,7 @@ export function recordRenderDiagnostic(
     return;
   }
 
-  const diagnostics = window.termcanvas?.diagnostics;
+  const diagnostics = window.tacit?.diagnostics;
   if (!diagnostics?.recordRenderEvent) {
     return;
   }

@@ -57,11 +57,11 @@ test("pickInspectedTerminal prefers the focused item before other groups", () =>
   const focused = {
     terminalId: "focused",
     projectId: "project-1",
-    projectName: "termcanvas",
+    projectName: "tacit",
     worktreeId: "worktree-1",
     worktreeName: "main",
     title: "Focused terminal",
-    locationLabel: "termcanvas / main",
+    locationLabel: "tacit / main",
     focused: true,
     state: "running" as const,
   };

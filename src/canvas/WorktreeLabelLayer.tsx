@@ -44,7 +44,7 @@ import { computeCompactOffsets } from "./worktreeCompactLayout";
  *   • Hover label → highlight (full accent), click → pan-to-fit the
  *     worktree's bbox so the label doubles as a worktree jump target.
  *   • Hover any terminal → its worktree's label highlights (consumes
- *     the existing termcanvas:terminal-hover event so we don't add a
+ *     the existing tacit:terminal-hover event so we don't add a
  *     second hover surface to terminal tiles).
  *   • Labels collide-avoid against each other — overlapping labels are
  *     stacked vertically so they never sit on top of each other. They
@@ -370,9 +370,9 @@ export function WorktreeLabelLayer() {
         : findWorktreeKeyForTerminal(currentProjects, terminalId);
       setHoveredTerminalKey(key);
     };
-    window.addEventListener("termcanvas:terminal-hover", handler);
+    window.addEventListener("tacit:terminal-hover", handler);
     return () =>
-      window.removeEventListener("termcanvas:terminal-hover", handler);
+      window.removeEventListener("tacit:terminal-hover", handler);
   }, []);
 
   const focus = useMemo(() => findFocusInfo(projects), [projects]);

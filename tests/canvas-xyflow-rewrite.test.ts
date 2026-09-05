@@ -29,7 +29,7 @@ function installCanvasProjectionGlobals() {
     innerWidth: 1440,
     navigator,
     localStorage,
-    termcanvas: undefined,
+    tacit: undefined,
   }) as Window;
 
   Object.defineProperty(globalThis, "localStorage", {

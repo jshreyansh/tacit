@@ -21,8 +21,8 @@ test("built-in tool names pass through untouched", () => {
 });
 
 test("MCP tools lose the server prefix", () => {
-  assert.equal(toolVerb("mcp__termcanvas-bridge__spawn_browser"), "spawn_browser");
-  assert.equal(toolVerb("mcp__termcanvas-bridge__connect_nodes"), "connect_nodes");
+  assert.equal(toolVerb("mcp__tacit-bridge__spawn_browser"), "spawn_browser");
+  assert.equal(toolVerb("mcp__tacit-bridge__connect_nodes"), "connect_nodes");
   // The bridge's former name, which appears 53 times in this machine's history.
   assert.equal(toolVerb("mcp__browser-bridge__browser_eval"), "browser_eval");
   assert.equal(

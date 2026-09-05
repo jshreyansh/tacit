@@ -16,10 +16,10 @@ import {
 import { sanitizeProjectsForPersistence } from "./persisted-projects.ts";
 import { listActiveWorkflowSummaries } from "./workflow-status.ts";
 import {
-  resolveTermCanvasPortFile,
-  resolveTermCanvasInstance,
-  getTermCanvasDataDir,
-} from "../shared/termcanvas-instance.ts";
+  resolveTacitPortFile,
+  resolveTacitInstance,
+  getTacitDataDir,
+} from "../shared/tacit-instance.ts";
 
 interface HeadlessConfig {
   taskId: string | undefined;
@@ -35,8 +35,8 @@ interface HeadlessConfig {
 }
 
 function loadConfig(): HeadlessConfig {
-  const rawRateLimit = process.env.TERMCANVAS_RATE_LIMIT?.trim();
-  const rawCorsOrigins = process.env.TERMCANVAS_CORS_ORIGINS?.trim();
+  const rawRateLimit = process.env.TACIT_RATE_LIMIT?.trim();
+  const rawCorsOrigins = process.env.TACIT_CORS_ORIGINS?.trim();
 
   return {
     taskId: process.env.TASK_ID,
@@ -45,8 +45,8 @@ function loadConfig(): HeadlessConfig {
     workspaceDir: process.env.WORKSPACE_DIR ?? process.cwd(),
     s3Endpoint: process.env.S3_ENDPOINT,
     s3Bucket: process.env.S3_BUCKET,
-    host: process.env.TERMCANVAS_HOST ?? "0.0.0.0",
-    port: parseInt(process.env.TERMCANVAS_PORT ?? "7080", 10),
+    host: process.env.TACIT_HOST ?? "0.0.0.0",
+    port: parseInt(process.env.TACIT_PORT ?? "7080", 10),
     rateLimit: rawRateLimit ? parseInt(rawRateLimit, 10) : 0,
     corsOrigins: rawCorsOrigins
       ? rawCorsOrigins.split(",").map((o) => o.trim()).filter(Boolean)
@@ -83,18 +83,18 @@ async function main(): Promise<void> {
   const eventBus = new ServerEventBus();
 
   let webhookService: WebhookService | null = null;
-  const webhookUrl = process.env.TERMCANVAS_WEBHOOK_URL?.trim();
+  const webhookUrl = process.env.TACIT_WEBHOOK_URL?.trim();
   if (webhookUrl) {
     webhookService = new WebhookService({
       url: webhookUrl,
-      secret: process.env.TERMCANVAS_WEBHOOK_SECRET?.trim() || undefined,
+      secret: process.env.TACIT_WEBHOOK_SECRET?.trim() || undefined,
       eventBus,
     });
     console.log(`[headless] webhook service active -> ${webhookUrl}`);
   }
 
   // State persistence
-  const dataDir = getTermCanvasDataDir(resolveTermCanvasInstance());
+  const dataDir = getTacitDataDir(resolveTacitInstance());
   const statePath = path.join(dataDir, "state.json");
 
   // Load persisted state on startup
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     version: serverVersion,
   });
 
-  const portFile = resolveTermCanvasPortFile();
+  const portFile = resolveTacitPortFile();
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }

@@ -13,8 +13,8 @@ function installSelectionActionGlobals() {
   const target = new EventTarget();
   const mockWindow = Object.assign(target, {
     navigator,
-    termcanvas: undefined as unknown,
-  }) as Window & { termcanvas: unknown };
+    tacit: undefined as unknown,
+  }) as Window & { tacit: unknown };
 
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,

@@ -254,7 +254,7 @@ export function WorkspaceManagerPill() {
    */
   useEffect(() => {
     if (!managerTerminal) return;
-    window.termcanvas.managerRole?.set({
+    window.tacit.managerRole?.set({
       terminalId: managerTerminal.id,
       cli: managerTerminal.type,
       canvasId: activeCanvas?.id ?? null,
@@ -271,7 +271,7 @@ export function WorkspaceManagerPill() {
 
   useEffect(() => {
     let cancelled = false;
-    void window.termcanvas.managerRole
+    void window.tacit.managerRole
       .listSessions()
       .then((rows) => {
         if (!cancelled) setHistory(rows);
@@ -295,7 +295,7 @@ export function WorkspaceManagerPill() {
     }
     setSending(true);
     try {
-      const result = await window.termcanvas.managerChat.send(
+      const result = await window.tacit.managerChat.send(
         {
           terminalId: managerTerminal.id,
           ptyId,
@@ -362,7 +362,7 @@ export function WorkspaceManagerPill() {
           );
         return;
       }
-      const result = await window.termcanvas.browser.notifyWired(
+      const result = await window.tacit.browser.notifyWired(
         {
           terminalId,
           ptyId,

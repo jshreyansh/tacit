@@ -67,7 +67,7 @@ A useful handoff says:
 - What remains uncertain.
 - What the next decision should be.
 
-This is one reason TermCanvas treats structured workflow state as important. In Hydra, agent work is routed through explicit dispatches and decision points. The lead watches for a result, reads the report, and decides what to do next.
+This is one reason Tacit treats structured workflow state as important. In Hydra, agent work is routed through explicit dispatches and decision points. The lead watches for a result, reads the report, and decides what to do next.
 
 The exact tooling matters less than the principle: long-running AI work should leave behind durable context, not just terminal prose.
 
@@ -107,7 +107,7 @@ This is the difference between automation and orchestration. Automation tries to
 
 ## A practical way to think about Hydra
 
-Hydra is TermCanvas's answer to this problem: a lead-driven workflow for AI agents.
+Hydra is Tacit's answer to this problem: a lead-driven workflow for AI agents.
 
 Instead of treating an agent's final message as the source of truth, Hydra expects a structured result and a readable report. Instead of assuming the next step automatically, it returns to the lead at decision points. Instead of letting parallel work collide in one place, it encourages isolated branches of work that can be reviewed and merged deliberately.
 

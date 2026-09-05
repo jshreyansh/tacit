@@ -93,19 +93,19 @@ function makeRepoWithWorkbench(leadTerminalId: string): { repo: string; workbenc
 }
 
 function withTerminalId<T>(terminalId: string | undefined, fn: () => T): T {
-  const previous = process.env.TERMCANVAS_TERMINAL_ID;
+  const previous = process.env.TACIT_TERMINAL_ID;
   if (terminalId === undefined) {
-    delete process.env.TERMCANVAS_TERMINAL_ID;
+    delete process.env.TACIT_TERMINAL_ID;
   } else {
-    process.env.TERMCANVAS_TERMINAL_ID = terminalId;
+    process.env.TACIT_TERMINAL_ID = terminalId;
   }
   try {
     return fn();
   } finally {
     if (previous === undefined) {
-      delete process.env.TERMCANVAS_TERMINAL_ID;
+      delete process.env.TACIT_TERMINAL_ID;
     } else {
-      process.env.TERMCANVAS_TERMINAL_ID = previous;
+      process.env.TACIT_TERMINAL_ID = previous;
     }
   }
 }
@@ -127,11 +127,11 @@ test("cleanupWorkbench rejects a non-Lead terminal before any destructive work",
   }
 });
 
-test("cleanupWorkbench permits tooling/scripts without TERMCANVAS_TERMINAL_ID", () => {
+test("cleanupWorkbench permits tooling/scripts without TACIT_TERMINAL_ID", () => {
   const { repo, workbenchId } = makeRepoWithWorkbench("terminal-lead");
   try {
-    // Without TERMCANVAS_TERMINAL_ID the guard is permissive by design (see
-    // lead-guard.ts). cleanupWorkbench therefore reaches its isTermCanvasRunning
+    // Without TACIT_TERMINAL_ID the guard is permissive by design (see
+    // lead-guard.ts). cleanupWorkbench therefore reaches its isTacitRunning
     // branch and proceeds; the workbench has no dispatches, so the only
     // possible side-effect is log output. We assert the guard does not throw.
     withTerminalId(undefined, () => {

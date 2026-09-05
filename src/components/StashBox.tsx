@@ -130,14 +130,14 @@ export function StashBox() {
   useEffect(() => {
     const onDragStart = () => setDragActive(true);
     const onDragEnd = () => setDragActive(false);
-    window.addEventListener("termcanvas:terminal-drag-active", onDragStart);
-    window.addEventListener("termcanvas:terminal-drag-end", onDragEnd);
+    window.addEventListener("tacit:terminal-drag-active", onDragStart);
+    window.addEventListener("tacit:terminal-drag-end", onDragEnd);
     return () => {
       window.removeEventListener(
-        "termcanvas:terminal-drag-active",
+        "tacit:terminal-drag-active",
         onDragStart,
       );
-      window.removeEventListener("termcanvas:terminal-drag-end", onDragEnd);
+      window.removeEventListener("tacit:terminal-drag-end", onDragEnd);
     };
   }, []);
 

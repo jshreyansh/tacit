@@ -2,7 +2,7 @@
 
 /**
  * Spike: prove that a Hydra worker can be dispatched as a plain subprocess
- * (claude -p / codex exec) instead of a termcanvas PTY-attached terminal —
+ * (claude -p / codex exec) instead of a tacit PTY-attached terminal —
  * WITHOUT changing any Lead-facing API or worker deliverable contract.
  *
  * What stays the same (invariant):

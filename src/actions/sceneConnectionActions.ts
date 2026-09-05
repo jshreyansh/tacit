@@ -267,7 +267,7 @@ async function notifyIfTerminalBrowserWired(
 
   const card = useBrowserCardStore.getState().cards[browserEndpoint.id];
   const shownAs = card?.title || card?.url || "a page";
-  const result = await window.termcanvas.browser.notifyWired(
+  const result = await window.tacit.browser.notifyWired(
     {
       terminalId: terminal.id,
       ptyId,

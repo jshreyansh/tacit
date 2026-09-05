@@ -157,7 +157,7 @@ export function RightPanel() {
   const repoScopedTabs = activeTab === "diff" || activeTab === "git" || activeTab === "memory";
 
   useEffect(() => {
-    if (!effectiveWorktreePath || !window.termcanvas) {
+    if (!effectiveWorktreePath || !window.tacit) {
       setDirectoryIsGitRepo(false);
       setChildRepos([]);
       setSelectedChildRepoPath(null);
@@ -183,8 +183,8 @@ export function RightPanel() {
     }
 
     Promise.all([
-      window.termcanvas.git.isRepo(effectiveWorktreePath),
-      window.termcanvas.project.listChildGitRepos(effectiveWorktreePath),
+      window.tacit.git.isRepo(effectiveWorktreePath),
+      window.tacit.project.listChildGitRepos(effectiveWorktreePath),
     ])
       .then(([isGitRepo, repos]) => {
         if (cancelled) return;
@@ -352,7 +352,7 @@ export function RightPanel() {
 
     setHydraEnabling(true);
     try {
-      const result = await window.termcanvas.project.enableHydra(focusedProject.path);
+      const result = await window.tacit.project.enableHydra(focusedProject.path);
       if (!result.ok) {
         notify("error", t.hydra_enable_failed(result.error));
         return;

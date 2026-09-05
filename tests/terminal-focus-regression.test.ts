@@ -76,7 +76,7 @@ function installWindowMock() {
   const target = new EventTarget();
   const previousWindow = (globalThis as { window?: Window }).window;
   const mockWindow = Object.assign(target, {
-    termcanvas: {
+    tacit: {
       app: { platform: "darwin" as const },
     },
   }) as Window;
@@ -133,11 +133,11 @@ function attachTerminalFocusHarness(
     }
   };
 
-  window.addEventListener("termcanvas:focus-xterm", onFocusXterm);
+  window.addEventListener("tacit:focus-xterm", onFocusXterm);
 
   return () => {
     unsubscribe();
-    window.removeEventListener("termcanvas:focus-xterm", onFocusXterm);
+    window.removeEventListener("tacit:focus-xterm", onFocusXterm);
     cancelScheduledTerminalFocus(pending, cancelFrame);
   };
 }

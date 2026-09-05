@@ -52,7 +52,7 @@ function cliSymlinkPlugin(outfile: string): EsbuildPlugin {
 function buildCli(): Plugin {
   const outfile = "dist-cli/tacit.js";
   const opts = {
-    entryPoints: ["cli/termcanvas.ts"],
+    entryPoints: ["cli/tacit.ts"],
     outfile,
     format: "esm" as const,
     platform: "node" as const,
@@ -123,21 +123,21 @@ function buildBrowse(): Plugin {
 }
 
 /**
- * The termcanvas-bridge MCP server. It has its own `pnpm build` in
- * termcanvas-bridge/build.ts, but nothing invoked it from the root build, so a
+ * The tacit-bridge MCP server. It has its own `pnpm build` in
+ * tacit-bridge/build.ts, but nothing invoked it from the root build, so a
  * clean checkout packaged an app whose bridge binary didn't exist — and
- * main.ts's getTermcanvasBridgeCliPath() fails soft, leaving every Claude
- * terminal with no termcanvas-bridge tools and no error. Building it here, in
+ * main.ts's getTacitBridgeCliPath() fails soft, leaving every Claude
+ * terminal with no tacit-bridge tools and no error. Building it here, in
  * the same place as the CLIs, means `pnpm build` alone is enough for
  * electron-builder to find everything it copies.
  *
  * No cliSymlinkPlugin: this is never on PATH, it's spawned by absolute path.
- * Nothing external either — see the note in termcanvas-bridge/build.ts.
+ * Nothing external either — see the note in tacit-bridge/build.ts.
  */
-function buildTermcanvasBridge(): Plugin {
+function buildTacitBridge(): Plugin {
   const opts = {
-    entryPoints: ["termcanvas-bridge/src/cli.ts"],
-    outfile: "termcanvas-bridge/dist/termcanvas-bridge.js",
+    entryPoints: ["tacit-bridge/src/cli.ts"],
+    outfile: "tacit-bridge/dist/tacit-bridge.js",
     format: "esm" as const,
     platform: "node" as const,
     bundle: true,
@@ -145,7 +145,7 @@ function buildTermcanvasBridge(): Plugin {
     banner: { js: "#!/usr/bin/env node" },
   };
   return {
-    name: "build-termcanvas-bridge",
+    name: "build-tacit-bridge",
     async buildStart() {
       if (this.meta.watchMode) {
         const ctx = await esbuildCtx(opts);
@@ -200,7 +200,7 @@ export default defineConfig({
     buildCli(),
     buildHydra(),
     buildBrowse(),
-    buildTermcanvasBridge(),
+    buildTacitBridge(),
     buildAgentShims(),
     electron([
       {

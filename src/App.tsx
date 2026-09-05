@@ -114,7 +114,7 @@ import { performContextualSelectAll } from "./utils/contextualSelectAll";
 // root div is one of those layers: Toolbar/LeftPanel/RightPanel/CanvasRoot
 // already tile the full viewport with their own opaque backgrounds, so
 // dropping this one is safe on mac and never visible on other platforms.
-const IS_MAC = (window.termcanvas?.app.platform ?? "darwin") === "darwin";
+const IS_MAC = (window.tacit?.app.platform ?? "darwin") === "darwin";
 const browserController = new BrowserController();
 browserController.register(legacyWebviewBrowserAdapter);
 browserController.register(connectedTabBrowserAdapter);
@@ -144,7 +144,7 @@ function useWorktreeWatcher() {
   const projectCount = useProjectStore((s) => s.projects.length);
 
   useEffect(() => {
-    if (!window.termcanvas || projectCount === 0) return;
+    if (!window.tacit || projectCount === 0) return;
 
     const inFlight = new Set<string>();
     const pending = new Set<string>();
@@ -161,7 +161,7 @@ function useWorktreeWatcher() {
       const seq = (latestSeqByPath.get(projectPath) ?? 0) + 1;
       latestSeqByPath.set(projectPath, seq);
 
-      void window.termcanvas.project
+      void window.tacit.project
         .rescanWorktrees(projectPath)
         .then((worktrees) => {
           if (disposed) return;
@@ -206,14 +206,14 @@ function useWorktreeWatcher() {
 
 function useStatePersistence() {
   useEffect(() => {
-    if (!window.termcanvas) return;
-    window.termcanvas.state
+    if (!window.tacit) return;
+    window.tacit.state
       .load()
       .then((saved) => {
         const restored = readWorkspaceSnapshot(saved);
         if (!restored) return;
         if (isSkipRestoreSnapshot(restored)) {
-          window.termcanvas.state.save({ skipRestore: false });
+          window.tacit.state.save({ skipRestore: false });
           return;
         }
         restoreWorkspaceSnapshot(restored);
@@ -228,12 +228,12 @@ function useStatePersistence() {
 
 function useAutoSave() {
   useEffect(() => {
-    if (!window.termcanvas) return;
+    if (!window.tacit) return;
 
     const saveSnapshot = async () => {
       const startedAt = performance.now();
       try {
-        await window.termcanvas.state.save(snapshotState());
+        await window.tacit.state.save(snapshotState());
         useWorkspaceStore.setState((state) => ({
           ...state,
           lastSavedAt: Date.now(),
@@ -264,7 +264,7 @@ function useAutoSave() {
     // even on a clean quit — see requestFinalFlushAndWait in
     // electron/main.ts's "will-quit" handler, which pushes this event and
     // waits (with a timeout) for the ack below before destroying any PTYs.
-    const unsubscribeFlush = window.termcanvas.state.onFlushBeforeQuit(() => {
+    const unsubscribeFlush = window.tacit.state.onFlushBeforeQuit(() => {
       scheduler.cancelPendingSave();
       // Uses the refreshing variant (not plain saveSnapshot/snapshotState)
       // per its own doc comment: close-time saves should re-read live
@@ -272,7 +272,7 @@ function useAutoSave() {
       // permission-mode change from moments ago is actually captured, not
       // just whatever was already cached at the last debounced autosave.
       snapshotStateWithRefresh()
-        .then((snap) => window.termcanvas.state.save(snap))
+        .then((snap) => window.tacit.state.save(snap))
         .then(() => {
           useWorkspaceStore.setState((state) => ({
             ...state,
@@ -282,7 +282,7 @@ function useAutoSave() {
         .catch((err) => {
           console.error("[useAutoSave] failed to flush before quit:", err);
         })
-        .finally(() => window.termcanvas.state.notifyFlushComplete());
+        .finally(() => window.tacit.state.notifyFlushComplete());
     });
 
     return () => {
@@ -316,9 +316,9 @@ function useWorkspaceOpen() {
         );
       }
     };
-    window.addEventListener("termcanvas:open-workspace", handler);
+    window.addEventListener("tacit:open-workspace", handler);
     return () =>
-      window.removeEventListener("termcanvas:open-workspace", handler);
+      window.removeEventListener("tacit:open-workspace", handler);
   }, []);
 }
 
@@ -364,11 +364,11 @@ export function App() {
     void hydrateApiKey();
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.sessions) return;
+    if (!window.tacit?.sessions) return;
     return initSessionStoreIPC();
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onBridgeCall) return;
+    if (!window.tacit?.browser?.onBridgeCall) return;
     return initBridgeActivityIPC();
   }, []);
   // What browser data is on disk, against the profiles this workspace knows.
@@ -377,7 +377,7 @@ export function App() {
   // workspace only finishes loading after mount. Nothing is acted on: these
   // folders hold real sign-ins, so the manager suggests and the user decides.
   useEffect(() => {
-    if (!window.termcanvas?.browserIdentity?.listOrphanPartitions) return;
+    if (!window.tacit?.browserIdentity?.listOrphanPartitions) return;
     const refresh = () => void useIdentityManagerStore.getState().refreshOrphans();
     refresh();
     let known = Object.keys(useIdentityStore.getState().identities).sort().join();
@@ -389,12 +389,12 @@ export function App() {
     });
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onCanvasBridgeEvent) return;
+    if (!window.tacit?.browser?.onCanvasBridgeEvent) return;
     return initCanvasBridgeEventIPC();
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onExternalAuthRedirect) return;
-    return window.termcanvas.browser.onExternalAuthRedirect(({ url }) => {
+    if (!window.tacit?.browser?.onExternalAuthRedirect) return;
+    return window.tacit.browser.onExternalAuthRedirect(({ url }) => {
       let host = url;
       try {
         host = new URL(url).hostname;
@@ -410,8 +410,8 @@ export function App() {
     });
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onPopupRequested) return;
-    return window.termcanvas.browser.onPopupRequested(
+    if (!window.tacit?.browser?.onPopupRequested) return;
+    return window.tacit.browser.onPopupRequested(
       ({ url, profileId, sourceWebContentsId }) => {
         const sourceCardId =
           findBrowserCardByWebContentsId(sourceWebContentsId) ?? null;
@@ -432,8 +432,8 @@ export function App() {
   // recognises the four chords and sends the name back; matching it to a tile
   // is the same webContents-id lookup the popup path uses.
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onGuestShortcut) return;
-    return window.termcanvas.browser.onGuestShortcut(
+    if (!window.tacit?.browser?.onGuestShortcut) return;
+    return window.tacit.browser.onGuestShortcut(
       ({ shortcut, sourceWebContentsId }) => {
         const cardId = findBrowserCardByWebContentsId(sourceWebContentsId);
         if (!cardId) return;
@@ -449,8 +449,8 @@ export function App() {
   // whole interaction — nothing reads the response back.
   useEffect(() => installReplyDelivery(), []);
   useEffect(() => {
-    if (!window.termcanvas?.browser?.onDownloadEvent) return;
-    return window.termcanvas.browser.onDownloadEvent((event) => {
+    if (!window.tacit?.browser?.onDownloadEvent) return;
+    return window.tacit.browser.onDownloadEvent((event) => {
       const notice =
         event.phase === "started"
           ? downloadStartedNotice(event.filename)
@@ -462,7 +462,7 @@ export function App() {
         const action = token
           ? {
               label: "Show in Finder",
-              run: () => { void window.termcanvas?.browser?.revealDownload?.(token); },
+              run: () => { void window.tacit?.browser?.revealDownload?.(token); },
             }
           : undefined;
         useNotificationStore.getState().notify(notice.type, notice.message, action);
@@ -491,13 +491,13 @@ export function App() {
     });
   }, []);
   useEffect(() => {
-    if (!window.termcanvas?.menu) return;
-    const removeOpenFolderListener = window.termcanvas.menu.onOpenFolder(
+    if (!window.tacit?.menu) return;
+    const removeOpenFolderListener = window.tacit.menu.onOpenFolder(
       async (dirPath: string) => {
         await addProjectFromDirectoryPath(dirPath, t);
       },
     );
-    const removeSelectAllListener = window.termcanvas.menu.onSelectAll(() => {
+    const removeSelectAllListener = window.tacit.menu.onSelectAll(() => {
       performContextualSelectAll(
         document.activeElement,
         selectFocusedTerminalBuffer,
@@ -678,8 +678,8 @@ export function App() {
         return true;
       },
 
-      // Backs the termcanvas-bridge MCP server's gating check
-      // (termcanvas-bridge/src/mcp-server.ts): a terminal's browser tools stay inert until this
+      // Backs the tacit-bridge MCP server's gating check
+      // (tacit-bridge/src/mcp-server.ts): a terminal's browser tools stay inert until this
       // resolves to a real id. "Most recently connected wins" if a terminal
       // somehow ends up wired to more than one browser tile.
       getBrowserBindingForTerminal: (terminalId: string) => {
@@ -700,10 +700,10 @@ export function App() {
         return { browserId: mostRecent?.id ?? null };
       },
 
-      // Backs the remember MCP tool (termcanvas-bridge/src/mcp-server.ts via
+      // Backs the remember MCP tool (tacit-bridge/src/mcp-server.ts via
       // electron/api-server.ts's /terminal/:id/remember route). Returns the
       // exact same worktree.path string src/components/RightPanel/
-      // MemoryContent.tsx already uses to call window.termcanvas.memory.*
+      // MemoryContent.tsx already uses to call window.tacit.memory.*
       // — not a re-derived path — so a note written for this terminal lands
       // in the same memory directory the Memory tab is already watching.
       getWorktreePathForTerminal: (terminalId: string) => {
@@ -711,7 +711,7 @@ export function App() {
         return { worktreePath: found?.worktree.path ?? null };
       },
 
-      // Backs the emit_event MCP tool (termcanvas-bridge/src/mcp-server.ts via
+      // Backs the emit_event MCP tool (tacit-bridge/src/mcp-server.ts via
       // electron/api-server.ts's /node/:kind/:id/emit route). Unlike
       // getBrowserBindingForTerminal above (which deliberately picks only
       // the most-recently-connected browser for the narrower drive tools),
@@ -749,7 +749,7 @@ export function App() {
       },
 
       // Backs the workspace-manager query tools (list_nodes/get_node_state/
-      // get_workspace_summary in termcanvas-bridge/src/mcp-server.ts via
+      // get_workspace_summary in tacit-bridge/src/mcp-server.ts via
       // electron/api-server.ts). Flat across all three node kinds — no
       // project/worktree nesting — since the PM reasons about the canvas as
       // one flat space, same as focusableNodes.ts's collector does for

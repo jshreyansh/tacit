@@ -178,7 +178,7 @@ test("generateEnhancedIndex produces full memory-graph block", async () => {
   ];
 
   const output = generateEnhancedIndex(nodes);
-  assert.ok(output.includes('<memory-graph source="termcanvas">'));
+  assert.ok(output.includes('<memory-graph source="tacit">'));
   assert.ok(output.includes("</memory-graph>"));
   assert.ok(output.includes("## References"));
   assert.ok(output.includes("project_auth.md \u2192 feedback_db.md"));

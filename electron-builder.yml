@@ -25,12 +25,12 @@ extraResources:
     filter:
       - "**/*"
   # The MCP server every Claude terminal is handed via --mcp-config. The path
-  # here must stay in step with getTermcanvasBridgeCliPath() in
+  # here must stay in step with getTacitBridgeCliPath() in
   # electron/main.ts, which looks for
-  # <resources>/termcanvas-bridge/termcanvas-bridge.js and returns null — no
+  # <resources>/tacit-bridge/tacit-bridge.js and returns null — no
   # error, no tools — when it is absent.
-  - from: termcanvas-bridge/dist
-    to: termcanvas-bridge
+  - from: tacit-bridge/dist
+    to: tacit-bridge
     filter:
       - "**/*"
   # Unpacked Chromium extension for the explicit system-browser pairing

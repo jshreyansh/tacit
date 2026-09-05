@@ -36,7 +36,7 @@ export const useIdentityManagerStore = create<IdentityManagerStore>(
     close: () => set({ open: false, renameTargetId: null }),
 
     refreshOrphans: async () => {
-      const api = window.termcanvas?.browserIdentity;
+      const api = window.tacit?.browserIdentity;
       if (!api?.listOrphanPartitions) return;
       const identityIds = Object.keys(useIdentityStore.getState().identities);
       try {
@@ -52,7 +52,7 @@ export const useIdentityManagerStore = create<IdentityManagerStore>(
       // The current profile list travels with the request: main refuses to
       // erase a partition that still belongs to a profile, and this is what
       // lets it check rather than take the id on faith.
-      const result = await window.termcanvas.browserIdentity.eraseOrphanPartition({
+      const result = await window.tacit.browserIdentity.eraseOrphanPartition({
         identityId,
         identityIds: Object.keys(useIdentityStore.getState().identities),
       });

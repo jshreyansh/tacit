@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { TERMCANVAS_DIR } from "./state-persistence";
+import { TACIT_DIR } from "./state-persistence";
 
-const SNAPSHOTS_DIR = path.join(TERMCANVAS_DIR, "snapshots");
+const SNAPSHOTS_DIR = path.join(TACIT_DIR, "snapshots");
 
 export interface SnapshotHistoryEntryMeta {
   id: string;

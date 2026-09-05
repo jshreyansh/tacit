@@ -7,7 +7,7 @@ import {
   stat,
 } from "fs/promises";
 import path from "path";
-import { TERMCANVAS_DIR } from "./state-persistence";
+import { TACIT_DIR } from "./state-persistence";
 import { getSupabase, getAuthUser, getDeviceId, isLoggedIn } from "./auth";
 import {
   buildUsageRecordHash,
@@ -28,8 +28,8 @@ import {
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
 const PREFIX = "[UsageSync]";
-const SYNC_QUEUE_FILE = path.join(TERMCANVAS_DIR, "sync-queue.jsonl");
-const BACKFILL_FLAG = path.join(TERMCANVAS_DIR, "sync-backfilled");
+const SYNC_QUEUE_FILE = path.join(TACIT_DIR, "sync-queue.jsonl");
+const BACKFILL_FLAG = path.join(TACIT_DIR, "sync-backfilled");
 const BATCH_SIZE = 500;
 const RECENT_SYNC_YIELD_EVERY = 32;
 
@@ -320,7 +320,7 @@ export async function flushSyncQueue(): Promise<void> {
 
 /**
  * One-time backfill: upload all existing local usage records to Supabase.
- * Uses ~/.termcanvas/sync-backfilled flag to avoid re-running.
+ * Uses ~/.tacit/sync-backfilled flag to avoid re-running.
  */
 export async function backfillHistory(): Promise<void> {
   if (!isLoggedIn()) return;

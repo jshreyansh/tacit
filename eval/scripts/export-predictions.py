@@ -12,7 +12,7 @@ def export(run_id: str):
     with open(result_path) as f:
         result = json.load(f)
 
-    model_name = f"termcanvas-eval-{result['config']['mode']}"
+    model_name = f"tacit-eval-{result['config']['mode']}"
     predictions = []
     for task in result["tasks"]:
         patch = task.get("model_patch", "")

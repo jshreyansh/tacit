@@ -274,10 +274,10 @@ export function ComposerBar() {
   useEffect(() => {
     const handleFocusComposer = () =>
       requestAnimationFrame(() => textareaRef.current?.focus());
-    window.addEventListener("termcanvas:focus-composer", handleFocusComposer);
+    window.addEventListener("tacit:focus-composer", handleFocusComposer);
     return () =>
       window.removeEventListener(
-        "termcanvas:focus-composer",
+        "tacit:focus-composer",
         handleFocusComposer,
       );
   }, []);
@@ -532,7 +532,7 @@ export function ComposerBar() {
     setSubmitting(true);
     setError(null);
     try {
-      const result = await window.termcanvas.composer.submit(request);
+      const result = await window.tacit.composer.submit(request);
       if (!result.ok) {
         const message = formatComposerFailure(t, targetTerminal.title, result);
         setError(message);
@@ -815,7 +815,7 @@ export function ComposerBar() {
                   );
                   if (seq !== null) {
                     event.preventDefault();
-                    window.termcanvas.terminal.input(targetTerminal.ptyId, seq);
+                    window.tacit.terminal.input(targetTerminal.ptyId, seq);
                     return;
                   }
                 }

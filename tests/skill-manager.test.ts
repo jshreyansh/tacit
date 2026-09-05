@@ -11,7 +11,7 @@ import {
   uninstallSkillLinks,
 } from "../electron/skill-manager.ts";
 
-const MANIFEST_FILE = ".termcanvas-skills.json";
+const MANIFEST_FILE = ".tacit-skills.json";
 
 function makeTempEnv(skillNames = ["hydra", "code-review", "qa"]) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skill-mgr-"));
@@ -30,7 +30,7 @@ function makeTempEnv(skillNames = ["hydra", "code-review", "qa"]) {
     path.join(scriptsDir, "memory-session-start.sh"),
     "#!/bin/bash\n",
   );
-  fs.writeFileSync(path.join(scriptsDir, "termcanvas-hook.mjs"), "// hook\n");
+  fs.writeFileSync(path.join(scriptsDir, "tacit-hook.mjs"), "// hook\n");
 
   return { dir, home, sourceDir };
 }
@@ -287,7 +287,7 @@ test("installSkillLinks creates Claude lifecycle hooks including Notification", 
   installSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
 
   const settings = readClaudeSettings(home);
-  assert.equal(settings.enabledPlugins?.["termcanvas@termcanvas"], true);
+  assert.equal(settings.enabledPlugins?.["tacit@tacit"], true);
 
   for (const event of [
     "SessionStart",
@@ -309,7 +309,7 @@ test("installSkillLinks creates Claude lifecycle hooks including Notification", 
       .flatMap((entry: { hooks?: Array<{ command?: string; async?: boolean }> }) =>
         entry.hooks ?? [],
       )
-      .filter((hook) => hook.command?.includes("termcanvas-hook.mjs"));
+      .filter((hook) => hook.command?.includes("tacit-hook.mjs"));
 
     assert.equal(
       lifecycleHooks.length,
@@ -364,7 +364,7 @@ test("uninstall removes skills tracked in manifest even if missing from current 
   assert.equal(readManifest(home, "claude"), null);
 });
 
-test("uninstallSkillLinks removes termcanvas entries from codex hooks.json", () => {
+test("uninstallSkillLinks removes tacit entries from codex hooks.json", () => {
   const { home, sourceDir } = makeTempEnv();
   installSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
 
@@ -373,7 +373,7 @@ test("uninstallSkillLinks removes termcanvas entries from codex hooks.json", () 
 
   uninstallSkillLinks({ home, sourceDir });
 
-  // hooks.json should still exist but with no termcanvas entries
+  // hooks.json should still exist but with no tacit entries
   const hooks = JSON.parse(fs.readFileSync(hooksFile, "utf-8"));
   for (const event of [
     "PreToolUse",
@@ -386,8 +386,8 @@ test("uninstallSkillLinks removes termcanvas entries from codex hooks.json", () 
     for (const entry of entries) {
       for (const h of entry.hooks ?? []) {
         assert.ok(
-          !h.command.includes("termcanvas-hook.mjs"),
-          `${event} still has termcanvas hook after uninstall`,
+          !h.command.includes("tacit-hook.mjs"),
+          `${event} still has tacit hook after uninstall`,
         );
       }
     }
@@ -559,7 +559,7 @@ test("installSkillLinks removes legacy Computer Use MCP registrations", () => {
     path.join(home, ".claude.json"),
     JSON.stringify({
       mcpServers: {
-        "termcanvas-computer-use": {
+        "tacit-computer-use": {
           type: "stdio",
           command: "node",
           args: ["/stale/mcp-computer-use-server/index.js"],
@@ -579,7 +579,7 @@ test("installSkillLinks removes legacy Computer Use MCP registrations", () => {
       "[mcp_servers.computer-use]",
       'command = "node"',
       'args = ["/stale/mcp-computer-use-server/index.js"]',
-      'env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
+      'env = { TACIT_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
       "",
       "[mcp_servers.mempalace]",
       'command = "python3"',
@@ -592,7 +592,7 @@ test("installSkillLinks removes legacy Computer Use MCP registrations", () => {
   installSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
 
   const claude = readClaudeGlobalConfig(home);
-  assert.equal("termcanvas-computer-use" in claude.mcpServers, false);
+  assert.equal("tacit-computer-use" in claude.mcpServers, false);
   assert.deepEqual(claude.mcpServers.mempalace, {
     type: "stdio",
     command: "python3",
@@ -600,7 +600,7 @@ test("installSkillLinks removes legacy Computer Use MCP registrations", () => {
   });
   const codexConfig = fs.readFileSync(path.join(codexDir, "config.toml"), "utf-8");
   assert.doesNotMatch(codexConfig, /\[mcp_servers\.computer-use\]/);
-  assert.doesNotMatch(codexConfig, /TERMCANVAS_COMPUTER_USE_/);
+  assert.doesNotMatch(codexConfig, /TACIT_COMPUTER_USE_/);
   assert.doesNotMatch(codexConfig, /mcp-computer-use-server/);
   assert.match(codexConfig, /\[mcp_servers\.mempalace\]/);
 });
@@ -652,7 +652,7 @@ test("installSkillLinks preserves non-Tacit Codex computer-use MCP table", () =>
     [
       "[mcp_servers.computer-use]",
       'command = "node"',
-      'args = ["/custom/non-termcanvas-computer-use/index.js"]',
+      'args = ["/custom/non-tacit-computer-use/index.js"]',
       'env = { CUSTOM_COMPUTER_USE = "1" }',
       "",
       "[mcp_servers.mempalace]",
@@ -667,11 +667,11 @@ test("installSkillLinks preserves non-Tacit Codex computer-use MCP table", () =>
 
   const codexConfig = fs.readFileSync(path.join(codexDir, "config.toml"), "utf-8");
   assert.match(codexConfig, /\[mcp_servers\.computer-use\]/);
-  assert.match(codexConfig, /\/custom\/non-termcanvas-computer-use\/index\.js/);
+  assert.match(codexConfig, /\/custom\/non-tacit-computer-use\/index\.js/);
   assert.match(codexConfig, /CUSTOM_COMPUTER_USE/);
   assert.match(codexConfig, /\[mcp_servers\.mempalace\]/);
   assert.doesNotMatch(codexConfig, /mcp-computer-use-server/);
-  assert.doesNotMatch(codexConfig, /TERMCANVAS_COMPUTER_USE_/);
+  assert.doesNotMatch(codexConfig, /TACIT_COMPUTER_USE_/);
 });
 
 test("installSkillLinks removes legacy Codex computer-use dotted keys", () => {
@@ -686,7 +686,7 @@ test("installSkillLinks removes legacy Codex computer-use dotted keys", () => {
       'model = "gpt-5"',
       `mcp_servers.computer-use.command = "node"`,
       `mcp_servers.computer-use.args = ["${stalePath}"]`,
-      'mcp_servers.computer-use.env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
+      'mcp_servers.computer-use.env = { TACIT_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
       "",
       "[mcp_servers.mempalace]",
       'command = "python3"',
@@ -701,7 +701,7 @@ test("installSkillLinks removes legacy Codex computer-use dotted keys", () => {
   const codexConfig = fs.readFileSync(path.join(codexDir, "config.toml"), "utf-8");
   assert.doesNotMatch(codexConfig, /mcp_servers\.computer-use\./);
   assert.doesNotMatch(codexConfig, /mcp-computer-use-server/);
-  assert.doesNotMatch(codexConfig, /TERMCANVAS_COMPUTER_USE_/);
+  assert.doesNotMatch(codexConfig, /TACIT_COMPUTER_USE_/);
   assert.match(codexConfig, /\[mcp_servers\.mempalace\]/);
 });
 
@@ -714,7 +714,7 @@ test("installSkillLinks preserves non-Tacit Codex computer-use dotted keys", () 
     [
       'model = "gpt-5"',
       `mcp_servers.computer-use.command = "node"`,
-      'mcp_servers.computer-use.args = ["/custom/non-termcanvas-computer-use/index.js"]',
+      'mcp_servers.computer-use.args = ["/custom/non-tacit-computer-use/index.js"]',
       'mcp_servers.computer-use.env = { CUSTOM_COMPUTER_USE = "1" }',
       "",
     ].join("\n"),
@@ -725,10 +725,10 @@ test("installSkillLinks preserves non-Tacit Codex computer-use dotted keys", () 
 
   const codexConfig = fs.readFileSync(path.join(codexDir, "config.toml"), "utf-8");
   assert.match(codexConfig, /mcp_servers\.computer-use\.command = "node"/);
-  assert.match(codexConfig, /\/custom\/non-termcanvas-computer-use\/index\.js/);
+  assert.match(codexConfig, /\/custom\/non-tacit-computer-use\/index\.js/);
   assert.match(codexConfig, /CUSTOM_COMPUTER_USE/);
   assert.doesNotMatch(codexConfig, /mcp-computer-use-server/);
-  assert.doesNotMatch(codexConfig, /TERMCANVAS_COMPUTER_USE_/);
+  assert.doesNotMatch(codexConfig, /TACIT_COMPUTER_USE_/);
 });
 
 test("uninstallSkillLinks removes global Computer Use MCP registration", () => {
@@ -738,7 +738,7 @@ test("uninstallSkillLinks removes global Computer Use MCP registration", () => {
     path.join(home, ".claude.json"),
     JSON.stringify({
       mcpServers: {
-        "termcanvas-computer-use": {
+        "tacit-computer-use": {
           type: "stdio",
           command: "node",
           args: ["/stale/mcp-computer-use-server/index.js"],
@@ -755,7 +755,7 @@ test("uninstallSkillLinks removes global Computer Use MCP registration", () => {
       "[mcp_servers.computer-use]",
       'command = "node"',
       'args = ["/stale/mcp-computer-use-server/index.js"]',
-      'env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
+      'env = { TACIT_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
       "",
     ].join("\n"),
     "utf-8",
@@ -791,14 +791,14 @@ test("installSkillLinks heals legacy orphan computer-use keys in codex config.to
     "[features]",
     "apply_patch = true",
     `args = ["${stalePath}"]`,
-    'env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/old/state.json", TERMCANVAS_PORT_FILE = "/old/port" }',
+    'env = { TACIT_COMPUTER_USE_STATE_FILE = "/old/state.json", TACIT_PORT_FILE = "/old/port" }',
     `args = ["${stalePath}"]`,
-    'env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/older/state.json" }',
+    'env = { TACIT_COMPUTER_USE_STATE_FILE = "/older/state.json" }',
     "",
     "[mcp_servers.computer-use]",
     'command = "node"',
     `args = ["${stalePath}"]`,
-    'env = { TERMCANVAS_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
+    'env = { TACIT_COMPUTER_USE_STATE_FILE = "/old/state.json" }',
     "",
   ].join("\n");
   fs.writeFileSync(path.join(codexDir, "config.toml"), polluted);
@@ -893,8 +893,8 @@ test("installSkillLinks creates codex hooks.json with all 5 events", () => {
     assert.ok(hooks.hooks[event], `missing hook event: ${event}`);
     assert.equal(hooks.hooks[event].length, 1);
     assert.ok(
-      hooks.hooks[event][0].hooks[0].command.includes("termcanvas-hook.mjs"),
-      `${event} hook command missing termcanvas-hook.mjs`,
+      hooks.hooks[event][0].hooks[0].command.includes("tacit-hook.mjs"),
+      `${event} hook command missing tacit-hook.mjs`,
     );
   }
 });

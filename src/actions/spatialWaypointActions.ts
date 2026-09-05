@@ -44,9 +44,9 @@ export interface WaypointEventDetail {
   projectId: string;
 }
 
-export const WAYPOINT_SAVED_EVENT = "termcanvas:waypoint-saved";
-export const WAYPOINT_RECALLED_EVENT = "termcanvas:waypoint-recalled";
-export const WAYPOINT_NOOP_EVENT = "termcanvas:waypoint-noop";
+export const WAYPOINT_SAVED_EVENT = "tacit:waypoint-saved";
+export const WAYPOINT_RECALLED_EVENT = "tacit:waypoint-recalled";
+export const WAYPOINT_NOOP_EVENT = "tacit:waypoint-noop";
 
 function emitWaypointEvent(
   type: typeof WAYPOINT_SAVED_EVENT | typeof WAYPOINT_RECALLED_EVENT,

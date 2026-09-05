@@ -90,13 +90,13 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
 
     set({ loading: true, date: target, pendingDate: null });
 
-    if (!window.termcanvas?.usage) {
+    if (!window.tacit?.usage) {
       set({ loading: false });
       return;
     }
 
     try {
-      const summary = await window.termcanvas.usage.query(target);
+      const summary = await window.tacit.usage.query(target);
       const hasData = summary.sessions > 0 || summary.totalCost > 0;
       set((state) => ({
         summary: state.date === target ? summary : state.summary,
@@ -125,14 +125,14 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
       return;
     }
 
-    if (!window.termcanvas?.usage?.queryRange) {
+    if (!window.tacit?.usage?.queryRange) {
       set({ rangeSummary: null });
       return;
     }
 
     set({ rangeLoading: true });
     try {
-      const rangeSummary = await window.termcanvas.usage.queryRange(
+      const rangeSummary = await window.tacit.usage.queryRange(
         startDate,
         endDate,
       );
@@ -161,7 +161,7 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
       return;
     }
 
-    if (!window.termcanvas?.usage?.heatmap) {
+    if (!window.tacit?.usage?.heatmap) {
       set({ heatmapError: true });
       return;
     }
@@ -169,7 +169,7 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
     set({ heatmapLoading: true, heatmapError: false });
 
     try {
-      const data = await window.termcanvas.usage.heatmap();
+      const data = await window.tacit.usage.heatmap();
       set({ heatmapData: data, heatmapLoading: false, heatmapFetchedAt: Date.now() });
     } catch {
       set({ heatmapLoading: false, heatmapError: true });
@@ -192,12 +192,12 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
     ) {
       return;
     }
-    if (!window.termcanvas?.usage?.queryCloud) {
+    if (!window.tacit?.usage?.queryCloud) {
       set({ cloudSummary: null });
       return;
     }
     try {
-      const data = await window.termcanvas.usage.queryCloud(target);
+      const data = await window.tacit.usage.queryCloud(target);
       set({ cloudSummary: data ?? null, cloudSummaryFetchedAt: Date.now() });
     } catch {
       set({ cloudSummary: null });
@@ -212,12 +212,12 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
     ) {
       return;
     }
-    if (!window.termcanvas?.usage?.queryRangeCloud) {
+    if (!window.tacit?.usage?.queryRangeCloud) {
       set({ cloudRangeSummary: null });
       return;
     }
     try {
-      const data = await window.termcanvas.usage.queryRangeCloud(
+      const data = await window.tacit.usage.queryRangeCloud(
         startDate,
         endDate,
       );
@@ -237,12 +237,12 @@ export const useUsageStore = create<UsageStore>((set, get) => ({
     ) {
       return;
     }
-    if (!window.termcanvas?.usage?.heatmapCloud) {
+    if (!window.tacit?.usage?.heatmapCloud) {
       set({ cloudHeatmapData: null });
       return;
     }
     try {
-      const data = await window.termcanvas.usage.heatmapCloud();
+      const data = await window.tacit.usage.heatmapCloud();
       set({ cloudHeatmapData: data ?? null, cloudHeatmapFetchedAt: Date.now() });
     } catch {
       set({ cloudHeatmapData: null });

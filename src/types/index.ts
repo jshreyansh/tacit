@@ -560,7 +560,7 @@ export type AgentStreamEvent =
       num_turns?: number;
     };
 
-export interface TermCanvasAPI {
+export interface TacitAPI {
   terminal: {
     create: (options: {
       cwd: string;
@@ -1393,6 +1393,6 @@ export interface UpdateEventInfo {
 
 declare global {
   interface Window {
-    termcanvas: TermCanvasAPI;
+    tacit: TacitAPI;
   }
 }

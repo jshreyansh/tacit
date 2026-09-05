@@ -1,7 +1,7 @@
 {
   "name": "agent",
   "version": "0.1.0",
-  "description": "TermCanvas agent runtime — orchestration-only agent with BYOK LLM",
+  "description": "Tacit agent runtime — orchestration-only agent with BYOK LLM",
   "type": "module",
   "scripts": {
     "build": "node --experimental-strip-types build.ts",

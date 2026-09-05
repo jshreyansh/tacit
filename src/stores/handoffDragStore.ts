@@ -89,7 +89,7 @@ function deliverToTerminal(terminalId: string, text: string) {
   if (ptyId === null) return;
   // Match the source's line endings — never silently append a newline.
   // The composer/PTY-write path elsewhere does the same.
-  window.termcanvas.terminal.input(ptyId, text);
+  window.tacit.terminal.input(ptyId, text);
 
   const projects = useProjectStore.getState().projects;
   const found = findTerminalById(projects, terminalId);
@@ -103,7 +103,7 @@ function deliverToComposer(text: string) {
   // before sending. Then move focus into the composer so the next keystroke
   // lands in the input, not the canvas.
   useComposerStore.getState().setDraft(text);
-  window.dispatchEvent(new CustomEvent("termcanvas:focus-composer"));
+  window.dispatchEvent(new CustomEvent("tacit:focus-composer"));
 }
 
 const DRAG_THRESHOLD_PX = 4;

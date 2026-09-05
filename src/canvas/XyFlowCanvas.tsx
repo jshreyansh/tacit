@@ -99,7 +99,7 @@ const CONTEXT_MENU_TERMINAL_TYPES: { label: string; type: TerminalType }[] = [
 // Canvas opacity only does anything on mac, where the window is created
 // transparent (electron/main.ts createWindow). Elsewhere the window is
 // opaque, so applying alpha here would just fade to black.
-const IS_MAC = (window.termcanvas?.app.platform ?? "darwin") === "darwin";
+const IS_MAC = (window.tacit?.app.platform ?? "darwin") === "darwin";
 
 function normalizeWheelDelta(event: {
   deltaMode: number;
@@ -761,7 +761,7 @@ function XyFlowCanvasInner() {
       }
 
       const file = files[0];
-      const dirPath = window.termcanvas.fs.getFilePath(file);
+      const dirPath = window.tacit.fs.getFilePath(file);
       if (!dirPath) {
         return;
       }

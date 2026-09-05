@@ -2,14 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parseJsonOrDie,
-  buildTermcanvasArgs,
+  buildTacitArgs,
   buildTerminalCreateArgs,
   buildTelemetryEventsArgs,
   buildTelemetryTerminalArgs,
   buildTelemetryWorkflowArgs,
-  getTermCanvasPortFile,
-  isTermCanvasRunning,
-} from "../src/termcanvas.ts";
+  getTacitPortFile,
+  isTacitRunning,
+} from "../src/tacit.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,16 +25,16 @@ test("parseJsonOrDie throws on invalid JSON", () => {
     (error: unknown) => {
       assert.ok(error instanceof Error);
       assert.match(error.message, /Failed to parse/);
-      assert.equal((error as Error & { errorCode?: string }).errorCode, "TERMCANVAS_INVALID_JSON");
-      assert.equal((error as Error & { stage?: string }).stage, "termcanvas.parse_json");
+      assert.equal((error as Error & { errorCode?: string }).errorCode, "TACIT_INVALID_JSON");
+      assert.equal((error as Error & { stage?: string }).stage, "tacit.parse_json");
       assert.deepStrictEqual((error as Error & { ids?: Record<string, string> }).ids, {});
       return true;
     },
   );
 });
 
-test("buildTermcanvasArgs builds correct args", () => {
-  const args = buildTermcanvasArgs("terminal", "status", ["tc-001"]);
+test("buildTacitArgs builds correct args", () => {
+  const args = buildTacitArgs("terminal", "status", ["tc-001"]);
   assert.deepStrictEqual(args, ["terminal", "status", "tc-001", "--json"]);
 });
 
@@ -147,30 +147,30 @@ test("buildTelemetryEventsArgs includes optional cursor", () => {
   );
 });
 
-test("getTermCanvasPortFile respects TERMCANVAS_INSTANCE and TERMCANVAS_PORT_FILE", () => {
+test("getTacitPortFile respects TACIT_INSTANCE and TACIT_PORT_FILE", () => {
   assert.equal(
-    getTermCanvasPortFile({ TERMCANVAS_INSTANCE: "dev" }),
-    path.join(os.homedir(), ".termcanvas-dev", "port"),
+    getTacitPortFile({ TACIT_INSTANCE: "dev" }),
+    path.join(os.homedir(), ".tacit-dev", "port"),
   );
   assert.equal(
-    getTermCanvasPortFile({ TERMCANVAS_PORT_FILE: "/tmp/termcanvas-port" }),
-    "/tmp/termcanvas-port",
+    getTacitPortFile({ TACIT_PORT_FILE: "/tmp/tacit-port" }),
+    "/tmp/tacit-port",
   );
 });
 
-test("isTermCanvasRunning can target an explicit port file", () => {
+test("isTacitRunning can target an explicit port file", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hydra-port-file-"));
   const portFile = path.join(dir, "port");
   fs.writeFileSync(portFile, "12345", "utf-8");
 
   try {
     assert.equal(
-      isTermCanvasRunning({ TERMCANVAS_PORT_FILE: portFile }),
+      isTacitRunning({ TACIT_PORT_FILE: portFile }),
       true,
     );
     assert.equal(
-      isTermCanvasRunning({
-        TERMCANVAS_PORT_FILE: path.join(dir, "missing-port"),
+      isTacitRunning({
+        TACIT_PORT_FILE: path.join(dir, "missing-port"),
       }),
       false,
     );

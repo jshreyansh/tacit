@@ -76,7 +76,7 @@ export function requestSummary(
 
   if (!SUMMARY_ELIGIBLE_TYPES.has(liveTerminal.type)) return;
   if (!liveTerminal.sessionId) return;
-  if (!window.termcanvas?.summary) return;
+  if (!window.tacit?.summary) return;
   if (useSummaryFlightStore.getState().ids.has(liveTerminal.id)) return;
 
   addInFlight(liveTerminal.id);
@@ -88,7 +88,7 @@ export function requestSummary(
   const locale = useLocaleStore.getState().locale;
   const requestedSessionId = liveTerminal.sessionId;
 
-  window.termcanvas.summary
+  window.tacit.summary
     .generate({
       terminalId: liveTerminal.id,
       sessionId: liveTerminal.sessionId,
@@ -164,7 +164,7 @@ export function onTerminalTurnCompleted(terminalId: string): void {
 
   const timer = setTimeout(() => {
     turnCompletedTimers.delete(terminalId);
-    if (!window.termcanvas?.summary) return;
+    if (!window.tacit?.summary) return;
 
     const { projects } = useProjectStore.getState();
     const { summaryCli, summaryEnabled } = usePreferencesStore.getState();
@@ -205,7 +205,7 @@ export function startAutoSummaryWatcher(): () => void {
 
   const tick = () => {
     if (disposed) return;
-    if (!window.termcanvas?.summary) return;
+    if (!window.tacit?.summary) return;
 
     const { projects } = useProjectStore.getState();
     const { summaryCli, summaryEnabled } = usePreferencesStore.getState();

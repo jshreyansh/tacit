@@ -99,7 +99,7 @@ export const useAgentBubbleStore = create<AgentBubbleStore>((set, get) => ({
 
   deleteSession: (id) => {
     const state = get();
-    window.termcanvas.agent.delete(id);
+    window.tacit.agent.delete(id);
     if (state.sessions.length <= 1) {
       const fresh = createSession();
       set({ sessions: [fresh], activeSessionId: fresh.id, messages: [] });
@@ -249,8 +249,8 @@ export const useAgentBubbleStore = create<AgentBubbleStore>((set, get) => ({
 }));
 
 
-if (typeof window !== "undefined" && window.termcanvas?.agent) {
-  window.termcanvas.agent.onEvent((sessionId, rawEvent) => {
+if (typeof window !== "undefined" && window.tacit?.agent) {
+  window.tacit.agent.onEvent((sessionId, rawEvent) => {
     const event = rawEvent as AgentStreamEvent;
     useAgentBubbleStore.getState().handleAgentEvent(sessionId, event);
   });

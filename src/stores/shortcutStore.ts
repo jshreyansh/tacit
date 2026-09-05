@@ -81,13 +81,13 @@ const ALT_DEFAULT_SHORTCUTS: ShortcutMap = {
 
 export const DEFAULT_SHORTCUTS: ShortcutMap = { ...LEGACY_DEFAULT_SHORTCUTS };
 
-const STORAGE_KEY = "termcanvas-shortcuts";
+const STORAGE_KEY = "tacit-shortcuts";
 
 export type ShortcutPlatform = "darwin" | "win32" | "linux";
 
 function getShortcutPlatform(): ShortcutPlatform {
-  if (typeof window !== "undefined" && window.termcanvas?.app.platform) {
-    return window.termcanvas.app.platform;
+  if (typeof window !== "undefined" && window.tacit?.app.platform) {
+    return window.tacit.app.platform;
   }
   if (typeof process !== "undefined") {
     const platform = process.platform;

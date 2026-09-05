@@ -3,9 +3,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  getTermCanvasDataDir,
-  type TermCanvasInstance,
-} from "../shared/termcanvas-instance";
+  getTacitDataDir,
+  type TacitInstance,
+} from "../shared/tacit-instance";
 
 export interface PtyLaunchOptions {
   cwd: string;
@@ -31,7 +31,7 @@ function applyThemeHints(
 ): void {
   if (!theme) return;
 
-  env.TERMCANVAS_THEME = theme;
+  env.TACIT_THEME = theme;
   env.COLORFGBG = theme === "dark" ? "15;0" : "0;15";
 }
 
@@ -58,12 +58,12 @@ const LOGIN_SHELL_ENV_BLOCKED_PREFIXES = [
   "P9K_",
 ] as const;
 
-const TERMCANVAS_RUNTIME_ENV_BLOCKLIST = new Set([
-  "TERMCANVAS_SOCKET",
-  "TERMCANVAS_TERMINAL_ID",
-  "TERMCANVAS_TERMINAL_TYPE",
-  "TERMCANVAS_INSTANCE",
-  "TERMCANVAS_PORT_FILE",
+const TACIT_RUNTIME_ENV_BLOCKLIST = new Set([
+  "TACIT_SOCKET",
+  "TACIT_TERMINAL_ID",
+  "TACIT_TERMINAL_TYPE",
+  "TACIT_INSTANCE",
+  "TACIT_PORT_FILE",
   // Claude Code sets this on processes it spawns, and switches transcript
   // saving OFF when it sees it inherited — a nested agent shouldn't litter
   // the user's session history. Launch Tacit from inside a Claude Code
@@ -190,7 +190,7 @@ export function sanitizeEnv(
     }
   }
 
-  for (const key of TERMCANVAS_RUNTIME_ENV_BLOCKLIST) {
+  for (const key of TACIT_RUNTIME_ENV_BLOCKLIST) {
     delete cleaned[key];
   }
 
@@ -463,17 +463,17 @@ export async function buildLaunchSpec(
   const shellEnv = sanitizeEnv(await deps.getShellEnv(), deps);
 
   if (options.terminalId) {
-    shellEnv.TERMCANVAS_TERMINAL_ID = options.terminalId;
+    shellEnv.TACIT_TERMINAL_ID = options.terminalId;
   }
   if (options.terminalType) {
-    shellEnv.TERMCANVAS_TERMINAL_TYPE = options.terminalType;
+    shellEnv.TACIT_TERMINAL_TYPE = options.terminalType;
   }
-  const instance: TermCanvasInstance = process.env.VITE_DEV_SERVER_URL
+  const instance: TacitInstance = process.env.VITE_DEV_SERVER_URL
     ? "dev"
     : "prod";
-  shellEnv.TERMCANVAS_INSTANCE = instance;
-  shellEnv.TERMCANVAS_PORT_FILE = path.join(
-    getTermCanvasDataDir(instance),
+  shellEnv.TACIT_INSTANCE = instance;
+  shellEnv.TACIT_PORT_FILE = path.join(
+    getTacitDataDir(instance),
     "port",
   );
   applyThemeHints(shellEnv, options.theme);

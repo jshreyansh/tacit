@@ -189,7 +189,7 @@ the small MCP tool surface for canvas-native asks Hydra has no concept of
     `POST /node/:kind/:id/request-approval`, `POST /approval/:id/approve`,
     `POST /approval/:id/deny`.
 - **MCP tool surface** — extends the existing `browser-bridge` server
-  (being renamed **`termcanvas-bridge`**, confirmed, deferred until
+  (being renamed **`tacit-bridge`**, confirmed, deferred until
   implementation — it already outgrew the "browser" name once `emit_event`/
   `remember` were added). Hydra's own CLI (`dispatch`/`watch`/`status`/...)
   stays exactly as-is; the PM, being a real terminal agent, already has

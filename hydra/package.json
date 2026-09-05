@@ -1,7 +1,7 @@
 {
   "name": "hydra",
   "version": "0.1.0",
-  "description": "TermCanvas sub-agent spawner",
+  "description": "Tacit sub-agent spawner",
   "type": "module",
   "bin": {
     "hydra": "./dist/hydra.js"

@@ -115,7 +115,7 @@ export const usePinStore = create<PinStoreState & PinStoreActions>(
 
     openDrawer: (projectPath) => {
       if (!get().pinsByProject[projectPath]) {
-        window.termcanvas.pins
+        window.tacit.pins
           .list(projectPath)
           .then((pins) => {
             get().setPins(projectPath, pins);

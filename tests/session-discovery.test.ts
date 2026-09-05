@@ -15,7 +15,7 @@ import {
 } from "../electron/session-discovery.ts";
 
 function withTempHome(fn: (homeDir: string) => void): void {
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-session-discovery-"));
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-session-discovery-"));
   try {
     fn(homeDir);
   } finally {
@@ -501,7 +501,7 @@ test("findBestCodexSession returns null when no cwd match is available", () => {
 });
 
 test("findBestWuuSession ignores sessions created before the terminal started", () => {
-  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-wuu-session-"));
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-wuu-session-"));
   try {
     const sessionsDir = path.join(workspaceDir, ".wuu", "sessions");
     const staleSessionId = "20260411-100000-abcd";
@@ -532,7 +532,7 @@ test("findBestWuuSession ignores sessions created before the terminal started", 
 });
 
 test("findBestWuuSession picks the newest indexed session created after launch", () => {
-  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-wuu-session-"));
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-wuu-session-"));
   try {
     const sessionsDir = path.join(workspaceDir, ".wuu", "sessions");
     const olderSessionId = "20260411-100000-abcd";
@@ -581,7 +581,7 @@ test("findBestWuuSession picks the newest indexed session created after launch",
 
 import { createHash } from "node:crypto";
 test("findBestKimiSession resolves from metadata and filters by startedAt", () => {
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-kimi-discovery-"));
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-kimi-discovery-"));
   try {
     const sessionsRoot = path.join(homeDir, ".kimi", "sessions");
     const cwd = "/Users/test/project";

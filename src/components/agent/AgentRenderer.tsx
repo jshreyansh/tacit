@@ -282,11 +282,11 @@ export function AgentRenderer({
   const subscribedRef = useRef(false);
 
   useEffect(() => {
-    if (!window.termcanvas?.agent) return;
+    if (!window.tacit?.agent) return;
 
     if (!startedRef.current) {
       startedRef.current = true;
-      window.termcanvas.agent
+      window.tacit.agent
         .start(sessionId, {
           type: "claude-code",
           baseURL: "",
@@ -305,7 +305,7 @@ export function AgentRenderer({
 
     if (!subscribedRef.current) {
       subscribedRef.current = true;
-      window.termcanvas.agent.onEvent(
+      window.tacit.agent.onEvent(
         (evtSessionId: string, event: AgentStreamEvent) => {
           if (evtSessionId !== sessionIdRef.current) return;
           if (
@@ -351,10 +351,10 @@ export function AgentRenderer({
 
   const handleSend = useCallback(
     (text: string) => {
-      if (!window.termcanvas?.agent) return;
+      if (!window.tacit?.agent) return;
       setSegments((prev) => [...prev, { kind: "user", text }]);
       lastSegmentRef.current = null;
-      window.termcanvas.agent.send(sessionId, text, {
+      window.tacit.agent.send(sessionId, text, {
         type: "claude-code",
         baseURL: "",
         apiKey: "",
@@ -367,16 +367,16 @@ export function AgentRenderer({
   );
 
   const handleAbort = useCallback(() => {
-    if (!window.termcanvas?.agent) return;
-    window.termcanvas.agent.abort(sessionId);
+    if (!window.tacit?.agent) return;
+    window.tacit.agent.abort(sessionId);
   }, [sessionId]);
 
   const handleApprove = useCallback((sid: string, requestId: string) => {
-    window.termcanvas?.agent?.approve(sid, requestId);
+    window.tacit?.agent?.approve(sid, requestId);
   }, []);
 
   const handleDeny = useCallback((sid: string, requestId: string) => {
-    window.termcanvas?.agent?.deny(sid, requestId);
+    window.tacit?.agent?.deny(sid, requestId);
   }, []);
 
   return (

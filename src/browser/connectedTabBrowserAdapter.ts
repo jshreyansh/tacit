@@ -19,7 +19,7 @@ export const connectedTabBrowserAdapter: BrowserBackendAdapter = {
     if (capability === "non_portable_eval") {
       throw new Error("Arbitrary JavaScript is not portable to connected browser tabs");
     }
-    return window.termcanvas.browserConnection.execute({
+    return window.tacit.browserConnection.execute({
       bindingId: binding.tabBindingId,
       action: request.action,
       params: request.params,

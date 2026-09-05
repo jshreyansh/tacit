@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to TermCanvas will be documented in this file.
+All notable changes to Tacit will be documented in this file.
 
 ## [0.39.13] - 2026-08-26
 
@@ -23,15 +23,15 @@ All notable changes to TermCanvas will be documented in this file.
 ## [0.39.10] - 2026-06-01
 
 ### Fixed
-- **Legacy Computer Use cleanup no longer removes user-managed Codex MCPs**: Codex `computer-use` MCP entries are now removed only when they contain TermCanvas legacy signatures, preserving custom or third-party MCP servers that use the same generic name.
+- **Legacy Computer Use cleanup no longer removes user-managed Codex MCPs**: Codex `computer-use` MCP entries are now removed only when they contain Tacit legacy signatures, preserving custom or third-party MCP servers that use the same generic name.
 
 ## [0.39.9] - 2026-05-31
 
 ### Changed
-- **TermCanvas no longer ships its own Computer Use stack**: removed the unfinished helper, MCP server, settings page, CLI commands, launch injection, and packaging path so Codex sessions use the bundled OpenAI Computer Use plugin instead.
+- **Tacit no longer ships its own Computer Use stack**: removed the unfinished helper, MCP server, settings page, CLI commands, launch injection, and packaging path so Codex sessions use the bundled OpenAI Computer Use plugin instead.
 
 ### Fixed
-- **Legacy Computer Use MCP entries are cleaned up on skill install**: TermCanvas now removes stale Claude and Codex MCP registrations from older builds, including orphaned Codex TOML `args` / `env` lines that could keep pointing agents at the retired TermCanvas server.
+- **Legacy Computer Use MCP entries are cleaned up on skill install**: Tacit now removes stale Claude and Codex MCP registrations from older builds, including orphaned Codex TOML `args` / `env` lines that could keep pointing agents at the retired Tacit server.
 
 ## [0.39.8] - 2026-05-18
 
@@ -43,12 +43,12 @@ All notable changes to TermCanvas will be documented in this file.
 
 ### Added
 - **Pins can render rich HTML**: pin bodies now accept full HTML documents in addition to Markdown, preserving local attachments for embedded media while keeping preview/render surfaces sandboxed.
-- **Pin screenshots for visual agents**: `termcanvas pin render <id> --json` renders a pin's Markdown or HTML body to a stable PNG under `.termcanvas/pin-renders/`, so agents with image-reading capability can inspect visual pins directly from the generated file path.
+- **Pin screenshots for visual agents**: `tacit pin render <id> --json` renders a pin's Markdown or HTML body to a stable PNG under `.tacit/pin-renders/`, so agents with image-reading capability can inspect visual pins directly from the generated file path.
 - **Independent pin HTML preview window**: pin details now expose an `Open preview` / `独立预览` action that opens rich pin content in a resizable 1280×900 standalone window for human inspection.
 
 ### Changed
 - **Pin render cache is cleaned during rendering**: stale render snapshots and orphaned pin render directories are pruned opportunistically when a new pin render is requested.
-- **Agent pin instructions mention visual rendering**: injected pin guidance now teaches agents when to call `termcanvas pin render <id> --json` and how to use the returned image path.
+- **Agent pin instructions mention visual rendering**: injected pin guidance now teaches agents when to call `tacit pin render <id> --json` and how to use the returned image path.
 
 ### Fixed
 - **Codex hook trust registration is documented and generated**: generated Codex hook setup now records the trusted command pattern and documents the registration behavior for future agents.
@@ -80,7 +80,7 @@ All notable changes to TermCanvas will be documented in this file.
 - **Stashed terminals can be previewed and controlled without restoring them**: hover a stashed terminal in the left panel to open a live xterm preview, inspect running output, type directly into the terminal, and select/copy text while keeping it off the canvas.
 
 ### Changed
-- **macOS keeps TermCanvas running after the last window closes**: closing the final window now keeps the app alive in the Dock/menu bar, matching standard macOS app behavior.
+- **macOS keeps Tacit running after the last window closes**: closing the final window now keeps the app alive in the Dock/menu bar, matching standard macOS app behavior.
 
 ### Fixed
 - **Force branch deletion requires confirmation**: destructive branch deletion from the Git panel now goes through an explicit confirmation step.
@@ -165,12 +165,12 @@ All notable changes to TermCanvas will be documented in this file.
 - **Pin drawer never reopened after a transient list failure**: `pinStore.openDrawer` cached an empty array on rejection, short-circuiting every subsequent open for that project. The cache key now stays unset on failure so the next open retries.
 - **One corrupt pin file aborted the whole list**: `PinStore.list()` threw on the first malformed `.md`, hiding every other pin in the repo. Per-file errors are now caught, logged, and skipped. `readFile` also validates required string fields and `ID_REGEX` before constructing a Pin.
 - **Invalid pin status silently accepted on create**: `PinStore.create` skipped the status validation that `update` already had, so a CLI-created pin with a bad status would write to disk and then vanish from list/get. `create` now throws `PinStoreError 400`, matching `update`'s contract.
-- **Pin dispatch errors said "Task"**: legacy "Task not found" copy and `[Task]` log prefixes leaked through `pin.dispatch.failed` toasts after the rename. Renamed to "Pin" everywhere; stale `TERMCANVAS_DIR/tasks/` comments updated to `pins/`.
+- **Pin dispatch errors said "Task"**: legacy "Task not found" copy and `[Task]` log prefixes leaked through `pin.dispatch.failed` toasts after the rename. Renamed to "Pin" everywhere; stale `TACIT_DIR/tasks/` comments updated to `pins/`.
 - **`pnpm test` skipped the entire Pin feature**: the script still listed deleted `task-*.test.ts` files instead of the renamed `pin-*` equivalents. Replaced.
 - **`wrapSetState` broke the release-build typecheck**: the wrapper's forwarded `(partial, replace)` didn't match either zustand setState overload. Single function-cast at the forwarded call; runtime semantics preserved.
 
 ### Docs
-- **CLAUDE.md**: documented the TermCanvas Pin system — when to record a pin, the `termcanvas pin` CLI surface, and conventions for capturing user-deferred work.
+- **CLAUDE.md**: documented the Tacit Pin system — when to record a pin, the `tacit pin` CLI surface, and conventions for capturing user-deferred work.
 
 ## [0.38.1] - 2026-04-27
 
@@ -396,10 +396,10 @@ A coordinated visual + capability release. The design system grew a motion layer
 ## [0.32.2] - 2026-04-24
 
 ### Fixed
-- macOS release builds now use ad hoc signing instead of skipping code signing entirely. This keeps the bundle identity as `com.blueberrycongee.termcanvas` and produces a `codesign --verify`-valid app, which avoids the unstable Screen Recording and Accessibility permission behavior seen in unsigned builds.
+- macOS release builds now use ad hoc signing instead of skipping code signing entirely. This keeps the bundle identity as `com.blueberrycongee.tacit` and produces a `codesign --verify`-valid app, which avoids the unstable Screen Recording and Accessibility permission behavior seen in unsigned builds.
 
 ### Fixed (zh-CN)
-- macOS release build 现在使用 ad hoc 签名,不再完全跳过代码签名。这样 bundle identity 会保持为 `com.blueberrycongee.termcanvas`,并产出可通过 `codesign --verify` 的 app,避免未签名构建下录屏和辅助功能权限不稳定的问题。
+- macOS release build 现在使用 ad hoc 签名,不再完全跳过代码签名。这样 bundle identity 会保持为 `com.blueberrycongee.tacit`,并产出可通过 `codesign --verify` 的 app,避免未签名构建下录屏和辅助功能权限不稳定的问题。
 
 ## [0.32.1] - 2026-04-24
 
@@ -1149,7 +1149,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 ## [0.25.9] - 2026-04-05
 
 ### Fixed
-- Bundled skills are now available to Codex after app startup, including `challenge`, `hydra`, `investigate`, and `using-termcanvas`
+- Bundled skills are now available to Codex after app startup, including `challenge`, `hydra`, `investigate`, and `using-tacit`
 - Skill discovery now scans both Codex and Claude skill directories and supports both `SKILL.md` and `skill.md`
 - Bundled skill installation no longer depends on CLI registration succeeding first
 
@@ -1318,7 +1318,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 - Synchronous settled flag for pending task detection
 - Provider-level retry removed to eliminate double retry
 - HTTP 413 categorized as prompt_too_long
-- termcanvas-hook.mjs moved to skills/scripts/ to match registered path
+- tacit-hook.mjs moved to skills/scripts/ to match registered path
 - Hydra spawn uses hydra list instead of hydra watch
 
 ## [0.19.0] - 2026-04-02
@@ -1352,7 +1352,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 ### Added
 - Agent runtime: BYOK orchestration engine based on async generator loop with streaming tool_use cycle
 - Anthropic BYOK provider with streaming, retry, and abort support
-- 9 TermCanvas orchestration tools: CanvasState, Diff, Telemetry, ProjectManage, WorktreeManage, TerminalManage, HydraWorkflow, HydraAgent, BrowseAction
+- 9 Tacit orchestration tools: CanvasState, Diff, Telemetry, ProjectManage, WorktreeManage, TerminalManage, HydraWorkflow, HydraAgent, BrowseAction
 - HTTP client for tools with 3-tier connection resolution and exponential backoff retry
 - Floating agent bubble UI: collapsible chat panel with drag, 8-direction resize, ESC to close
 - Agent bubble Zustand store for message and task state management
@@ -1497,7 +1497,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 - Enhanced memory index generator: extracts cross-file markdown links and expired date detection
 - `GET /api/memory/index` API endpoint for hook integration
 - Memory Graph navigation skill: instructs agent to follow references and verify stale memories
-- Auto-enable TermCanvas plugin in Claude Code settings.json on startup (required for hooks)
+- Auto-enable Tacit plugin in Claude Code settings.json on startup (required for hooks)
 - OS file drop into project file tree with drag-and-drop copy
 - Auto-expand collapsed left panel and directories on OS file drag hover
 
@@ -1625,8 +1625,8 @@ A coordinated visual + capability release. The design system grew a motion layer
 - Hydra telemetry truth layer with query APIs and UI advisory views
 - Git panel in the left sidebar with staging, commit, push/pull, branch switching, and commit history
 - One-click hydra project enable button
-- CLI command routing to the active termcanvas instance
-- Termcanvas router skill
+- CLI command routing to the active tacit instance
+- Tacit router skill
 
 ### Changed
 - Redesigned git sidebar panel layout and inspector
@@ -1735,7 +1735,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 ## [0.8.46] - 2026-03-23
 
 ### Added
-- Terminal rename skill (`/termcanvas:rename`): AI generates a concise tab title from conversation context
+- Terminal rename skill (`/tacit:rename`): AI generates a concise tab title from conversation context
 - CLI `terminal set-title` command and `PUT /terminal/{id}/custom-title` API route
 - Hub component for layered focus navigation across projects and worktrees
 - Auto-collapse worktrees when their last terminal is removed
@@ -2126,7 +2126,7 @@ A coordinated visual + capability release. The design system grew a motion layer
 - Hierarchy: parent-child terminal visualization with SVG bezier connection lines on the canvas
 - Hierarchy: terminal badges showing parent/child relationships with click-to-pan navigation
 - Hierarchy: hover-to-reveal family tree overlay showing full agent hierarchy
-- Hierarchy: `TERMCANVAS_TERMINAL_ID` env var injected into PTY for Hydra auto-detection
+- Hierarchy: `TACIT_TERMINAL_ID` env var injected into PTY for Hydra auto-detection
 - Focus: tree-aware Cmd+[] cycling — DFS pre-order traversal groups parents with their children
 
 ### Changed

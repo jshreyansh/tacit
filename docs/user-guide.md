@@ -2,7 +2,7 @@
 
 **A hands-on walkthrough of the app, the interactions that aren't obvious, and every keyboard shortcut worth memorising.**
 
-This guide assumes Tacit is already installed. For download links and `termcanvas` / `hydra` CLI registration, see the [README](../README.md) Quick Start.
+This guide assumes Tacit is already installed. For download links and `tacit` / `hydra` CLI registration, see the [README](../README.md) Quick Start.
 
 - 中文版 → [`user-guide.zh.md`](./user-guide.zh.md)
 
@@ -10,7 +10,7 @@ This guide assumes Tacit is already installed. For download links and `termcanva
 
 ## Table of contents
 
-1. [What Tacit is](#what-termcanvas-is)
+1. [What Tacit is](#what-tacit-is)
 2. [Your first five minutes](#your-first-five-minutes)
 3. [The three-column layout](#the-three-column-layout)
 4. [Moving around the canvas](#moving-around-the-canvas)
@@ -317,13 +317,13 @@ A small dot strip at the bottom-centre of the canvas shows which slots are fille
 
 Pins are the persistent "I'll handle this later" store. Each pin has a title, a description, and an optional link (e.g. a GitHub issue). Pins survive restarts and are scoped per repo.
 
-The CLI is `termcanvas pin` (registered alongside `termcanvas` in Settings → CLI):
+The CLI is `tacit pin` (registered alongside `tacit` in Settings → CLI):
 
 ```bash
-termcanvas pin add --title "Fix the OAuth refresh edge case" --body "Token expires mid-request..."
-termcanvas pin add --title "Look at this issue" --link https://github.com/.../issues/42 --link-type github_issue
-termcanvas pin list
-termcanvas pin update <id> --status done
+tacit pin add --title "Fix the OAuth refresh edge case" --body "Token expires mid-request..."
+tacit pin add --title "Look at this issue" --link https://github.com/.../issues/42 --link-type github_issue
+tacit pin list
+tacit pin update <id> --status done
 ```
 
 Inside the app, the Pin drawer surfaces the same store with one-click status toggles. Drop pins whenever you notice something but don't want to derail what you're doing right now.
@@ -359,7 +359,7 @@ Open with `⌘,`. Three tabs:
 - **Browser** — enables in-canvas browser cards (embedded web views).
 - **Summary** — if on, live terminals auto-summarise on idle.
 - **Pet** — enables the capybara mascot. It reacts to telemetry events (working, waiting, completed, stuck). Off by default.
-- **CLI registration** — installs `termcanvas` and `hydra` shims into your `$PATH`. One-click re-register if you moved the app.
+- **CLI registration** — installs `tacit` and `hydra` shims into your `$PATH`. One-click re-register if you moved the app.
 - **Check for Updates** — triggers a manual auto-update check.
 
 ### Shortcuts
@@ -382,8 +382,8 @@ These are aimed at heavier users; skip until you're comfortable with the basics.
 - **Activity heatmap (`⌘⇧A`)** — paints each tile with a 5-minute output-volume sparkline so a glance at the canvas tells you which agents are doing work right now. Toggle on / off.
 - **Pan-to-recent-activity (`⌥` + `` ` ``)** — fly the camera to whichever terminal had PTY output most recently. Repeat the chord to LRU-cycle through the recently-active set, Alt-Tab style.
 - **Telemetry** — every terminal emits lifecycle events (awaiting-input, tool-running, stall, completion). These drive the pet, status dots, attention queue, Hub, and `⌘K` session search. Disable from Settings → General if you want the app dead-quiet.
-- **Headless mode** — `termcanvas headless` runs the whole stack as an HTTP/SSE service, no Electron window. Useful for CI or for driving Tacit from another app. See [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md).
-- **Workspace files** — `⌘S` / `⌘⇧S` save the canvas to a `.termcanvas` JSON file. Re-opening restores every project, worktree, terminal, drawing, stashed tile, and viewport. (For automatic state-history with rollback, see Snapshot History above.)
+- **Headless mode** — `tacit headless` runs the whole stack as an HTTP/SSE service, no Electron window. Useful for CI or for driving Tacit from another app. See [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md).
+- **Workspace files** — `⌘S` / `⌘⇧S` save the canvas to a `.tacit` JSON file. Re-opening restores every project, worktree, terminal, drawing, stashed tile, and viewport. (For automatic state-history with rollback, see Snapshot History above.)
 
 ---
 
@@ -470,4 +470,4 @@ All shortcuts use **`⌘` on macOS** and **`Ctrl` on Linux / Windows**. Every on
 
 ---
 
-Feedback and bug reports welcome at [github.com/blueberrycongee/termcanvas/issues](https://github.com/blueberrycongee/termcanvas/issues).
+Feedback and bug reports welcome at [github.com/jshreyansh/tacit/issues](https://github.com/jshreyansh/tacit/issues).

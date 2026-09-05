@@ -52,7 +52,7 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
 
   const fetchData = useCallback(
     async (mode: "initial" | "refresh" | "load-more" = "refresh", requestedCount?: number) => {
-      if (!worktreePath || !window.termcanvas) {
+      if (!worktreePath || !window.tacit) {
         return;
       }
 
@@ -64,7 +64,7 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
         .beginGitLogLoad(worktreePath, mode, countToLoad);
 
       try {
-        const repoState = await window.termcanvas.git.isRepo(worktreePath);
+        const repoState = await window.tacit.git.isRepo(worktreePath);
         if (requestSeq !== requestSeqRef.current) {
           return;
         }
@@ -75,8 +75,8 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
         }
 
         const [nextBranches, nextLog] = await Promise.all([
-          window.termcanvas.git.branches(worktreePath),
-          window.termcanvas.git.log(worktreePath, countToLoad),
+          window.tacit.git.branches(worktreePath),
+          window.tacit.git.log(worktreePath, countToLoad),
         ]);
 
         if (requestSeq !== requestSeqRef.current) {
@@ -100,7 +100,7 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
   );
 
   useEffect(() => {
-    if (!worktreePath || !window.termcanvas) {
+    if (!worktreePath || !window.tacit) {
       return;
     }
 
@@ -109,7 +109,7 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
   }, [fetchData, worktreePath]);
 
   useEffect(() => {
-    if (!worktreePath || !window.termcanvas) {
+    if (!worktreePath || !window.tacit) {
       return;
     }
 
@@ -117,15 +117,15 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
       void fetchData("refresh");
     };
 
-    void window.termcanvas.git.watch(worktreePath);
+    void window.tacit.git.watch(worktreePath);
 
-    const removeLogChanged = window.termcanvas.git.onLogChanged((changedPath) => {
+    const removeLogChanged = window.tacit.git.onLogChanged((changedPath) => {
       if (changedPath === worktreePath) {
         void fetchData("refresh");
       }
     });
 
-    const removePresenceChanged = window.termcanvas.git.onPresenceChanged(
+    const removePresenceChanged = window.tacit.git.onPresenceChanged(
       (changedPath, payload) => {
         if (changedPath !== worktreePath) {
           return;
@@ -145,7 +145,7 @@ export function useGitLog(worktreePath: string | null): UseGitLogResult {
 
     return () => {
       requestSeqRef.current += 1;
-      void window.termcanvas.git.unwatch(worktreePath);
+      void window.tacit.git.unwatch(worktreePath);
       removeLogChanged();
       removePresenceChanged();
       window.removeEventListener("focus", handleFocus);

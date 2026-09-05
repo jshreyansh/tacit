@@ -32,12 +32,12 @@ export const useQuotaStore = create<QuotaStore>((set, get) => ({
 
   fetch: async () => {
     if (get().loading) return;
-    if (!window.termcanvas?.quota) return;
+    if (!window.tacit?.quota) return;
 
     set({ loading: true });
 
     try {
-      const result = await window.termcanvas.quota.fetch();
+      const result = await window.tacit.quota.fetch();
       if (result.ok) {
         set({
           quota: result.data,

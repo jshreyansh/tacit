@@ -27,15 +27,15 @@ Core rules:
 - **No silent fallbacks** or swallowed errors. Surface failure with `outcome=stuck` or `outcome=error`.
 
 Agent launch rule:
-- When dispatching Claude/Codex through TermCanvas, start a fresh agent terminal with `termcanvas terminal create --prompt "..."`.
-- Do not use `termcanvas terminal input` for task dispatch — it is not a supported automation path.
+- When dispatching Claude/Codex through Tacit, start a fresh agent terminal with `tacit terminal create --prompt "..."`.
+- Do not use `tacit terminal input` for task dispatch — it is not a supported automation path.
 
 Telemetry polling:
 - Treat `hydra watch` as the main polling loop. Do not infer progress from terminal prose.
 - Before deciding wait / retry / takeover, query:
-  - `termcanvas telemetry get --workflow <workflowId> --repo .`
-  - `termcanvas telemetry get --terminal <terminalId>`
-  - `termcanvas telemetry events --terminal <terminalId> --limit 20`
+  - `tacit telemetry get --workflow <workflowId> --repo .`
+  - `tacit telemetry get --terminal <terminalId>`
+  - `tacit telemetry events --terminal <terminalId> --limit 20`
 - Watch the derived telemetry states: `awaiting_contract` means the worker has not yet published `result.json`; `stall_candidate` means the worker may be hung. Trust `derived_status` and `task_status` over terminal prose.
 
 ## Core workflow

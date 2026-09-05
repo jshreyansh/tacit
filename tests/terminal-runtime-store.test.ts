@@ -13,8 +13,8 @@ function installRuntimeGlobals() {
   const target = new EventTarget();
   const mockWindow = Object.assign(target, {
     navigator,
-    termcanvas: undefined as unknown,
-  }) as Window & { termcanvas: unknown };
+    tacit: undefined as unknown,
+  }) as Window & { tacit: unknown };
 
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -215,7 +215,7 @@ test("destroyTerminalRuntime clears live pty ids from runtime overlay state", as
       worktreePath: "/tmp/project-1",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         destroy: async () => {},
       },
@@ -344,7 +344,7 @@ test("parked runtimes keep the live xterm, dispose live bindings, reuse the host
       worktreePath: "/tmp/project-1",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         destroy: async () => {},
         input() {},
@@ -468,7 +468,7 @@ test("parked runtimes apply font preference updates without fitting against the 
 
   try {
     seedProjectState(useProjectStore);
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         create: async () => 42,
         destroy: async () => {},
@@ -537,7 +537,7 @@ test("terminal renderer preference can release and reacquire WebGL on a live run
 
   try {
     seedProjectState(useProjectStore);
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         create: async () => 42,
         destroy: async () => {},
@@ -698,7 +698,7 @@ test("starting a parked runtime does not fit or resize the hidden terminal host"
     setTerminalRuntimeMode("terminal-1", "live");
     setTerminalRuntimeMode("terminal-1", "parked");
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       session: {
         onTurnComplete() {
           return () => {};
@@ -760,7 +760,7 @@ test("selectAllTerminalRuntime selects the focused xterm buffer", async () => {
 
   try {
     seedProjectState(useProjectStore);
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         create: async () => 42,
         destroy: async () => {},
@@ -827,7 +827,7 @@ test("focusTerminalRuntime focuses without refresh", async () => {
       viewport: { x: 0, y: 0, scale: 0.6 },
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         create: async () => 42,
         destroy: async () => {},
@@ -908,7 +908,7 @@ test("reattaching a parked runtime reacquires WebGL after the pool evicts it", a
       worktreePath: "/tmp/project-1",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         destroy: async () => {},
         input() {},
@@ -1052,7 +1052,7 @@ test("codex SessionStart hook cancels fallback polling and preserves the exact s
       type: "codex",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       hooks: {
         getHealth: async () => ({
           eventsReceived: 0,
@@ -1218,7 +1218,7 @@ test("wuu polling attaches the discovered session to telemetry", async () => {
       type: "wuu",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       session: {
         findWuu: async () => {
           findWuuCalls += 1;
@@ -1342,7 +1342,7 @@ test("opencode polling attaches the discovered session to telemetry", async () =
       type: "opencode",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       session: {
         findOpenCode: async () => {
           findOpenCodeCalls += 1;
@@ -1452,7 +1452,7 @@ test("push telemetry updates replace a live terminal's first_user_prompt when th
       type: "codex",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       hooks: {
         onSessionStarted() {
           return () => {};

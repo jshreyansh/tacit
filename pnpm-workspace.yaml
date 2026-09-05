@@ -1,7 +1,7 @@
 packages:
   - agent
   - browse
-  - termcanvas-bridge
+  - tacit-bridge
   - eval
   - hydra
   - website

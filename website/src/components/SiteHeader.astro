@@ -19,8 +19,8 @@ const otherLocale: Locale = locale === "zh" ? "en" : "zh";
 const languageHref = alternatePaths[otherLocale] ?? withLocale(otherLocale);
 const navItems = [
   { href: articlesPath(locale), label: copy.nav.articles },
-  { href: "https://github.com/blueberrycongee/termcanvas/releases", label: copy.nav.download },
-  { href: "https://github.com/blueberrycongee/termcanvas", label: copy.nav.github },
+  { href: "https://github.com/jshreyansh/tacit/releases", label: copy.nav.download },
+  { href: "https://github.com/jshreyansh/tacit", label: copy.nav.github },
 ];
 
 const path = Astro.url.pathname;
@@ -30,7 +30,7 @@ const path = Astro.url.pathname;
   <div class="container-page flex h-14 items-center justify-between">
     <a href={withLocale(locale)} class="brand" aria-label={copy.name}>
       <img class="brand-logo" src="/logo.svg" alt="" width="28" height="28" />
-      <span class="brand-name">TermCanvas</span>
+      <span class="brand-name">Tacit</span>
     </a>
     <nav class="flex items-center gap-1">
       {

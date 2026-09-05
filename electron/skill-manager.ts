@@ -41,9 +41,9 @@ function getClaudeGlobalConfigFile(home: string): string {
   return path.join(home, ".claude.json");
 }
 
-const PLUGIN_KEY = "termcanvas@termcanvas";
+const PLUGIN_KEY = "tacit@tacit";
 const CODEX_COMPUTER_USE_MCP_SERVER_NAME = "computer-use";
-const CLAUDE_COMPUTER_USE_MCP_SERVER_NAME = "termcanvas-computer-use";
+const CLAUDE_COMPUTER_USE_MCP_SERVER_NAME = "tacit-computer-use";
 const CODEX_HOOKS_FEATURE_FLAG = "hooks";
 const CODEX_LEGACY_HOOKS_FEATURE_FLAG = "codex_hooks";
 type CodexHooksFeatureFlag =
@@ -95,8 +95,8 @@ function isClaudePluginCurrent(filePath: string, sourceDir: string): boolean {
 }
 
 /**
- * Register the termcanvas plugin in installed_plugins.json.
- * Preserves all other plugin entries. Only mutates the termcanvas entry.
+ * Register the tacit plugin in installed_plugins.json.
+ * Preserves all other plugin entries. Only mutates the tacit entry.
  */
 function registerClaudePlugin(
   filePath: string,
@@ -265,11 +265,11 @@ function removeClaudeComputerUseMcp(globalConfigFile: string): void {
   writeJsonAtomic(globalConfigFile, data);
 }
 
-const TERMCANVAS_COMPUTER_USE_SIGNATURE_RE =
-  /mcp[-/\\]+computer-use-server|TERMCANVAS_COMPUTER_USE_|computer-use-instructions\.md/;
+const TACIT_COMPUTER_USE_SIGNATURE_RE =
+  /mcp[-/\\]+computer-use-server|TACIT_COMPUTER_USE_|computer-use-instructions\.md/;
 
-function isTermCanvasComputerUseConfig(lines: string[]): boolean {
-  return lines.some((line) => TERMCANVAS_COMPUTER_USE_SIGNATURE_RE.test(line));
+function isTacitComputerUseConfig(lines: string[]): boolean {
+  return lines.some((line) => TACIT_COMPUTER_USE_SIGNATURE_RE.test(line));
 }
 
 // Strip a `[tableName]` block only when its content matches a known legacy
@@ -340,12 +340,12 @@ function removeTomlDottedKeysIf(
 // The signatures are scoped to Tacit computer-use entries — either the
 // MCP server path component (`mcp-computer-use-server` or
 // `mcp/computer-use-server`, including `\\`-escaped variants on Windows) or
-// the env-var prefix (`TERMCANVAS_COMPUTER_USE_*`) — so unrelated user keys
+// the env-var prefix (`TACIT_COMPUTER_USE_*`) — so unrelated user keys
 // remain untouched.
 const LEGACY_ORPHAN_ARGS_RE =
   /^\s*args\s*=\s*\[[^\n]*mcp[-/\\]+computer-use-server[^\n]*\]\s*$/;
 const LEGACY_ORPHAN_ENV_RE =
-  /^\s*env\s*=\s*\{[^\n]*TERMCANVAS_COMPUTER_USE_[^\n]*\}\s*$/;
+  /^\s*env\s*=\s*\{[^\n]*TACIT_COMPUTER_USE_[^\n]*\}\s*$/;
 
 function removeLegacyComputerUseOrphans(content: string): string {
   if (!content) return content;
@@ -373,10 +373,10 @@ function removeCodexComputerUseMcp(home: string): void {
         removeTomlTableIf(
           content,
           `mcp_servers.${CODEX_COMPUTER_USE_MCP_SERVER_NAME}`,
-          isTermCanvasComputerUseConfig,
+          isTacitComputerUseConfig,
         ),
         `mcp_servers.${CODEX_COMPUTER_USE_MCP_SERVER_NAME}`,
-        isTermCanvasComputerUseConfig,
+        isTacitComputerUseConfig,
       ),
     ).trimEnd() + "\n";
   if (nextContent === content) return;
@@ -392,7 +392,7 @@ function removeComputerUseMcpRegistration(home: string): void {
 
 // Skill manifest — tracks which skills we installed and at which version
 
-const MANIFEST_FILE = ".termcanvas-skills.json";
+const MANIFEST_FILE = ".tacit-skills.json";
 
 interface SkillManifest {
   version: string;
@@ -571,7 +571,7 @@ const LIFECYCLE_HOOK_EVENTS = [
   "PostCompact",
 ] as const;
 
-const LIFECYCLE_MARKER = "termcanvas-hook.mjs";
+const LIFECYCLE_MARKER = "tacit-hook.mjs";
 
 function ensureLifecycleHooks(settingsFile: string, scriptPath: string): void {
   let data: Record<string, unknown> = {};
@@ -1081,15 +1081,15 @@ export function installSkillLinks({
     ensurePluginEnabled(getClaudeSettingsFile(home), sourceDir);
     ensureLifecycleHooks(
       getClaudeSettingsFile(home),
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
     );
     ensureCodexHooks(
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
       home,
     );
     ensureCodexHookTrustStates(
       home,
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
     );
     ensureCodexFeatureFlag(home);
     removeComputerUseMcpRegistration(home);
@@ -1124,15 +1124,15 @@ export function ensureSkillLinks({
     ensurePluginEnabled(getClaudeSettingsFile(home), sourceDir);
     ensureLifecycleHooks(
       getClaudeSettingsFile(home),
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
     );
     ensureCodexHooks(
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
       home,
     );
     ensureCodexHookTrustStates(
       home,
-      path.join(sourceDir, "scripts", "termcanvas-hook.mjs"),
+      path.join(sourceDir, "scripts", "tacit-hook.mjs"),
     );
     ensureCodexFeatureFlag(home);
     removeComputerUseMcpRegistration(home);

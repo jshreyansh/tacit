@@ -28,16 +28,16 @@ function buildRequestPath(basePath: string, urlPath: string): string {
 }
 
 function resolvePortFile(env: Record<string, string | undefined>): string {
-  const explicit = env.TERMCANVAS_PORT_FILE?.trim();
+  const explicit = env.TACIT_PORT_FILE?.trim();
   if (explicit) return explicit;
-  const instanceRaw = env.TERMCANVAS_INSTANCE?.trim().toLowerCase();
+  const instanceRaw = env.TACIT_INSTANCE?.trim().toLowerCase();
   const isDev = instanceRaw === "dev" || instanceRaw === "development";
-  const dataDir = path.join(os.homedir(), isDev ? ".termcanvas-dev" : ".termcanvas");
+  const dataDir = path.join(os.homedir(), isDev ? ".tacit-dev" : ".tacit");
   return path.join(dataDir, "port");
 }
 
 function resolveConnection(env: Record<string, string | undefined>): ConnectionTarget {
-  const envUrl = env.TERMCANVAS_URL?.trim();
+  const envUrl = env.TACIT_URL?.trim();
   if (envUrl) {
     const parsed = new URL(envUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -54,8 +54,8 @@ function resolveConnection(env: Record<string, string | undefined>): ConnectionT
     };
   }
 
-  const envHost = env.TERMCANVAS_HOST?.trim();
-  const envPort = env.TERMCANVAS_PORT?.trim();
+  const envHost = env.TACIT_HOST?.trim();
+  const envPort = env.TACIT_PORT?.trim();
   if (envHost && envPort) {
     return { protocol: "http:", hostname: envHost, port: parseInt(envPort, 10), basePath: "" };
   }
@@ -148,7 +148,7 @@ async function requestWithRetry(
   throw lastError;
 }
 
-export class TermCanvasClient {
+export class TacitClient {
   private target: ConnectionTarget | null = null;
 
   private resolve(): ConnectionTarget {
@@ -159,7 +159,7 @@ export class TermCanvasClient {
   }
 
   private getToken(): string | undefined {
-    return process.env.TERMCANVAS_API_TOKEN?.trim() || undefined;
+    return process.env.TACIT_API_TOKEN?.trim() || undefined;
   }
 
   async request(method: string, urlPath: string, body?: unknown): Promise<unknown> {
@@ -167,10 +167,10 @@ export class TermCanvasClient {
   }
 }
 
-let cachedClient: TermCanvasClient | null = null;
+let cachedClient: TacitClient | null = null;
 
-export function getClient(): TermCanvasClient {
-  if (!cachedClient) cachedClient = new TermCanvasClient();
+export function getClient(): TacitClient {
+  if (!cachedClient) cachedClient = new TacitClient();
   return cachedClient;
 }
 
@@ -193,7 +193,7 @@ export class BrowseClient {
       return this.state;
     }
 
-    const stateFile = path.join(os.homedir(), ".termcanvas", "browse", "browse.json");
+    const stateFile = path.join(os.homedir(), ".tacit", "browse", "browse.json");
     try {
       const raw = JSON.parse(fs.readFileSync(stateFile, "utf-8")) as BrowseState;
       this.state = { port: raw.port, token: raw.token };

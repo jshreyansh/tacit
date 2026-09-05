@@ -36,7 +36,7 @@ const canonicalPath = articlePath(locale, entry.id);
 const alternatePaths: Partial<Record<Locale, string>> = {
   zh: canonicalPath,
 };
-const title = `${entry.data.seoTitle ?? entry.data.title} · TermCanvas`;
+const title = `${entry.data.seoTitle ?? entry.data.title} · Tacit`;
 const cover = entry.data.cover ?? "/hero-canvas.png";
 const structuredData = {
   "@context": "https://schema.org",
@@ -50,11 +50,11 @@ const structuredData = {
   mainEntityOfPage: absoluteUrl(Astro.site, canonicalPath),
   author: {
     "@type": "Organization",
-    name: "TermCanvas",
+    name: "Tacit",
   },
   publisher: {
     "@type": "Organization",
-    name: "TermCanvas",
+    name: "Tacit",
     logo: {
       "@type": "ImageObject",
       url: absoluteUrl(Astro.site, "/icon.png"),

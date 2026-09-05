@@ -1,5 +1,5 @@
 export const RENDER_DIAGNOSTICS_SCHEMA_VERSION =
-  "termcanvas/render-diagnostics/v0.1" as const;
+  "tacit/render-diagnostics/v0.1" as const;
 
 export interface RenderDiagnosticEventInput {
   kind: string;

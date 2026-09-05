@@ -373,7 +373,7 @@ function bumpCopiedNonce(terminalId: string) {
 
 function dispatchWorktreeActivity(worktreePath: string) {
   window.dispatchEvent(
-    new CustomEvent("termcanvas:worktree-activity", {
+    new CustomEvent("tacit:worktree-activity", {
       detail: worktreePath,
     }),
   );
@@ -410,12 +410,12 @@ async function pollSessionId(
 
   let cachedPid: number | null = detectedCliPid ?? null;
   if (!cachedPid && cliType === "claude") {
-    cachedPid = (await window.termcanvas.terminal.getPid(ptyId)) ?? null;
+    cachedPid = (await window.tacit.terminal.getPid(ptyId)) ?? null;
   }
 
   let codexBaseline: string | null = null;
   if (cliType === "codex") {
-    codexBaseline = await window.termcanvas.session.getCodexLatest();
+    codexBaseline = await window.tacit.session.getCodexLatest();
   }
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -431,7 +431,7 @@ async function pollSessionId(
     let sessionId: string | null = null;
     let confidence: "strong" | "medium" | "weak" | undefined;
     if (cliType === "codex") {
-      const candidate = await window.termcanvas.session.findCodex(
+      const candidate = await window.tacit.session.findCodex(
         worktreePath,
         startedAt,
       );
@@ -445,11 +445,11 @@ async function pollSessionId(
       }
     } else if (cliType === "claude") {
       const pid =
-        cachedPid ?? (await window.termcanvas.terminal.getPid(ptyId)) ?? null;
+        cachedPid ?? (await window.tacit.terminal.getPid(ptyId)) ?? null;
       if (!cachedPid && pid) {
         cachedPid = pid;
       }
-      const candidate = await window.termcanvas.session.findClaude(
+      const candidate = await window.tacit.session.findClaude(
         worktreePath,
         startedAt,
         pid,
@@ -457,21 +457,21 @@ async function pollSessionId(
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "kimi") {
-      const candidate = await window.termcanvas.session.findKimi(
+      const candidate = await window.tacit.session.findKimi(
         worktreePath,
         startedAt,
       );
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "wuu") {
-      const candidate = await window.termcanvas.session.findWuu(
+      const candidate = await window.tacit.session.findWuu(
         worktreePath,
         startedAt,
       );
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "opencode") {
-      const candidate = await window.termcanvas.session.findOpenCode(
+      const candidate = await window.tacit.session.findOpenCode(
         worktreePath,
         startedAt,
       );
@@ -587,7 +587,7 @@ async function syncPermissionMode(
     let shouldBypass = false;
 
     if (type === "claude" || type === "codex") {
-      shouldBypass = await window.termcanvas.session.getBypassState(
+      shouldBypass = await window.tacit.session.getBypassState(
         type,
         sessionId,
         runtime.meta.worktreePath,
@@ -611,7 +611,7 @@ function clearWatchedSession(runtime: ManagedTerminalRuntime) {
   const sessionId = runtime.watchedSessionId;
   runtime.watchedSessionId = null;
   if (isSessionTelemetryProvider(runtime.meta.terminal.type)) {
-    void window.termcanvas.telemetry
+    void window.tacit.telemetry
       .detachSession(runtime.meta.terminal.id)
       .catch((error) => {
         console.error(
@@ -620,7 +620,7 @@ function clearWatchedSession(runtime: ManagedTerminalRuntime) {
         );
       });
   }
-  void window.termcanvas.session.unwatch(sessionId).catch((error) => {
+  void window.tacit.session.unwatch(sessionId).catch((error) => {
     console.error("[terminalRuntime] failed to unwatch session:", error);
   });
 }
@@ -641,7 +641,7 @@ function watchSession(
 
   runtime.watchedSessionId = sessionId;
   if (isSessionTelemetryProvider(type)) {
-    void window.termcanvas.telemetry
+    void window.tacit.telemetry
       .attachSession({
         terminalId: runtime.meta.terminal.id,
         provider: type,
@@ -653,7 +653,7 @@ function watchSession(
         console.error("[terminalRuntime] telemetry attach failed:", error);
       });
   }
-  void window.termcanvas.session
+  void window.tacit.session
     .watch(type, sessionId, runtime.meta.worktreePath)
     .then((result) => {
       if (runtime.disposed || runtime.watchedSessionId !== sessionId) {
@@ -1064,14 +1064,14 @@ function wireInteractiveBindings(runtime: ManagedTerminalRuntime) {
 
   runtime.inputDisposable = runtime.xterm.onData((data: string) => {
     if (runtime.ptyId !== null) {
-      window.termcanvas.terminal.input(runtime.ptyId, data);
+      window.tacit.terminal.input(runtime.ptyId, data);
     }
   });
 
   runtime.resizeDisposable = runtime.xterm.onResize(
     ({ cols, rows }: { cols: number; rows: number }) => {
       if (runtime.ptyId !== null) {
-        window.termcanvas.terminal.resize(runtime.ptyId, cols, rows);
+        window.tacit.terminal.resize(runtime.ptyId, cols, rows);
       }
     },
   );
@@ -1088,7 +1088,7 @@ function syncAttachedTerminalGeometry(runtime: ManagedTerminalRuntime) {
   }
 
   runtime.fitAddon.fit();
-  window.termcanvas.terminal.resize(
+  window.tacit.terminal.resize(
     runtime.ptyId,
     runtime.xterm.cols,
     runtime.xterm.rows,
@@ -1245,7 +1245,7 @@ function createTerminalRenderer(
 
     if (event.type === "keydown" && event.metaKey) {
       if (event.key === "Backspace" && runtime.ptyId !== null) {
-        window.termcanvas.terminal.input(runtime.ptyId, "\x15");
+        window.tacit.terminal.input(runtime.ptyId, "\x15");
       }
       return false;
     }
@@ -1304,7 +1304,7 @@ function setupRuntimeSubscriptions(runtime: ManagedTerminalRuntime) {
     }
 
     if (runtime.ptyId !== null) {
-      window.termcanvas.terminal.notifyThemeChanged(runtime.ptyId);
+      window.tacit.terminal.notifyThemeChanged(runtime.ptyId);
     }
   });
 
@@ -1364,11 +1364,11 @@ function setupRuntimeSubscriptions(runtime: ManagedTerminalRuntime) {
 }
 
 function refreshTelemetry(runtime: ManagedTerminalRuntime) {
-  if (!window.termcanvas?.telemetry) {
+  if (!window.tacit?.telemetry) {
     return;
   }
 
-  void window.termcanvas.telemetry
+  void window.tacit.telemetry
     .getTerminal(runtime.meta.terminal.id)
     .then((snapshot) => {
       if (runtime.disposed) return;
@@ -1440,7 +1440,7 @@ function triggerDetection(runtime: ManagedTerminalRuntime) {
     }
 
     runtime.detectAttempts++;
-    void window.termcanvas.terminal.detectCli(runtime.ptyId).then((result) => {
+    void window.tacit.terminal.detectCli(runtime.ptyId).then((result) => {
       const nextType = (result?.cliType ?? null) as TerminalType | null;
       if (!nextType || nextType === runtime.meta.terminal.type) {
         // Still undetected — reschedule
@@ -1458,7 +1458,7 @@ function triggerDetection(runtime: ManagedTerminalRuntime) {
         void useCodexQuotaStore.getState().fetch();
       }
       if (isSessionTelemetryProvider(nextType)) {
-        void window.termcanvas.telemetry
+        void window.tacit.telemetry
           .updateTerminal({
             terminalId: runtime.meta.terminal.id,
             worktreePath: runtime.meta.worktreePath,
@@ -1637,12 +1637,12 @@ async function spawnPty(
     (runtime.meta.terminal.type === "claude" ||
       runtime.meta.terminal.type === "codex" ||
       runtime.meta.terminal.type === "shell") &&
-    !!window.termcanvas?.hooks;
+    !!window.tacit?.hooks;
 
   if (!resumeSessionId && launch && isHookEnabled) {
     runtime.removeHookSessionStarted?.();
     runtime.removeHookSessionStarted =
-      window.termcanvas!.hooks.onSessionStarted((payload) => {
+      window.tacit!.hooks.onSessionStarted((payload) => {
         if (payload.terminalId !== runtime.meta.terminal.id) return;
         if (runtime.disposed || hookSessionReceived) return;
         hookSessionReceived = true;
@@ -1658,7 +1658,7 @@ async function spawnPty(
           setTerminalType(runtime, "claude");
           useQuotaStore.getState().nudge();
           void window
-            .termcanvas!.telemetry.updateTerminal({
+            .tacit!.telemetry.updateTerminal({
               terminalId: runtime.meta.terminal.id,
               worktreePath: runtime.meta.worktreePath,
               provider: "claude",
@@ -1676,9 +1676,9 @@ async function spawnPty(
   }
 
   try {
-    const ptyId = await window.termcanvas.terminal.create(options);
+    const ptyId = await window.tacit.terminal.create(options);
     if (runtime.disposed) {
-      await window.termcanvas.terminal.destroy(ptyId);
+      await window.tacit.terminal.destroy(ptyId);
       return;
     }
 
@@ -1750,7 +1750,7 @@ function installRenderRecoveryListeners() {
   renderRecoveryInstalled = true;
 
   const observer = getVisibilityObserver({
-    subscribeLifecycleIPC: window.termcanvas?.lifecycle?.onVisible,
+    subscribeLifecycleIPC: window.tacit?.lifecycle?.onVisible,
     recordDiagnostic: (event) => {
       recordRenderDiagnostic({ kind: event.kind, data: event.data });
     },
@@ -1774,7 +1774,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
   installRenderDiagnosticsListeners();
   installRenderRecoveryListeners();
 
-  if (runtime.started || runtime.disposed || !window.termcanvas) {
+  if (runtime.started || runtime.disposed || !window.tacit) {
     return;
   }
 
@@ -1796,9 +1796,9 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
   runtime.telemetryTimer = setInterval(telemetryTick, TELEMETRY_POLL_SLOW_MS);
 
   // Push-based telemetry: immediate updates from hook events
-  if (window.termcanvas.telemetry?.onSnapshotChanged) {
+  if (window.tacit.telemetry?.onSnapshotChanged) {
     let prevTurnState: string | undefined;
-    const removePush = window.termcanvas.telemetry.onSnapshotChanged(
+    const removePush = window.tacit.telemetry.onSnapshotChanged(
       (payload) => {
         if (payload.terminalId !== runtime.meta.terminal.id) return;
         if (runtime.disposed) return;
@@ -1822,7 +1822,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
     runtime.globalDisposers.push(removePush);
   }
 
-  runtime.outputUnsubscribe = window.termcanvas.terminal.onOutput(
+  runtime.outputUnsubscribe = window.tacit.terminal.onOutput(
     (ptyId, data) => {
       if (ptyId !== runtime.ptyId) {
         return;
@@ -1832,7 +1832,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
     },
   );
 
-  const exitUnsubscribe = window.termcanvas.terminal.onExit(
+  const exitUnsubscribe = window.tacit.terminal.onExit(
     (ptyId, exitCode) => {
       if (ptyId !== runtime.ptyId) {
         return;
@@ -1913,7 +1913,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
     setStatus(runtime, "completed");
   };
 
-  runtime.removeTurnComplete = window.termcanvas.session.onTurnComplete(
+  runtime.removeTurnComplete = window.tacit.session.onTurnComplete(
     (sessionId) => {
       const terminal = lookupCurrentTerminal(runtime);
       if (terminal?.sessionId === sessionId) {
@@ -1922,8 +1922,8 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
     },
   );
 
-  if (window.termcanvas?.hooks) {
-    runtime.removeHookTurnComplete = window.termcanvas.hooks.onTurnComplete(
+  if (window.tacit?.hooks) {
+    runtime.removeHookTurnComplete = window.tacit.hooks.onTurnComplete(
       (payload) => {
         if (payload.terminalId !== runtime.meta.terminal.id) return;
         // Reject events from a stale CLI session: after a fallback-shell
@@ -1940,7 +1940,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
       },
     );
 
-    runtime.removeHookStopFailure = window.termcanvas.hooks.onStopFailure(
+    runtime.removeHookStopFailure = window.tacit.hooks.onStopFailure(
       (payload) => {
         if (payload.terminalId !== runtime.meta.terminal.id) return;
         if (
@@ -2125,7 +2125,7 @@ export function fitTerminalRuntime(terminalId: string) {
   }
 
   runtime.fitAddon.fit();
-  window.termcanvas.terminal.resize(
+  window.tacit.terminal.resize(
     runtime.ptyId,
     runtime.xterm.cols,
     runtime.xterm.rows,
@@ -2255,7 +2255,7 @@ export function destroyTerminalRuntime(
   if (runtime.ptyId !== null) {
     const ptyId = runtime.ptyId;
     setPtyId(runtime, null);
-    void window.termcanvas.terminal.destroy(ptyId).catch((error) => {
+    void window.tacit.terminal.destroy(ptyId).catch((error) => {
       console.error(`[terminalRuntime] failed to destroy PTY ${ptyId}:`, error);
     });
   }
@@ -2332,11 +2332,11 @@ export async function refreshClaudeSessionStates(): Promise<void> {
 
     tasks.push(
       (async () => {
-        const pid = await window.termcanvas.terminal.getPid(runtime.ptyId!);
+        const pid = await window.tacit.terminal.getPid(runtime.ptyId!);
         if (!pid || runtime.disposed) return;
 
         const latestSessionId =
-          await window.termcanvas.session.getClaudeByPid(pid);
+          await window.tacit.session.getClaudeByPid(pid);
         if (runtime.disposed) return;
 
         if (

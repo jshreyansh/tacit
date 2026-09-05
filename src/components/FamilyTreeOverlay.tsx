@@ -177,9 +177,9 @@ export function FamilyTreeOverlay() {
       const terminalId = (e as CustomEvent<string | null>).detail;
       setHoveredId(terminalId);
     };
-    window.addEventListener("termcanvas:terminal-hover", handler);
+    window.addEventListener("tacit:terminal-hover", handler);
     return () =>
-      window.removeEventListener("termcanvas:terminal-hover", handler);
+      window.removeEventListener("tacit:terminal-hover", handler);
   }, []);
 
   useEffect(() => {

@@ -27,19 +27,19 @@ function makeWorkflow(overrides: Partial<WorkbenchRecord> = {}): WorkbenchRecord
 }
 
 function withTerminalId<T>(terminalId: string | undefined, fn: () => T): T {
-  const previous = process.env.TERMCANVAS_TERMINAL_ID;
+  const previous = process.env.TACIT_TERMINAL_ID;
   if (terminalId === undefined) {
-    delete process.env.TERMCANVAS_TERMINAL_ID;
+    delete process.env.TACIT_TERMINAL_ID;
   } else {
-    process.env.TERMCANVAS_TERMINAL_ID = terminalId;
+    process.env.TACIT_TERMINAL_ID = terminalId;
   }
   try {
     return fn();
   } finally {
     if (previous === undefined) {
-      delete process.env.TERMCANVAS_TERMINAL_ID;
+      delete process.env.TACIT_TERMINAL_ID;
     } else {
-      process.env.TERMCANVAS_TERMINAL_ID = previous;
+      process.env.TACIT_TERMINAL_ID = previous;
     }
   }
 }
@@ -56,7 +56,7 @@ test("getCurrentTerminalId returns undefined when env var is missing", () => {
   });
 });
 
-test("ensureLeadCaller permits callers without TERMCANVAS_TERMINAL_ID (tooling/scripts)", () => {
+test("ensureLeadCaller permits callers without TACIT_TERMINAL_ID (tooling/scripts)", () => {
   withTerminalId(undefined, () => {
     const workflow = makeWorkflow({ lead_terminal_id: "terminal-lead" });
     assert.doesNotThrow(() => ensureLeadCaller(workflow));

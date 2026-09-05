@@ -12,7 +12,7 @@ import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 
 export { TOOLBAR_HEIGHT } from "./toolbarHeight";
 
-const platform = window.termcanvas?.app.platform ?? "darwin";
+const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 const isWin = platform === "win32";
 

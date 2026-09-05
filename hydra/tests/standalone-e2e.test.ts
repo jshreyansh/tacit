@@ -237,10 +237,10 @@ function makeStandaloneEnv(homeDir: string, binDir: string): NodeJS.ProcessEnv {
     HYDRA_STANDALONE: "1",
     HYDRA_LEAD_ID: "standalone-lead-test",
     PATH: `${binDir}:${process.env.PATH ?? ""}`,
-    TERMCANVAS_URL: "",
-    TERMCANVAS_HOST: "",
-    TERMCANVAS_PORT: "",
-    TERMCANVAS_TERMINAL_ID: "",
+    TACIT_URL: "",
+    TACIT_HOST: "",
+    TACIT_PORT: "",
+    TACIT_TERMINAL_ID: "",
   };
 }
 

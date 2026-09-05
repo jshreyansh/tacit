@@ -31,7 +31,7 @@ function installBrowserGlobals() {
       localStorage,
       addEventListener() {},
       removeEventListener() {},
-      termcanvas: undefined,
+      tacit: undefined,
     },
   });
 }

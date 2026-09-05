@@ -5,7 +5,7 @@
  * PTY, HTTP server, or project registry.
  *
  * Selection is centralized in ./index.ts (getRuntime). Every call-site in
- * hydra/src that previously reached into ./termcanvas.ts now goes through
+ * hydra/src that previously reached into ./tacit.ts now goes through
  * this interface. The Tacit path is preserved exactly — the
  * standalone path is additive.
  */
@@ -47,7 +47,7 @@ export interface TerminalCreateOptions {
 }
 
 export interface HydraRuntime {
-  readonly name: "termcanvas" | "standalone";
+  readonly name: "tacit" | "standalone";
 
   /**
    * Dispatcher preflight. Tacit returns false when the TC daemon is
@@ -57,7 +57,7 @@ export interface HydraRuntime {
 
   /**
    * Lead identity for ensureLeadCaller. Tacit returns
-   * TERMCANVAS_TERMINAL_ID; Standalone returns HYDRA_LEAD_ID or a synthesized
+   * TACIT_TERMINAL_ID; Standalone returns HYDRA_LEAD_ID or a synthesized
    * stable id derived from process.pid + boot-time persisted to disk.
    */
   getCurrentLeadId(): string | undefined;
@@ -91,7 +91,7 @@ export interface HydraRuntime {
   terminalDestroy(terminalId: string): void;
 
   /**
-   * Worker telemetry snapshot. Tacit proxies to `termcanvas telemetry
+   * Worker telemetry snapshot. Tacit proxies to `tacit telemetry
    * get`; standalone reads its in-memory / on-disk state.
    */
   telemetryTerminal(terminalId: string): RuntimeTelemetrySnapshot | null;

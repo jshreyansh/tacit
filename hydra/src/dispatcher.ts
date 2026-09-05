@@ -37,7 +37,7 @@ export interface DispatchCreateOnlyResult {
 }
 
 export interface DispatcherDependencies {
-  isTermCanvasRunning(): boolean;
+  isTacitRunning(): boolean;
   findProjectByPath(repoPath: string): { id: string; path: string } | null;
   terminalCreate(
     worktreePath: string,
@@ -53,7 +53,7 @@ export interface DispatcherDependencies {
 }
 
 const DEFAULT_DEPENDENCIES: DispatcherDependencies = {
-  isTermCanvasRunning: () => getRuntime().isAvailable(),
+  isTacitRunning: () => getRuntime().isAvailable(),
   findProjectByPath: (repoPath) => getRuntime().findProjectByPath(repoPath),
   terminalCreate: (
     worktreePath,
@@ -95,7 +95,7 @@ export async function dispatchCreateOnly(
   request: DispatchCreateOnlyRequest,
   dependencies: DispatcherDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<DispatchCreateOnlyResult> {
-  if (!dependencies.isTermCanvasRunning()) {
+  if (!dependencies.isTacitRunning()) {
     throw new HydraError("Hydra runtime is not available (Tacit not running and standalone runtime unavailable)", {
       errorCode: "DISPATCH_RUNTIME_UNAVAILABLE",
       stage: "dispatcher.preflight",

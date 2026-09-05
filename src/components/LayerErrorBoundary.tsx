@@ -52,7 +52,7 @@ export class LayerErrorBoundary extends Component<Props, State> {
     );
     // Lands in render-diagnostics.jsonl, which is the file to ask for when
     // this happens on a machine I can't reach.
-    void window.termcanvas?.diagnostics
+    void window.tacit?.diagnostics
       ?.recordRenderEvent?.({
         kind: "layer-error",
         data: {

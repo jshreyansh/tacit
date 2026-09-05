@@ -168,7 +168,7 @@ export function SnapshotHistoryModal() {
       setDiffLoading(false);
       return;
     }
-    if (!selectedEntry || !fromEntry || !window.termcanvas?.snapshots) {
+    if (!selectedEntry || !fromEntry || !window.tacit?.snapshots) {
       setDiffEntries([]);
       setDiffLoading(false);
       return;
@@ -177,8 +177,8 @@ export function SnapshotHistoryModal() {
     let cancelled = false;
     setDiffLoading(true);
     Promise.all([
-      window.termcanvas.snapshots.read(fromEntry.id),
-      window.termcanvas.snapshots.read(selectedEntry.id),
+      window.tacit.snapshots.read(fromEntry.id),
+      window.tacit.snapshots.read(selectedEntry.id),
     ])
       .then(([fromBody, toBody]) => {
         if (cancelled) return;
@@ -208,7 +208,7 @@ export function SnapshotHistoryModal() {
   );
 
   const performRestore = useCallback(async () => {
-    if (!pendingRestoreId || !window.termcanvas?.snapshots) return;
+    if (!pendingRestoreId || !window.tacit?.snapshots) return;
     setRestoring(true);
     try {
       // Always capture the current canvas before replacing it. Two reasons:
@@ -217,7 +217,7 @@ export function SnapshotHistoryModal() {
       // state is just one row up in the same list.
       await appendSnapshotToHistory({ force: true });
 
-      const body = await window.termcanvas.snapshots.read(pendingRestoreId);
+      const body = await window.tacit.snapshots.read(pendingRestoreId);
       if (!body) {
         useNotificationStore
           .getState()

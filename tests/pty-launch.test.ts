@@ -103,21 +103,21 @@ test("sanitizeEnv strips inherited Tacit runtime identity", () => {
     {
       HOME: "/Users/test",
       PATH: "/custom/bin",
-      TERMCANVAS_SOCKET: "/tmp/termcanvas-prod.sock",
-      TERMCANVAS_TERMINAL_ID: "prod-terminal",
-      TERMCANVAS_TERMINAL_TYPE: "codex",
-      TERMCANVAS_INSTANCE: "prod",
-      TERMCANVAS_PORT_FILE: "/Users/test/.tacit/port",
+      TACIT_SOCKET: "/tmp/tacit-prod.sock",
+      TACIT_TERMINAL_ID: "prod-terminal",
+      TACIT_TERMINAL_TYPE: "codex",
+      TACIT_INSTANCE: "prod",
+      TACIT_PORT_FILE: "/Users/test/.tacit/port",
     },
     createDeps(),
   );
 
   assert.equal(env.HOME, "/Users/test");
-  assert.ok(!("TERMCANVAS_SOCKET" in env));
-  assert.ok(!("TERMCANVAS_TERMINAL_ID" in env));
-  assert.ok(!("TERMCANVAS_TERMINAL_TYPE" in env));
-  assert.ok(!("TERMCANVAS_INSTANCE" in env));
-  assert.ok(!("TERMCANVAS_PORT_FILE" in env));
+  assert.ok(!("TACIT_SOCKET" in env));
+  assert.ok(!("TACIT_TERMINAL_ID" in env));
+  assert.ok(!("TACIT_TERMINAL_TYPE" in env));
+  assert.ok(!("TACIT_INSTANCE" in env));
+  assert.ok(!("TACIT_PORT_FILE" in env));
 });
 
 test("sanitizeEnv reads Windows Path variables case-insensitively and appends common user bins", () => {
@@ -227,7 +227,7 @@ test("buildLaunchSpec injects dark theme hints into the PTY environment", async 
     }),
   );
 
-  assert.equal(launch.env.TERMCANVAS_THEME, "dark");
+  assert.equal(launch.env.TACIT_THEME, "dark");
   assert.equal(launch.env.COLORFGBG, "15;0");
 });
 
@@ -243,7 +243,7 @@ test("buildLaunchSpec injects light theme hints into the PTY environment", async
     }),
   );
 
-  assert.equal(launch.env.TERMCANVAS_THEME, "light");
+  assert.equal(launch.env.TACIT_THEME, "light");
   assert.equal(launch.env.COLORFGBG, "0;15");
 });
 
@@ -284,11 +284,11 @@ test("buildLaunchSpec injects Tacit instance routing into the PTY environment", 
       }),
     );
 
-    assert.equal(launch.env.TERMCANVAS_TERMINAL_ID, "terminal-42");
-    assert.equal(launch.env.TERMCANVAS_TERMINAL_TYPE, "codex");
-    assert.equal(launch.env.TERMCANVAS_INSTANCE, "dev");
+    assert.equal(launch.env.TACIT_TERMINAL_ID, "terminal-42");
+    assert.equal(launch.env.TACIT_TERMINAL_TYPE, "codex");
+    assert.equal(launch.env.TACIT_INSTANCE, "dev");
     assert.equal(
-      launch.env.TERMCANVAS_PORT_FILE,
+      launch.env.TACIT_PORT_FILE,
       path.join(os.homedir(), ".tacit-dev", "port"),
     );
   } finally {
@@ -315,11 +315,11 @@ test("buildLaunchSpec does not inject removed Tacit Computer Use config", async 
   );
 
   assert.deepEqual(launch.args, ["resume", "session-42"]);
-  assert.equal("TERMCANVAS_COMPUTER_USE_ENABLED" in launch.env, false);
-  assert.equal("TERMCANVAS_COMPUTER_USE_STATE_FILE" in launch.env, false);
-  assert.equal("TERMCANVAS_COMPUTER_USE_INSTRUCTIONS" in launch.env, false);
-  assert.equal("TERMCANVAS_CU_PORT" in launch.env, false);
-  assert.equal("TERMCANVAS_CU_TOKEN" in launch.env, false);
+  assert.equal("TACIT_COMPUTER_USE_ENABLED" in launch.env, false);
+  assert.equal("TACIT_COMPUTER_USE_STATE_FILE" in launch.env, false);
+  assert.equal("TACIT_COMPUTER_USE_INSTRUCTIONS" in launch.env, false);
+  assert.equal("TACIT_CU_PORT" in launch.env, false);
+  assert.equal("TACIT_CU_TOKEN" in launch.env, false);
   assert.equal("CODEX_MCP_SERVERS" in launch.env, false);
   assert.ok(!launch.args.some((arg) => arg.includes("computer-use")));
 });

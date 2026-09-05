@@ -2,19 +2,19 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { HydraError } from "./errors.ts";
-import { resolveTermCanvasPortFile } from "../../shared/termcanvas-instance.ts";
+import { resolveTacitPortFile } from "../../shared/tacit-instance.ts";
 
-export function getTermCanvasPortFile(
+export function getTacitPortFile(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  return resolveTermCanvasPortFile(env);
+  return resolveTacitPortFile(env);
 }
 
-export function isTermCanvasRunning(
+export function isTacitRunning(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   try {
-    fs.readFileSync(getTermCanvasPortFile(env), "utf-8");
+    fs.readFileSync(getTacitPortFile(env), "utf-8");
     return true;
   } catch {
     return false;
@@ -28,15 +28,15 @@ export function parseJsonOrDie(stdout: string): any {
     throw new HydraError(
       `Failed to parse Tacit response: ${stdout.slice(0, 200)}`,
       {
-        errorCode: "TERMCANVAS_INVALID_JSON",
-        stage: "termcanvas.parse_json",
+        errorCode: "TACIT_INVALID_JSON",
+        stage: "tacit.parse_json",
         ids: {},
       },
     );
   }
 }
 
-export function buildTermcanvasArgs(
+export function buildTacitArgs(
   group: string,
   command: string,
   args: string[],
@@ -63,15 +63,15 @@ export function buildTerminalCreateArgs(
   if (assignmentId) args.push("--assignment-id", assignmentId);
   if (repoPath) args.push("--repo", repoPath);
   if (resumeSessionId) args.push("--resume-session-id", resumeSessionId);
-  return buildTermcanvasArgs("terminal", "create", args);
+  return buildTacitArgs("terminal", "create", args);
 }
 
 export function buildTelemetryTerminalArgs(terminalId: string): string[] {
-  return buildTermcanvasArgs("telemetry", "get", ["--terminal", terminalId]);
+  return buildTacitArgs("telemetry", "get", ["--terminal", terminalId]);
 }
 
 export function buildTelemetryWorkflowArgs(workflowId: string, repoPath: string): string[] {
-  return buildTermcanvasArgs("telemetry", "get", ["--workflow", workflowId, "--repo", repoPath]);
+  return buildTacitArgs("telemetry", "get", ["--workflow", workflowId, "--repo", repoPath]);
 }
 
 export function buildTelemetryEventsArgs(
@@ -81,22 +81,22 @@ export function buildTelemetryEventsArgs(
 ): string[] {
   const args = ["--terminal", terminalId, "--limit", String(limit)];
   if (cursor) args.push("--cursor", cursor);
-  return buildTermcanvasArgs("telemetry", "events", args);
+  return buildTacitArgs("telemetry", "events", args);
 }
 
-function runTermcanvasJson(args: string[], timeout: number): any {
+function runTacitJson(args: string[], timeout: number): any {
   let stdout: string;
   try {
-    stdout = execFileSync("termcanvas", args, {
+    stdout = execFileSync("tacit", args, {
       encoding: "utf-8",
       timeout,
     });
   } catch (err: any) {
     // Prefer stderr over Node's wrapper so Hydra surfaces the real CLI failure.
     const detail = (err.stderr as string)?.trim() || err.message;
-    throw new HydraError(`termcanvas ${args.slice(0, 2).join(" ")} failed: ${detail}`, {
-      errorCode: "TERMCANVAS_COMMAND_FAILED",
-      stage: "termcanvas.exec",
+    throw new HydraError(`tacit ${args.slice(0, 2).join(" ")} failed: ${detail}`, {
+      errorCode: "TACIT_COMMAND_FAILED",
+      stage: "tacit.exec",
       ids: {
         command: args.slice(0, 2).join("."),
       },
@@ -106,7 +106,7 @@ function runTermcanvasJson(args: string[], timeout: number): any {
 }
 
 function tc(group: string, command: string, args: string[] = []): any {
-  return runTermcanvasJson(buildTermcanvasArgs(group, command, args), 10_000);
+  return runTacitJson(buildTacitArgs(group, command, args), 10_000);
 }
 
 export function projectList(): any[] {
@@ -132,7 +132,7 @@ export function terminalCreate(
   repoPath?: string,
   resumeSessionId?: string,
 ): { id: string; type: string; title: string } {
-  return runTermcanvasJson(
+  return runTacitJson(
     buildTerminalCreateArgs(
       worktreePath,
       type,
@@ -157,15 +157,15 @@ export function terminalDestroy(terminalId: string): void {
 }
 
 export function telemetryTerminal(terminalId: string): any {
-  return runTermcanvasJson(buildTelemetryTerminalArgs(terminalId), 10_000);
+  return runTacitJson(buildTelemetryTerminalArgs(terminalId), 10_000);
 }
 
 export function telemetryWorkflow(workflowId: string, repoPath: string): any {
-  return runTermcanvasJson(buildTelemetryWorkflowArgs(workflowId, repoPath), 10_000);
+  return runTacitJson(buildTelemetryWorkflowArgs(workflowId, repoPath), 10_000);
 }
 
 export function telemetryEvents(terminalId: string, limit = 50, cursor?: string): any {
-  return runTermcanvasJson(buildTelemetryEventsArgs(terminalId, limit, cursor), 10_000);
+  return runTacitJson(buildTelemetryEventsArgs(terminalId, limit, cursor), 10_000);
 }
 
 export function findProjectByPath(repoPath: string): { id: string; path: string } | null {
@@ -200,8 +200,8 @@ export function ensureProjectTracked(repoPath: string): { id: string; path: stri
   const tracked = findProjectByPath(abs);
   if (!tracked) {
     throw new HydraError(`Repo not found on Tacit canvas after add: ${abs}`, {
-      errorCode: "TERMCANVAS_PROJECT_TRACK_FAILED",
-      stage: "termcanvas.ensure_project",
+      errorCode: "TACIT_PROJECT_TRACK_FAILED",
+      stage: "tacit.ensure_project",
       ids: {},
     });
   }

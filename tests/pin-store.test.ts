@@ -8,8 +8,8 @@ import { PinStore, PinStoreError } from "../electron/pin-store.ts";
 import type { Pin } from "../shared/pin.ts";
 
 function freshStore() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-pins-"));
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-pins-repo-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-pins-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-pins-repo-"));
   return { store: new PinStore(root), root, repo };
 }
 
@@ -105,7 +105,7 @@ test("list returns pins for a repo, sorted newest first", async () => {
 test("list isolates pins per repo", () => {
   const { store, repo } = freshStore();
   const otherRepo = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-pins-repo-"),
+    path.join(os.tmpdir(), "tacit-pins-repo-"),
   );
   store.create({ title: "for repo A", repo });
   store.create({ title: "for repo B", repo: otherRepo });

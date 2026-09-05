@@ -3,7 +3,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { cleanup } from "../src/cleanup.ts";
 import { AssignmentManager } from "../src/assignment/manager.ts";
-import { terminalDestroy, terminalStatus } from "../src/termcanvas.ts";
+import { terminalDestroy, terminalStatus } from "../src/tacit.ts";
 import {
   initWorkbench,
   dispatch,

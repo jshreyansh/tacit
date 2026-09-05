@@ -586,8 +586,8 @@ export function TerminalTile({
         scheduleXtermFocus();
       }
     };
-    window.addEventListener("termcanvas:focus-xterm", handler);
-    return () => window.removeEventListener("termcanvas:focus-xterm", handler);
+    window.addEventListener("tacit:focus-xterm", handler);
+    return () => window.removeEventListener("tacit:focus-xterm", handler);
   }, [scheduleXtermFocus, terminal.id]);
 
   useEffect(
@@ -604,9 +604,9 @@ export function TerminalTile({
         startCustomTitleEdit();
       }
     };
-    window.addEventListener("termcanvas:focus-custom-title", handler);
+    window.addEventListener("tacit:focus-custom-title", handler);
     return () =>
-      window.removeEventListener("termcanvas:focus-custom-title", handler);
+      window.removeEventListener("tacit:focus-custom-title", handler);
   }, [startCustomTitleEdit, terminal.id]);
 
   useEffect(() => {
@@ -692,7 +692,7 @@ export function TerminalTile({
       activateTerminalInScene(projectId, worktreeId, terminal.id);
 
       try {
-        const result = await window.termcanvas.pins.dispatchToTerminal(
+        const result = await window.tacit.pins.dispatchToTerminal(
           parsed.repo,
           parsed.id,
           {
@@ -758,7 +758,7 @@ export function TerminalTile({
     const isTaskDrag = (e: DragEvent) =>
       !!e.dataTransfer &&
       Array.from(e.dataTransfer.types).includes(
-        "application/x-termcanvas-pin",
+        "application/x-tacit-pin",
       );
 
     const onDragOver = (e: DragEvent) => {
@@ -780,7 +780,7 @@ export function TerminalTile({
         e.preventDefault();
         e.stopPropagation();
         setDragOver(false);
-        const raw = e.dataTransfer?.getData("application/x-termcanvas-pin");
+        const raw = e.dataTransfer?.getData("application/x-tacit-pin");
         if (raw) void handleTaskDropPayload(raw);
         return;
       }
@@ -796,7 +796,7 @@ export function TerminalTile({
       if (ptyId === null) return;
 
       const escaped = rawPath.split("\n").filter(Boolean).map(shellEscapePath).join(" ");
-      window.termcanvas.terminal.input(ptyId, " " + escaped);
+      window.tacit.terminal.input(ptyId, " " + escaped);
       activateTerminalInScene(projectId, worktreeId, terminal.id);
     };
 
@@ -835,7 +835,7 @@ export function TerminalTile({
   }, [projectId, terminal.id, worktreeId]);
 
   const isTaskDragEvent = (e: React.DragEvent) =>
-    Array.from(e.dataTransfer.types).includes("application/x-termcanvas-pin");
+    Array.from(e.dataTransfer.types).includes("application/x-tacit-pin");
 
   const handleTileDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -860,7 +860,7 @@ export function TerminalTile({
         e.preventDefault();
         e.stopPropagation();
         setDragOver(false);
-        const raw = e.dataTransfer.getData("application/x-termcanvas-pin");
+        const raw = e.dataTransfer.getData("application/x-tacit-pin");
         if (raw) void handleTaskDropPayload(raw);
         return;
       }
@@ -876,7 +876,7 @@ export function TerminalTile({
       if (ptyId === null) return;
 
       const escaped = rawPath.split("\n").filter(Boolean).map(shellEscapePath).join(" ");
-      window.termcanvas.terminal.input(ptyId, " " + escaped);
+      window.tacit.terminal.input(ptyId, " " + escaped);
       activateTerminalInScene(projectId, worktreeId, terminal.id);
     },
     [
@@ -929,12 +929,12 @@ export function TerminalTile({
       }}
       onMouseEnter={() => {
         window.dispatchEvent(
-          new CustomEvent("termcanvas:terminal-hover", { detail: terminal.id }),
+          new CustomEvent("tacit:terminal-hover", { detail: terminal.id }),
         );
       }}
       onMouseLeave={() => {
         window.dispatchEvent(
-          new CustomEvent("termcanvas:terminal-hover", { detail: null }),
+          new CustomEvent("tacit:terminal-hover", { detail: null }),
         );
       }}
       onWheel={(e) => e.stopPropagation()}
@@ -1281,7 +1281,7 @@ export function TerminalTile({
                 scheduleXtermFocus();
               } else {
                 window.dispatchEvent(
-                  new CustomEvent("termcanvas:focus-composer"),
+                  new CustomEvent("tacit:focus-composer"),
                 );
               }
             }}

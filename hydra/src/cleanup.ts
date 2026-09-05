@@ -166,7 +166,7 @@ export function cleanupWorkbench(workbenchId: string, repo: string, force: boole
   // Every destructive Lead-op must verify single-decider semantics before
   // touching the workbench's terminals, worktree, or branch — a non-Lead
   // caller running `hydra cleanup` could otherwise wipe out another Lead's
-  // in-flight state. Tooling/scripts without TERMCANVAS_TERMINAL_ID remain
+  // in-flight state. Tooling/scripts without TACIT_TERMINAL_ID remain
   // permitted by design (see lead-guard.ts).
   ensureLeadCaller(workflow);
 

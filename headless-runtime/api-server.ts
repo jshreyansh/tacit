@@ -48,7 +48,7 @@ const CREDENTIAL_ENV_KEYS = [
   "OPENROUTER_API_KEY",
   "GEMINI_API_KEY",
   "DEEPSEEK_API_KEY",
-  "TERMCANVAS_API_TOKEN",
+  "TACIT_API_TOKEN",
 ] as const;
 
 export class HeadlessApiServer {
@@ -75,7 +75,7 @@ export class HeadlessApiServer {
 
   constructor(deps: HeadlessApiServerDeps) {
     this.deps = deps;
-    this.apiToken = process.env.TERMCANVAS_API_TOKEN?.trim() || undefined;
+    this.apiToken = process.env.TACIT_API_TOKEN?.trim() || undefined;
     this.rateLimit = deps.rateLimit ?? 0;
     this.corsOrigins = deps.corsOrigins ?? [];
     this.serverVersion = deps.serverVersion ?? "0.0.0";
@@ -1043,7 +1043,7 @@ export class HeadlessApiServer {
           rate_limit: this.rateLimit,
           cors_origins: this.corsOrigins,
           api_token_configured: Boolean(this.apiToken),
-          webhook_enabled: Boolean(process.env.TERMCANVAS_WEBHOOK_URL?.trim()),
+          webhook_enabled: Boolean(process.env.TACIT_WEBHOOK_URL?.trim()),
         },
       },
     };

@@ -133,6 +133,6 @@ export class CaptureService {
  * record a packaged build is accumulating. JSONL merges trivially if the two
  * ever need to become one history.
  */
-export function getCaptureDir(termcanvasDir: string): string {
-  return path.join(termcanvasDir, "record");
+export function getCaptureDir(tacitDir: string): string {
+  return path.join(tacitDir, "record");
 }

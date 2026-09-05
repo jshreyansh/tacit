@@ -15,7 +15,7 @@ import type { BrowserActionName } from "../shared/browser-controller";
 
 type SessionTelemetryProvider = Exclude<TelemetryProvider, "unknown">;
 
-contextBridge.exposeInMainWorld("termcanvas", {
+contextBridge.exposeInMainWorld("tacit", {
   terminal: {
     create: (options: {
       cwd: string;

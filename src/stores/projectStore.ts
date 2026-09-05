@@ -1034,10 +1034,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     ) {
       const composerEnabled = usePreferencesStore.getState().composerEnabled;
       if (composerEnabled) {
-        window.dispatchEvent(new CustomEvent("termcanvas:focus-composer"));
+        window.dispatchEvent(new CustomEvent("tacit:focus-composer"));
       } else {
         window.dispatchEvent(
-          new CustomEvent("termcanvas:focus-xterm", { detail: terminalId }),
+          new CustomEvent("tacit:focus-xterm", { detail: terminalId }),
         );
       }
     }

@@ -46,7 +46,7 @@ async function driveBrowser(action: string, params: Record<string, unknown>) {
   return textResult(JSON.stringify(result, null, 2));
 }
 
-export function createTermcanvasBridgeServer(): McpServer {
+export function createTacitBridgeServer(): McpServer {
   const server = new McpServer({ name: "tacit", version: "0.1.0" });
 
   server.registerTool(

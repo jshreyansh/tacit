@@ -7,13 +7,13 @@ import type { ConnectionEndpoint } from "./stores/connectionStore";
  * click handlers and store actions, so capture must not be able to slow, block
  * or break the interaction it is observing.
  *
- * The try/catch is not defensive padding — `window.termcanvas` is absent in the
+ * The try/catch is not defensive padding — `window.tacit` is absent in the
  * jsdom-free unit tests that exercise the action modules, and a throw here
  * would turn "recording failed" into "wiring two nodes failed".
  */
 export function recordDecision(event: CaptureEvent): void {
   try {
-    window.termcanvas?.capture?.record?.(event);
+    window.tacit?.capture?.record?.(event);
   } catch {
     // Losing an entry is acceptable; breaking the user's action is not.
   }
@@ -22,7 +22,7 @@ export function recordDecision(event: CaptureEvent): void {
 /** Tells main which canvas to attribute hook-driven entries to. */
 export function setCaptureCanvas(canvasId: string | null): void {
   try {
-    window.termcanvas?.capture?.setCanvas?.(canvasId);
+    window.tacit?.capture?.setCanvas?.(canvasId);
   } catch {
     // Same reasoning as recordDecision.
   }

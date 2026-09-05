@@ -691,10 +691,10 @@ export function useKeyboardShortcuts() {
           const { workspacePath } = useWorkspaceStore.getState();
 
           if (workspacePath) {
-            window.termcanvas.workspace
+            window.tacit.workspace
               .saveToPath(workspacePath, snap)
               .then(async () => {
-                await window.termcanvas.state.save(snap);
+                await window.tacit.state.save(snap);
                 useWorkspaceStore.getState().markClean();
                 updateWindowTitle();
               })
@@ -704,14 +704,14 @@ export function useKeyboardShortcuts() {
                   .notify("error", t.save_error(String(err)));
               });
           } else {
-            window.termcanvas.workspace
+            window.tacit.workspace
               .save(snap)
               .then(async (savedPath) => {
                 if (!savedPath) {
                   return;
                 }
                 useWorkspaceStore.getState().setWorkspacePath(savedPath);
-                await window.termcanvas.state.save(snap);
+                await window.tacit.state.save(snap);
                 useWorkspaceStore.getState().markClean();
                 updateWindowTitle();
               })
@@ -728,14 +728,14 @@ export function useKeyboardShortcuts() {
       if (matchesShortcut(e, shortcuts.saveWorkspaceAs)) {
         consumeShortcut();
         void snapshotStateWithRefresh().then((snap) => {
-          window.termcanvas.workspace
+          window.tacit.workspace
             .save(snap)
             .then(async (savedPath) => {
               if (!savedPath) {
                 return;
               }
               useWorkspaceStore.getState().setWorkspacePath(savedPath);
-              await window.termcanvas.state.save(snap);
+              await window.tacit.state.save(snap);
               useWorkspaceStore.getState().markClean();
               updateWindowTitle();
             })
@@ -788,7 +788,7 @@ export function useKeyboardShortcuts() {
         } else {
           focusTerminalInScene(terminal.id, { focusComposer: false });
           window.dispatchEvent(
-            new CustomEvent("termcanvas:focus-custom-title", {
+            new CustomEvent("tacit:focus-custom-title", {
               detail: terminal.id,
             }),
           );

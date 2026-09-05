@@ -38,7 +38,7 @@ function installBrowserGlobals() {
       innerHeight: 900,
       innerWidth: 1440,
       navigator,
-      termcanvas: undefined,
+      tacit: undefined,
     },
   });
 }

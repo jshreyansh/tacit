@@ -60,7 +60,7 @@ That is too weak.
 
 In an agent workspace, the worktree is a boundary of responsibility. It tells you which filesystem state the agent can modify, which branch it belongs to, which diff it produced, and whether its output can be merged safely.
 
-TermCanvas models that hierarchy directly:
+Tacit models that hierarchy directly:
 
 ```text
 Project -> Worktree -> Terminal
@@ -90,6 +90,6 @@ The terminal used to be an input/output surface for one user. With AI coding age
 
 That requires a different interface shape.
 
-TermCanvas is built around that shift. It keeps terminals real, because agents still need real shells, real processes, and real repositories. But it adds the missing layer around them: spatial organization, worktree-aware context, unified input, visible session state, and Hydra for structured multi-agent workflows.
+Tacit is built around that shift. It keeps terminals real, because agents still need real shells, real processes, and real repositories. But it adds the missing layer around them: spatial organization, worktree-aware context, unified input, visible session state, and Hydra for structured multi-agent workflows.
 
 The goal is not to replace the terminal. The goal is to make the terminal usable when one human is supervising many coding agents at once.

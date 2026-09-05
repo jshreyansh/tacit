@@ -1,9 +1,9 @@
 #!/bin/bash
 # memory-session-start.sh
-# Fetch enhanced memory index from TermCanvas API and inject as additionalContext.
+# Fetch enhanced memory index from Tacit API and inject as additionalContext.
 
 # Try dev port first, then production
-PORT=$(cat "$HOME/.termcanvas-dev/port" 2>/dev/null || cat "$HOME/.termcanvas/port" 2>/dev/null || echo "")
+PORT=$(cat "$HOME/.tacit-dev/port" 2>/dev/null || cat "$HOME/.tacit/port" 2>/dev/null || echo "")
 if [ -z "$PORT" ]; then
   exit 0
 fi

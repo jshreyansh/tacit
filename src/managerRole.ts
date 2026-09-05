@@ -23,7 +23,7 @@ export function recordManagerRoleChange(
   });
 
   try {
-    window.termcanvas?.managerRole?.set(
+    window.tacit?.managerRole?.set(
       terminalId
         ? { terminalId, cli: findTerminalCli(terminalId), canvasId }
         : null,

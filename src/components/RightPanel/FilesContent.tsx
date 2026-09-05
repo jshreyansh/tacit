@@ -245,9 +245,9 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
         const parentAbsPath = parentRelPath ? `${wtp}/${parentRelPath}` : wtp;
         try {
           if (pendingType === "folder") {
-            await window.termcanvas.fs.mkdir(parentAbsPath, name);
+            await window.tacit.fs.mkdir(parentAbsPath, name);
           } else {
-            await window.termcanvas.fs.createFile(parentAbsPath, name);
+            await window.tacit.fs.createFile(parentAbsPath, name);
           }
         } catch (err) {
           notify("error", `Create failed: ${err}`);
@@ -260,7 +260,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
       const srcName = event.sourcePath.split("/").pop()!;
       if (srcName !== dstName) {
         try {
-          await window.termcanvas.fs.rename(`${wtp}/${event.sourcePath}`, dstName);
+          await window.tacit.fs.rename(`${wtp}/${event.sourcePath}`, dstName);
         } catch (err) {
           notify("error", `Rename failed: ${err}`);
         }
@@ -325,7 +325,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
       void (async () => {
         try {
           for (const move of moves) {
-            await window.termcanvas.fs.move(move.from, move.to);
+            await window.tacit.fs.move(move.from, move.to);
           }
           await refreshRef.current();
         } catch (err) {
@@ -654,7 +654,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
             onClick: () => {
               context.close();
               if (!window.confirm(t.ctx_confirm_delete(name))) return;
-              window.termcanvas.fs
+              window.tacit.fs
                 .delete(`${wtp}/${itemRelPath}`)
                 .then(() => refreshRef.current())
                 .catch((err) => notify("error", `Delete failed: ${err}`));
@@ -673,10 +673,10 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
           },
         },
         {
-          label: t.ctx_reveal(window.termcanvas?.app.platform ?? "darwin"),
+          label: t.ctx_reveal(window.tacit?.app.platform ?? "darwin"),
           onClick: () => {
             context.close();
-            window.termcanvas.fs.reveal(
+            window.tacit.fs.reveal(
               itemRelPath ? `${wtp}/${itemRelPath}` : wtp,
             );
           },
@@ -718,7 +718,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
     const types = Array.from(e.dataTransfer.types);
     return (
       types.includes("Files") &&
-      !types.includes("application/x-termcanvas-file")
+      !types.includes("application/x-tacit-file")
     );
   }, []);
 
@@ -730,11 +730,11 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
       const sources = files
-        .map((f) => window.termcanvas.fs.getFilePath(f))
+        .map((f) => window.tacit.fs.getFilePath(f))
         .filter(Boolean);
       if (sources.length === 0) return;
       try {
-        const result = await window.termcanvas.fs.copy(sources, worktreePath);
+        const result = await window.tacit.fs.copy(sources, worktreePath);
         await refresh();
         if (result.skipped.length > 0) {
           notify("warn", `Skipped (already exist): ${result.skipped.join(", ")}`);
@@ -779,7 +779,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
   // Capture native dragstart events that bubble out of the @pierre/trees
   // shadow DOM. The library sets `text/plain` to the row's relative path; in
   // bubble phase we override with absolute paths and add our own
-  // `application/x-termcanvas-file` payload so terminal cards can accept the
+  // `application/x-tacit-file` payload so terminal cards can accept the
   // drop. When the dragged row is part of the model's selection, we serialize
   // the entire selection (newline-separated) — matching the library's own
   // multi-select drag semantics.
@@ -807,7 +807,7 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
 
       try {
         e.dataTransfer.setData("text/plain", serialized);
-        e.dataTransfer.setData("application/x-termcanvas-file", serialized);
+        e.dataTransfer.setData("application/x-tacit-file", serialized);
         e.dataTransfer.effectAllowed = "copyMove";
       } catch {}
     };
@@ -880,10 +880,10 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
         },
       },
       {
-        label: t.ctx_reveal(window.termcanvas?.app.platform ?? "darwin"),
+        label: t.ctx_reveal(window.tacit?.app.platform ?? "darwin"),
         onClick: () => {
           setRootCtxMenu(null);
-          window.termcanvas.fs.reveal(wtp);
+          window.tacit.fs.reveal(wtp);
         },
       },
     ];

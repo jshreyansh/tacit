@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import os from "os";
-import { TERMCANVAS_DIR } from "./state-persistence";
+import { TACIT_DIR } from "./state-persistence";
 import { startOAuthCallbackServer, type CallbackResult } from "./oauth-callback-server";
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
@@ -21,32 +21,15 @@ type LoginResult = { ok: boolean; url?: string; error?: string };
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-const AUTH_FILE = path.join(TERMCANVAS_DIR, "auth.json");
+const AUTH_FILE = path.join(TACIT_DIR, "auth.json");
 /**
  * The device id lives in one fixed directory, deliberately outside the
  * per-instance data dirs: prod (`~/.tacit`) and dev (`~/.tacit-dev`) must agree
  * on which machine they are, or a developer running both double-counts every
  * usage record uploaded to Supabase.
- *
- * `~/.termcanvas` is where it used to live. That name was never updated when
- * the data directory was renamed, so the rename migration carried the original
- * id into `~/.tacit` where nothing read it, and this file minted a fresh one
- * under the old name — silently changing the identity of every machine that
- * upgraded, which is the exact double-count the fixed location exists to
- * prevent.
- *
- * That has already happened and cannot be undone, so the goal here is only to
- * stop it happening a second time. `~/.termcanvas` therefore wins: it holds the
- * id a machine is *currently* reporting under, while the copy sitting in
- * `~/.tacit` is the stale pre-rename one the migration left behind. Preferring
- * the newer location would look tidier and would change everyone's identity
- * again.
  */
 const DEVICE_ID_DIR = path.join(os.homedir(), ".tacit");
 const DEVICE_ID_FILE = path.join(DEVICE_ID_DIR, "device-id");
-const LEGACY_DEVICE_ID_FILES = [
-  path.join(os.homedir(), ".termcanvas", "device-id"),
-];
 
 let supabase: SupabaseClient | null = null;
 let currentUser: AuthUser | null = null;
@@ -58,8 +41,8 @@ function isConfigured(): boolean {
 }
 
 function ensureDir(): void {
-  if (!fs.existsSync(TERMCANVAS_DIR)) {
-    fs.mkdirSync(TERMCANVAS_DIR, { recursive: true });
+  if (!fs.existsSync(TACIT_DIR)) {
+    fs.mkdirSync(TACIT_DIR, { recursive: true });
   }
 }
 
@@ -104,15 +87,6 @@ function loadOrCreateDeviceId(): string {
   try {
     if (!fs.existsSync(DEVICE_ID_DIR)) {
       fs.mkdirSync(DEVICE_ID_DIR, { recursive: true });
-    }
-    // Legacy first, and deliberately: it is the id in use today. See above.
-    for (const legacy of LEGACY_DEVICE_ID_FILES) {
-      if (!fs.existsSync(legacy)) continue;
-      const existing = fs.readFileSync(legacy, "utf-8").trim();
-      if (!existing) continue;
-      fs.writeFileSync(DEVICE_ID_FILE, existing, { encoding: "utf-8", mode: 0o600 });
-      if (isDev) console.log("[Auth] Adopted the existing device ID");
-      return existing;
     }
     if (fs.existsSync(DEVICE_ID_FILE)) {
       return fs.readFileSync(DEVICE_ID_FILE, "utf-8").trim();
@@ -360,8 +334,8 @@ export async function handleAuthCallback(url: string): Promise<void> {
 
   try {
     // Parse the callback URL to extract tokens or error info
-    // Supabase redirects with fragment: termcanvas://auth/callback#access_token=...&refresh_token=...
-    // Or with error: termcanvas://auth/callback#error=xxx&error_description=yyy
+    // Supabase redirects with fragment: tacit://auth/callback#access_token=...&refresh_token=...
+    // Or with error: tacit://auth/callback#error=xxx&error_description=yyy
     const hashIndex = url.indexOf("#");
     const queryIndex = url.indexOf("?");
     const paramsString = hashIndex !== -1

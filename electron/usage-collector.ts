@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { TERMCANVAS_DIR } from "./state-persistence.ts";
+import { TACIT_DIR } from "./state-persistence.ts";
 
 interface Pricing {
   input: number;
@@ -202,7 +202,7 @@ const TODAY_USAGE_CACHE_TTL_MS = 30_000;
 const HEATMAP_CACHE_TTL_MS = 5 * 60_000;
 const HEATMAP_DISK_CACHE_VERSION = 1;
 const HEATMAP_DISK_CACHE_FILE = path.join(
-  TERMCANVAS_DIR,
+  TACIT_DIR,
   "usage-heatmap-cache.json",
 );
 

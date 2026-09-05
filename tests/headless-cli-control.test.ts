@@ -34,7 +34,7 @@ function initRepo(repoPath: string): void {
 async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<string> {
   const { stdout } = await execFileAsync(
     process.execPath,
-    ["--import", "tsx", "cli/termcanvas.ts", ...args],
+    ["--import", "tsx", "cli/tacit.ts", ...args],
     {
       cwd: repoRoot,
       env: {
@@ -48,11 +48,11 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<string> {
   return stdout.trim();
 }
 
-test("termcanvas CLI preserves TERMCANVAS_URL path prefixes for remote routing", async () => {
+test("tacit CLI preserves TACIT_URL path prefixes for remote routing", async () => {
   const seenPaths: string[] = [];
   const server = http.createServer((req, res) => {
     seenPaths.push(req.url ?? "");
-    if (req.url === "/termcanvas/project/list") {
+    if (req.url === "/tacit/project/list") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("[]");
       return;
@@ -71,11 +71,11 @@ test("termcanvas CLI preserves TERMCANVAS_URL path prefixes for remote routing",
   try {
     const output = await runCli(
       ["project", "list", "--json"],
-      { TERMCANVAS_URL: `http://127.0.0.1:${port}/termcanvas` },
+      { TACIT_URL: `http://127.0.0.1:${port}/tacit` },
     );
 
     assert.equal(output, "[]");
-    assert.deepEqual(seenPaths, ["/termcanvas/project/list"]);
+    assert.deepEqual(seenPaths, ["/tacit/project/list"]);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {
@@ -86,7 +86,7 @@ test("termcanvas CLI preserves TERMCANVAS_URL path prefixes for remote routing",
   }
 });
 
-test("termcanvas workflow CLI drives a Lead-driven workflow init→dispatch→watch→approve→complete→cleanup", async () => {
+test("tacit workflow CLI drives a Lead-driven workflow init→dispatch→watch→approve→complete→cleanup", async () => {
   const workspaceDir = createWorkspaceFixture({});
   const repoPath = path.join(workspaceDir, "repo");
   fs.mkdirSync(repoPath, { recursive: true });
@@ -108,12 +108,12 @@ test("termcanvas workflow CLI drives a Lead-driven workflow init→dispatch→wa
     },
   });
 
-  const cliEnv = { TERMCANVAS_URL: harness.baseUrl };
+  const cliEnv = { TACIT_URL: harness.baseUrl };
 
-  // Lead identity is read from process.env.TERMCANVAS_TERMINAL_ID inside the
+  // Lead identity is read from process.env.TACIT_TERMINAL_ID inside the
   // headless server (which runs in this test process), not the CLI subprocess.
-  const previousLead = process.env.TERMCANVAS_TERMINAL_ID;
-  process.env.TERMCANVAS_TERMINAL_ID = "terminal-cli-test-lead";
+  const previousLead = process.env.TACIT_TERMINAL_ID;
+  process.env.TACIT_TERMINAL_ID = "terminal-cli-test-lead";
 
   try {
     const init = JSON.parse(
@@ -217,15 +217,15 @@ test("termcanvas workflow CLI drives a Lead-driven workflow init→dispatch→wa
     );
   } finally {
     if (previousLead === undefined) {
-      delete process.env.TERMCANVAS_TERMINAL_ID;
+      delete process.env.TACIT_TERMINAL_ID;
     } else {
-      process.env.TERMCANVAS_TERMINAL_ID = previousLead;
+      process.env.TACIT_TERMINAL_ID = previousLead;
     }
     await stopHeadlessServer(harness);
   }
 });
 
-test("termcanvas workflow reset CLI sends a reset feedback to the headless server", async () => {
+test("tacit workflow reset CLI sends a reset feedback to the headless server", async () => {
   const workspaceDir = createWorkspaceFixture({});
   const repoPath = path.join(workspaceDir, "repo");
   fs.mkdirSync(repoPath, { recursive: true });
@@ -247,9 +247,9 @@ test("termcanvas workflow reset CLI sends a reset feedback to the headless serve
     },
   });
 
-  const cliEnv = { TERMCANVAS_URL: harness.baseUrl };
-  const previousLead = process.env.TERMCANVAS_TERMINAL_ID;
-  process.env.TERMCANVAS_TERMINAL_ID = "terminal-cli-reset-test";
+  const cliEnv = { TACIT_URL: harness.baseUrl };
+  const previousLead = process.env.TACIT_TERMINAL_ID;
+  process.env.TACIT_TERMINAL_ID = "terminal-cli-reset-test";
 
   try {
     const init = JSON.parse(
@@ -297,15 +297,15 @@ test("termcanvas workflow reset CLI sends a reset feedback to the headless serve
     ], cliEnv);
   } finally {
     if (previousLead === undefined) {
-      delete process.env.TERMCANVAS_TERMINAL_ID;
+      delete process.env.TACIT_TERMINAL_ID;
     } else {
-      process.env.TERMCANVAS_TERMINAL_ID = previousLead;
+      process.env.TACIT_TERMINAL_ID = previousLead;
     }
     await stopHeadlessServer(harness);
   }
 });
 
-test("termcanvas worktree CLI creates, lists, and removes headless worktrees", async () => {
+test("tacit worktree CLI creates, lists, and removes headless worktrees", async () => {
   const workspaceDir = createWorkspaceFixture({});
   const repoPath = path.join(workspaceDir, "repo");
   fs.mkdirSync(repoPath, { recursive: true });
@@ -316,7 +316,7 @@ test("termcanvas worktree CLI creates, lists, and removes headless worktrees", a
     projectScanner: new ProjectScanner(),
   });
 
-  const cliEnv = { TERMCANVAS_URL: harness.baseUrl };
+  const cliEnv = { TACIT_URL: harness.baseUrl };
 
   try {
     const created = JSON.parse(

@@ -131,7 +131,7 @@ export function WtermTile({ terminal }: Props) {
 
   useEffect(() => {
     if (ptyId === null) return;
-    return window.termcanvas.terminal.onOutput((id, data) => {
+    return window.tacit.terminal.onOutput((id, data) => {
       if (id !== ptyId) return;
       handleRef.current?.write(data);
     });
@@ -146,7 +146,7 @@ export function WtermTile({ terminal }: Props) {
   const handleData = useCallback(
     (data: string) => {
       if (ptyId === null) return;
-      window.termcanvas.terminal.input(ptyId, data);
+      window.tacit.terminal.input(ptyId, data);
     },
     [ptyId],
   );
@@ -154,7 +154,7 @@ export function WtermTile({ terminal }: Props) {
   const handleResize = useCallback(
     (cols: number, rows: number) => {
       if (ptyId === null) return;
-      window.termcanvas.terminal.resize(ptyId, cols, rows);
+      window.tacit.terminal.resize(ptyId, cols, rows);
     },
     [ptyId],
   );

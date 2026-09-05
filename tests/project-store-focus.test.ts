@@ -135,8 +135,8 @@ test("setFocusedTerminal can skip input focus side effects", () => {
 
   try {
     usePreferencesStore.setState({ composerEnabled: true });
-    window.addEventListener("termcanvas:focus-composer", onFocusComposer);
-    window.addEventListener("termcanvas:focus-xterm", onFocusXterm);
+    window.addEventListener("tacit:focus-composer", onFocusComposer);
+    window.addEventListener("tacit:focus-xterm", onFocusXterm);
 
     useProjectStore.getState().setFocusedTerminal("terminal-2", {
       focusInput: false,
@@ -147,8 +147,8 @@ test("setFocusedTerminal can skip input focus side effects", () => {
     assert.deepEqual(focusedComposerEvents, []);
     assert.deepEqual(focusedXtermEvents, []);
   } finally {
-    window.removeEventListener("termcanvas:focus-composer", onFocusComposer);
-    window.removeEventListener("termcanvas:focus-xterm", onFocusXterm);
+    window.removeEventListener("tacit:focus-composer", onFocusComposer);
+    window.removeEventListener("tacit:focus-xterm", onFocusXterm);
     usePreferencesStore.setState(previousPreferences);
     restoreWindow();
   }

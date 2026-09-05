@@ -2,7 +2,7 @@ import http from "http";
 import https from "https";
 import fs from "fs";
 import path from "path";
-import { resolveTermCanvasPortFile } from "../shared/termcanvas-instance";
+import { resolveTacitPortFile } from "../shared/tacit-instance";
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
@@ -31,7 +31,7 @@ function buildRequestPath(basePath: string, urlPath: string): string {
 }
 
 function getConnection(): ConnectionTarget {
-  const envUrl = process.env.TERMCANVAS_URL?.trim();
+  const envUrl = process.env.TACIT_URL?.trim();
   if (envUrl) {
     try {
       const parsed = new URL(envUrl);
@@ -46,16 +46,16 @@ function getConnection(): ConnectionTarget {
         hostname: parsed.hostname,
         port,
         basePath: normalizeBasePath(parsed.pathname),
-        authToken: process.env.TERMCANVAS_API_TOKEN?.trim() ?? "",
+        authToken: process.env.TACIT_API_TOKEN?.trim() ?? "",
       };
     } catch {
-      console.error(`Invalid TERMCANVAS_URL: ${envUrl}`);
+      console.error(`Invalid TACIT_URL: ${envUrl}`);
       process.exit(1);
     }
   }
 
-  const envHost = process.env.TERMCANVAS_HOST?.trim();
-  const envPort = process.env.TERMCANVAS_PORT?.trim();
+  const envHost = process.env.TACIT_HOST?.trim();
+  const envPort = process.env.TACIT_PORT?.trim();
 
   if (envHost && envPort) {
     return {
@@ -63,11 +63,11 @@ function getConnection(): ConnectionTarget {
       hostname: envHost,
       port: parseInt(envPort, 10),
       basePath: "",
-      authToken: process.env.TERMCANVAS_API_TOKEN?.trim() ?? "",
+      authToken: process.env.TACIT_API_TOKEN?.trim() ?? "",
     };
   }
 
-  const portFile = resolveTermCanvasPortFile(process.env);
+  const portFile = resolveTacitPortFile(process.env);
   try {
     const [portStr, pidStr, authToken = ""] = fs.readFileSync(portFile, "utf-8").trim().split("\n");
     const port = parseInt(portStr, 10);

@@ -2,7 +2,7 @@
 
 **一份实战手册:从 app 长什么样、到那些不告诉你就永远发现不了的交互、到所有值得记的快捷键。**
 
-默认你已经装好了 Tacit。下载链接和 `termcanvas` / `hydra` 的 CLI 注册见 [README.zh-CN](../README.zh-CN.md) 的"快速开始"。
+默认你已经装好了 Tacit。下载链接和 `tacit` / `hydra` 的 CLI 注册见 [README.zh-CN](../README.zh-CN.md) 的"快速开始"。
 
 - English → [`user-guide.md`](./user-guide.md)
 
@@ -10,7 +10,7 @@
 
 ## 目录
 
-1. [Tacit 是什么](#termcanvas-是什么)
+1. [Tacit 是什么](#tacit-是什么)
 2. [前 5 分钟](#前-5-分钟)
 3. [三栏布局](#三栏布局)
 4. [在 canvas 上移动](#在-canvas-上移动)
@@ -317,13 +317,13 @@ canvas 底部正中有一条小点,显示哪些槽已经填了。布局铺得很
 
 Pin 是持久化的「这事先记下,以后办」清单。每条 pin 有标题、描述、可选外链(比如 GitHub issue)。重启不丢、按 repo 分组。
 
-CLI 是 `termcanvas pin`(在 设置 → CLI 里和 `termcanvas` 一起注册):
+CLI 是 `tacit pin`(在 设置 → CLI 里和 `tacit` 一起注册):
 
 ```bash
-termcanvas pin add --title "修一下 OAuth refresh 边界情况" --body "请求中途 token 过期..."
-termcanvas pin add --title "看一下这个 issue" --link https://github.com/.../issues/42 --link-type github_issue
-termcanvas pin list
-termcanvas pin update <id> --status done
+tacit pin add --title "修一下 OAuth refresh 边界情况" --body "请求中途 token 过期..."
+tacit pin add --title "看一下这个 issue" --link https://github.com/.../issues/42 --link-type github_issue
+tacit pin list
+tacit pin update <id> --status done
 ```
 
 App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么但不想中断手头的事,先 pin 一下。
@@ -359,7 +359,7 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 - **Browser** — 开启 canvas 内置浏览器卡片(嵌入 web view)。
 - **Summary** — 开启后 live terminal 空闲时自动做一次总结。
 - **Pet** — 开启水豚吉祥物。它会响应 telemetry 事件(工作中 / 等待 / 完成 / 卡住)。默认关。
-- **CLI registration** — 把 `termcanvas` 和 `hydra` shim 装进 `$PATH`。移动过 app 位置的话点一下重新注册。
+- **CLI registration** — 把 `tacit` 和 `hydra` shim 装进 `$PATH`。移动过 app 位置的话点一下重新注册。
 - **Check for Updates** — 手动触发一次自动更新检查。
 
 ### Shortcuts(快捷键)
@@ -382,8 +382,8 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 - **活动热力图(`⌘⇧A`)** — 每个 tile 上画一条 5 分钟输出量 sparkline,扫一眼 canvas 就知道哪些 agent 现在在干活。开关式。
 - **飞向最近活动(`⌥` + `` ` ``)** — 把镜头飞到最近有 PTY 输出的终端。重复按等于在最近活跃集合里 LRU 循环,Alt-Tab 风格。
 - **Telemetry** — 每个 terminal 都发生命周期事件(awaiting-input / tool-running / stall / completion)。这些驱动 pet、状态点、注意力队列、Hub、`⌘K` 会话搜索。设置 → 通用 里可以整体关掉。
-- **Headless 模式** — `termcanvas headless` 把整个栈跑成 HTTP/SSE 服务,不开 Electron 窗口。CI 或者别的 app 驱动 Tacit 时用。详见 [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md)。
-- **Workspace 文件** — `⌘S` / `⌘⇧S` 把画布存成一个 `.termcanvas` JSON 文件。重开它会恢复所有项目、worktree、terminal、涂鸦、stashed tile、视口。(自动状态历史 + 回滚见上面的「快照历史」。)
+- **Headless 模式** — `tacit headless` 把整个栈跑成 HTTP/SSE 服务,不开 Electron 窗口。CI 或者别的 app 驱动 Tacit 时用。详见 [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md)。
+- **Workspace 文件** — `⌘S` / `⌘⇧S` 把画布存成一个 `.tacit` JSON 文件。重开它会恢复所有项目、worktree、terminal、涂鸦、stashed tile、视口。(自动状态历史 + 回滚见上面的「快照历史」。)
 
 ---
 
@@ -470,4 +470,4 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 
 ---
 
-反馈和 bug 在 [github.com/blueberrycongee/termcanvas/issues](https://github.com/blueberrycongee/termcanvas/issues) 提。
+反馈和 bug 在 [github.com/jshreyansh/tacit/issues](https://github.com/jshreyansh/tacit/issues) 提。

@@ -1,10 +1,10 @@
 ---
-name: using-termcanvas
-description: Use when starting work in a TermCanvas-managed repo to route between direct work, Hydra, or a narrow TermCanvas skill.
+name: using-tacit
+description: Use when starting work in a Tacit-managed repo to route between direct work, Hydra, or a narrow Tacit skill.
 alwaysApply: true
 ---
 
-# Using TermCanvas
+# Using Tacit
 
 Route first. Choose the lightest path that preserves correctness.
 
@@ -20,7 +20,7 @@ Route first. Choose the lightest path that preserves correctness.
 - If the task needs an isolated worktree, file evidence, retry/status control,
   or a staged workflow, use `hydra`.
 - Before using Hydra in a repo, ensure the project has current Hydra
-  instructions via `hydra init-repo` or the TermCanvas Hydra enable action.
+  instructions via `hydra init-repo` or the Tacit Hydra enable action.
 
 ## Hydra workflow patterns
 
@@ -48,8 +48,8 @@ separate tester — dev owns its own test surface.
 
 - Do not describe Hydra workflows as automatic parallelism unless multiple
   spawned workers are actually involved.
-- When launching Claude/Codex tasks via TermCanvas CLI, use
-  `termcanvas terminal create --prompt "..."` rather than `termcanvas terminal input`.
+- When launching Claude/Codex tasks via Tacit CLI, use
+  `tacit terminal create --prompt "..."` rather than `tacit terminal input`.
 - After `hydra dispatch`, immediately start `hydra watch` — do not ask whether to watch.
 - Use `hydra watch` / `hydra status` / `hydra ledger` / `hydra list --workflows`
   for workflows created by `hydra init`.
@@ -59,7 +59,7 @@ separate tester — dev owns its own test surface.
 
 ## Memory Graph
 
-When the session context contains a `<memory-graph>` block from TermCanvas:
+When the session context contains a `<memory-graph>` block from Tacit:
 
 - Check "References" before reading a memory file — referenced files are likely also relevant, follow the links
 - If a memory is marked "Time-sensitive" with a date that has clearly passed, verify its content against current project state before acting on it

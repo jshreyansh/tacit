@@ -44,7 +44,7 @@ function installBrowserGlobals() {
       dispatchEvent() {
         return true;
       },
-      termcanvas: undefined,
+      tacit: undefined,
     },
   });
 }

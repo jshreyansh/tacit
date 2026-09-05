@@ -199,7 +199,7 @@ export async function runEvaluation(
       .filter((t) => t.model_patch)
       .map((t) => ({
         instance_id: t.task_id,
-        model_name_or_path: `termcanvas-eval-${config.mode}`,
+        model_name_or_path: `tacit-eval-${config.mode}`,
         model_patch: t.model_patch,
       }));
 

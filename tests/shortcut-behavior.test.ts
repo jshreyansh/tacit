@@ -45,7 +45,7 @@ function withPlatform(
 ) {
   const previousWindow = (globalThis as { window?: unknown }).window;
   (globalThis as { window?: unknown }).window = {
-    termcanvas: {
+    tacit: {
       app: { platform },
     },
   };

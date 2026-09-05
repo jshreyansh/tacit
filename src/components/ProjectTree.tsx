@@ -91,7 +91,7 @@ function NewWorktreeInput({
     }
     setBusy(true);
     try {
-      const result = await window.termcanvas.project.createWorktree(
+      const result = await window.tacit.project.createWorktree(
         projectPath,
         branch,
       );
@@ -209,7 +209,7 @@ function WorktreeRow({
   const performRemove = async (force: boolean) => {
     setRemoveBusy(true);
     try {
-      const result = await window.termcanvas.project.removeWorktree(
+      const result = await window.tacit.project.removeWorktree(
         projectPath,
         group.worktreePath,
         force,
@@ -493,7 +493,7 @@ function ProjectRow({
     if (deleteInput !== project.projectName) return;
     setDeleting(true);
     try {
-      const result = await window.termcanvas.project.deleteFolder(
+      const result = await window.tacit.project.deleteFolder(
         project.projectPath,
       );
       if (result.ok) {

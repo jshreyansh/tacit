@@ -49,52 +49,52 @@ function resolveRealCommand(command: string): string | null {
 }
 
 /**
- * Best-effort dev/packaged resolver for the termcanvas-bridge MCP server
- * built from ../../termcanvas-bridge (see that package's build.ts). Mirrors
+ * Best-effort dev/packaged resolver for the tacit-bridge MCP server
+ * built from ../../tacit-bridge (see that package's build.ts). Mirrors
  * the multi-candidate fallback pattern used elsewhere in this codebase
  * (e.g. getMacBlurHelperPath in electron/main.ts) rather than hard failing —
- * a terminal simply doesn't get termcanvas-bridge tools if none of these
+ * a terminal simply doesn't get tacit-bridge tools if none of these
  * resolve, which is a safe degradation, not a broken launch.
  */
-function resolveTermcanvasBridgeCliPath(): string | null {
+function resolveTacitBridgeCliPath(): string | null {
   const dir = moduleDir();
   const candidates = [
-    // Dev: cli/agent-shims/run.ts -> termcanvas-bridge/dist/termcanvas-bridge.js
-    path.resolve(dir, "..", "..", "termcanvas-bridge", "dist", "termcanvas-bridge.js"),
+    // Dev: cli/agent-shims/run.ts -> tacit-bridge/dist/tacit-bridge.js
+    path.resolve(dir, "..", "..", "tacit-bridge", "dist", "tacit-bridge.js"),
     // Packaged, if bundled as a sibling of the shim's own output dir
-    path.resolve(dir, "..", "termcanvas-bridge.js"),
+    path.resolve(dir, "..", "tacit-bridge.js"),
     // Packaged, if bundled as a sibling of dist-cli/ itself
-    path.resolve(dir, "..", "..", "termcanvas-bridge.js"),
+    path.resolve(dir, "..", "..", "tacit-bridge.js"),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
 /**
  * Writes a per-terminal MCP config granting this one Claude session access
- * to termcanvas-bridge, scoped by TERMCANVAS_TERMINAL_ID/TERMCANVAS_PORT_FILE
+ * to tacit-bridge, scoped by TACIT_TERMINAL_ID/TACIT_PORT_FILE
  * — deliberately NOT a global ~/.claude.json registration (see the removed
  * "Computer Use MCP" in electron/skill-manager.ts / CHANGELOG for why that
  * pattern was abandoned: it applied to every session forever and needed
  * careful cleanup). Returns the extra args to splice in, or [] if
- * termcanvas-bridge isn't available or this isn't a terminal Tacit
- * spawned (no TERMCANVAS_TERMINAL_ID set — e.g. a plain shell use of `claude`).
+ * tacit-bridge isn't available or this isn't a terminal Tacit
+ * spawned (no TACIT_TERMINAL_ID set — e.g. a plain shell use of `claude`).
  */
 function buildClaudeMcpArgs(): string[] {
-  const terminalId = process.env.TERMCANVAS_TERMINAL_ID?.trim();
+  const terminalId = process.env.TACIT_TERMINAL_ID?.trim();
   if (!terminalId) return [];
-  const serverPath = resolveTermcanvasBridgeCliPath();
+  const serverPath = resolveTacitBridgeCliPath();
   if (!serverPath) return [];
 
   const config = {
     mcpServers: {
-      "termcanvas-bridge": {
+      "tacit-bridge": {
         type: "stdio",
         command: process.execPath,
         args: [serverPath],
         env: {
-          TERMCANVAS_TERMINAL_ID: terminalId,
-          ...(process.env.TERMCANVAS_PORT_FILE
-            ? { TERMCANVAS_PORT_FILE: process.env.TERMCANVAS_PORT_FILE }
+          TACIT_TERMINAL_ID: terminalId,
+          ...(process.env.TACIT_PORT_FILE
+            ? { TACIT_PORT_FILE: process.env.TACIT_PORT_FILE }
             : {}),
         },
       },
@@ -104,7 +104,7 @@ function buildClaudeMcpArgs(): string[] {
   try {
     const configPath = path.join(
       os.tmpdir(),
-      `termcanvas-mcp-${terminalId}.json`,
+      `tacit-mcp-${terminalId}.json`,
     );
     fs.writeFileSync(configPath, JSON.stringify(config), "utf-8");
     return ["--mcp-config", configPath];

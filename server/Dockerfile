@@ -1,4 +1,4 @@
-# TermCanvas Cloud — Headless Server
+# Tacit Cloud — Headless Server
 FROM node:22-slim AS builder
 
 ENV PNPM_HOME=/pnpm
@@ -50,7 +50,7 @@ RUN pnpm install --prod --frozen-lockfile --ignore-scripts \
 # --- Runtime ---
 FROM node:22-slim
 
-ARG TERMCANVAS_AGENT_CLI_PACKAGE=@openai/codex
+ARG TACIT_AGENT_CLI_PACKAGE=@openai/codex
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -64,19 +64,19 @@ COPY package.json pnpm-lock.yaml ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist-headless/ dist-headless/
 
-RUN npm install -g "$TERMCANVAS_AGENT_CLI_PACKAGE" \
-  && groupadd --gid 10001 termcanvas \
-  && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin termcanvas \
-  && mkdir -p /workspace /home/termcanvas/.termcanvas \
-  && chown -R termcanvas:termcanvas /app /workspace /home/termcanvas
+RUN npm install -g "$TACIT_AGENT_CLI_PACKAGE" \
+  && groupadd --gid 10001 tacit \
+  && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin tacit \
+  && mkdir -p /workspace /home/tacit/.tacit \
+  && chown -R tacit:tacit /app /workspace /home/tacit
 
-USER termcanvas
+USER tacit
 
-ENV HOME=/home/termcanvas
+ENV HOME=/home/tacit
 ENV NODE_ENV=production
-ENV TERMCANVAS_INSTANCE=prod
-ENV TERMCANVAS_HOST=0.0.0.0
-ENV TERMCANVAS_PORT=7080
+ENV TACIT_INSTANCE=prod
+ENV TACIT_HOST=0.0.0.0
+ENV TACIT_PORT=7080
 ENV WORKSPACE_DIR=/workspace
 
 EXPOSE 7080

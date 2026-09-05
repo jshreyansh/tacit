@@ -4,7 +4,7 @@ import { usePreferencesStore } from "../stores/preferencesStore";
 import { createSwipeDetector } from "./swipeDetector";
 
 const isMac =
-  (typeof window !== "undefined" && window.termcanvas?.app.platform === "darwin") ||
+  (typeof window !== "undefined" && window.tacit?.app.platform === "darwin") ||
   (typeof navigator !== "undefined" && navigator.platform?.startsWith("Mac"));
 
 /**

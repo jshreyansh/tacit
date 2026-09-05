@@ -10,7 +10,7 @@ interface ThemeStore {
 
 function loadTheme(): Theme {
   try {
-    const saved = localStorage.getItem("termcanvas-theme");
+    const saved = localStorage.getItem("tacit-theme");
     if (saved === "dark" || saved === "light") return saved;
   } catch {}
   return "dark";
@@ -28,7 +28,7 @@ export const useThemeStore = create<ThemeStore>((set) => ({
       const next = state.theme === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
       try {
-        localStorage.setItem("termcanvas-theme", next);
+        localStorage.setItem("tacit-theme", next);
       } catch {}
       return { theme: next };
     }),

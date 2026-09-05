@@ -39,7 +39,7 @@ export function parseAgentTypeFlag(flag: string, value: string | undefined): Age
 export function resolveCurrentAgentType(
   env: Record<string, string | undefined> = process.env,
 ): AgentType | undefined {
-  return parseAgentType(env.TERMCANVAS_TERMINAL_TYPE);
+  return parseAgentType(env.TACIT_TERMINAL_TYPE);
 }
 
 export function resolveDefaultAgentType(

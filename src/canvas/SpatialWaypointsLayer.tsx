@@ -34,7 +34,7 @@ interface NoopEventDetail {
   reason: "no_project" | "empty_slot";
 }
 
-const PLATFORM = (typeof window !== "undefined" && window.termcanvas?.app.platform) || "darwin";
+const PLATFORM = (typeof window !== "undefined" && window.tacit?.app.platform) || "darwin";
 const SAVE_COMBO_LABEL = PLATFORM === "darwin" ? "⌘⇧" : "Ctrl+Shift+";
 const RECALL_COMBO_LABEL = PLATFORM === "darwin" ? "⌥" : "Alt+";
 

@@ -50,7 +50,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const seq = ++replaySeq;
     set({ panelView: "replay", replayTimeline: null, replayCurrentIndex: 0, replayIsPlaying: false, replayError: null });
     try {
-      const timeline = await window.termcanvas.sessions.loadReplay(filePath);
+      const timeline = await window.tacit.sessions.loadReplay(filePath);
       if (seq !== replaySeq) return; // stale response — a newer load superseded this one
       set({ replayTimeline: timeline });
     } catch (err) {
@@ -60,7 +60,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   forkSession: (sourceFilePath, turnIndex, targetProvider) =>
-    window.termcanvas.sessions.forkSession(
+    window.tacit.sessions.forkSession(
       sourceFilePath,
       turnIndex,
       targetProvider,
@@ -92,7 +92,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 }));
 
 export function initSessionStoreIPC(): () => void {
-  return window.termcanvas.sessions.onListChanged((sessions) => {
+  return window.tacit.sessions.onListChanged((sessions) => {
     useSessionStore.getState().setSessions(sessions);
   });
 }

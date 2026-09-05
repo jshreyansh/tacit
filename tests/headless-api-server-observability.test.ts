@@ -124,9 +124,9 @@ test("health endpoints expose detailed observability data with workspace-scoped 
 test("status stays authenticated and excludes secrets plus terminal-private output", async () => {
   await withEnv(
     {
-      TERMCANVAS_API_TOKEN: "api-token-12345678",
-      TERMCANVAS_WEBHOOK_URL: "https://hooks.example.test/events",
-      TERMCANVAS_WEBHOOK_SECRET: "webhook-secret-12345678",
+      TACIT_API_TOKEN: "api-token-12345678",
+      TACIT_WEBHOOK_URL: "https://hooks.example.test/events",
+      TACIT_WEBHOOK_SECRET: "webhook-secret-12345678",
       OPENAI_API_KEY: "openai-secret-12345678",
     },
     async () => {

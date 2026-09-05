@@ -770,14 +770,14 @@ test("recordHookEvent SessionStart uses registered provider instead of hardcoded
 
 test("attachSessionSource refreshes first_user_prompt when a terminal reattaches to a different session", () => {
   const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-telemetry-session-"),
+    path.join(os.tmpdir(), "tacit-telemetry-session-"),
   );
   const oldSessionFile = path.join(tmpDir, "old-session.jsonl");
   const newSessionFile = path.join(tmpDir, "new-session.jsonl");
   writeSessionJsonl(oldSessionFile, "你是谁");
   writeSessionJsonl(
     newSessionFile,
-    "我感觉现在的 termcanvas 右侧的那个 session 显示我们发送第一句话的那个 bug 还是存在",
+    "我感觉现在的 tacit 右侧的那个 session 显示我们发送第一句话的那个 bug 还是存在",
   );
 
   const service = new TelemetryService({ processPollIntervalMs: 0 });
@@ -810,7 +810,7 @@ test("attachSessionSource refreshes first_user_prompt when a terminal reattaches
 
     assert.equal(
       service.getTerminalSnapshot("terminal-1")?.first_user_prompt,
-      "我感觉现在的 termcanvas 右侧的那个 session 显示我们发送第一句话的那个 bug 还是存在",
+      "我感觉现在的 tacit 右侧的那个 session 显示我们发送第一句话的那个 bug 还是存在",
     );
   } finally {
     service.dispose();
@@ -820,7 +820,7 @@ test("attachSessionSource refreshes first_user_prompt when a terminal reattaches
 
 test("attachSessionSource extracts first_user_prompt from wuu session files", () => {
   const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-telemetry-wuu-session-"),
+    path.join(os.tmpdir(), "tacit-telemetry-wuu-session-"),
   );
   const sessionFile = path.join(tmpDir, "wuu-session.jsonl");
   writeWuuSessionJsonl(
@@ -856,7 +856,7 @@ test("attachSessionSource extracts first_user_prompt from wuu session files", ()
 
 test("attachSessionSource reads opencode first prompt and lifecycle from db", () => {
   const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-telemetry-opencode-session-"),
+    path.join(os.tmpdir(), "tacit-telemetry-opencode-session-"),
   );
   const sessionFile = path.join(tmpDir, "opencode.db");
   writeOpenCodeSessionDb(sessionFile, {
@@ -899,7 +899,7 @@ test("attachSessionSource reads opencode first prompt and lifecycle from db", ()
 
 test("attachSessionSource keeps opencode tool-call steps active and pushes first prompt", () => {
   const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-telemetry-opencode-active-"),
+    path.join(os.tmpdir(), "tacit-telemetry-opencode-active-"),
   );
   const sessionFile = path.join(tmpDir, "opencode.db");
   writeOpenCodeSessionDb(sessionFile, {
@@ -950,7 +950,7 @@ test("attachSessionSource keeps opencode tool-call steps active and pushes first
 
 test("detachSessionSource clears stale session identity and first_user_prompt", () => {
   const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-telemetry-detach-session-"),
+    path.join(os.tmpdir(), "tacit-telemetry-detach-session-"),
   );
   const sessionFile = path.join(tmpDir, "session.jsonl");
   writeSessionJsonl(

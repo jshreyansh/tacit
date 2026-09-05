@@ -14,8 +14,8 @@ function createProjects(): ProjectData[] {
   return [
     {
       id: "project-1",
-      name: "termcanvas",
-      path: "/tmp/termcanvas",
+      name: "tacit",
+      path: "/tmp/tacit",
       position: { x: 0, y: 0 },
       collapsed: false,
       zIndex: 1,
@@ -23,7 +23,7 @@ function createProjects(): ProjectData[] {
         {
           id: "worktree-1",
           name: "main",
-          path: "/tmp/termcanvas",
+          path: "/tmp/tacit",
           position: { x: 0, y: 0 },
           collapsed: false,
           terminals: [
@@ -97,7 +97,7 @@ function createSession(
 ): SessionInfo {
   return {
     sessionId,
-    projectDir: "/tmp/termcanvas",
+    projectDir: "/tmp/tacit",
     filePath: `/tmp/${sessionId}.jsonl`,
     isLive: true,
     isManaged: true,
@@ -115,7 +115,7 @@ function createTelemetry(
 ): TerminalTelemetrySnapshot {
   return {
     terminal_id: terminalId,
-    worktree_path: "/tmp/termcanvas",
+    worktree_path: "/tmp/tacit",
     provider: "codex",
     session_attached: true,
     session_attach_confidence: "medium",
@@ -219,7 +219,7 @@ test("buildCanvasTerminalSections falls back to the initial prompt when terminal
     (item) => item.terminalId === "terminal-running",
   );
   assert.equal(runningItem?.title, "Run smoke tests on the renderer");
-  assert.equal(runningItem?.locationLabel, "termcanvas / main");
+  assert.equal(runningItem?.locationLabel, "tacit / main");
 });
 
 test("buildProjectTree preserves project order and handles multiple worktrees", () => {
@@ -383,7 +383,7 @@ test("buildProjectTree groups terminals under project/worktree with status summa
   );
 
   assert.equal(tree.length, 1);
-  assert.equal(tree[0].projectName, "termcanvas");
+  assert.equal(tree[0].projectName, "tacit");
   assert.equal(tree[0].flat, true);
   assert.equal(tree[0].worktrees.length, 1);
 

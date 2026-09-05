@@ -4,7 +4,7 @@ import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  site: "https://termcanvas.dev",
+  site: "https://tacit.dev",
   integrations: [
     mdx(),
     sitemap({

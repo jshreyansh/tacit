@@ -51,7 +51,7 @@ const MonacoEditor = lazy(async () => {
   // inherit the tokenisation from the base themes and only override
   // the structural colours (bg / gutter / selection / border). Keeps
   // syntax highlighting intact, drops the mismatched chrome.
-  monacoMod.editor.defineTheme("termcanvas-dark", {
+  monacoMod.editor.defineTheme("tacit-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [],
@@ -81,7 +81,7 @@ const MonacoEditor = lazy(async () => {
       "scrollbarSlider.activeBackground": "#43423fcc",
     },
   });
-  monacoMod.editor.defineTheme("termcanvas-light", {
+  monacoMod.editor.defineTheme("tacit-light", {
     base: "vs",
     inherit: true,
     rules: [
@@ -264,7 +264,7 @@ export function FileEditorDrawer() {
 
   // Load file when path changes.
   useEffect(() => {
-    if (!path || !window.termcanvas) {
+    if (!path || !window.tacit) {
       setContent("");
       setOriginalContent("");
       setLoadError(null);
@@ -273,7 +273,7 @@ export function FileEditorDrawer() {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    window.termcanvas.fs
+    window.tacit.fs
       .readFile(path)
       .then((result: FileReadResult) => {
         if (cancelled) return;
@@ -318,7 +318,7 @@ export function FileEditorDrawer() {
     if (!path || !dirty || saving) return;
     setSaving(true);
     try {
-      await window.termcanvas.fs.writeFile(path, content);
+      await window.tacit.fs.writeFile(path, content);
       setOriginalContent(content);
     } finally {
       setSaving(false);
@@ -568,7 +568,7 @@ export function FileEditorDrawer() {
               path={path}
               value={content}
               language={guessLanguage(path)}
-              theme={theme === "dark" ? "termcanvas-dark" : "termcanvas-light"}
+              theme={theme === "dark" ? "tacit-dark" : "tacit-light"}
               onChange={(v) => setContent(v ?? "")}
               onMount={(editor, monaco) => {
                 editorRef.current = editor;

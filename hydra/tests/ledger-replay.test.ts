@@ -20,8 +20,8 @@ import { INTENTIONALLY_NOT_LEDGERED, replayLedger } from "../src/replay.ts";
 import { RESULT_SCHEMA_VERSION } from "../src/protocol.ts";
 import { AssignmentManager } from "../src/assignment/manager.ts";
 
-// Set TERMCANVAS_TERMINAL_ID so initWorkflow + lead-guard accept the test as Lead.
-process.env.TERMCANVAS_TERMINAL_ID = "terminal-test-lead";
+// Set TACIT_TERMINAL_ID so initWorkflow + lead-guard accept the test as Lead.
+process.env.TACIT_TERMINAL_ID = "terminal-test-lead";
 
 function makeTestRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hydra-replay-"));

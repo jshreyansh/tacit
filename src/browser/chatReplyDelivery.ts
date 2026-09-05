@@ -524,7 +524,7 @@ async function writeReplyToNotes(
       continue;
     }
     try {
-      const updated = await window.termcanvas?.pins?.update?.(pin.repo, pin.id, {
+      const updated = await window.tacit?.pins?.update?.(pin.repo, pin.id, {
         body: appended.body,
       });
       // The drawer's subscription only runs while the drawer is mounted, so the
@@ -578,7 +578,7 @@ async function deliverForTerminal(
     useTerminalRuntimeStore.getState().terminals[terminalId]?.telemetry ?? null;
   if (telemetrySaysBusy(telemetry)) return;
 
-  const reply = await window.termcanvas?.session?.finalReply?.({
+  const reply = await window.tacit?.session?.finalReply?.({
     sessionId: terminal.sessionId,
     provider,
     cwd,
@@ -660,7 +660,7 @@ async function deliverForTerminal(
 export function installReplyDelivery(): () => void {
   const disposers: Array<() => void> = [];
 
-  const session = window.termcanvas?.session;
+  const session = window.tacit?.session;
   if (session?.onTurnComplete) {
     disposers.push(
       session.onTurnComplete((sessionId) => {
@@ -669,7 +669,7 @@ export function installReplyDelivery(): () => void {
     );
   }
 
-  const hooks = window.termcanvas?.hooks;
+  const hooks = window.tacit?.hooks;
   if (hooks?.onTurnComplete) {
     disposers.push(
       hooks.onTurnComplete((payload) => {

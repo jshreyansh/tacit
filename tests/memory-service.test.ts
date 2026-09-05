@@ -139,8 +139,8 @@ test("getMemoryDirForWorktree derives correct Claude Code memory path", async ()
   const { getMemoryDirForWorktree } = await import(
     `../electron/memory-service.ts?derive-${Date.now()}`
   );
-  const result = getMemoryDirForWorktree("/Users/zzzz/termcanvas");
-  assert.ok(result.endsWith("/-Users-zzzz-termcanvas/memory"));
+  const result = getMemoryDirForWorktree("/Users/zzzz/tacit");
+  assert.ok(result.endsWith("/-Users-zzzz-tacit/memory"));
   assert.ok(result.includes(".claude/projects"));
 });
 

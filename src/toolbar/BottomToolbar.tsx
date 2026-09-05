@@ -52,7 +52,7 @@ export const iconButton = `${buttonBase} w-8`;
 const zoomReadout =
   "min-w-[3.25rem] h-8 inline-flex items-center justify-center text-[11px] text-[var(--text-muted)] tabular-nums rounded-md hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] transition-colors";
 
-const platform = window.termcanvas?.app.platform ?? "darwin";
+const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 // One source of truth for the shortcut text shown in this toolbar's

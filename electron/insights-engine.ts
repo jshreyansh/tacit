@@ -23,7 +23,7 @@ import {
   SessionInfo,
 } from "./insights-shared";
 import { PtyResolvedLaunchSpec, buildLaunchSpec } from "./pty-launch";
-import { TERMCANVAS_DIR } from "./state-persistence";
+import { TACIT_DIR } from "./state-persistence";
 import { findClaudeJsonlFiles, findCodexJsonlFiles } from "./usage-collector";
 
 interface SessionFileInfo {
@@ -60,11 +60,11 @@ interface FacetSelectionResult {
 
 const CACHE_VERSION = 3;
 const SESSION_META_CACHE_DIR = path.join(
-  TERMCANVAS_DIR,
+  TACIT_DIR,
   "insights-cache",
   "session-meta",
 );
-const FACET_CACHE_DIR = path.join(TERMCANVAS_DIR, "insights-cache", "facets");
+const FACET_CACHE_DIR = path.join(TACIT_DIR, "insights-cache", "facets");
 const SESSION_META_CACHE_BATCH = 50;
 const ANALYSIS_SAMPLE_LIMIT = 36;
 const LANGUAGE_SAMPLE_MIN = 5;

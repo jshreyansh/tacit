@@ -47,7 +47,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const refreshMergeState = useCallback(async () => {
     if (!worktreePath) return;
     try {
-      const state = await window.termcanvas.git.mergeState(worktreePath);
+      const state = await window.tacit.git.mergeState(worktreePath);
       if (mountedRef.current) setMergeState(state);
     } catch {
       if (mountedRef.current) setMergeState(NONE_MERGE_STATE);
@@ -57,7 +57,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const refreshStashes = useCallback(async () => {
     if (!worktreePath) return;
     try {
-      const list = await window.termcanvas.git.stashList(worktreePath);
+      const list = await window.tacit.git.stashList(worktreePath);
       if (mountedRef.current) setStashes(list);
     } catch {
       if (mountedRef.current) setStashes([]);
@@ -68,7 +68,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
     if (!worktreePath) return;
     useLeftPanelRepoStore.getState().beginGitStatusLoad(worktreePath);
     try {
-      const entries = await window.termcanvas.git.status(worktreePath);
+      const entries = await window.tacit.git.status(worktreePath);
       if (!mountedRef.current) return;
       useLeftPanelRepoStore.getState().resolveGitStatusLoad(worktreePath, {
         changedFiles: entries.filter((entry) => !entry.staged),
@@ -90,7 +90,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
 
     refresh();
 
-    const unsub = window.termcanvas.git.onChanged((changedPath) => {
+    const unsub = window.tacit.git.onChanged((changedPath) => {
       if (changedPath === worktreePath) {
         refresh();
       }
@@ -105,7 +105,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const stageFiles = useCallback(
     async (paths: string[]) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.stage(worktreePath, paths);
+      await window.tacit.git.stage(worktreePath, paths);
       await refresh();
     },
     [worktreePath, refresh],
@@ -115,14 +115,14 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
     if (!worktreePath) return;
     const allPaths = snapshot.changedFiles.map((e) => e.path);
     if (allPaths.length === 0) return;
-    await window.termcanvas.git.stage(worktreePath, allPaths);
+    await window.tacit.git.stage(worktreePath, allPaths);
     await refresh();
   }, [worktreePath, snapshot.changedFiles, refresh]);
 
   const unstageFiles = useCallback(
     async (paths: string[]) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.unstage(worktreePath, paths);
+      await window.tacit.git.unstage(worktreePath, paths);
       await refresh();
     },
     [worktreePath, refresh],
@@ -132,7 +132,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
     if (!worktreePath) return;
     const allPaths = snapshot.stagedFiles.map((e) => e.path);
     if (allPaths.length === 0) return;
-    await window.termcanvas.git.unstage(worktreePath, allPaths);
+    await window.tacit.git.unstage(worktreePath, allPaths);
     await refresh();
   }, [worktreePath, snapshot.stagedFiles, refresh]);
 
@@ -141,7 +141,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
       if (!worktreePath) return;
       const tracked = entries.filter((e) => e.status !== "?").map((e) => e.path);
       const untracked = entries.filter((e) => e.status === "?").map((e) => e.path);
-      await window.termcanvas.git.discard(worktreePath, tracked, untracked);
+      await window.tacit.git.discard(worktreePath, tracked, untracked);
       await refresh();
     },
     [worktreePath, refresh],
@@ -155,7 +155,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const commit = useCallback(
     async (message: string): Promise<string> => {
       if (!worktreePath) return "";
-      const hash = await window.termcanvas.git.commit(worktreePath, message);
+      const hash = await window.tacit.git.commit(worktreePath, message);
       await refresh();
       return hash;
     },
@@ -164,14 +164,14 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
 
   const push = useCallback(async (): Promise<string> => {
     if (!worktreePath) return "";
-    const result = await window.termcanvas.git.push(worktreePath);
+    const result = await window.tacit.git.push(worktreePath);
     await refresh();
     return result;
   }, [worktreePath, refresh]);
 
   const pull = useCallback(async (): Promise<string> => {
     if (!worktreePath) return "";
-    const result = await window.termcanvas.git.pull(worktreePath);
+    const result = await window.tacit.git.pull(worktreePath);
     await refresh();
     return result;
   }, [worktreePath, refresh]);
@@ -179,7 +179,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const amend = useCallback(
     async (message: string): Promise<string> => {
       if (!worktreePath) return "";
-      const hash = await window.termcanvas.git.amend(worktreePath, message);
+      const hash = await window.tacit.git.amend(worktreePath, message);
       await refresh();
       return hash;
     },
@@ -189,7 +189,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const fetchRemote = useCallback(
     async (remote?: string): Promise<string> => {
       if (!worktreePath) return "";
-      const result = await window.termcanvas.git.fetch(worktreePath, remote);
+      const result = await window.tacit.git.fetch(worktreePath, remote);
       await refresh();
       return result;
     },
@@ -199,7 +199,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const stashCreate = useCallback(
     async (message: string, includeUntracked: boolean) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.stashCreate(worktreePath, message, includeUntracked);
+      await window.tacit.git.stashCreate(worktreePath, message, includeUntracked);
       await refresh();
     },
     [worktreePath, refresh],
@@ -208,7 +208,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const stashApply = useCallback(
     async (index: number) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.stashApply(worktreePath, index);
+      await window.tacit.git.stashApply(worktreePath, index);
       await refresh();
     },
     [worktreePath, refresh],
@@ -217,7 +217,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const stashPop = useCallback(
     async (index: number) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.stashPop(worktreePath, index);
+      await window.tacit.git.stashPop(worktreePath, index);
       await refresh();
     },
     [worktreePath, refresh],
@@ -226,7 +226,7 @@ export function useGitStatus(worktreePath: string | null): UseGitStatusResult {
   const stashDrop = useCallback(
     async (index: number) => {
       if (!worktreePath) return;
-      await window.termcanvas.git.stashDrop(worktreePath, index);
+      await window.tacit.git.stashDrop(worktreePath, index);
       await refresh();
     },
     [worktreePath, refresh],

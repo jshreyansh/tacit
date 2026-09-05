@@ -115,7 +115,7 @@ def main():
 
     # Load and convert
     result = load_run_result(run_id)
-    model_name = f"termcanvas-eval-{result['config']['mode']}"
+    model_name = f"tacit-eval-{result['config']['mode']}"
     predictions = to_predictions(result, model_name)
 
     if not predictions:

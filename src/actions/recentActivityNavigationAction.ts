@@ -11,8 +11,8 @@ export const RECENT_ACTIVITY_FLY_DURATION_MS = 320;
 const CYCLE_RESET_MS = 2_000;
 const MAX_LRU = 8;
 
-export const RECENT_ACTIVITY_FLOWN_EVENT = "termcanvas:recent-activity-flown";
-export const RECENT_ACTIVITY_NOOP_EVENT = "termcanvas:recent-activity-noop";
+export const RECENT_ACTIVITY_FLOWN_EVENT = "tacit:recent-activity-flown";
+export const RECENT_ACTIVITY_NOOP_EVENT = "tacit:recent-activity-noop";
 
 export interface RecentActivityFlownDetail {
   terminalId: string;

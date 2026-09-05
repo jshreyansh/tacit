@@ -92,7 +92,7 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
         // Same reason as BrowserCard: a note wired to an agent should light
         // that wire from the note's end too.
         window.dispatchEvent(
-          new CustomEvent("termcanvas:node-hover", {
+          new CustomEvent("tacit:node-hover", {
             detail: { kind: "note", id: pin.id },
           }),
         );
@@ -100,7 +100,7 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
       onMouseLeave={() => {
         setHovered(false);
         window.dispatchEvent(
-          new CustomEvent("termcanvas:node-hover", { detail: null }),
+          new CustomEvent("tacit:node-hover", { detail: null }),
         );
       }}
     >

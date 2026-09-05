@@ -66,7 +66,7 @@ const PinCard = memo(function PinCard({
     if (busy) return;
     setBusy(true);
     try {
-      const updated = await window.termcanvas.pins.update(pin.repo, pin.id, {
+      const updated = await window.tacit.pins.update(pin.repo, pin.id, {
         status: "done",
       });
       onUpdated(updated);
@@ -80,7 +80,7 @@ const PinCard = memo(function PinCard({
     if (busy) return;
     setBusy(true);
     try {
-      const updated = await window.termcanvas.pins.update(pin.repo, pin.id, {
+      const updated = await window.tacit.pins.update(pin.repo, pin.id, {
         status: "open",
       });
       onUpdated(updated);
@@ -93,7 +93,7 @@ const PinCard = memo(function PinCard({
     if (busy) return;
     setBusy(true);
     try {
-      await window.termcanvas.pins.remove(pin.repo, pin.id);
+      await window.tacit.pins.remove(pin.repo, pin.id);
       removePin(pin.repo, pin.id);
       setShowDeleteConfirm(false);
     } finally {
@@ -108,17 +108,17 @@ const PinCard = memo(function PinCard({
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.dataTransfer.setData(
-      "application/x-termcanvas-pin",
+      "application/x-tacit-pin",
       JSON.stringify({ repo: pin.repo, id: pin.id }),
     );
     e.dataTransfer.effectAllowed = "copy";
     usePinDragStore.getState().setActive(true);
-    window.dispatchEvent(new CustomEvent("termcanvas:pin-drag-active"));
+    window.dispatchEvent(new CustomEvent("tacit:pin-drag-active"));
   };
 
   const handleDragEnd = () => {
     usePinDragStore.getState().setActive(false);
-    window.dispatchEvent(new CustomEvent("termcanvas:pin-drag-end"));
+    window.dispatchEvent(new CustomEvent("tacit:pin-drag-end"));
   };
 
   return (
@@ -238,7 +238,7 @@ export function PinDrawer() {
   const leftOffset = collapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
 
   useEffect(() => {
-    const unsub = window.termcanvas.pins.subscribe((event: PinEvent) => {
+    const unsub = window.tacit.pins.subscribe((event: PinEvent) => {
       if (event.type === "pin:created" || event.type === "pin:updated") {
         upsertPin(event.repo, event.pin);
       } else if (event.type === "pin:removed") {

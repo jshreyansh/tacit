@@ -81,7 +81,7 @@ const html = `<!doctype html>
 </style>
 </head>
 <body>
-  <h1>TermCanvas — Capybara Pet Preview</h1>
+  <h1>Tacit — Capybara Pet Preview</h1>
   <p style="color:#888">Every state/frame rendered with the updated palette and shadow ellipse.</p>
   ${sections}
 </body>

@@ -4,7 +4,7 @@ import { checkTerminalAlive } from "../src/terminal-liveness.ts";
 
 test("checkTerminalAlive returns true when telemetry reports pty_alive=true", () => {
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => true,
+    isTacitRunning: () => true,
     telemetryTerminal: () => ({ pty_alive: true }),
   });
   assert.equal(result, true);
@@ -12,7 +12,7 @@ test("checkTerminalAlive returns true when telemetry reports pty_alive=true", ()
 
 test("checkTerminalAlive returns false when telemetry reports pty_alive=false", () => {
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => true,
+    isTacitRunning: () => true,
     telemetryTerminal: () => ({ pty_alive: false }),
   });
   assert.equal(result, false);
@@ -25,7 +25,7 @@ test("checkTerminalAlive returns null when Tacit is not running", () => {
   // worker that survived it.
   let probed = false;
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => false,
+    isTacitRunning: () => false,
     telemetryTerminal: () => {
       probed = true;
       return { pty_alive: true };
@@ -37,7 +37,7 @@ test("checkTerminalAlive returns null when Tacit is not running", () => {
 
 test("checkTerminalAlive returns null when telemetry snapshot is unavailable", () => {
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => true,
+    isTacitRunning: () => true,
     telemetryTerminal: () => null,
   });
   assert.equal(result, null);
@@ -48,7 +48,7 @@ test("checkTerminalAlive returns null when pty_alive field is missing", () => {
   // drift). Absence is not presence of death — return null so the watch
   // loop keeps polling instead of timing out the assignment.
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => true,
+    isTacitRunning: () => true,
     telemetryTerminal: () => ({}),
   });
   assert.equal(result, null);
@@ -56,7 +56,7 @@ test("checkTerminalAlive returns null when pty_alive field is missing", () => {
 
 test("checkTerminalAlive returns null when telemetry throws", () => {
   const result = checkTerminalAlive("terminal-abc", {
-    isTermCanvasRunning: () => true,
+    isTacitRunning: () => true,
     telemetryTerminal: () => {
       throw new Error("telemetry unreachable");
     },

@@ -756,7 +756,7 @@ function historyProjectName(dir: string): string {
   return dir.split(/[\\/]/).filter(Boolean).pop() ?? dir;
 }
 
-const HIDDEN_HISTORY_STORAGE_KEY = "termcanvas:history:hidden:v1";
+const HIDDEN_HISTORY_STORAGE_KEY = "tacit:history:hidden:v1";
 
 function loadHiddenSessions(): Set<string> {
   if (typeof window === "undefined" || !window.localStorage) return new Set();
@@ -782,7 +782,7 @@ function persistHiddenSessions(hidden: Set<string>): void {
   } catch {}
 }
 
-const PINNED_HISTORY_STORAGE_KEY = "termcanvas:history:pinned:v1";
+const PINNED_HISTORY_STORAGE_KEY = "tacit:history:pinned:v1";
 
 function loadPinnedSessions(): Set<string> {
   if (typeof window === "undefined" || !window.localStorage) return new Set();
@@ -898,10 +898,10 @@ export function HistorySection({
       // If the next page would exceed what's loaded, fetch more from the server first.
       if (
         nextLimit > loadedCount &&
-        window.termcanvas?.search?.listSessionsPage
+        window.tacit?.search?.listSessionsPage
       ) {
         setLoadingGroups((prev) => new Set(prev).add(projectDir));
-        void window.termcanvas.search
+        void window.tacit.search
           .listSessionsPage([projectDir], { limit: nextLimit, offset: 0 })
           .then((page) => {
             setEntries((prev) => {
@@ -952,7 +952,7 @@ export function HistorySection({
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!window.termcanvas?.search?.listSessionsPage) return;
+    if (!window.tacit?.search?.listSessionsPage) return;
     if (projectDirs.length === 0) {
       setEntries([]);
       setTotal(0);
@@ -960,7 +960,7 @@ export function HistorySection({
     }
     let cancelled = false;
     setLoading(true);
-    void window.termcanvas.search
+    void window.tacit.search
       .listSessionsPage(projectDirs, { limit: HISTORY_PAGE_SIZE, offset: 0 })
       .then((page) => {
         if (cancelled) return;
@@ -981,8 +981,8 @@ export function HistorySection({
   }, [projectDirsKey, refreshVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!window.termcanvas?.sessions?.onHistoryChanged) return;
-    const unsubscribe = window.termcanvas.sessions.onHistoryChanged(
+    if (!window.tacit?.sessions?.onHistoryChanged) return;
+    const unsubscribe = window.tacit.sessions.onHistoryChanged(
       (payload) => {
         if (!shouldRefreshHistorySection(projectDirs, payload.projectDirs))
           return;
@@ -1480,7 +1480,7 @@ export function SessionsPanel({
     if (
       panelView === "replay" ||
       !inspectedItem ||
-      !window.termcanvas?.telemetry
+      !window.tacit?.telemetry
     ) {
       setTraceItems([]);
       setTraceLoading(false);
@@ -1490,7 +1490,7 @@ export function SessionsPanel({
     let cancelled = false;
     setTraceLoading(true);
 
-    void window.termcanvas.telemetry
+    void window.tacit.telemetry
       .listEvents({ terminalId: inspectedItem.terminalId, limit: 24 })
       .then((page) => {
         if (cancelled) return;

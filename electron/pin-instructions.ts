@@ -9,7 +9,7 @@ const PIN_SECTION = `
 
 Tacit has a first-class pin store. Pins are persistent records of work
 the user wants done — captured when the user expresses intent, not when the
-work happens. Use the \`termcanvas pin\` CLI to read and write them. Any agent
+work happens. Use the \`tacit pin\` CLI to read and write them. Any agent
 terminal can record, read, and update pins.
 
 When to record a pin:
@@ -17,7 +17,7 @@ When to record a pin:
 - User describes a problem or idea but isn't asking you to fix it right now.
 - User pastes a GitHub issue URL and asks you to track it (record the URL via \`--link\`).
 
-Do NOT silently nod — capture the pin with \`termcanvas pin add\` so it survives the session.
+Do NOT silently nod — capture the pin with \`tacit pin add\` so it survives the session.
 
 When existing pin content is pasted or dropped into the conversation:
 - Treat it as context from an existing Tacit pin, not as a request to create another pin.
@@ -26,7 +26,7 @@ When existing pin content is pasted or dropped into the conversation:
 
 Recording a pin:
 \`\`\`
-termcanvas pin add --title "<short imperative>" --body "<detail>" [--link <url>]
+tacit pin add --title "<short imperative>" --body "<detail>" [--link <url>]
 \`\`\`
 - \`--title\`: short, scannable. Rephrase the user's words into imperative mood. Use the same language the user used (e.g. Chinese input → Chinese title, English input → English title).
 - \`--body\`: preserve enough context for a future agent or the user to resume without re-asking basic questions. Use the same language the user used.
@@ -49,16 +49,16 @@ termcanvas pin add --title "<short imperative>" --body "<detail>" [--link <url>]
 - Repo defaults to cwd. Pass \`--repo <path>\` only if you need a different one.
 
 Reading and updating pins:
-- \`termcanvas pin list\` — list pins for the current repo (filter \`--status done\` etc.)
-- \`termcanvas pin show <id>\` — read a single pin before acting on it
-- \`termcanvas pin render <id> --json\` — render a pin's Markdown/HTML body to a PNG and print the output path
-- \`termcanvas pin update <id> --status done\` — mark complete after finishing the work
-- \`termcanvas pin update <id> --body "..."\` — refine the description as you learn more
+- \`tacit pin list\` — list pins for the current repo (filter \`--status done\` etc.)
+- \`tacit pin show <id>\` — read a single pin before acting on it
+- \`tacit pin render <id> --json\` — render a pin's Markdown/HTML body to a PNG and print the output path
+- \`tacit pin update <id> --status done\` — mark complete after finishing the work
+- \`tacit pin update <id> --body "..."\` — refine the description as you learn more
 
 Visual / HTML pins:
-- If a pin contains a full HTML document, SVG diagrams, charts, mockups, visual layouts, or other content where visual understanding matters, run \`termcanvas pin render <id> --json\` after \`pin show\`.
+- If a pin contains a full HTML document, SVG diagrams, charts, mockups, visual layouts, or other content where visual understanding matters, run \`tacit pin render <id> --json\` after \`pin show\`.
 - Inspect the returned \`image_path\` with whatever local image-viewing capability is available in the current agent environment. Use both the rendered screenshot and the pin source when reasoning about the artifact.
-- By default, render output is written to \`<repo>/.termcanvas/pin-renders/<pin-id>/latest.png\` and overwritten on the next render, so it should not accumulate. Do not commit rendered pin images unless the user explicitly asks.
+- By default, render output is written to \`<repo>/.tacit/pin-renders/<pin-id>/latest.png\` and overwritten on the next render, so it should not accumulate. Do not commit rendered pin images unless the user explicitly asks.
 - Pass \`--out <png>\` only when the user asks for a specific export path.
 
 Rules:

@@ -2,9 +2,9 @@ import { useCanvasStore } from "../stores/canvasStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { generateId, useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
-import type { ProjectData, TermCanvasAPI } from "../types";
+import type { ProjectData, TacitAPI } from "../types";
 
-type ProjectScanResult = Awaited<ReturnType<TermCanvasAPI["project"]["scan"]>>;
+type ProjectScanResult = Awaited<ReturnType<TacitAPI["project"]["scan"]>>;
 
 interface SceneTranslator {
   error_dir_picker: (error: unknown) => string;
@@ -53,7 +53,7 @@ async function scanProjectDirectory(
   dirPath: string,
   t: SceneTranslator,
 ): Promise<NonNullable<ProjectScanResult> | null> {
-  if (!window.termcanvas) {
+  if (!window.tacit) {
     return null;
   }
 
@@ -61,7 +61,7 @@ async function scanProjectDirectory(
 
   let info: ProjectScanResult;
   try {
-    info = await window.termcanvas.project.scan(dirPath);
+    info = await window.tacit.project.scan(dirPath);
   } catch (error) {
     notify("error", t.error_scan(error));
     return null;
@@ -135,7 +135,7 @@ export async function promptAndAddProjectToScene(
   t: SceneTranslator,
   options: AddProjectOptions = {},
 ): Promise<ProjectData | null> {
-  if (!window.termcanvas) {
+  if (!window.tacit) {
     return null;
   }
 
@@ -143,7 +143,7 @@ export async function promptAndAddProjectToScene(
 
   let dirPath: string | null;
   try {
-    dirPath = await window.termcanvas.project.selectDirectory();
+    dirPath = await window.tacit.project.selectDirectory();
   } catch (error) {
     notify("error", t.error_dir_picker(error));
     return null;

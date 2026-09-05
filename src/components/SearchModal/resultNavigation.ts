@@ -26,7 +26,7 @@ export function executeResult(result: SearchResult): void {
       useCanvasStore.getState().setRightPanelCollapsed(false);
       useCanvasStore.getState().setRightPanelActiveTab("git");
       window.dispatchEvent(
-        new CustomEvent("termcanvas:select-git-commit", { detail: data.hash }),
+        new CustomEvent("tacit:select-git-commit", { detail: data.hash }),
       );
       break;
 

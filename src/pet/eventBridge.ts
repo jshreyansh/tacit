@@ -439,7 +439,7 @@ export function usePetEventBridge() {
     let disposed = false;
 
     const refreshWorkflowStates = () => {
-      if (!window.termcanvas?.telemetry?.getWorkflow) return;
+      if (!window.tacit?.telemetry?.getWorkflow) return;
 
       const requestId = ++workflowRequestSeq.current;
       const contexts = collectWorkflowContexts(
@@ -454,7 +454,7 @@ export function usePetEventBridge() {
       void Promise.all(
         contexts.map(async (context) => ({
           key: context.key,
-          snapshot: await window.termcanvas.telemetry
+          snapshot: await window.tacit.telemetry
             .getWorkflow(context.workflowId, context.repoPath)
             .catch(() => null),
         })),

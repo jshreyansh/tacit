@@ -14,8 +14,8 @@ function installRuntimeGlobals() {
   const target = new EventTarget();
   const mockWindow = Object.assign(target, {
     navigator,
-    termcanvas: undefined as unknown,
-  }) as Window & { termcanvas: unknown };
+    tacit: undefined as unknown,
+  }) as Window & { tacit: unknown };
 
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -47,7 +47,7 @@ function installRuntimeGlobals() {
 }
 
 function installDestroyApi() {
-  (window as unknown as { termcanvas: unknown }).termcanvas = {
+  (window as unknown as { tacit: unknown }).tacit = {
     app: { platform: "darwin" },
     terminal: {
       destroy: async () => {},

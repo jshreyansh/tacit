@@ -51,7 +51,7 @@ export function generateEnhancedIndex(nodes: MemoryNodeLike[]): string {
 
   if (references.length === 0 && timeSensitive.length === 0) return "";
 
-  let output = '<memory-graph source="termcanvas">\n\n';
+  let output = '<memory-graph source="tacit">\n\n';
 
   if (references.length > 0) {
     output += "## References\n";

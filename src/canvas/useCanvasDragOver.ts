@@ -2,16 +2,16 @@ import { useCallback, useRef, useState } from "react";
 
 /**
  * OS-only file drag detection. Excludes intra-app drags (terminal moves,
- * pinned-message moves, etc.) which carry the termcanvas-specific MIME
+ * pinned-message moves, etc.) which carry the tacit-specific MIME
  * type. Without this guard the canvas would light up every time the user
  * dragged a tile across it.
  */
-const TERMCANVAS_INTERNAL_TYPE = "application/x-termcanvas-file";
+const TACIT_INTERNAL_TYPE = "application/x-tacit-file";
 
 function isOsFileDrag(event: React.DragEvent): boolean {
   const types = Array.from(event.dataTransfer.types);
   return (
-    types.includes("Files") && !types.includes(TERMCANVAS_INTERNAL_TYPE)
+    types.includes("Files") && !types.includes(TACIT_INTERNAL_TYPE)
   );
 }
 

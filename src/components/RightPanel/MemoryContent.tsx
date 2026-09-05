@@ -602,7 +602,7 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
 
     if (scope === "workspace") {
       setLoading(true);
-      window.termcanvas.memory.scanWorkspace(activeCanvasId).then((result) => {
+      window.tacit.memory.scanWorkspace(activeCanvasId).then((result) => {
         if (!cancelled) {
           setGraph(result);
           setLoading(false);
@@ -611,14 +611,14 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
         if (!cancelled) setLoading(false);
       });
 
-      window.termcanvas.memory.watchWorkspace(activeCanvasId);
-      const unsubscribe = window.termcanvas.memory.onChanged((updatedGraph) => {
+      window.tacit.memory.watchWorkspace(activeCanvasId);
+      const unsubscribe = window.tacit.memory.onChanged((updatedGraph) => {
         if (!cancelled) setGraph(updatedGraph);
       });
 
       return () => {
         cancelled = true;
-        window.termcanvas.memory.unwatchWorkspace(activeCanvasId);
+        window.tacit.memory.unwatchWorkspace(activeCanvasId);
         unsubscribe();
       };
     }
@@ -626,7 +626,7 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
     if (!worktreePath) return;
 
     setLoading(true);
-    window.termcanvas.memory.scan(worktreePath).then((result) => {
+    window.tacit.memory.scan(worktreePath).then((result) => {
       if (!cancelled) {
         setGraph(result);
         setLoading(false);
@@ -635,14 +635,14 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
       if (!cancelled) setLoading(false);
     });
 
-    window.termcanvas.memory.watch(worktreePath);
-    const unsubscribe = window.termcanvas.memory.onChanged((updatedGraph) => {
+    window.tacit.memory.watch(worktreePath);
+    const unsubscribe = window.tacit.memory.onChanged((updatedGraph) => {
       if (!cancelled) setGraph(updatedGraph);
     });
 
     return () => {
       cancelled = true;
-      window.termcanvas.memory.unwatch(worktreePath);
+      window.tacit.memory.unwatch(worktreePath);
       unsubscribe();
     };
   }, [scope, worktreePath, activeCanvasId, setGraph, setLoading]);

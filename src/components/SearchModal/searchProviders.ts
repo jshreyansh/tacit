@@ -154,12 +154,12 @@ export async function collectSessionResults(
   query: string,
   projectDirs: string[],
 ): Promise<SearchResult[]> {
-  if (!window.termcanvas?.search?.listSessions) return [];
+  if (!window.tacit?.search?.listSessions) return [];
   if (projectDirs.length === 0) return [];
 
   let entries: SessionIndexEntry[];
   try {
-    entries = await window.termcanvas.search.listSessions(projectDirs);
+    entries = await window.tacit.search.listSessions(projectDirs);
   } catch {
     return [];
   }
@@ -220,7 +220,7 @@ export async function collectAsyncResults(
   query: string,
   projectDirs?: string[],
 ): Promise<SearchResult[]> {
-  if (!window.termcanvas?.search) return [];
+  if (!window.tacit?.search) return [];
 
   const results: SearchResult[] = [];
 
@@ -233,10 +233,10 @@ export async function collectAsyncResults(
     const worktreeToSearch = projectDirs?.[0];
 
     const promises: Promise<unknown>[] = [
-      window.termcanvas.search.sessionContents(query),
+      window.tacit.search.sessionContents(query),
     ];
     if (worktreeToSearch) {
-      promises.push(window.termcanvas.search.fileContents(query, worktreeToSearch));
+      promises.push(window.tacit.search.fileContents(query, worktreeToSearch));
     }
 
     const settled = await Promise.allSettled(promises);

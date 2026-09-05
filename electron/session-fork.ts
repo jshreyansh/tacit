@@ -593,7 +593,7 @@ function claudeAssistantHasToolUse(raw: Record<string, unknown>): boolean {
  *
  * Output shape (per verification on a real Claude+Codex machine):
  *   line 1    `session_meta` envelope with the minimum fields Codex
- *             needs to mount the file. `originator: "termcanvas-fork"`
+ *             needs to mount the file. `originator: "tacit-fork"`
  *             flags the session as machine-translated; `model_provider`
  *             stays `"unknown"` because the source is a different
  *             provider entirely.
@@ -686,7 +686,7 @@ export async function forkClaudeToCodex(
       id: newSessionId,
       timestamp: nowIso,
       cwd: sourceCwd,
-      originator: "termcanvas-fork",
+      originator: "tacit-fork",
       cli_version: "0.0.0",
       source: "cli",
       model_provider: "unknown",

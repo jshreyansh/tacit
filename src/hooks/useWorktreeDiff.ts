@@ -13,7 +13,7 @@ export function useWorktreeDiff(worktreePath: string | null) {
   );
 
   useEffect(() => {
-    if (!worktreePath || !window.termcanvas) {
+    if (!worktreePath || !window.tacit) {
       return;
     }
 
@@ -23,7 +23,7 @@ export function useWorktreeDiff(worktreePath: string | null) {
     const fetchDiff = () => {
       const currentRequest = ++requestSeq;
       useLeftPanelRepoStore.getState().beginDiffLoad(worktreePath);
-      window.termcanvas.project.diff(worktreePath).then((result) => {
+      window.tacit.project.diff(worktreePath).then((result) => {
         if (!active || currentRequest !== requestSeq) return;
         useLeftPanelRepoStore.getState().resolveDiffLoad(
           worktreePath,
@@ -37,8 +37,8 @@ export function useWorktreeDiff(worktreePath: string | null) {
 
     fetchDiff();
 
-    window.termcanvas.git.watch(worktreePath);
-    const removeGitChanged = window.termcanvas.git.onChanged((changedPath) => {
+    window.tacit.git.watch(worktreePath);
+    const removeGitChanged = window.tacit.git.onChanged((changedPath) => {
       if (changedPath === worktreePath) fetchDiff();
     });
 
@@ -47,15 +47,15 @@ export function useWorktreeDiff(worktreePath: string | null) {
     };
     const handleFocus = () => fetchDiff();
 
-    window.addEventListener("termcanvas:worktree-activity", handleActivity);
+    window.addEventListener("tacit:worktree-activity", handleActivity);
     window.addEventListener("focus", handleFocus);
 
     return () => {
       active = false;
       requestSeq += 1;
-      window.termcanvas.git.unwatch(worktreePath);
+      window.tacit.git.unwatch(worktreePath);
       removeGitChanged();
-      window.removeEventListener("termcanvas:worktree-activity", handleActivity);
+      window.removeEventListener("tacit:worktree-activity", handleActivity);
       window.removeEventListener("focus", handleFocus);
     };
   }, [worktreePath]);

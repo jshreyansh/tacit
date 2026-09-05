@@ -42,7 +42,7 @@ function installBrowserGlobals(sink: {
       addEventListener() {},
       removeEventListener() {},
       dispatchEvent() { return true; },
-      termcanvas: {
+      tacit: {
         app: { platform: "darwin", setQuitOnLastWindowClosed() {} },
         workspace: { setTitle() {} },
         capture: {

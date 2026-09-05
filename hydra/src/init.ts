@@ -38,8 +38,8 @@ Workflow patterns:
    \`hydra spawn --task "<specific task>" --repo . [--worktree .]\`
 
 Agent launch rule:
-- When dispatching Claude/Codex through Tacit CLI, start a fresh agent terminal with \`termcanvas terminal create --prompt "..."\`
-- Do not use \`termcanvas terminal input\` for task dispatch; it is not a supported automation path
+- When dispatching Claude/Codex through Tacit CLI, start a fresh agent terminal with \`tacit terminal create --prompt "..."\`
+- Do not use \`tacit terminal input\` for task dispatch; it is not a supported automation path
 
 Workflow control:
 - After dispatching, always call \`hydra watch\`. It returns at decision points.
@@ -54,9 +54,9 @@ Workflow control:
 Telemetry polling:
 1. Treat \`hydra watch\` as the main polling loop; do not infer progress from terminal prose alone.
 2. Before deciding wait / retry / takeover, query:
-   - \`termcanvas telemetry get --workbench <workbenchId> --repo .\`
-   - \`termcanvas telemetry get --terminal <terminalId>\`
-   - \`termcanvas telemetry events --terminal <terminalId> --limit 20\`
+   - \`tacit telemetry get --workbench <workbenchId> --repo .\`
+   - \`tacit telemetry get --terminal <terminalId>\`
+   - \`tacit telemetry events --terminal <terminalId> --limit 20\`
 3. Trust \`derived_status\` and \`task_status\` as the primary decision signals.
 
 \`result.json\` must contain (slim, schema_version \`hydra/result/v0.1\`):

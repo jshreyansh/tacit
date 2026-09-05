@@ -47,7 +47,7 @@ export function isActivationTarget(target: EventTarget | null): boolean {
 
 export function hasPrimaryModifier(
   e: Pick<KeyboardEvent, "metaKey" | "ctrlKey">,
-  platform: string = window.termcanvas?.app.platform ?? "darwin",
+  platform: string = window.tacit?.app.platform ?? "darwin",
 ): boolean {
   return platform === "darwin" ? e.metaKey : e.ctrlKey;
 }

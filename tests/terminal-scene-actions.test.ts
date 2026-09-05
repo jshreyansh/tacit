@@ -26,8 +26,8 @@ function installActionGlobals() {
   const target = new EventTarget();
   const mockWindow = Object.assign(target, {
     navigator,
-    termcanvas: undefined as unknown,
-  }) as Window & { termcanvas: unknown };
+    tacit: undefined as unknown,
+  }) as Window & { tacit: unknown };
 
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -398,7 +398,7 @@ test("closeTerminalInScene destroys runtime and removes the terminal from the sc
       worktreePath: "/tmp/project-1",
     });
 
-    mockWindow.termcanvas = {
+    mockWindow.tacit = {
       terminal: {
         destroy: async () => {},
       },

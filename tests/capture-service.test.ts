@@ -15,7 +15,7 @@ import {
 } from "../shared/capture";
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-capture-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tacit-capture-"));
 }
 
 function readEntries(dir: string, date = new Date()): CaptureEntry[] {
@@ -264,7 +264,7 @@ test("entries land in a file named for their own local day", () => {
 
 test("record dir sits beside the instance's other artifacts", () => {
   assert.equal(
-    getCaptureDir("/Users/someone/.termcanvas"),
-    path.join("/Users/someone/.termcanvas", "record"),
+    getCaptureDir("/Users/someone/.tacit"),
+    path.join("/Users/someone/.tacit", "record"),
   );
 });

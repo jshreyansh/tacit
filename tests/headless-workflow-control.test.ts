@@ -44,15 +44,15 @@ function initRepo(repoPath: string): void {
 }
 
 function withLeadTerminal<T>(terminalId: string, fn: () => Promise<T> | T): Promise<T> {
-  const previous = process.env.TERMCANVAS_TERMINAL_ID;
-  process.env.TERMCANVAS_TERMINAL_ID = terminalId;
+  const previous = process.env.TACIT_TERMINAL_ID;
+  process.env.TACIT_TERMINAL_ID = terminalId;
   return Promise.resolve()
     .then(fn)
     .finally(() => {
       if (previous === undefined) {
-        delete process.env.TERMCANVAS_TERMINAL_ID;
+        delete process.env.TACIT_TERMINAL_ID;
       } else {
-        process.env.TERMCANVAS_TERMINAL_ID = previous;
+        process.env.TACIT_TERMINAL_ID = previous;
       }
     });
 }

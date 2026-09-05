@@ -24,7 +24,7 @@ import { getRuntime } from "./runtime/index.ts";
  */
 
 export interface TerminalLivenessDependencies {
-  isTermCanvasRunning(): boolean;
+  isTacitRunning(): boolean;
   telemetryTerminal(terminalId: string): TelemetrySnapshotProbe | null;
 }
 
@@ -32,7 +32,7 @@ export interface TerminalLivenessDependencies {
  * Narrow shape of the telemetry snapshot the watch loop cares about. We
  * deliberately keep it minimal instead of importing the full
  * TerminalTelemetrySnapshot — the hydra CLI receives whatever the
- * `termcanvas telemetry get` command prints as JSON, and future telemetry
+ * `tacit telemetry get` command prints as JSON, and future telemetry
  * fields should not break hydra parsing. Optional everywhere on purpose:
  * absent means "no signal", the same as undefined, so fallbacks are
  * uniform.
@@ -44,7 +44,7 @@ export interface TelemetrySnapshotProbe {
 }
 
 const DEFAULT_DEPENDENCIES: TerminalLivenessDependencies = {
-  isTermCanvasRunning: () => getRuntime().isAvailable(),
+  isTacitRunning: () => getRuntime().isAvailable(),
   telemetryTerminal: (id) =>
     getRuntime().telemetryTerminal(id) as TelemetrySnapshotProbe | null,
 };
@@ -54,7 +54,7 @@ export function checkTerminalAlive(
   dependencies: TerminalLivenessDependencies = DEFAULT_DEPENDENCIES,
 ): boolean | null {
   try {
-    if (!dependencies.isTermCanvasRunning()) return null;
+    if (!dependencies.isTacitRunning()) return null;
     const snapshot = dependencies.telemetryTerminal(terminalId);
     if (!snapshot) return null;
     if (typeof snapshot.pty_alive === "boolean") return snapshot.pty_alive;
@@ -85,7 +85,7 @@ export function probeTerminalProgress(
   dependencies: TerminalLivenessDependencies = DEFAULT_DEPENDENCIES,
 ): ProgressProbeResult {
   try {
-    if (!dependencies.isTermCanvasRunning()) {
+    if (!dependencies.isTacitRunning()) {
       return { snapshot: null, available: false };
     }
     const snapshot = dependencies.telemetryTerminal(terminalId);

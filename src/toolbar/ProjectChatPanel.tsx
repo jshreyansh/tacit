@@ -82,7 +82,7 @@ export function useManagerConversation(
     }
     setLoading(true);
     try {
-      setTimeline(await window.termcanvas.sessions.loadReplay(sessionFilePath));
+      setTimeline(await window.tacit.sessions.loadReplay(sessionFilePath));
     } catch {
       // A conversation that can't be read yet is not an error worth shouting
       // about — the file appears once the agent writes its first turn.
@@ -101,7 +101,7 @@ export function useManagerConversation(
   // finished, and refreshing it would yank the reader's scroll.
   useEffect(() => {
     if (!isLive) return;
-    return window.termcanvas.hooks.onTurnComplete((payload) => {
+    return window.tacit.hooks.onTurnComplete((payload) => {
       if (payload.terminalId !== terminalId) return;
       void load();
     });

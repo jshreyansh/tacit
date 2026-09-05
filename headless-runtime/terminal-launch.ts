@@ -60,7 +60,7 @@ const CODEX_ADAPTER: CliAdapter = {
   promptArgs: defaultPromptArgs,
 };
 
-// Non-Hydra terminal types — kept here so termcanvas can still spawn them
+// Non-Hydra terminal types — kept here so tacit can still spawn them
 // directly. They do not participate in the role registry, so model and
 // reasoning_effort are stubbed out.
 const KIMI_ADAPTER: CliAdapter = {

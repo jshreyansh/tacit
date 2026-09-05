@@ -7,7 +7,7 @@ import path from "node:path";
 import { SessionScanner } from "../electron/session-scanner.ts";
 
 async function withTempHome(fn: (homeDir: string) => Promise<void>) {
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-session-scanner-home-"));
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-session-scanner-home-"));
   const previousHome = process.env.HOME;
   process.env.HOME = homeDir;
   try {
@@ -108,7 +108,7 @@ test("session scanner includes codex history alongside claude sessions", async (
 });
 
 test("session scanner loads codex replay timelines", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-session-replay-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-session-replay-"));
   const filePath = path.join(dir, "codex-session.jsonl");
 
   try {

@@ -37,13 +37,13 @@ function projects(terminals: TerminalData[], worktreeName = "main"): ProjectData
   return [
     {
       id: "proj-1",
-      name: "termcanvas",
-      path: "/Users/x/termcanvas",
+      name: "tacit",
+      path: "/Users/x/tacit",
       worktrees: [
         {
           id: "wt-1",
           name: worktreeName,
-          path: "/Users/x/termcanvas",
+          path: "/Users/x/tacit",
           isPrimary: true,
           terminals,
         },

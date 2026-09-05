@@ -24,12 +24,12 @@ export function UpdateModal({ onClose }: Props) {
   const primaryRef = useRef<HTMLButtonElement>(null);
 
   const handleInstall = useCallback(() => {
-    window.termcanvas.updater.install();
+    window.tacit.updater.install();
   }, []);
 
   const handleRetry = useCallback(() => {
     useUpdaterStore.setState({ status: "checking", errorMessage: null });
-    window.termcanvas.updater.check();
+    window.tacit.updater.check();
   }, []);
 
   useEffect(() => {

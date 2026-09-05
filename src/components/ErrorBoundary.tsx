@@ -23,7 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
     // to render-diagnostics.jsonl with its own kind, so an app-wide blackout
     // is distinguishable from a single overlay failing when reading the log
     // back from a machine I can't inspect live.
-    void window.termcanvas?.diagnostics
+    void window.tacit?.diagnostics
       ?.recordRenderEvent?.({
         kind: "app-error",
         data: {

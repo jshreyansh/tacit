@@ -355,7 +355,7 @@ export function ChatPanel({ messages, onSendMessage, onCollapse }: ChatPanelProp
 
       <MessageInput
         onSend={onSendMessage}
-        onAbort={() => window.termcanvas.agent.abort(activeSessionId)}
+        onAbort={() => window.tacit.agent.abort(activeSessionId)}
         streaming={useAgentBubbleStore((s) => s.streaming)}
         autoFocus
       />

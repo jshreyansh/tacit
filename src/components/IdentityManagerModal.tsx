@@ -282,7 +282,7 @@ export function IdentityManagerModal() {
   const refreshAuthorizedTabs = useCallback(async () => {
     setLoadingBrowsers(true);
     try {
-      setAuthorizedTabs(await window.termcanvas.browserConnection.listTabs());
+      setAuthorizedTabs(await window.tacit.browserConnection.listTabs());
       setBrowserStatus(null);
     } catch (error) {
       setBrowserStatus(error instanceof Error ? error.message : "Could not read connected tabs");
@@ -294,7 +294,7 @@ export function IdentityManagerModal() {
   const refreshImportProfiles = useCallback(async () => {
     setLoadingImportProfiles(true);
     try {
-      const profiles = await window.termcanvas.browserIdentity.listImportProfiles();
+      const profiles = await window.tacit.browserIdentity.listImportProfiles();
       setImportProfiles(profiles);
       setSelectedProfileIds(profiles.map((profile) => profile.profileId));
     } catch (error) {
@@ -354,7 +354,7 @@ export function IdentityManagerModal() {
   const beginBrowserPairing = useCallback(async () => {
     setBrowserStatus("Creating a private connection…");
     try {
-      const offer = await window.termcanvas.browserConnection.beginPairing();
+      const offer = await window.tacit.browserConnection.beginPairing();
       setPairingOffer(offer);
       setPairingNow(Date.now());
       setBrowserStatus("Fresh connection created. Copy it into the Tacit browser extension.");
@@ -384,7 +384,7 @@ export function IdentityManagerModal() {
     setImporting(true);
     setBrowserStatus(`Importing ${profileIds.length} Chrome profile${profileIds.length === 1 ? "" : "s"} into fresh profiles…`);
     try {
-      const batch = await window.termcanvas.browserIdentity.importChromeProfiles({
+      const batch = await window.tacit.browserIdentity.importChromeProfiles({
         profileIds,
         existingIdentityNames: identities.map((identity) => identity.name),
       });
@@ -436,7 +436,7 @@ export function IdentityManagerModal() {
     const name = identities.find((i) => i.id === confirmDeleteId)?.name ?? "";
     setDeleting(true);
     try {
-      const result = await window.termcanvas.browserIdentity.clearData(confirmDeleteId);
+      const result = await window.tacit.browserIdentity.clearData(confirmDeleteId);
       deleteIdentity(confirmDeleteId);
       setConfirmDeleteId(null);
       // The data is gone either way; only the folder can lag, and saying so is
@@ -821,7 +821,7 @@ export function IdentityManagerModal() {
                       type="button"
                       onClick={async () => {
                         try {
-                          const folder = await window.termcanvas.browserConnection.openExtensionFolder();
+                          const folder = await window.tacit.browserConnection.openExtensionFolder();
                           await navigator.clipboard.writeText(folder);
                           setBrowserStatus("Extension folder opened and its path copied. In your browser’s Extensions page, choose “Load unpacked” and select it.");
                         } catch (error) {

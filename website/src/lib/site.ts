@@ -21,13 +21,13 @@ export const dateLocales: Record<Locale, string> = {
 
 export const siteCopy = {
   zh: {
-    name: "TermCanvas",
+    name: "Tacit",
     defaultDescription:
-      "TermCanvas 是为 AI 编码 agent 设计的无限画布终端工作台，把终端、worktree、会话和 Hydra 编排放在同一张可视化画布上。",
-    homeTitle: "TermCanvas — AI 编码 agent 的无限画布终端",
-    articlesTitle: "文章 · TermCanvas",
+      "Tacit 是为 AI 编码 agent 设计的无限画布终端工作台，把终端、worktree、会话和 Hydra 编排放在同一张可视化画布上。",
+    homeTitle: "Tacit — AI 编码 agent 的无限画布终端",
+    articlesTitle: "文章 · Tacit",
     articlesDescription:
-      "TermCanvas 团队关于终端、AI agent、harness 设计与 Hydra 编排的长文与技术报告。",
+      "Tacit 团队关于终端、AI agent、harness 设计与 Hydra 编排的长文与技术报告。",
     nav: {
       articles: "文章",
       download: "下载",
@@ -47,11 +47,11 @@ export const siteCopy = {
       eyebrow: "v0.39 · 开源 · macOS / Windows / Linux",
       title: "把所有终端铺到一张无限画布上。",
       tagline:
-        "TermCanvas 是一个为 AI 编码 agent 时代而设计的终端工作台。空间化布局取代 tab 与分屏，让 Claude Code、Codex、Gemini 等多个 agent 能并行工作、互相对照，全程在一张画布里被你看见。",
-      download: "下载 TermCanvas",
+        "Tacit 是一个为 AI 编码 agent 时代而设计的终端工作台。空间化布局取代 tab 与分屏，让 Claude Code、Codex、Gemini 等多个 agent 能并行工作、互相对照，全程在一张画布里被你看见。",
+      download: "下载 Tacit",
       github: "查看 GitHub",
       meta: "MIT License · 完全开源 · 不收集任何用户数据",
-      imageAlt: "TermCanvas 多个 AI agent 在无限画布上协作",
+      imageAlt: "Tacit 多个 AI agent 在无限画布上协作",
     },
     features: {
       eyebrow: "特性",
@@ -81,12 +81,12 @@ export const siteCopy = {
       hubEyebrow: "Pin 工作流",
       hubBody:
         "把本地 insight 整理成可交接的上下文包，再交给 agent、人或 Hydra headless 流水线继续执行。长期项目的线索不再丢在聊天记录和终端历史里。",
-      hubAlt: "TermCanvas Pin 工作流与项目上下文交接",
+      hubAlt: "Tacit Pin 工作流与项目上下文交接",
     },
     articles: {
       eyebrow: "文章",
       title: "设计哲学，工程实录，思考片段。",
-      lede: "这里收录 TermCanvas 团队对终端、AI agent、harness 设计的长文。我们更关心为什么这样设计，而不是只记录代码怎么写。",
+      lede: "这里收录 Tacit 团队对终端、AI agent、harness 设计的长文。我们更关心为什么这样设计，而不是只记录代码怎么写。",
       viewAll: "查看全部",
       empty: "还没有文章。",
       back: "全部文章",
@@ -94,13 +94,13 @@ export const siteCopy = {
     },
   },
   en: {
-    name: "TermCanvas",
+    name: "Tacit",
     defaultDescription:
-      "TermCanvas is an infinite-canvas terminal workspace for AI coding agents, built to manage terminals, worktrees, sessions, and Hydra orchestration visually.",
-    homeTitle: "TermCanvas — Infinite canvas terminal for AI coding agents",
-    articlesTitle: "Articles · TermCanvas",
+      "Tacit is an infinite-canvas terminal workspace for AI coding agents, built to manage terminals, worktrees, sessions, and Hydra orchestration visually.",
+    homeTitle: "Tacit — Infinite canvas terminal for AI coding agents",
+    articlesTitle: "Articles · Tacit",
     articlesDescription:
-      "Long-form notes from TermCanvas on AI coding agents, terminal workspaces, harness design, and Hydra orchestration.",
+      "Long-form notes from Tacit on AI coding agents, terminal workspaces, harness design, and Hydra orchestration.",
     nav: {
       articles: "Articles",
       download: "Download",
@@ -120,11 +120,11 @@ export const siteCopy = {
       eyebrow: "v0.39 · Open source · macOS / Windows / Linux",
       title: "An infinite canvas terminal for AI coding agents.",
       tagline:
-        "TermCanvas is a visual terminal workspace built for parallel AI coding agents. Replace crowded tabs and split panes with a spatial canvas where Claude Code, Codex, Gemini, and other agents can run side by side with visible context.",
-      download: "Download TermCanvas",
+        "Tacit is a visual terminal workspace built for parallel AI coding agents. Replace crowded tabs and split panes with a spatial canvas where Claude Code, Codex, Gemini, and other agents can run side by side with visible context.",
+      download: "Download Tacit",
       github: "View on GitHub",
       meta: "MIT License · Open source · No user data collection",
-      imageAlt: "TermCanvas showing multiple AI coding agents on an infinite canvas",
+      imageAlt: "Tacit showing multiple AI coding agents on an infinite canvas",
     },
     features: {
       eyebrow: "Features",
@@ -154,12 +154,12 @@ export const siteCopy = {
       hubEyebrow: "Pin workflow",
       hubBody:
         "Turn local insight into a handoff packet that an agent, a human, or a Hydra headless pipeline can continue from. Long-running project context no longer disappears into chat logs and terminal scrollback.",
-      hubAlt: "TermCanvas pin workflow with project context and agent handoff",
+      hubAlt: "Tacit pin workflow with project context and agent handoff",
     },
     articles: {
       eyebrow: "Articles",
       title: "Design notes, engineering logs, and field reports.",
-      lede: "Long-form writing on terminal workspaces, AI coding agents, harness design, and the engineering choices behind TermCanvas.",
+      lede: "Long-form writing on terminal workspaces, AI coding agents, harness design, and the engineering choices behind Tacit.",
       viewAll: "View all",
       empty: "No articles yet.",
       back: "All articles",

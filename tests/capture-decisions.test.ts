@@ -42,11 +42,11 @@ function installBrowserGlobals(recorded: CaptureEvent[]) {
         return true;
       },
       // Importing the action modules transitively loads preferencesStore and
-      // shortcutStore, which read `window.termcanvas?.app.*` at module scope —
-      // guarding the `termcanvas` but not the `app` (20 call sites do this, so
+      // shortcutStore, which read `window.tacit?.app.*` at module scope —
+      // guarding the `tacit` but not the `app` (20 call sites do this, so
       // it's the house convention). A stub with only `capture` therefore throws
       // on import; `app` has to be here even though nothing under test uses it.
-      termcanvas: {
+      tacit: {
         app: { platform: "darwin", setQuitOnLastWindowClosed() {} },
         workspace: { setTitle() {} },
         capture: {

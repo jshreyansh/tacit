@@ -3,10 +3,10 @@ import { connect } from 'node:net';
 import { appendFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-const socket = process.env.TERMCANVAS_SOCKET;
-const terminalId = process.env.TERMCANVAS_TERMINAL_ID || '';
+const socket = process.env.TACIT_SOCKET;
+const terminalId = process.env.TACIT_TERMINAL_ID || '';
 
-const LOG_PATH = `${tmpdir()}/termcanvas-hook-errors.log`;
+const LOG_PATH = `${tmpdir()}/tacit-hook-errors.log`;
 const MAX_LOG_BYTES = 1_048_576;
 
 function logError(eventName, reason) {
@@ -57,7 +57,7 @@ async function runHook() {
   const eventName = data.hook_event_name || '?';
 
   if (!socket) {
-    logError(eventName, 'TERMCANVAS_SOCKET_missing');
+    logError(eventName, 'TACIT_SOCKET_missing');
     return;
   }
 

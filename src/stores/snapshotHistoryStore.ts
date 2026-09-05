@@ -119,10 +119,10 @@ export const useSnapshotHistoryStore = create<SnapshotHistoryStore>(
     setPendingRestoreId: (pendingRestoreId) => set({ pendingRestoreId }),
 
     refresh: async () => {
-      if (!window.termcanvas?.snapshots) return;
+      if (!window.tacit?.snapshots) return;
       set({ loading: true });
       try {
-        const list = await window.termcanvas.snapshots.list();
+        const list = await window.tacit.snapshots.list();
         get().setEntries(list);
       } catch (err) {
         console.error("[snapshotHistoryStore] failed to refresh entries:", err);

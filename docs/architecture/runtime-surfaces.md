@@ -10,7 +10,7 @@ Desktop entry points live primarily under `electron/`, `src/`, and `cli/`. Valid
 
 ## Headless runtime
 
-The headless process owns remote/server operation without Electron windows: authenticated HTTP control, project and worktree state, PTY workers, workflows, telemetry, artifacts, webhooks, and shutdown. It has its own container and persistence lifecycle. Deployment authentication comes from `TERMCANVAS_API_TOKEN`, not the desktop per-launch token.
+The headless process owns remote/server operation without Electron windows: authenticated HTTP control, project and worktree state, PTY workers, workflows, telemetry, artifacts, webhooks, and shutdown. It has its own container and persistence lifecycle. Deployment authentication comes from `TACIT_API_TOKEN`, not the desktop per-launch token.
 
 Headless entry points live primarily under `headless-runtime/`, `server/`, and the shared Hydra runtime. Validate this surface with `pnpm typecheck:headless` and the headless tests included in `pnpm test`.
 

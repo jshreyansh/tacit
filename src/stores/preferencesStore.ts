@@ -99,8 +99,8 @@ interface PreferencesStore {
   markHintSeen: (hintId: string) => void;
 }
 
-const STORAGE_KEY = "termcanvas-preferences";
-const SECURE_API_KEY_STORAGE_KEY = "termcanvas-secure-apikey";
+const STORAGE_KEY = "tacit-preferences";
+const SECURE_API_KEY_STORAGE_KEY = "tacit-secure-apikey";
 const PLAINTEXT_FALLBACK_PREFIX = "plain:";
 
 interface SavedPrefs {
@@ -358,12 +358,12 @@ async function saveApiKeySecure(apiKey: string): Promise<void> {
     localStorage.removeItem(SECURE_API_KEY_STORAGE_KEY);
     return;
   }
-  if (!window.termcanvas?.secure) {
+  if (!window.tacit?.secure) {
     localStorage.setItem(SECURE_API_KEY_STORAGE_KEY, PLAINTEXT_FALLBACK_PREFIX + apiKey);
     return;
   }
   try {
-    const encrypted = await window.termcanvas.secure.encrypt(apiKey);
+    const encrypted = await window.tacit.secure.encrypt(apiKey);
     localStorage.setItem(SECURE_API_KEY_STORAGE_KEY, encrypted);
   } catch {
     localStorage.setItem(SECURE_API_KEY_STORAGE_KEY, PLAINTEXT_FALLBACK_PREFIX + apiKey);
@@ -373,7 +373,7 @@ async function saveApiKeySecure(apiKey: string): Promise<void> {
 export async function hydrateApiKey(): Promise<void> {
   const { getState, setState } = usePreferencesStore;
 
-  if (!window.termcanvas?.secure) {
+  if (!window.tacit?.secure) {
     // Not in Electron — fall back to legacy plaintext
     const legacyKey = readLegacyApiKey();
     if (legacyKey) {
@@ -391,11 +391,11 @@ export async function hydrateApiKey(): Promise<void> {
         apiKey = secureValue.slice(PLAINTEXT_FALLBACK_PREFIX.length);
         // Attempt upgrade to encrypted now that we're running
         try {
-          const encrypted = await window.termcanvas.secure.encrypt(apiKey);
+          const encrypted = await window.tacit.secure.encrypt(apiKey);
           localStorage.setItem(SECURE_API_KEY_STORAGE_KEY, encrypted);
         } catch { /* keep plaintext fallback */ }
       } else {
-        apiKey = await window.termcanvas.secure.decrypt(secureValue);
+        apiKey = await window.tacit.secure.decrypt(secureValue);
       }
       if (apiKey) {
         getState().patchAgentConfig({ apiKey });
@@ -565,7 +565,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   setQuitOnLastWindowClosed: (value) => {
     set({ quitOnLastWindowClosed: value });
     savePreferences(getSaveState({ ...get(), quitOnLastWindowClosed: value }));
-    window.termcanvas?.app.setQuitOnLastWindowClosed(value);
+    window.tacit?.app.setQuitOnLastWindowClosed(value);
   },
   setSummaryCli: (value) => {
     set({ summaryCli: value });
@@ -612,7 +612,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
 // very first window-close of this session. Guarded because this module is
 // also imported in Node-based unit tests where `window` is not defined.
 if (typeof window !== "undefined") {
-  window.termcanvas?.app.setQuitOnLastWindowClosed?.(initialPrefs.quitOnLastWindowClosed);
+  window.tacit?.app.setQuitOnLastWindowClosed?.(initialPrefs.quitOnLastWindowClosed);
 
   // Mac windows are created transparent so the canvas opacity/blur
   // preference can show the desktop through (see index.css
@@ -623,7 +623,7 @@ if (typeof window !== "undefined") {
   // what actually renders solid at 100% opacity.
   if (
     typeof document !== "undefined" &&
-    (window.termcanvas?.app.platform ?? "darwin") === "darwin"
+    (window.tacit?.app.platform ?? "darwin") === "darwin"
   ) {
     document.body.classList.add("tc-mac-transparent-window");
   }

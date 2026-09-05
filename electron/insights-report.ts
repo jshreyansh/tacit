@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { TERMCANVAS_DIR } from "./state-persistence.ts";
+import { TACIT_DIR } from "./state-persistence.ts";
 import type {
   AggregatedStats,
   InsightsAchievement,
@@ -440,7 +440,7 @@ function codingStory(section: InsightsCodingStorySection | null, stats: Aggregat
 }
 
 export function generateReport(insights: InsightsResult): string {
-  const reportsDir = path.join(TERMCANVAS_DIR, "insights-reports");
+  const reportsDir = path.join(TACIT_DIR, "insights-reports");
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir, { recursive: true });
   }

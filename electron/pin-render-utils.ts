@@ -54,7 +54,7 @@ export function getDefaultPinRenderPath(repo: string, pinId: string): string {
 }
 
 export function getPinRenderCacheDir(repo: string): string {
-  return path.join(repo, ".termcanvas", "pin-renders");
+  return path.join(repo, ".tacit", "pin-renders");
 }
 
 export function cleanupPinRenderCache(

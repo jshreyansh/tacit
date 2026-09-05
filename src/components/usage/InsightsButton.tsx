@@ -11,7 +11,7 @@ export function InsightsButton({
   compact = false,
 }: { compact?: boolean } = {}) {
   const t = useT();
-  const insightsApi = window.termcanvas?.insights;
+  const insightsApi = window.tacit?.insights;
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<InsightsProgressEvent | null>(null);
   const [error, setError] = useState<{

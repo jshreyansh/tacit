@@ -115,7 +115,7 @@ export function buildAssistantNodes(events: TimelineEvent[]): AssistantNode[] {
  * Claude names arrive Pascal-cased ("Read", "Edit") and codex as snake_case;
  * both are readable and pass through. MCP tools arrive as
  * `mcp__<server>__<tool>`, so a canvas call would render as
- * `mcp__termcanvas-bridge__spawn_browser` — unreadable as a tag, and exactly
+ * `mcp__tacit-bridge__spawn_browser` — unreadable as a tag, and exactly
  * the set that matters when reading a workspace manager's work. The server is
  * dropped for display; the full identifier stays on the expanded call.
  */

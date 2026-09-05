@@ -23,7 +23,7 @@ import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
 import { PtyManager, OutputBatcher } from "./pty-manager";
 import { ProjectScanner } from "./project-scanner";
-import { StatePersistence, TERMCANVAS_DIR } from "./state-persistence";
+import { StatePersistence, TACIT_DIR } from "./state-persistence";
 import { SnapshotHistory } from "./snapshot-history";
 import { GitFileWatcher } from "./git-watcher";
 import { FileTreeWatcher } from "./file-tree-watcher";
@@ -231,7 +231,7 @@ const __dirname = path.dirname(__filename);
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 if (isDev) {
-  app.setPath("userData", path.join(app.getPath("appData"), "termcanvas-dev"));
+  app.setPath("userData", path.join(app.getPath("appData"), "tacit-dev"));
 }
 
 // Capture main / renderer / GPU process crashes into local minidumps. Required
@@ -260,7 +260,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-const skipLock = isDev || !!process.env.TERMCANVAS_SKIP_LOCK;
+const skipLock = isDev || !!process.env.TACIT_SKIP_LOCK;
 const gotLock = skipLock || app.requestSingleInstanceLock();
 if (!gotLock) {
   console.error(
@@ -270,7 +270,7 @@ if (!gotLock) {
   app.quit();
 }
 
-const PORT_FILE = path.join(TERMCANVAS_DIR, "port");
+const PORT_FILE = path.join(TACIT_DIR, "port");
 
 function perfLog(label: string, details: Record<string, unknown>) {
   if (!isDev) return;
@@ -340,8 +340,8 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 );
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
-const captureService = new CaptureService(getCaptureDir(TERMCANVAS_DIR));
-const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TERMCANVAS_DIR));
+const captureService = new CaptureService(getCaptureDir(TACIT_DIR));
+const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TACIT_DIR));
 managerRoleLog.load();
 /**
  * Text this app pushed into a terminal, so the prompt hook can tell it apart
@@ -353,7 +353,7 @@ const injectedText = new InjectedTextTracker();
  * directory is resolved lazily because it is keyed on the active canvas, which
  * the renderer owns and which changes as canvases are switched.
  */
-const recallService = new RecallService(getCaptureDir(TERMCANVAS_DIR), () =>
+const recallService = new RecallService(getCaptureDir(TACIT_DIR), () =>
   captureCanvasId ? getMemoryDirForWorkspace(captureCanvasId) : null,
 );
 const browserConnectionRegistry = new BrowserConnectionRegistry();
@@ -437,7 +437,7 @@ const hookReceiver = new HookReceiver((event) => {
     });
   }
 });
-const taskStore = new PinStore(path.join(TERMCANVAS_DIR, "pins"));
+const taskStore = new PinStore(path.join(TACIT_DIR, "pins"));
 
 taskStore.on("pin:created", (payload: { pin: unknown; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:created", ...payload });
@@ -895,7 +895,7 @@ function createWindow() {
   });
 }
 
-const DEBUG_LOG = path.join(TERMCANVAS_DIR, "session-debug.log");
+const DEBUG_LOG = path.join(TACIT_DIR, "session-debug.log");
 function dbg(msg: string) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try {
@@ -928,7 +928,7 @@ function setupIpc() {
       const cliDir = getCliDir();
 
       if (options.terminalType === "claude" && options.terminalId) {
-        const mcpArgs = buildClaudeTermcanvasBridgeArgs(options.terminalId);
+        const mcpArgs = buildClaudeTacitBridgeArgs(options.terminalId);
         if (mcpArgs.length > 0) {
           options.args = spliceArgsBeforeDoubleDash(
             options.args ?? [],
@@ -944,7 +944,7 @@ function setupIpc() {
           options.terminalType,
         ),
         ...(hookSocketPath
-          ? { envOverrides: { TERMCANVAS_SOCKET: hookSocketPath } }
+          ? { envOverrides: { TACIT_SOCKET: hookSocketPath } }
           : {}),
       });
       const pid = ptyManager.getPid(ptyId);
@@ -1965,7 +1965,7 @@ function setupIpc() {
     const { generateEnhancedIndex, MemoryIndexCache } =
       await import("./memory-index-generator.js");
     const memDir = getMemoryDirForWorktree(worktreePath);
-    const cache = new MemoryIndexCache(TERMCANVAS_DIR);
+    const cache = new MemoryIndexCache(TACIT_DIR);
 
     const initialGraph = scanMemoryDir(memDir);
     cache.update(generateEnhancedIndex(initialGraph.nodes));
@@ -2004,7 +2004,7 @@ function setupIpc() {
     const { generateEnhancedIndex, MemoryIndexCache } =
       await import("./memory-index-generator.js");
     const memDir = getMemoryDirForWorkspace(canvasId);
-    const cache = new MemoryIndexCache(TERMCANVAS_DIR);
+    const cache = new MemoryIndexCache(TACIT_DIR);
 
     const initialGraph = scanMemoryDir(memDir);
     cache.update(generateEnhancedIndex(initialGraph.nodes));
@@ -2031,8 +2031,8 @@ function setupIpc() {
   ipcMain.handle("workspace:save", async (_event, data: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: "Save Workspace",
-      defaultPath: "workspace.termcanvas",
-      filters: [{ name: "Tacit Workspace", extensions: ["termcanvas"] }],
+      defaultPath: "workspace.tacit",
+      filters: [{ name: "Tacit Workspace", extensions: ["tacit"] }],
     });
     if (result.canceled || !result.filePath) return null;
     const filePath = workspaceSavePaths.register(result.filePath);
@@ -2056,7 +2056,7 @@ function setupIpc() {
   ipcMain.handle("workspace:open", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "Open Workspace",
-      filters: [{ name: "Tacit Workspace", extensions: ["termcanvas"] }],
+      filters: [{ name: "Tacit Workspace", extensions: ["tacit"] }],
       properties: ["openFile"],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -2085,7 +2085,7 @@ function setupIpc() {
 
     const sourcePath = result.filePaths[0];
     const ext = path.extname(sourcePath).toLowerCase();
-    const backgroundsDir = path.join(TERMCANVAS_DIR, "canvas-backgrounds");
+    const backgroundsDir = path.join(TACIT_DIR, "canvas-backgrounds");
     fs.mkdirSync(backgroundsDir, { recursive: true });
     const destPath = path.join(backgroundsDir, `${randomUUID()}${ext}`);
     fs.copyFileSync(sourcePath, destPath);
@@ -2710,7 +2710,7 @@ function setupIpc() {
   });
 
   ipcMain.handle("insights:get-last-report", async () => {
-    const reportsDir = path.join(TERMCANVAS_DIR, "insights-reports");
+    const reportsDir = path.join(TACIT_DIR, "insights-reports");
     try {
       if (!fs.existsSync(reportsDir)) return null;
       const files = fs
@@ -3156,19 +3156,19 @@ function getCliDir(): string {
   return path.resolve(__dirname, "..", "dist-cli");
 }
 
-function getTermcanvasBridgeCliPath(): string | null {
+function getTacitBridgeCliPath(): string | null {
   const prodPath = path.join(
     process.resourcesPath,
-    "termcanvas-bridge",
-    "termcanvas-bridge.js",
+    "tacit-bridge",
+    "tacit-bridge.js",
   );
   if (fs.existsSync(prodPath)) return prodPath;
   const devPath = path.resolve(
     __dirname,
     "..",
-    "termcanvas-bridge",
+    "tacit-bridge",
     "dist",
-    "termcanvas-bridge.js",
+    "tacit-bridge.js",
   );
   return fs.existsSync(devPath) ? devPath : null;
 }
@@ -3194,7 +3194,7 @@ function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
 /**
  * Grants a native "claude"-typed terminal (the one actually created via the
  * canvas's dock/context menu/command palette — see terminalRuntimeStore.ts's
- * spawnPty) access to termcanvas-bridge, scoped to just this one terminal
+ * spawnPty) access to tacit-bridge, scoped to just this one terminal
  * via a per-terminal MCP config file rather than a global ~/.claude.json
  * registration — see the removed "Computer Use MCP" (electron/skill-manager.ts
  * history, commit 44640b24 -> 8c9d1eb1) for why that global-mutation pattern
@@ -3209,7 +3209,7 @@ function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
  * config, never touching that shim at all — so without this second
  * injection point, every terminal created from the dock/context menu/
  * command palette (i.e. the terminal type actually shown in this app's UI)
- * would silently never get termcanvas-bridge tools.
+ * would silently never get tacit-bridge tools.
  *
  * Claude-only today (guarded by terminalType === "claude" at the call site)
  * — Codex/Gemini terminals get no MCP wiring at all yet, native or shimmed.
@@ -3217,15 +3217,15 @@ function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
  * working tools until this gets extended; tracked as a known gap, not fixed
  * here.
  */
-function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
-  const serverPath = getTermcanvasBridgeCliPath();
+function buildClaudeTacitBridgeArgs(terminalId: string): string[] {
+  const serverPath = getTacitBridgeCliPath();
   if (!serverPath) return [];
 
   const config = {
     mcpServers: {
       // The key becomes the prefix on every tool name the agent sees
       // (mcp__tacit__spawn_browser). Deliberately renamed while the workspace
-      // directory stays `termcanvas-bridge` — the packaged resource path and
+      // directory stays `tacit-bridge` — the packaged resource path and
       // extraResources entry are keyed on that directory name, and renaming it
       // is filesystem churn that buys nothing an agent or a user can see.
       tacit: {
@@ -3233,8 +3233,8 @@ function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
         command: process.execPath,
         args: [serverPath],
         env: {
-          TERMCANVAS_TERMINAL_ID: terminalId,
-          TERMCANVAS_PORT_FILE: PORT_FILE,
+          TACIT_TERMINAL_ID: terminalId,
+          TACIT_PORT_FILE: PORT_FILE,
           // `process.execPath` is the Electron binary, and a PACKAGED Electron
           // app ignores an app path in argv — it always boots its own bundled
           // asar. So without this, every terminal launch would silently start
@@ -3252,7 +3252,7 @@ function buildClaudeTermcanvasBridgeArgs(terminalId: string): string[] {
   try {
     const configPath = path.join(
       os.tmpdir(),
-      `termcanvas-mcp-${terminalId}.json`,
+      `tacit-mcp-${terminalId}.json`,
     );
     fs.writeFileSync(configPath, JSON.stringify(config), "utf-8");
     return ["--mcp-config", configPath];
@@ -3269,7 +3269,7 @@ function dataUrlToPngBuffer(dataUrl: string): Buffer {
   return image.toPNG();
 }
 
-const CLI_NAMES = ["termcanvas", "hydra", "browse"];
+const CLI_NAMES = ["tacit", "hydra", "browse"];
 const AGENT_SHIM_NAMES = ["codex", "claude"];
 
 function ensureCliLinks(): void {
@@ -3313,12 +3313,12 @@ function ensureSkillInstalled(): boolean {
 
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("termcanvas", process.execPath, [
+    app.setAsDefaultProtocolClient("tacit", process.execPath, [
       path.resolve(process.argv[1]),
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("termcanvas");
+  app.setAsDefaultProtocolClient("tacit");
 }
 
 app.whenReady().then(async () => {
@@ -3342,8 +3342,8 @@ app.whenReady().then(async () => {
   // roots. Renderer constructs URLs as tc-attachment://local/<abs-path>;
   // handler decodes pathname back to a real path and streams the file via
   // Electron's net.fetch.
-  const ATTACHMENTS_ROOT = path.join(TERMCANVAS_DIR, "pins");
-  const CANVAS_BACKGROUNDS_ROOT = path.join(TERMCANVAS_DIR, "canvas-backgrounds");
+  const ATTACHMENTS_ROOT = path.join(TACIT_DIR, "pins");
+  const CANVAS_BACKGROUNDS_ROOT = path.join(TACIT_DIR, "canvas-backgrounds");
   const LOCAL_MEDIA_ROOTS = [ATTACHMENTS_ROOT, CANVAS_BACKGROUNDS_ROOT];
   protocol.handle("tc-attachment", async (request) => {
     try {
@@ -3369,7 +3369,7 @@ app.whenReady().then(async () => {
       const ua = contents
         .getUserAgent()
         .replace(/\s*Electron\/\S+/, "")
-        .replace(/\s*termcanvas\/\S+/i, "");
+        .replace(/\s*tacit\/\S+/i, "");
       contents.setUserAgent(ua);
 
       // Google/Microsoft/Apple-style sign-in refuses to complete inside any
@@ -3564,7 +3564,7 @@ app.whenReady().then(async () => {
   }, 5 * 60_000);
 
   app.on("open-url", async (_event, url) => {
-    if (url.startsWith("termcanvas://auth/callback")) {
+    if (url.startsWith("tacit://auth/callback")) {
       await handleAuthCallback(url);
     }
   });
@@ -3575,7 +3575,7 @@ app.whenReady().then(async () => {
       mainWindow.focus();
     }
     const authUrl = argv.find((arg) =>
-      arg.startsWith("termcanvas://auth/callback"),
+      arg.startsWith("tacit://auth/callback"),
     );
     if (authUrl) {
       handleAuthCallback(authUrl);

@@ -22,39 +22,39 @@ export const useUpdaterStore = create<UpdaterStore>((set) => ({
 }));
 
 export function initUpdaterListeners(): () => void {
-  if (!window.termcanvas?.updater) {
+  if (!window.tacit?.updater) {
     return () => {};
   }
 
   const cleanups: (() => void)[] = [];
 
   cleanups.push(
-    window.termcanvas.updater.onUpdateAvailable((info) => {
+    window.tacit.updater.onUpdateAvailable((info) => {
       useUpdaterStore.setState({ status: "downloading", info, downloadPercent: 0 });
     }),
   );
 
   cleanups.push(
-    window.termcanvas.updater.onDownloadProgress((progress) => {
+    window.tacit.updater.onDownloadProgress((progress) => {
       useUpdaterStore.setState({ downloadPercent: progress.percent });
     }),
   );
 
   cleanups.push(
-    window.termcanvas.updater.onUpdateDownloaded((info) => {
+    window.tacit.updater.onUpdateDownloaded((info) => {
       useUpdaterStore.setState({ status: "ready", info, downloadPercent: 100 });
     }),
   );
 
   cleanups.push(
-    window.termcanvas.updater.onError((error) => {
+    window.tacit.updater.onError((error) => {
       useUpdaterStore.setState({ status: "error", errorMessage: error.message });
     }),
   );
 
-  if (window.termcanvas.updater.onLocationWarning) {
+  if (window.tacit.updater.onLocationWarning) {
     cleanups.push(
-      window.termcanvas.updater.onLocationWarning(() => {
+      window.tacit.updater.onLocationWarning(() => {
         const locale = useLocaleStore.getState().locale;
         const dict = locale === "zh" ? { ...en, ...zh } : en;
         useNotificationStore

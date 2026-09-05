@@ -21,7 +21,7 @@ function getLocalStorage():
 }
 
 function detectLocale(): Locale {
-  const saved = getLocalStorage()?.getItem("termcanvas-locale") ?? null;
+  const saved = getLocalStorage()?.getItem("tacit-locale") ?? null;
   if (saved === "en" || saved === "zh") return saved;
   if (typeof navigator !== "undefined" && navigator.language.startsWith("zh"))
     return "zh";
@@ -36,7 +36,7 @@ interface LocaleStore {
 export const useLocaleStore = create<LocaleStore>((set) => ({
   locale: detectLocale(),
   setLocale: (locale) => {
-    getLocalStorage()?.setItem("termcanvas-locale", locale);
+    getLocalStorage()?.setItem("tacit-locale", locale);
     set({ locale });
   },
 }));

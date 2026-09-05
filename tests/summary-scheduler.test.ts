@@ -25,7 +25,7 @@ function installGlobals(generateSummary: () => Promise<SummaryResult>) {
     },
   };
 
-  const termcanvas = {
+  const tacit = {
     app: {
       platform: "darwin" as const,
     },
@@ -37,8 +37,8 @@ function installGlobals(generateSummary: () => Promise<SummaryResult>) {
   const target = new EventTarget();
   const mockWindow = Object.assign(target, {
     navigator,
-    termcanvas,
-  }) as Window & { termcanvas: typeof termcanvas };
+    tacit,
+  }) as Window & { tacit: typeof tacit };
 
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,

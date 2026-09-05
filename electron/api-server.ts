@@ -1002,7 +1002,7 @@ export class ApiServer {
   }
 
   /**
-   * Backs the emit_event MCP tool (termcanvas-bridge/src/mcp-server.ts): fans a
+   * Backs the emit_event MCP tool (tacit-bridge/src/mcp-server.ts): fans a
    * named event out to every node connected to `kind`/`id` on the canvas,
    * applying each target's built-in reaction — terminals get it as a new
    * prompt (reusing the same submitComposerRequest pipeline the wire-up

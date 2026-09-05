@@ -348,11 +348,11 @@ export function ConnectionLayer() {
       const endpoint = (event as CustomEvent<ConnectionEndpoint | null>).detail;
       setHoveredKey(endpoint ? endpointKey(endpoint) : null);
     };
-    window.addEventListener("termcanvas:terminal-hover", handleTerminal);
-    window.addEventListener("termcanvas:node-hover", handleNode);
+    window.addEventListener("tacit:terminal-hover", handleTerminal);
+    window.addEventListener("tacit:node-hover", handleNode);
     return () => {
-      window.removeEventListener("termcanvas:terminal-hover", handleTerminal);
-      window.removeEventListener("termcanvas:node-hover", handleNode);
+      window.removeEventListener("tacit:terminal-hover", handleTerminal);
+      window.removeEventListener("tacit:node-hover", handleNode);
     };
   }, []);
 

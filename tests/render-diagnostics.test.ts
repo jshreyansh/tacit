@@ -7,7 +7,7 @@ import { RenderDiagnosticsLogger } from "../electron/render-diagnostics.ts";
 
 test("render diagnostics logger persists renderer and main events as JSONL", () => {
   const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-render-diagnostics-"),
+    path.join(os.tmpdir(), "tacit-render-diagnostics-"),
   );
   const filePath = path.join(tempDir, "logs", "render-diagnostics.jsonl");
   let tick = 0;
@@ -51,7 +51,7 @@ test("render diagnostics logger persists renderer and main events as JSONL", () 
 
 test("render diagnostics logger rotates oversized JSONL files before appending", () => {
   const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-render-diagnostics-"),
+    path.join(os.tmpdir(), "tacit-render-diagnostics-"),
   );
   const filePath = path.join(tempDir, "logs", "render-diagnostics.jsonl");
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

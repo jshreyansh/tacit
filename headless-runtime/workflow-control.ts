@@ -56,7 +56,7 @@ import type { ProjectStore } from "./project-store.ts";
 
 /**
  * Worker dispatch mode:
- *   - "pty":        legacy path — launch a termcanvas-tracked PTY terminal
+ *   - "pty":        legacy path — launch a tacit-tracked PTY terminal
  *                   with an interactive claude/codex session (default)
  *   - "subprocess": spawn a one-shot non-interactive CLI subprocess
  *                   (claude -p / codex exec --json). See subprocess-worker.ts

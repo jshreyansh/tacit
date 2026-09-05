@@ -28,10 +28,10 @@ function makePin(overrides: Partial<Pin> = {}): Pin {
   };
 }
 
-test("default render path overwrites latest under repo .termcanvas", () => {
+test("default render path overwrites latest under repo .tacit", () => {
   assert.equal(
     getDefaultPinRenderPath("/repo", "pin-aa11"),
-    path.join("/repo", ".termcanvas", "pin-renders", "pin-aa11", "latest.png"),
+    path.join("/repo", ".tacit", "pin-renders", "pin-aa11", "latest.png"),
   );
 });
 
@@ -49,7 +49,7 @@ test("normalizePinRenderOptions clamps dimensions and wait time", () => {
   assert.equal(options.fullPage, true);
   assert.equal(
     options.outputPath,
-    path.join("/repo", ".termcanvas", "pin-renders", "pin-aa11", "latest.png"),
+    path.join("/repo", ".tacit", "pin-renders", "pin-aa11", "latest.png"),
   );
 });
 
@@ -102,7 +102,7 @@ test("buildPinRenderHtml prepares full html documents for sandboxed rendering", 
 
 test("cleanupPinRenderCache removes stale renders but preserves current latest", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pin-render-cache-"));
-  const cacheDir = path.join(repo, ".termcanvas", "pin-renders");
+  const cacheDir = path.join(repo, ".tacit", "pin-renders");
   const currentDir = path.join(cacheDir, "current-pin");
   const deletedDir = path.join(cacheDir, "deleted-pin");
   fs.mkdirSync(currentDir, { recursive: true });

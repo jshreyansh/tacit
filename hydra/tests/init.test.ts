@@ -77,12 +77,12 @@ test("init updates an existing Hydra block in place and preserves adjacent conte
   // sections survive the rewrite.
   assert.match(claudeMd, /Workflow patterns:/);
   assert.match(claudeMd, /hydra spawn --task/);
-  assert.match(claudeMd, /termcanvas terminal create --prompt/);
-  assert.match(claudeMd, /Do not use `termcanvas terminal input`/);
+  assert.match(claudeMd, /tacit terminal create --prompt/);
+  assert.match(claudeMd, /Do not use `tacit terminal input`/);
   assert.match(claudeMd, /Workflow control:/);
   assert.match(claudeMd, /Telemetry polling:/);
-  assert.match(claudeMd, /termcanvas telemetry get --workbench <workbenchId> --repo \./);
-  assert.match(claudeMd, /termcanvas telemetry events --terminal <terminalId> --limit 20/);
+  assert.match(claudeMd, /tacit telemetry get --workbench <workbenchId> --repo \./);
+  assert.match(claudeMd, /tacit telemetry events --terminal <terminalId> --limit 20/);
 
   // Slim result contract is reflected in the rendered section.
   assert.match(claudeMd, /schema_version `hydra\/result\/v0\.1`/);

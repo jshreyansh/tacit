@@ -8,7 +8,7 @@ import { ManagerRoleLog, getManagerRoleLogPath } from "../electron/manager-role-
 import { toSessionRows, type ManagerTenure } from "../shared/manager-role";
 
 function tempLog(): { log: ManagerRoleLog; file: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-role-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-role-"));
   const file = path.join(dir, "manager-sessions.jsonl");
   return { log: new ManagerRoleLog(file), file };
 }
@@ -180,7 +180,7 @@ test("the same conversation held twice merges into one row", () => {
 
 test("log path sits beside the instance's other artifacts", () => {
   assert.equal(
-    getManagerRoleLogPath("/Users/x/.termcanvas"),
-    path.join("/Users/x/.termcanvas", "manager-sessions.jsonl"),
+    getManagerRoleLogPath("/Users/x/.tacit"),
+    path.join("/Users/x/.tacit", "manager-sessions.jsonl"),
   );
 });

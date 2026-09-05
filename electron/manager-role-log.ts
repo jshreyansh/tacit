@@ -200,6 +200,6 @@ export class ManagerRoleLog {
   }
 }
 
-export function getManagerRoleLogPath(termcanvasDir: string): string {
-  return path.join(termcanvasDir, "manager-sessions.jsonl");
+export function getManagerRoleLogPath(tacitDir: string): string {
+  return path.join(tacitDir, "manager-sessions.jsonl");
 }

@@ -380,7 +380,7 @@ export async function initWorkbench(
   const workbenchId = generateWorkbenchId();
 
   // Lead identity comes from the active runtime. Tacit sources it
-  // from TERMCANVAS_TERMINAL_ID on the calling terminal; Standalone uses
+  // from TACIT_TERMINAL_ID on the calling terminal; Standalone uses
   // HYDRA_LEAD_ID or a stable synthesized id. Either way, without a lead
   // id the workbench has no owner and lead-guard cannot enforce
   // single-Lead semantics — so we reject.

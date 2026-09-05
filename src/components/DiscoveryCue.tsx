@@ -187,7 +187,7 @@ function useHydraDiscoveryCue(): CueViewModel | null {
       setStatus(null);
       return;
     }
-    const api = window.termcanvas?.project?.checkHydra;
+    const api = window.tacit?.project?.checkHydra;
     if (!api) return;
     let cancelled = false;
     api(projectPath)
@@ -225,7 +225,7 @@ function useHydraDiscoveryCue(): CueViewModel | null {
       label: busy ? "…" : label,
       onClick: () => {
         if (busy) return;
-        const enableApi = window.termcanvas?.project?.enableHydra;
+        const enableApi = window.tacit?.project?.enableHydra;
         if (!enableApi) return;
         setBusy(true);
         enableApi(projectPath)

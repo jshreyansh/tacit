@@ -1,9 +1,9 @@
 import type { HydraRuntime } from "./types.ts";
 import { StandaloneRuntime } from "./standalone.ts";
-import { TermCanvasRuntime } from "./termcanvas.ts";
+import { TacitRuntime } from "./tacit.ts";
 
 export type { HydraRuntime, RuntimeTerminalRef, RuntimeTerminalStatus, RuntimeTelemetrySnapshot, TerminalCreateOptions } from "./types.ts";
-export { StandaloneRuntime, TermCanvasRuntime };
+export { StandaloneRuntime, TacitRuntime };
 
 let cachedRuntime: HydraRuntime | null = null;
 let cachedOverride: HydraRuntime | null = null;
@@ -45,12 +45,12 @@ export function getRuntime(): HydraRuntime {
     return cachedRuntime;
   }
   if (override === "0" || override === "false") {
-    cachedRuntime = new TermCanvasRuntime();
+    cachedRuntime = new TacitRuntime();
     return cachedRuntime;
   }
 
-  const tc = new TermCanvasRuntime();
-  if (tc.isAvailable() || process.env.TERMCANVAS_TERMINAL_ID) {
+  const tc = new TacitRuntime();
+  if (tc.isAvailable() || process.env.TACIT_TERMINAL_ID) {
     cachedRuntime = tc;
     return cachedRuntime;
   }

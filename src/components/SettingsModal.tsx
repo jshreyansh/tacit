@@ -31,7 +31,7 @@ import { useChatInputOverrideStore } from "../stores/chatInputOverrideStore";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
 
-const platform = window.termcanvas?.app.platform ?? "darwin";
+const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 const MONO_STYLE = { fontFamily: '"Geist Mono", monospace' } as const;
@@ -333,7 +333,7 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
   const handleCheck = useCallback(async () => {
     setUpToDate(false);
     useUpdaterStore.setState({ status: "checking", errorMessage: null });
-    const outcome = await window.termcanvas.updater.check();
+    const outcome = await window.tacit.updater.check();
     // Reset the spinner whatever the outcome — events handle the
     // "newer" path (downloading/ready/error). "up-to-date" is the only
     // case that warrants the ephemeral "Up to date" feedback; "skipped"
@@ -350,7 +350,7 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
   }, []);
 
   const handleInstall = useCallback(() => {
-    window.termcanvas.updater.install();
+    window.tacit.updater.install();
   }, []);
 
   let statusEl: ReactNode = (
@@ -446,7 +446,7 @@ function CliToolsList() {
     for (const agent of AGENT_TYPES) {
       const command = cliCommands[agent]?.command ?? agent;
       setStatuses((prev) => ({ ...prev, [agent]: null }));
-      window.termcanvas.cli.validateCommand(command).then((result) => {
+      window.tacit.cli.validateCommand(command).then((result) => {
         setStatuses((prev) => ({ ...prev, [agent]: result }));
       });
     }
@@ -456,7 +456,7 @@ function CliToolsList() {
     const command =
       drafts[agent]?.trim() || cliCommands[agent]?.command || agent;
     setStatuses((prev) => ({ ...prev, [agent]: null }));
-    window.termcanvas.cli.validateCommand(command).then((result) => {
+    window.tacit.cli.validateCommand(command).then((result) => {
       setStatuses((prev) => ({ ...prev, [agent]: result }));
     });
   };
@@ -660,7 +660,7 @@ function BrowserActivityRow() {
   const [erasing, setErasing] = useState(false);
 
   const refresh = useCallback(() => {
-    window.termcanvas?.browser?.observationSummary?.()
+    window.tacit?.browser?.observationSummary?.()
       .then(setSummary)
       // A summary that cannot be read is reported as nothing recorded rather
       // than as an error: the row is a description, and a broken description
@@ -682,7 +682,7 @@ function BrowserActivityRow() {
   const handleErase = useCallback(async () => {
     setErasing(true);
     try {
-      await window.termcanvas?.browser?.clearObservations?.();
+      await window.tacit?.browser?.clearObservations?.();
       notify("info", t.browser_activity_erased);
     } catch (error) {
       notify("warn", error instanceof Error ? error.message : String(error));
@@ -815,11 +815,11 @@ export function SettingsModal({ onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    window.termcanvas?.cli.isRegistered().then(setCliRegistered);
+    window.tacit?.cli.isRegistered().then(setCliRegistered);
   }, []);
 
   useEffect(() => {
-    window.termcanvas?.updater
+    window.tacit?.updater
       .getVersion()
       .then(setAppVersion)
       .catch(() => {
@@ -828,7 +828,7 @@ export function SettingsModal({ onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    window.termcanvas?.fonts.listDownloaded().then((files) => {
+    window.tacit?.fonts.listDownloaded().then((files) => {
       setDownloadedFonts(new Set(files));
     });
   }, []);
@@ -874,7 +874,7 @@ export function SettingsModal({ onClose }: Props) {
 
       try {
         if (nextEnabled) {
-          const result = await window.termcanvas.cli.register();
+          const result = await window.tacit.cli.register();
           if (!result.ok) {
             useNotificationStore
               .getState()
@@ -888,7 +888,7 @@ export function SettingsModal({ onClose }: Props) {
           }
           setCliRegistered(true);
         } else {
-          const ok = await window.termcanvas.cli.unregister();
+          const ok = await window.tacit.cli.unregister();
           if (!ok) {
             useNotificationStore
               .getState()
@@ -1226,13 +1226,13 @@ export function SettingsModal({ onClose }: Props) {
                                       setDownloadingFont(font.id);
                                       try {
                                         const result =
-                                          await window.termcanvas.fonts.download(
+                                          await window.tacit.fonts.download(
                                             font.url,
                                             font.fileName,
                                           );
                                         if (result.ok) {
                                           const fontsDir =
-                                            await window.termcanvas.fonts.getPath();
+                                            await window.tacit.fonts.getPath();
                                           await loadFont(font, fontsDir);
                                           setDownloadedFonts(
                                             (prev) =>
@@ -1389,7 +1389,7 @@ export function SettingsModal({ onClose }: Props) {
                         className="rounded-md px-2.5 py-1 text-[12px] bg-[var(--surface)] text-[var(--accent)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors duration-quick"
                         onClick={async () => {
                           const url =
-                            await window.termcanvas.canvas.pickBackgroundImage();
+                            await window.tacit.canvas.pickBackgroundImage();
                           if (url) setCanvasBackgroundImage(url);
                         }}
                       >

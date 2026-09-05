@@ -11,7 +11,7 @@ type AuthLoginResult = {
 
 function setAuthApi(login: () => Promise<AuthLoginResult>) {
   (globalThis as { window?: unknown }).window = {
-    termcanvas: {
+    tacit: {
       auth: {
         login,
       },

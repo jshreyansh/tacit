@@ -112,7 +112,7 @@ export function createWorkspaceFixture(
   files: Record<string, string>,
 ): string {
   const workspaceDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-headless-workspace-"),
+    path.join(os.tmpdir(), "tacit-headless-workspace-"),
   );
 
   for (const [relativePath, content] of Object.entries(files)) {

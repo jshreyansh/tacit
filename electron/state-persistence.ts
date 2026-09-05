@@ -1,15 +1,15 @@
 import fs from "fs";
 import path from "path";
-import { getTermCanvasDataDir } from "../shared/termcanvas-instance";
+import { getTacitDataDir } from "../shared/tacit-instance";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
-export const TERMCANVAS_DIR = getTermCanvasDataDir(isDev ? "dev" : "prod");
-const STATE_FILE = path.join(TERMCANVAS_DIR, "state.json");
+export const TACIT_DIR = getTacitDataDir(isDev ? "dev" : "prod");
+const STATE_FILE = path.join(TACIT_DIR, "state.json");
 
 export class StatePersistence {
   constructor() {
-    if (!fs.existsSync(TERMCANVAS_DIR)) {
-      fs.mkdirSync(TERMCANVAS_DIR, { recursive: true });
+    if (!fs.existsSync(TACIT_DIR)) {
+      fs.mkdirSync(TACIT_DIR, { recursive: true });
     }
   }
 

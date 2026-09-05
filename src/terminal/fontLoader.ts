@@ -30,12 +30,12 @@ export async function loadFont(
 }
 
 export async function loadAllDownloadedFonts(): Promise<void> {
-  if (!window.termcanvas?.fonts) {
+  if (!window.tacit?.fonts) {
     return;
   }
 
-  const fontsDir = await window.termcanvas.fonts.getPath();
-  const downloaded = await window.termcanvas.fonts.listDownloaded();
+  const fontsDir = await window.tacit.fonts.getPath();
+  const downloaded = await window.tacit.fonts.listDownloaded();
   const downloadedSet = new Set(downloaded);
 
   for (const entry of FONT_REGISTRY) {

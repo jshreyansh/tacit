@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
 
-import { TERMCANVAS_DIR } from "./state-persistence";
+import { TACIT_DIR } from "./state-persistence";
 
-const CLI_INTEGRATION_FILE = path.join(TERMCANVAS_DIR, "cli-integration.json");
+const CLI_INTEGRATION_FILE = path.join(TACIT_DIR, "cli-integration.json");
 
 interface CliIntegrationState {
   autoRegister: boolean;

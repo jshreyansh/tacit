@@ -8,18 +8,18 @@ import {
 
 test("resolveCurrentAgentType ignores non-Hydra terminal types", () => {
   assert.equal(
-    resolveCurrentAgentType({ TERMCANVAS_TERMINAL_TYPE: "shell" }),
+    resolveCurrentAgentType({ TACIT_TERMINAL_TYPE: "shell" }),
     undefined,
   );
   assert.equal(
-    resolveCurrentAgentType({ TERMCANVAS_TERMINAL_TYPE: "codex" }),
+    resolveCurrentAgentType({ TACIT_TERMINAL_TYPE: "codex" }),
     "codex",
   );
 });
 
 test("resolveDefaultAgentType inherits the current terminal type before falling back", () => {
   assert.equal(
-    resolveDefaultAgentType({ TERMCANVAS_TERMINAL_TYPE: "claude" }),
+    resolveDefaultAgentType({ TACIT_TERMINAL_TYPE: "claude" }),
     "claude",
   );
   assert.equal(resolveDefaultAgentType({}), "claude");
@@ -27,7 +27,7 @@ test("resolveDefaultAgentType inherits the current terminal type before falling 
 
 test("resolveWorkerAgentType inherits the current terminal type when unset", () => {
   assert.equal(
-    resolveWorkerAgentType({}, { TERMCANVAS_TERMINAL_TYPE: "gemini" }),
+    resolveWorkerAgentType({}, { TACIT_TERMINAL_TYPE: "gemini" }),
     "gemini",
   );
   assert.equal(resolveWorkerAgentType({}, {}), "claude");

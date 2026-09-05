@@ -16,7 +16,7 @@ import { FakePtyManager } from "./headless-runtime-test-helpers.ts";
 
 test("persistence controller flushes the latest pending state immediately", () => {
   const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-headless-persistence-"),
+    path.join(os.tmpdir(), "tacit-headless-persistence-"),
   );
   const statePath = path.join(tempDir, "state.json");
   let state = { saved: 1 };
@@ -37,7 +37,7 @@ test("persistence controller flushes the latest pending state immediately", () =
 
 test("graceful shutdown flushes state, removes the port file, and only runs once", async () => {
   const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-headless-shutdown-"),
+    path.join(os.tmpdir(), "tacit-headless-shutdown-"),
   );
   const statePath = path.join(tempDir, "state.json");
   const portFile = path.join(tempDir, "port");
@@ -115,7 +115,7 @@ test("graceful shutdown flushes state, removes the port file, and only runs once
 
 test("graceful shutdown persists terminals without live PTY bindings", async () => {
   const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "termcanvas-headless-shutdown-state-"),
+    path.join(os.tmpdir(), "tacit-headless-shutdown-state-"),
   );
   const statePath = path.join(tempDir, "state.json");
   const portFile = path.join(tempDir, "port");

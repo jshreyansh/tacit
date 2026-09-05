@@ -4,7 +4,7 @@ import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { useT } from "../i18n/useT";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 
-const platform = window.termcanvas?.app.platform ?? "darwin";
+const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 const STAGGER_STYLE: CSSProperties = {

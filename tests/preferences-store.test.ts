@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const STORAGE_KEY = "termcanvas-preferences";
+const STORAGE_KEY = "tacit-preferences";
 
 function installLocalStorage(initialValue?: string) {
   const backingStore = new Map<string, string>();
@@ -63,7 +63,7 @@ test("preferences stores and retrieves cliCommands", async () => {
     claude: { command: "/usr/local/bin/claude", args: [] },
   });
 
-  const raw = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.deepEqual(raw.cliCommands, {
     claude: { command: "/usr/local/bin/claude", args: [] },
   });
@@ -89,7 +89,7 @@ test("preferences persist terminal renderer mode and default to webgl for unknow
   store.setTerminalRenderer("webgl");
   assert.equal(usePreferencesStore.getState().terminalRenderer, "webgl");
 
-  const raw = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal(raw.terminalRenderer, "webgl");
 });
 
@@ -107,7 +107,7 @@ test("preferences ignore removed smart render settings while preserving supporte
 
   store.setAnimationBlur(0);
 
-  const raw = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal("smartRenderEnabled" in raw, false);
   assert.equal(raw.animationBlur, 0);
 });
@@ -133,7 +133,7 @@ test("preferences persist and sanitize defaultTerminalSize", async () => {
     usePreferencesStore.getState().defaultTerminalSize,
     { w: 820, h: 560 },
   );
-  const persistedA = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const persistedA = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.deepEqual(persistedA.defaultTerminalSize, { w: 820, h: 560 });
 
   // Fractional values get rounded by the sanitizer.
@@ -180,7 +180,7 @@ test("preferences persist completed terminal edge glow toggle", async () => {
   store.setCompletionGlowEnabled(true);
   assert.equal(usePreferencesStore.getState().completionGlowEnabled, true);
 
-  const raw = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal(raw.completionGlowEnabled, true);
 });
 
@@ -201,6 +201,6 @@ test("preferences persist and sanitize worktree compact columns", async () => {
   store.setWorktreeCompactColumns(2.4);
   assert.equal(usePreferencesStore.getState().worktreeCompactColumns, 2);
 
-  const raw = JSON.parse(localStorage.getItem("termcanvas-preferences")!);
+  const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal(raw.worktreeCompactColumns, 2);
 });

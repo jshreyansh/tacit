@@ -94,7 +94,7 @@ async function capturePatch(
 }
 
 /**
- * Direct Hydra runner — multi-agent orchestration without TermCanvas.
+ * Direct Hydra runner — multi-agent orchestration without Tacit.
  *
  * Flow:
  * 1. Orchestrator (Claude) analyzes the problem and produces a plan with sub-tasks
@@ -392,7 +392,7 @@ export class HydraRunner implements AgentRunner {
   }
 }
 
-export class TermCanvasHydraRunner implements AgentRunner {
+export class TacitHydraRunner implements AgentRunner {
   async run(
     task: TaskDefinition,
     workDir: string,

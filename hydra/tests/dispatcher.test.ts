@@ -42,8 +42,8 @@ test("dispatchCreateOnly launches a terminal with the create-only prompt", async
       parentTerminalId: "terminal-parent",
     },
     {
-      isTermCanvasRunning() {
-        calls.push({ type: "isTermCanvasRunning", args: [] });
+      isTacitRunning() {
+        calls.push({ type: "isTacitRunning", args: [] });
         return true;
       },
       findProjectByPath(repoPath) {
@@ -75,7 +75,7 @@ test("dispatchCreateOnly launches a terminal with the create-only prompt", async
     prompt: expectedPrompt,
   });
   assert.deepEqual(calls, [
-    { type: "isTermCanvasRunning", args: [] },
+    { type: "isTacitRunning", args: [] },
     { type: "findProjectByPath", args: ["/repo/project"] },
     {
       type: "terminalCreate",
@@ -111,7 +111,7 @@ test("dispatchCreateOnly forwards resumeSessionId to terminalCreate", async () =
       resumeSessionId: "claude-session-xyz",
     },
     {
-      isTermCanvasRunning: () => true,
+      isTacitRunning: () => true,
       findProjectByPath: (repoPath) => ({ id: "project-1", path: repoPath }),
       terminalCreate: (...args) => {
         calls.push({ type: "terminalCreate", args });
@@ -141,7 +141,7 @@ test("dispatchCreateOnly fails when the runtime is not available", async () => {
           resultFile: "/repo/project/result.json",
         },
         {
-          isTermCanvasRunning: () => false,
+          isTacitRunning: () => false,
           findProjectByPath: () => {
             throw new Error("must not be called");
           },
@@ -173,7 +173,7 @@ test("dispatchCreateOnly fails when the repo is not tracked by the runtime", asy
           resultFile: "/repo/project/result.json",
         },
         {
-          isTermCanvasRunning: () => true,
+          isTacitRunning: () => true,
           findProjectByPath: () => null,
           terminalCreate: () => {
             throw new Error("must not be called");

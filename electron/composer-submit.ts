@@ -49,7 +49,7 @@ export function getComposerRequestDir(
   worktreePath: string,
   requestId: string,
 ): string {
-  return path.join(worktreePath, ".termcanvas", "composer", requestId);
+  return path.join(worktreePath, ".tacit", "composer", requestId);
 }
 
 export function buildComposerImagePath(
@@ -251,7 +251,7 @@ async function submitDirectText(
  * Called at the start of every new submit so temp files don't accumulate.
  */
 function cleanupOldComposerRequests(worktreePath: string): void {
-  const composerDir = path.join(worktreePath, ".termcanvas", "composer");
+  const composerDir = path.join(worktreePath, ".tacit", "composer");
   let entries: string[];
   try {
     entries = fs.readdirSync(composerDir);

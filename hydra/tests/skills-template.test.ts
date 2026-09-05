@@ -25,12 +25,12 @@ test("Hydra skill copy documents root-cause-first, no test hacking, and result g
   assert.match(skill, /silent fallback|swallow/i);
 
   // Agent launch rule.
-  assert.match(skill, /termcanvas terminal create --prompt/i);
-  assert.match(skill, /Do not use `termcanvas terminal input`|not a supported automation path/i);
+  assert.match(skill, /tacit terminal create --prompt/i);
+  assert.match(skill, /Do not use `tacit terminal input`|not a supported automation path/i);
 
   // Telemetry polling guidance + state names.
-  assert.match(skill, /termcanvas telemetry get --workflow/i);
-  assert.match(skill, /termcanvas telemetry get --terminal/i);
+  assert.match(skill, /tacit telemetry get --workflow/i);
+  assert.match(skill, /tacit telemetry get --terminal/i);
   assert.match(skill, /hydra watch.*polling loop|polling loop.*hydra watch/i);
   assert.match(skill, /awaiting_contract/i);
   assert.match(skill, /stall_candidate/i);
@@ -41,7 +41,7 @@ test("Hydra skill copy documents root-cause-first, no test hacking, and result g
 
 test("router skill stays always-on and classifies Tacit work before Hydra", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const skillPath = path.resolve(here, "..", "..", "skills", "skills", "using-termcanvas", "SKILL.md");
+  const skillPath = path.resolve(here, "..", "..", "skills", "skills", "using-tacit", "SKILL.md");
   const skill = fs.readFileSync(skillPath, "utf-8");
 
   assert.match(skill, /alwaysApply:\s*true/i);
@@ -53,7 +53,7 @@ test("router skill stays always-on and classifies Tacit work before Hydra", () =
   assert.match(skill, /dev.*reviewer/i);
   assert.match(skill, /hydra spawn/i);
   assert.match(skill, /hydra list/i);
-  assert.match(skill, /termcanvas terminal create --prompt/i);
+  assert.match(skill, /tacit terminal create --prompt/i);
 });
 
 test("challenge skill defines four orthogonal attack methodologies", () => {

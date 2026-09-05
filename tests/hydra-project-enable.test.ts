@@ -9,7 +9,7 @@ import {
 } from "../electron/hydra-project.ts";
 
 test("enableHydraForProject writes Hydra and Pin instructions into the project root", () => {
-  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-hydra-enable-"));
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-hydra-enable-"));
 
   const result = enableHydraForProject(repoPath);
 
@@ -25,12 +25,12 @@ test("enableHydraForProject writes Hydra and Pin instructions into the project r
   assert.match(agents, /## Hydra Orchestration Toolkit/);
   assert.match(claude, /## Tacit Pin System/);
   assert.match(agents, /## Tacit Pin System/);
-  assert.match(claude, /termcanvas pin render <id> --json/);
-  assert.match(agents, /termcanvas pin render <id> --json/);
+  assert.match(claude, /tacit pin render <id> --json/);
+  assert.match(agents, /tacit pin render <id> --json/);
 });
 
 test("enableHydraForProject reports unchanged when the current instructions already exist", () => {
-  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-hydra-current-"));
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-hydra-current-"));
 
   const first = enableHydraForProject(repoPath);
   assert.equal(first.ok, true);
@@ -51,7 +51,7 @@ test("enableHydraForProject reports unchanged when the current instructions alre
 });
 
 test("checkHydraProjectStatus auto-installs the Pin section for projects that already opted into Hydra", () => {
-  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-pin-autoadd-"));
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-pin-autoadd-"));
   // Project opted into Hydra before the Pin section existed: install Hydra
   // instructions cleanly, leaving no Pin section anywhere.
   const first = enableHydraForProject(repoPath);
@@ -80,7 +80,7 @@ test("checkHydraProjectStatus auto-installs the Pin section for projects that al
 });
 
 test("enableHydraForProject rejects missing project paths", () => {
-  const result = enableHydraForProject("/tmp/termcanvas-missing-hydra-project");
+  const result = enableHydraForProject("/tmp/tacit-missing-hydra-project");
 
   assert.equal(result.ok, false);
   if (result.ok) {
@@ -91,7 +91,7 @@ test("enableHydraForProject rejects missing project paths", () => {
 });
 
 test("checkHydraProjectStatus auto-upgrades outdated Hydra instructions for old projects", () => {
-  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "termcanvas-hydra-upgrade-"));
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-hydra-upgrade-"));
   const legacy = [
     "# Notes",
     "",

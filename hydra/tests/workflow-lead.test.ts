@@ -24,8 +24,8 @@ import { readLedger } from "../src/ledger.ts";
 import { AssignmentManager } from "../src/assignment/manager.ts";
 import { resetRuntime, setRuntime } from "../src/runtime/index.ts";
 
-// Set TERMCANVAS_TERMINAL_ID so initWorkflow + lead-guard accept the test as Lead
-process.env.TERMCANVAS_TERMINAL_ID = "terminal-test-lead";
+// Set TACIT_TERMINAL_ID so initWorkflow + lead-guard accept the test as Lead
+process.env.TACIT_TERMINAL_ID = "terminal-test-lead";
 
 function makeTestRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hydra-lead-test-"));
@@ -764,7 +764,7 @@ test("watchUntilDecision preserves completed assignment state when session info 
     setRuntime({
       name: "standalone",
       isAvailable: () => true,
-      getCurrentLeadId: () => process.env.TERMCANVAS_TERMINAL_ID,
+      getCurrentLeadId: () => process.env.TACIT_TERMINAL_ID,
       ensureProjectTracked: (repoPath: string) => ({ id: repoPath, path: repoPath }),
       syncProject: () => {},
       findProjectByPath: (repoPath: string) => ({ id: repoPath, path: repoPath }),

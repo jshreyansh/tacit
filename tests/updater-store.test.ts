@@ -72,7 +72,7 @@ function installUpdaterBridge() {
 
   Object.assign(globalThis, {
     window: {
-      termcanvas: {
+      tacit: {
         updater,
       },
     },

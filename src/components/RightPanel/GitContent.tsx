@@ -424,7 +424,7 @@ function FileDiffInline({
   useEffect(() => {
     setLoading(true);
     setDiff(null);
-    window.termcanvas.git
+    window.tacit.git
       .fileDiff(worktreePath, filePath, staged)
       .then(setDiff)
       .catch(() => setDiff(null))
@@ -520,9 +520,9 @@ function MergeStateBanner({
   const handleAbort = async () => {
     setBusy(true);
     try {
-      if (mergeState.type === "merge") await window.termcanvas.git.mergeAbort(worktreePath);
-      else if (mergeState.type === "rebase") await window.termcanvas.git.rebaseAbort(worktreePath);
-      else if (mergeState.type === "cherry-pick") await window.termcanvas.git.cherryPickAbort(worktreePath);
+      if (mergeState.type === "merge") await window.tacit.git.mergeAbort(worktreePath);
+      else if (mergeState.type === "rebase") await window.tacit.git.rebaseAbort(worktreePath);
+      else if (mergeState.type === "cherry-pick") await window.tacit.git.cherryPickAbort(worktreePath);
       await onRefresh();
     } catch (err) {
       notify("error", String(err));
@@ -532,7 +532,7 @@ function MergeStateBanner({
   const handleContinue = async () => {
     setBusy(true);
     try {
-      if (mergeState.type === "rebase") await window.termcanvas.git.rebaseContinue(worktreePath);
+      if (mergeState.type === "rebase") await window.tacit.git.rebaseContinue(worktreePath);
       await onRefresh();
     } catch (err) {
       notify("error", String(err));
@@ -853,7 +853,7 @@ function CommitDetailInline({
     setDetail(null);
     setExpandedFiles(new Set());
 
-    window.termcanvas.git
+    window.tacit.git
       .commitDetail(worktreePath, hash)
       .then((result) => {
         if (mountedRef.current) {
@@ -1338,8 +1338,8 @@ export function GitContent({
         setSelectedCommitHash(hash);
       }
     };
-    window.addEventListener("termcanvas:select-git-commit", handler);
-    return () => window.removeEventListener("termcanvas:select-git-commit", handler);
+    window.addEventListener("tacit:select-git-commit", handler);
+    return () => window.removeEventListener("tacit:select-git-commit", handler);
   }, []);
 
   const refreshAll = useCallback(async () => {
@@ -1427,7 +1427,7 @@ export function GitContent({
   const handleCreateBranch = useCallback(async () => {
     if (!newBranchName.trim() || !worktreePath) return;
     try {
-      await window.termcanvas.git.branchCreate(worktreePath, newBranchName.trim());
+      await window.tacit.git.branchCreate(worktreePath, newBranchName.trim());
       setNewBranchName("");
       setShowNewBranch(false);
       await refreshAll();
@@ -1439,7 +1439,7 @@ export function GitContent({
   const handleDeleteBranch = useCallback(async (name: string) => {
     if (!worktreePath) return;
     try {
-      await window.termcanvas.git.branchDelete(worktreePath, name, false);
+      await window.tacit.git.branchDelete(worktreePath, name, false);
       await refreshAll();
     } catch (error) {
       const message = String(error);
@@ -1457,7 +1457,7 @@ export function GitContent({
     if (!worktreePath || !forceDeleteBranch) return;
     setForceDeletingBranch(true);
     try {
-      await window.termcanvas.git.branchDelete(
+      await window.tacit.git.branchDelete(
         worktreePath,
         forceDeleteBranch.name,
         true,
@@ -1474,7 +1474,7 @@ export function GitContent({
   const handleStageHunk = useCallback(async (filePath: string, hunkHeader: string) => {
     if (!worktreePath) return;
     try {
-      await window.termcanvas.git.stageHunk(worktreePath, filePath, hunkHeader);
+      await window.tacit.git.stageHunk(worktreePath, filePath, hunkHeader);
       await refreshStatus();
     } catch (error) {
       notify("error", t.git_hunk_failed(String(error)));
@@ -1484,7 +1484,7 @@ export function GitContent({
   const handleUnstageHunk = useCallback(async (filePath: string, hunkHeader: string) => {
     if (!worktreePath) return;
     try {
-      await window.termcanvas.git.unstageHunk(worktreePath, filePath, hunkHeader);
+      await window.tacit.git.unstageHunk(worktreePath, filePath, hunkHeader);
       await refreshStatus();
     } catch (error) {
       notify("error", t.git_hunk_failed(String(error)));
@@ -1495,7 +1495,7 @@ export function GitContent({
     async (ref: string) => {
       setSwitchingBranch(true);
       try {
-        await window.termcanvas.git.checkout(worktreePath!, ref);
+        await window.tacit.git.checkout(worktreePath!, ref);
         await refreshAll();
       } catch (error) {
         notify("error", t.git_checkout_failed(String(error)));
@@ -1593,7 +1593,7 @@ export function GitContent({
             onClick={async () => {
               setInitializingRepo(true);
               try {
-                await window.termcanvas.git.init(worktreePath!);
+                await window.tacit.git.init(worktreePath!);
                 await refreshAll();
               } catch (error) {
                 notify("error", t.git_init_failed(String(error)));
