@@ -1,4 +1,4 @@
-# Contributing to TermCanvas
+# Contributing to Tacit
 
 Thank you for your interest in contributing! Here's how to get started.
 
@@ -7,8 +7,8 @@ Thank you for your interest in contributing! Here's how to get started.
 This workspace uses `pnpm`. Please use `pnpm` commands in examples and keep `pnpm-lock.yaml` as the canonical lockfile.
 
 ```bash
-git clone https://github.com/blueberrycongee/termcanvas.git
-cd termcanvas
+git clone https://github.com/jshreyansh/tacit.git
+cd tacit
 pnpm install
 pnpm dev
 ```
@@ -49,7 +49,7 @@ refactor: restructure code without behavior change
 
 ## Reporting Issues
 
-Open an issue at [github.com/blueberrycongee/termcanvas/issues](https://github.com/blueberrycongee/termcanvas/issues) with:
+Open an issue at [github.com/jshreyansh/tacit/issues](https://github.com/jshreyansh/tacit/issues) with:
 
 - Steps to reproduce
 - Expected vs actual behavior

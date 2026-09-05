@@ -1,68 +1,42 @@
 <div align="center">
 
-<img src="docs/icon.png" width="128" alt="Tacit app icon" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.png">
+  <img src="docs/logo-light.png" width="96" alt="Tacit">
+</picture>
 
 # Tacit
 
-**Your terminals, on an infinite canvas.**
+**Your terminals, your agents, and your browser — on one infinite canvas.**
 
 [![GitHub release](https://img.shields.io/github/v/release/jshreyansh/tacit)](https://github.com/jshreyansh/tacit/releases)
-[![Downloads](https://img.shields.io/github/downloads/jshreyansh/tacit/total?label=downloads)](https://github.com/jshreyansh/tacit/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)]()
-[![Website](https://img.shields.io/badge/website-termcanvas-e8b840)](https://website-ten-mu-37.vercel.app)
-
-[**termcanvas.dev →**](https://website-ten-mu-37.vercel.app)
-
-<br>
-
-<img src="docs/demo.gif" alt="Tacit in action — canvas navigation, focus, zoom, and panel switching" />
-
-<br>
-
-<img src="docs/hero-canvas.png" alt="Tacit — multiple AI agents arranged on an infinite canvas" />
-
-<br><br>
-
-<img src="docs/hero-hub.png" alt="Tacit Hub — knowledge graph view with sessions sidebar" />
 
 </div>
 
 <br>
 
-Tacit spreads all your terminals across an infinite spatial canvas — no more tabs, no more split panes. Drag them around, zoom in to focus, zoom out to see the big picture.
+Tacit spreads your terminals across an infinite spatial canvas — no tabs, no split panes. Drag them around, zoom in to focus, zoom out to see everything at once.
 
-It organizes everything in a **Project → Worktree → Terminal** hierarchy that mirrors how you actually use git. Add a project, and Tacit auto-detects its worktrees. Create a new worktree from the terminal, and it appears on the canvas instantly.
+It organises work in a **Project → Worktree → Terminal** hierarchy that mirrors how you actually use git. Add a project and Tacit finds its worktrees. Create a worktree from the terminal and it appears on the canvas immediately.
 
-<p align="right"><a href="./README.zh-CN.md">中文文档 →</a></p>
+Alongside the terminals sit **browser nodes** signed in with your own imported Chrome profiles, and **typed connections** that record what one node has to do with another — so the reasoning behind a piece of work survives somewhere other than a transcript.
 
-> **New to Tacit?** Read the full [**User Guide**](./docs/user-guide.md) — every interaction explained, every keyboard shortcut, plus the non-obvious tricks (⌘E focus chain, drag-to-stash, session replay, etc.).
+> **New here?** Read the [**User Guide**](./docs/user-guide.md) — every interaction, every shortcut, and the non-obvious tricks.
 
 ---
 
-## Quick Start
+## Quick start
 
-**Download** — grab the latest build from [GitHub Releases](https://github.com/jshreyansh/tacit/releases).
+**Download** — grab the latest build from [Releases](https://github.com/jshreyansh/tacit/releases).
 
 > [!IMPORTANT]
-> **Apple Silicon (M-series) Macs — pick the file with `arm64` in its name**
-> Files **with** `arm64` in the filename (e.g. `Tacit-X.Y.Z-arm64.dmg`, `Tacit-X.Y.Z-arm64-mac.zip`) are native Apple Silicon builds. Files **without** `arm64` are Intel (x64) builds — they'll still launch on M-series Macs via Rosetta 2, but you'll see noticeable lag when panning/zooming the canvas.
->
-> To verify after install: open **Activity Monitor**, find Tacit, and check the **Kind** column — it should say **Apple**, not **Intel**. If it says Intel, delete the app and redownload the `arm64` variant.
+> **Apple Silicon Macs — pick the file with `arm64` in its name.**
+> Files without `arm64` are Intel builds. They run under Rosetta 2, but panning and zooming the canvas will lag. To check after installing: open **Activity Monitor**, find Tacit, and read the **Kind** column — it should say **Apple**.
 
-> [!WARNING]
-> **macOS note for unsigned builds**
-> If macOS says Tacit is damaged or blocks launch because the app is unsigned, clear the quarantine attribute and try again:
->
-> ```bash
-> xattr -cr /Applications/Tacit.app
-> ```
->
-> If you installed the app somewhere else, replace the path with the actual app location.
-
-**Build from source:**
-
-This workspace uses `pnpm`, and `pnpm-lock.yaml` is the canonical lockfile.
+**Build from source** — this workspace uses `pnpm`, and `pnpm-lock.yaml` is the canonical lockfile.
 
 ```bash
 git clone https://github.com/jshreyansh/tacit.git
@@ -71,61 +45,69 @@ pnpm install
 pnpm dev
 ```
 
-**Install CLI tools** — after launching the app, go to Settings → General → Command line interface and click Register. This adds `termcanvas` and `hydra` to your PATH.
+**Install the CLI** — after launching, go to Settings → General → Command line interface and click Register. This puts `tacit`, `hydra`, and `browse` on your PATH.
 
-Registration also installs Tacit skills and lifecycle hooks for Claude/Codex. For Codex 0.129.0 and newer, Tacit writes the required hook trust state in `~/.codex/config.toml` so the generated hooks are reviewed/trusted and continue to emit terminal lifecycle and telemetry events.
+Registration also installs Tacit's skills and lifecycle hooks for Claude and Codex. For Codex 0.129.0 and newer, Tacit writes the hook trust state into `~/.codex/config.toml` so the generated hooks stay trusted and keep emitting terminal lifecycle and telemetry events.
 
 ---
 
-## Features
+## What it does
 
 ### Canvas
 
-Infinite canvas — pan, zoom, and arrange terminals freely. Three-layer hierarchy: projects contain worktrees, worktrees contain terminals. New worktrees appear automatically as you create them.
+Infinite canvas — pan, zoom, arrange freely. Double-click a title bar to zoom-to-fit. Drag to reorder, box-select many at once, and annotate the canvas itself with the Free Canvas tool so sketches and grouping lines live beside the work. Save the whole layout to a workspace file.
 
-Double-click a terminal title bar to zoom-to-fit. Drag to reorder. Box-select multiple terminals. Draw and annotate freely on the canvas itself with the Free Canvas tool — sketches, callouts, and grouping lines live alongside your terminals. Save your entire layout to a `.termcanvas` file.
-
-### AI Coding Agents
+### Coding agents
 
 First-class support for **Claude Code**, **Codex**, **Kimi**, **Gemini**, and **OpenCode**.
 
-- **Glance at any tile to know what it's doing** — a coloured status dot tells you whether the agent is thinking, awaiting input, idle, or done
+- **Glance at a tile and know what it's doing** — a status dot says whether the agent is thinking, waiting on you, idle, or done
 - **Pick up where you left off** — close and reopen an agent terminal without losing the conversation
-- **Review changes in place** — inline diff cards let you read an agent's edits without leaving the canvas
+- **Review changes in place** — inline diff cards show an agent's edits without leaving the canvas
 
-### Sessions Panel
+### Browser nodes
 
-Every past Claude / Codex conversation in your projects, organised as projects → worktrees → sessions. Click any row to replay it, or jump straight to the running terminal. Worktrees show their live git status so you can tell at a glance what's clean.
+Import your Chrome profiles and browse inside the canvas, signed in as yourself. Cookies and site storage are copied once, read-only, and never leave the machine.
+
+Each profile decides for itself whether agents may drive it. Pages visited in a browser node are recorded locally so an agent can be asked about them later — and Settings → Browser shows exactly how much has been recorded, with one button to erase it.
+
+### Typed connections
+
+Draw a wire between two nodes and say what it means: *controls*, *sends replies to*, *writes to*, *hands off to*, *feeds context to*. Some wires run — an agent's answer delivered into a chat page, or appended to a note. Others are recorded and drawn but do nothing yet, and are marked so you can tell which is which at a glance.
+
+### Sessions
+
+Every past Claude and Codex conversation in your projects, organised as projects → worktrees → sessions. Click a row to replay it or jump to the running terminal. Worktrees show live git status.
 
 ### Git
 
-Commit history, diff viewer, and live git status — built into the sidebar so you never need to leave the canvas to check what changed.
+Commit history, diff viewer, and live status in the sidebar, so checking what changed never means leaving the canvas.
 
 ### Terminals
 
-Shell, lazygit, and tmux terminals live alongside AI agents on the same canvas. Star the ones you keep coming back to (<kbd>⌘</kbd><kbd>F</kbd>) and cycle through just those with <kbd>⌘</kbd><kbd>]</kbd> / <kbd>⌘</kbd><kbd>[</kbd> — use <kbd>⌘</kbd><kbd>G</kbd> to choose whether you're cycling all terminals, just starred, or whole worktrees. Custom titles, per-agent CLI override, and your preferred terminal size is remembered after the first manual resize.
+Shell, lazygit, and tmux terminals sit beside agents on the same canvas. Star the ones you return to (<kbd>⌘</kbd><kbd>F</kbd>) and cycle just those with <kbd>⌘</kbd><kbd>]</kbd> / <kbd>⌘</kbd><kbd>[</kbd>; <kbd>⌘</kbd><kbd>G</kbd> chooses whether you are cycling all terminals, starred ones, or whole worktrees. Custom titles, per-agent CLI overrides, and your preferred size are remembered.
 
-### Usage Tracking
+### Usage tracking
 
-Track how much you're spending on Claude and Codex — across all projects, broken down by model, with quota meters for the 5-hour and 7-day rate limits. Sign in to keep usage in sync across devices.
+What you are spending on Claude and Codex, across projects, broken down by model, with quota meters for the 5-hour and 7-day limits. Sign in to sync across devices.
 
 ### Settings
 
-Downloadable monospace fonts · dark / light theme · rebindable keyboard shortcuts · adjustable contrast for accessibility · English and Chinese · in-app auto-update.
+Downloadable monospace fonts · dark and light themes · rebindable shortcuts · adjustable contrast · English and Chinese · in-app auto-update.
 
 ---
 
 ## CLI
 
-Both CLIs are bundled with the app. Register them from Settings to use in any terminal.
+Both CLIs ship with the app. Register them from Settings to use them in any terminal.
 
-### termcanvas
+### tacit
 
 <details>
 <summary>Full command reference</summary>
 
 ```
-Usage: termcanvas <group> <command> [args]
+Usage: tacit <group> <command> [args]
 
 Groups:
   project        add | list | remove | rescan
@@ -134,6 +116,7 @@ Groups:
   workflow       Lead-driven Hydra workflow over HTTP (init / dispatch / watch …)
   telemetry      get | events
   pin            add | list | show | update | rm
+  browser        add | list | update | rm
   diff           <worktree-path> [--summary]
   state          dump full canvas state as JSON
 
@@ -154,46 +137,46 @@ Flags:
 </details>
 
 ```bash
-termcanvas project add ~/my-repo
-termcanvas terminal create --worktree ~/my-repo --type claude --prompt "Audit the auth flow and fix the root cause"
-termcanvas terminal status <id>
-termcanvas telemetry get --terminal <id>
-termcanvas diff ~/my-repo --summary
+tacit project add ~/my-repo
+tacit terminal create --worktree ~/my-repo --type claude --prompt "Audit the auth flow and fix the root cause"
+tacit terminal status <id>
+tacit telemetry get --terminal <id>
+tacit diff ~/my-repo --summary
 ```
 
-For Claude/Codex task automation, start a fresh terminal with `termcanvas terminal create --prompt "..."`. `termcanvas terminal input` is not a supported dispatch path.
+To dispatch a Claude or Codex task, start a fresh terminal with `tacit terminal create --prompt "..."`. `tacit terminal input` is not a supported dispatch path.
 
 <br>
 
 <div align="center">
-<img src="docs/hydra-icon.png" width="80" alt="Hydra icon" />
+<img src="docs/hydra-icon.png" width="80" alt="Hydra" />
 
 ### hydra
 </div>
 
 <br>
 
-Hydra is Tacit's terminal orchestration toolkit for Lead-driven workflows and isolated direct workers. It coordinates **git worktrees**, **assignment/run file contracts**, and the **telemetry truth layer** without taking control away from the agent sessions themselves.
+Hydra is Tacit's orchestration toolkit for Lead-driven workflows and isolated direct workers. It coordinates **git worktrees**, **assignment and run file contracts**, and the **telemetry truth layer** without taking control away from the agent sessions themselves.
 
-Hydra is now **Lead-driven**. One main terminal owns the workbench, reads the codebase, and decides what to do at each decision point. Worker terminals stay autonomous. Workbench state lives under repo-local `.hydra/workbenches/`, and the authoritative contract is on disk: `inputs/intent.md`, `dispatches/<dispatchId>/intent.md`, `report.md`, `result.json`, and `ledger.jsonl`. Terminal prose is advisory only; validated `result.json` is the machine gate.
+One main terminal owns the workbench, reads the codebase, and decides what happens at each decision point. Worker terminals stay autonomous. Workbench state lives in repo-local `.hydra/workbenches/`, and the contract is on disk: `inputs/intent.md`, `dispatches/<dispatchId>/intent.md`, `report.md`, `result.json`, and `ledger.jsonl`. Terminal prose is advisory; a validated `result.json` is the machine gate.
 
-Role-driven workflows currently target **Claude/Codex** through the Hydra role registry. If you only need one isolated worker without a Lead-driven DAG, use `hydra spawn` instead.
+Role-driven workflows target **Claude and Codex** through the Hydra role registry. If you only need one isolated worker without a Lead-driven DAG, use `hydra spawn`.
 
-This design is inspired by [Anthropic's harness design research](https://www.anthropic.com/engineering/harness-design-long-running-apps) on long-running agent orchestration, adapted for terminal-based agents where each process is naturally isolated. For the theoretical foundations behind this approach, see [Harness Design from a Distribution Perspective](harness-design-essay.md).
+The design is inspired by [Anthropic's harness design research](https://www.anthropic.com/engineering/harness-design-long-running-apps) on long-running agent orchestration, adapted for terminal agents where each process is already isolated. For the theory, see [Harness Design from a Distribution Perspective](harness-design-essay.md).
 
 #### Getting started
 
-Run `hydra init-repo` in your project (or click **Enable Hydra** in the worktree header) to sync the Hydra instructions into `CLAUDE.md` / `AGENTS.md`. Then either talk to your main agent, or drive the workflow yourself:
+Run `hydra init-repo` in your project, or click **Enable Hydra** in the worktree header, to sync the Hydra instructions into `CLAUDE.md` / `AGENTS.md`. Then either talk to your main agent or drive the workflow yourself:
 
-> *Write a PRD or describe your requirements clearly, then tell the agent:*
+> *Write a PRD or describe your requirements, then tell the agent:*
 >
-> *"Read the Hydra skill. I want you to choose the right mode and autonomously complete this task based on the PRD in `docs/prd/auth-redesign.md`."*
+> *"Read the Hydra skill. Choose the right mode and complete this task autonomously, based on the PRD in `docs/prd/auth-redesign.md`."*
 
-The main agent should classify the task and pick the lightest fitting path:
+The main agent should pick the lightest path that fits:
 
-- **Stay in current agent** — simple or local tasks, no orchestration overhead
-- **`hydra spawn`** — a direct isolated worker when the task is clear and self-contained
-- **`hydra init` + `dispatch` + `watch`** — Lead-driven workflow for ambiguous, risky, parallel, or multi-step work
+- **Stay in the current agent** — simple or local work, no orchestration overhead
+- **`hydra spawn`** — one isolated worker, when the task is clear and self-contained
+- **`hydra init` + `dispatch` + `watch`** — a Lead-driven workflow for ambiguous, risky, parallel, or multi-step work
 
 ```bash
 hydra init-repo
@@ -213,7 +196,7 @@ hydra watch --workbench <id> --repo .
 hydra complete --workbench <id> --repo .
 ```
 
-Role files choose the CLI / model / reasoning profile. The caller chooses the `role`; Hydra resolves the terminal from that role definition.
+Role files choose the CLI, model, and reasoning profile. The caller chooses the `role`; Hydra resolves the terminal from that role's definition. Roles resolve project-first: `<repo>/.hydra/roles/<name>.md`, then `~/.hydra/roles/<name>.md`, then the built-ins.
 
 <details>
 <summary>Full command reference</summary>
@@ -262,7 +245,7 @@ hydra dispatch --workbench <id> --dispatch dev --role dev \
   --intent "Fix the login bug and add regression coverage" --repo .
 hydra watch --workbench <id> --repo .
 
-# Ask a completed dispatch a follow-up question without re-running it
+# Ask a completed dispatch a follow-up without re-running it
 hydra ask --workbench <id> --dispatch dev \
   --message "Why did you change the session validation path?" --repo .
 
@@ -287,71 +270,73 @@ hydra cleanup <agent-id> --force
 
 </details>
 
-Lead-driven workbenches advance through validated `result.json` evidence inside `.hydra/workbenches/`. The telemetry truth layer provides real-time `turn_state`, `last_meaningful_progress_at`, `derived_status`, and session attachment data — used by both the UI and Hydra's watch / retry / health-check paths.
+Workbenches advance on validated `result.json` evidence inside `.hydra/workbenches/`. The telemetry truth layer supplies real-time `turn_state`, `last_meaningful_progress_at`, `derived_status`, and session attachment data, used by both the UI and Hydra's watch, retry, and health-check paths.
 
-**Typical workflow:** write a PRD → run `hydra init-repo` once → let the Lead choose direct work vs `spawn` vs `init/dispatch/watch` → monitor via `hydra watch` or the canvas UI → read `report.md` before approving / resetting / completing. See [Hydra Orchestration Guide](docs/hydra-orchestration.md) for the control-plane details, and the [Hydra Panoramic Flowchart](docs/hydra-panorama-flow.md) for the updated state / file model.
+**Typical workflow:** write a PRD → run `hydra init-repo` once → let the Lead choose direct work, `spawn`, or `init`/`dispatch`/`watch` → monitor with `hydra watch` or the canvas → read `report.md` before approving, resetting, or completing. See the [Hydra Orchestration Guide](docs/hydra-orchestration.md) for control-plane details and the [Panoramic Flowchart](docs/hydra-panorama-flow.md) for the state and file model.
 
 ---
 
 ## Find your way around
 
-A short map of where each major feature lives. Every shortcut here is rebindable in **Settings → Shortcuts** (Windows/Linux uses <kbd>Alt</kbd> in place of <kbd>⌘</kbd>).
+A map of where each feature lives. Every shortcut is rebindable in **Settings → Shortcuts** (Windows and Linux use <kbd>Alt</kbd> in place of <kbd>⌘</kbd>).
 
 **Discovery — when you don't know where something is**
 
 | Shortcut | Surface | What it's for |
 |---|---|---|
-| <kbd>⌘</kbd><kbd>P</kbd> | Command Palette | Run any in-app action by name (toggle a panel, open settings, switch theme, etc.) |
-| <kbd>⌘</kbd><kbd>K</kbd> | Global Search | Files, terminals, sessions, git branches/commits, memory — fuzzy across the canvas |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>J</kbd> | Hub | Right-anchored command center: live terminals, recent activity, waypoints, pinned items |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>/</kbd> | Status Digest | Quiet floating chip with the 3–5 most relevant signals across the canvas |
+| <kbd>⌘</kbd><kbd>P</kbd> | Command Palette | Run any in-app action by name |
+| <kbd>⌘</kbd><kbd>K</kbd> | Global Search | Files, terminals, sessions, branches, commits, memory |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>J</kbd> | Hub | Live terminals, recent activity, waypoints, pinned items |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>/</kbd> | Status Digest | The 3–5 most relevant signals across the canvas |
 
 **Canvas navigation**
 
 | Shortcut | Action |
 |---|---|
-| <kbd>⌘</kbd><kbd>E</kbd> | Toggle focus — zoom into focused terminal / out to fit |
+| <kbd>⌘</kbd><kbd>E</kbd> | Toggle focus — zoom into the focused terminal, or out to fit |
 | <kbd>⌘</kbd><kbd>0</kbd> · <kbd>⌘</kbd><kbd>1</kbd> · <kbd>⌘</kbd><kbd>=</kbd> · <kbd>⌘</kbd><kbd>-</kbd> | Zoom: fit · 100% · in · out |
 | <kbd>⌘</kbd><kbd>]</kbd> / <kbd>⌘</kbd><kbd>[</kbd> | Next / previous terminal (or worktree / starred — see <kbd>⌘</kbd><kbd>G</kbd>) |
 | <kbd>⌘</kbd><kbd>G</kbd> | Cycle focus level (terminal → worktree → starred) |
 | <kbd>⌘</kbd><kbd>F</kbd> | Star / unstar the focused terminal |
 | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>1</kbd>–<kbd>9</kbd> · <kbd>⌥</kbd><kbd>1</kbd>–<kbd>9</kbd> | Save / recall a spatial waypoint (per project, 9 slots) |
-| <kbd>⌥</kbd><kbd>\`</kbd> | Pan to whichever terminal had output most recently (cycles on rapid re-press) |
+| <kbd>⌥</kbd><kbd>\`</kbd> | Pan to whichever terminal produced output most recently |
 | <kbd>V</kbd> · <kbd>H</kbd> · <kbd>Space</kbd>(hold) | Select tool · Hand tool · Temporary pan |
 
 **Multi-canvas**
 
 | Shortcut | Action |
 |---|---|
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>]</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>[</kbd> | Next / previous canvas (each canvas owns its viewport, projects, waypoints) |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>N</kbd> | Open Canvas Manager (rename, reorder, switch) |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>]</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>[</kbd> | Next / previous canvas |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>N</kbd> | Canvas Manager (rename, reorder, switch) |
 
 **Terminals**
 
 | Shortcut | Action |
 |---|---|
 | <kbd>⌘</kbd><kbd>T</kbd> · <kbd>⌘</kbd><kbd>D</kbd> | New / close terminal in the focused worktree |
-| <kbd>⌘</kbd><kbd>;</kbd> | Open composer (or inline-rename the focused terminal title) |
+| <kbd>⌘</kbd><kbd>;</kbd> | Open composer, or inline-rename the focused terminal |
 
-**Panels & overlays**
+**Panels and overlays**
 
 | Shortcut | Action |
 |---|---|
-| <kbd>⌘</kbd><kbd>/</kbd> | Toggle right panel (Files / Diff / Git / Memory) |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>U</kbd> | Usage dashboard (cost & quotas) |
+| <kbd>⌘</kbd><kbd>/</kbd> | Right panel (Files / Diff / Git / Memory) |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>U</kbd> | Usage dashboard |
 | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>H</kbd> | Sessions overlay |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd> | Snapshot history (browse and restore canvas states, with diff) |
-| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd> | Activity heatmap on the canvas |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd> | Snapshot history |
+| <kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd> | Activity heatmap |
 
 **Workspace**
 
 | Shortcut | Action |
 |---|---|
 | <kbd>⌘</kbd><kbd>O</kbd> | Add project |
-| <kbd>⌘</kbd><kbd>S</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> | Save / save-as a `.termcanvas` workspace file |
+| <kbd>⌘</kbd><kbd>S</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> | Save / save-as a workspace file |
 | <kbd>⌘</kbd><kbd>,</kbd> | Settings |
 
 ---
+
+## Built with
 
 <table>
 <tr><td><b>Desktop</b></td><td>Electron</td></tr>
@@ -363,51 +348,33 @@ A short map of where each major feature lives. Every shortcut here is rebindable
 <tr><td><b>Build</b></td><td>Vite · esbuild</td></tr>
 </table>
 
-<br>
-
 **Acknowledgements** — [lazygit](https://github.com/jesseduffield/lazygit) is integrated as a built-in terminal type for visual git management on the canvas.
 
 ---
 
 ## Roadmap
 
-Tacit is evolving from a local desktop tool into a **cloud-native AI development platform**. Here's what's coming:
+Tacit is growing from a local desktop tool into a cloud-native development platform.
 
-### Cloud Runtime
+### Cloud runtime
 
-Move task execution from your local machine to the cloud. Spin up AI agents on remote runtimes — your tasks run in managed environments with full git, toolchain, and dependency support, while your canvas remains the single pane of glass.
+Move execution off your machine. Spin up agents on remote runtimes with full git, toolchain, and dependency support, while the canvas stays the single pane of glass.
 
-- **Hosted agent execution** — delegate Claude, Codex, and other agent tasks to cloud workers with on-demand compute
-- **Persistent remote sessions** — close your laptop, come back later, your agents are still working
-- **Parallel cloud workers** — scale out Hydra workflows across multiple cloud instances instead of local terminals
+- **Hosted agent execution** — delegate Claude, Codex, and other agent tasks to cloud workers
+- **Persistent remote sessions** — close your laptop; the agents keep working
+- **Parallel cloud workers** — scale Hydra workflows beyond local terminals
 
-### Automated Vibe Pipeline
+### Automated pipeline
 
-End-to-end automation from idea to shipped code, powered by cloud runtime:
-
-- **Intent → Plan → Implement → Review → Merge** — a fully automated pipeline where you describe what you want and the system handles the rest
-- **Continuous vibe loop** — agents plan, implement, self-review, and iterate autonomously until the result meets acceptance criteria
-- **Pipeline-as-code** — define reusable workflow templates for common tasks (bug triage, feature implementation, migration, refactoring)
-- **Human-in-the-loop checkpoints** — configurable approval gates at any stage for when you want to stay in control
-
-### Vision
-
-The goal is simple: **you describe intent, Tacit handles the rest.** Your canvas becomes a mission control for autonomous AI development — monitor progress, review results, intervene when needed, and let the cloud do the heavy lifting.
+- **Intent → Plan → Implement → Review → Merge**, automated end to end
+- **Continuous loop** — agents plan, implement, self-review, and iterate until the result meets acceptance criteria
+- **Pipeline as code** — reusable templates for bug triage, feature work, migrations, refactors
+- **Human checkpoints** — approval gates at any stage
 
 ---
 
-**Contributing** — fork, branch, and open a PR. Licensed under [MIT](LICENSE).
+## Licence and credits
 
-## Credits
+MIT — see [LICENSE](LICENSE).
 
-Tacit began as a fork of [TermCanvas](https://github.com/blueberrycongee/termcanvas)
-by blueberrycongee, and is distributed under the same MIT license. The upstream
-copyright notice is preserved in [LICENSE](LICENSE).
-
-<div align="center">
-
-<img src="docs/QQ.jpg" width="240" alt="QQ Group" />
-
-[![Star History Chart](https://api.star-history.com/svg?repos=jshreyansh/tacit&type=Date)](https://star-history.com/#jshreyansh/tacit&Date)
-
-</div>
+Tacit began as a fork of [TermCanvas](https://github.com/blueberrycongee/termcanvas) by blueberrycongee and is distributed under the same licence. The upstream copyright notice is preserved in [LICENSE](LICENSE), and the original project READMEs are kept verbatim in [`docs/upstream/`](docs/upstream/).

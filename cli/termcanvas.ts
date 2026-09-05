@@ -218,7 +218,7 @@ async function main() {
         if (jsonFlag) console.log(JSON.stringify(result, null, 2));
         else console.log(`Rescanned. ${result.worktrees} worktree(s) found.`);
       } else {
-        console.log("Usage: termcanvas project <add|list|remove> [args]");
+        console.log("Usage: tacit project <add|list|remove> [args]");
       }
     } else if (group === "workflow") {
       // Lead-driven workflow CLI: a thin HTTP client over the headless server's
@@ -454,7 +454,7 @@ async function main() {
         else console.log("Cleaned up.");
       } else {
         console.log(
-          "Usage: termcanvas workflow <init|dispatch|redispatch|watch|approve|reset|merge|complete|fail|list|list-roles|status|cleanup> [args]",
+          "Usage: tacit workflow <init|dispatch|redispatch|watch|approve|reset|merge|complete|fail|list|list-roles|status|cleanup> [args]",
         );
       }
     } else if (group === "worktree") {
@@ -528,7 +528,7 @@ async function main() {
         if (jsonFlag) console.log(JSON.stringify(result, null, 2));
         else console.log("Removed.");
       } else {
-        console.log("Usage: termcanvas worktree <list|create|remove> [args]");
+        console.log("Usage: tacit worktree <list|create|remove> [args]");
       }
     } else if (group === "terminal") {
       if (command === "create") {
@@ -615,12 +615,12 @@ async function main() {
         else console.log("Title updated.");
       } else if (command === "input") {
         console.error(
-          "termcanvas terminal input has been removed. Start Claude/Codex tasks with `termcanvas terminal create --prompt \"...\"` instead.",
+          "tacit terminal input has been removed. Start Claude/Codex tasks with `tacit terminal create --prompt \"...\"` instead.",
         );
         process.exit(1);
       } else {
         console.log(
-          "Usage: termcanvas terminal <create|list|status|output|destroy|set-title> [args]",
+          "Usage: tacit terminal <create|list|status|output|destroy|set-title> [args]",
         );
         process.exit(1);
       }
@@ -670,7 +670,7 @@ async function main() {
         console.log(JSON.stringify(result, null, 2));
       } else {
         console.log(
-          "Usage: termcanvas telemetry <get|events> [--terminal <id> | --workflow <id> --repo <path>]",
+          "Usage: tacit telemetry <get|events> [--terminal <id> | --workflow <id> --repo <path>]",
         );
       }
     } else if (group === "diff" && command) {
@@ -854,7 +854,7 @@ async function main() {
         else console.log(`Removed ${id}`);
       } else {
         console.log(
-          "Usage: termcanvas pin <add|list|show|render|update|rm> [args]\n" +
+          "Usage: tacit pin <add|list|show|render|update|rm> [args]\n" +
           "  pin add --title <t> [--body <b>] [--status open|done|dropped] [--link <url>] [--link-type <type>] [--repo <path>] [--x N] [--y N] [--w N] [--h N]\n" +
           "  pin list [--status open|done|dropped] [--repo <path>]\n" +
           "  pin show <id> [--repo <path>]\n" +
@@ -926,7 +926,7 @@ async function main() {
         else console.log(`Removed ${id}`);
       } else {
         console.log(
-          "Usage: termcanvas browser <add|list|update|rm> [args]\n" +
+          "Usage: tacit browser <add|list|update|rm> [args]\n" +
           "  browser add <url> [--x N] [--y N]\n" +
           "  browser list\n" +
           "  browser update <id> [--url <u>] [--x N] [--y N] [--w N] [--h N]\n" +
@@ -938,7 +938,7 @@ async function main() {
       console.log(JSON.stringify(state, null, 2));
     } else {
       console.log(
-        "Usage: termcanvas <project|workflow|worktree|terminal|telemetry|pin|browser|diff|state> <command> [args]",
+        "Usage: tacit <project|workflow|worktree|terminal|telemetry|pin|browser|diff|state> <command> [args]",
       );
       console.log("");
       console.log("Commands:");
