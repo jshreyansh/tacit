@@ -49,6 +49,49 @@ function cliSymlinkPlugin(outfile: string): EsbuildPlugin {
   };
 }
 
+/**
+ * Drop CLI launchers whose target no longer exists.
+ *
+ * `cliSymlinkPlugin` only ever adds one, and `dist-cli` is never cleaned, so a
+ * CLI that gets renamed or removed leaves its launcher behind pointing at
+ * nothing. That is invisible until packaging: electron-builder copies
+ * `dist-cli` into the bundle and `codesign` walks it, and a dangling symlink
+ * fails the whole signed build with an ENOENT naming a path that has not
+ * existed for weeks — which is exactly how the `termcanvas` launcher failed the
+ * first notarized build after the rename.
+ *
+ * A dangling symlink in a build output is always wrong, so this prunes rather
+ * than special-casing any particular name.
+ */
+function pruneStaleCliLaunchers(): Plugin {
+  return {
+    name: "prune-stale-cli-launchers",
+    buildStart() {
+      for (const dir of ["dist-cli", "dist-cli/agent-shims"]) {
+        let entries: string[];
+        try {
+          entries = fs.readdirSync(dir);
+        } catch {
+          continue; // Nothing built yet; the CLI plugins create it.
+        }
+        for (const name of entries) {
+          const target = path.join(dir, name);
+          try {
+            if (!fs.lstatSync(target).isSymbolicLink()) continue;
+            // existsSync follows the link, so false here means it dangles.
+            if (fs.existsSync(target)) continue;
+            fs.unlinkSync(target);
+            console.log(`[prune-stale-cli-launchers] removed ${target}`);
+          } catch {
+            // A launcher that cannot be inspected or removed is left alone;
+            // failing the build over cleanup would be worse than the mess.
+          }
+        }
+      }
+    },
+  };
+}
+
 function buildCli(): Plugin {
   const outfile = "dist-cli/tacit.js";
   const opts = {
@@ -197,6 +240,9 @@ export default defineConfig({
       "electron/browser-observer-preload.ts",
       "dist-electron/browser-observer-preload.cjs",
     ),
+    // Before the CLI builds, so a launcher they are about to recreate is not
+    // removed and then rebuilt in the same run.
+    pruneStaleCliLaunchers(),
     buildCli(),
     buildHydra(),
     buildBrowse(),
