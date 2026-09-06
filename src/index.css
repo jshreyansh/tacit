@@ -1430,30 +1430,35 @@ a.tc-kbd[data-dragover="true"] {
    happens on the canvas, which is what the product is. The dot grid is
    the app's own, so the sequence reads as part of Tacit rather than a
    dialog in front of it. */
-.tc-onboarding {
-  background-color: var(--bg);
-  background-image: radial-gradient(var(--tc-onboarding-dot) 1px, transparent 1px);
-  background-size: 22px 22px;
+/* A dialog, in the family Settings belongs to. Blocking is about focus, not
+   about covering every pixel — a full-bleed version made three questions feel
+   like an installer. The canvas stays visible behind and stays unreachable, and
+   it paints its own dot grid, so this only needs the scrim. */
+.tc-onboarding-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.tc-onboarding-card {
+  position: relative; width: min(820px, 100%);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
+  overflow: hidden; display: flex; flex-direction: column;
 }
-:root,
-[data-theme="dark"] { --tc-onboarding-dot: rgba(228, 226, 223, 0.055); }
-[data-theme="light"] { --tc-onboarding-dot: rgba(28, 25, 23, 0.075); }
-
-.tc-onboarding-stage { grid-template-columns: minmax(0, 1fr) 262px; }
-@media (max-width: 900px) {
-  .tc-onboarding-stage { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+.tc-onboarding-stage {
+  grid-template-columns: minmax(0, 1fr) 232px;
+  gap: 40px; padding: 26px 30px 24px;
+}
+@media (max-width: 820px) {
+  .tc-onboarding-stage { grid-template-columns: minmax(0, 1fr); gap: 26px; padding: 24px 22px 20px; }
 }
 
 .tc-onboarding-title {
-  margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em;
-  line-height: 1.15; text-wrap: balance; max-width: 30ch;
+  margin: 0; font-size: 23px; font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.2; text-wrap: balance; max-width: 34ch;
   color: var(--text-primary);
 }
 .tc-onboarding-body {
-  margin: 10px 0 0; font-size: 14.5px; color: var(--text-secondary); max-width: 46ch;
+  margin: 8px 0 0; font-size: 13.5px; color: var(--text-secondary); max-width: 46ch;
 }
 
-.tc-onboarding-choices { display: grid; gap: 10px; margin-top: 26px; max-width: 580px; }
+.tc-onboarding-choices { display: grid; gap: 9px; margin-top: 20px; max-width: 560px; }
 .tc-onboarding-choices.two { grid-template-columns: 1fr 1fr; }
 @media (max-width: 640px) { .tc-onboarding-choices.two { grid-template-columns: 1fr; } }
 
@@ -1508,8 +1513,8 @@ a.tc-kbd[data-dragover="true"] {
 
 /* The rail: every slot present from the first frame, so the shape of the
    workspace is visible before any of it is real. */
-.tc-onboarding-rail { border-left: 1px solid var(--border); padding-left: 22px; }
-@media (max-width: 900px) {
+.tc-onboarding-rail { border-left: 1px solid var(--border); padding-left: 24px; }
+@media (max-width: 820px) {
   .tc-onboarding-rail {
     border-left: 0; padding-left: 0;
     border-top: 1px solid var(--border); padding-top: 18px;
@@ -1520,10 +1525,13 @@ a.tc-kbd[data-dragover="true"] {
   text-transform: uppercase; color: var(--text-faint);
 }
 .tc-onboarding-rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+/* Padded on all four sides and pulled left by the same amount, so the lit
+   background has room around the mark instead of starting flush against it,
+   while the marks stay aligned with the heading above them. */
 .tc-onboarding-slot {
   display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 12px;
-  align-items: center; padding: 7px 8px 7px 0; border-radius: 8px;
-  transition: background .2s ease;
+  align-items: center; padding: 8px 10px; margin-left: -10px;
+  border-radius: 9px; transition: background .2s ease;
 }
 /* Marks flush left in a fixed cell so one mark and a pair start at the same x.
    They do not overlap: Claude's fills its box edge to edge and Codex's is a
@@ -1577,9 +1585,11 @@ a.tc-kbd[data-dragover="true"] {
 .tc-onboarding-start:hover { transform: translateY(-1px); }
 
 .tc-onboarding-foot {
-  display: flex; align-items: center; gap: 18px;
-  padding: 14px 40px 18px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+  padding: 13px 30px; border-top: 1px solid var(--border);
+  background: var(--surface);
 }
+@media (max-width: 820px) { .tc-onboarding-foot { padding: 13px 22px; } }
 .tc-onboarding-rule {
   flex: 1; height: 2px; background: var(--border); border-radius: 2px;
   overflow: hidden; max-width: 250px;

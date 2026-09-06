@@ -27,9 +27,10 @@ import codexIcon from "../assets/dock-icons/codex.png";
  * Nothing can overlap something it created, because it creates nothing until it
  * is gone.
  *
- * It fills the window rather than sitting in a card on a scrim: setup happens
- * on the canvas, which is what the product is. Modal is right for the first
- * sixty seconds and wrong almost everywhere after, so `Skip setup` is visible
+ * It is a dialog on a scrim, in the family Settings belongs to. Blocking is
+ * about focus rather than about covering every pixel: a full-bleed version made
+ * three questions feel like an installer. Modal is right for the first sixty
+ * seconds and wrong almost everywhere after, so `Skip setup` is visible
  * throughout, Escape works, and it never shows again.
  */
 
@@ -178,12 +179,14 @@ export function OnboardingModal() {
 
   return (
     <div
-      className="tc-onboarding fixed inset-0 z-[300] flex flex-col"
+      className="tc-onboarding fixed inset-0 z-[300] grid place-items-center p-8"
       role="dialog"
       aria-modal="true"
       aria-label={t.onboarding_space_title}
     >
-      <div className="flex-1 grid gap-11 px-10 pt-11 pb-5 items-start tc-onboarding-stage">
+      <div className="tc-onboarding-scrim" />
+      <div className="tc-onboarding-card">
+      <div className="grid items-start tc-onboarding-stage">
         <div>
           <h2 className="tc-onboarding-title">
             {panel === 0 && t.onboarding_space_title}
@@ -314,6 +317,7 @@ export function OnboardingModal() {
             {t.onboarding_skip}
           </button>
         )}
+      </div>
       </div>
     </div>
   );
