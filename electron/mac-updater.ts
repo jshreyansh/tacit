@@ -20,7 +20,7 @@ import { createHash } from "crypto";
 import { gunzipSync } from "zlib";
 import { spawn, execFile } from "child_process";
 import type { BrowserWindow } from "electron";
-import { sendToWindow } from "./window-events";
+import { emitUpdaterEvent } from "./updater-state";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
 import { UpdaterLog } from "./updater-log";
 
@@ -539,7 +539,7 @@ export class MacCustomUpdater {
     if (!isAppLocationWritable()) {
       if (!this.locationWarningSent) {
         this.locationWarningSent = true;
-        sendToWindow(this.window, "updater:location-warning", {
+        emitUpdaterEvent(this.window, "updater:location-warning", {
           bundlePath: getAppBundlePath(),
         });
       }
@@ -576,7 +576,7 @@ export class MacCustomUpdater {
         this.pendingUpdate &&
         this.pendingUpdate.version === release.version
       ) {
-        sendToWindow(this.window, "updater:update-downloaded", {
+        emitUpdaterEvent(this.window, "updater:update-downloaded", {
           version: this.pendingUpdate.version,
           releaseNotes: this.pendingUpdate.releaseNotes,
           releaseDate: this.pendingUpdate.releaseDate,
@@ -601,7 +601,7 @@ export class MacCustomUpdater {
         // Non-critical — proceed without release notes
       }
 
-      sendToWindow(this.window, "updater:update-available", {
+      emitUpdaterEvent(this.window, "updater:update-available", {
         version: release.version,
         releaseNotes,
         releaseDate: release.releaseDate,
@@ -625,14 +625,14 @@ export class MacCustomUpdater {
       // If we already have a valid pending update (e.g. offline), surface it
       // instead of showing an error so users can still install it
       if (this.pendingUpdate) {
-        sendToWindow(this.window, "updater:update-downloaded", {
+        emitUpdaterEvent(this.window, "updater:update-downloaded", {
           version: this.pendingUpdate.version,
           releaseNotes: this.pendingUpdate.releaseNotes,
           releaseDate: this.pendingUpdate.releaseDate,
         });
         return "newer";
       }
-      sendToWindow(this.window, "updater:error", {
+      emitUpdaterEvent(this.window, "updater:error", {
         message: error instanceof Error ? error.message : String(error),
       });
       this.log.record({
@@ -724,7 +724,7 @@ export class MacCustomUpdater {
             downloadUrl,
             zipFile.size,
             (percent) => {
-              sendToWindow(this.window, "updater:download-progress", {
+              emitUpdaterEvent(this.window, "updater:download-progress", {
                 percent,
               });
             },
@@ -744,7 +744,7 @@ export class MacCustomUpdater {
           zipPath,
           zipFile.size,
           (percent) => {
-            sendToWindow(this.window, "updater:download-progress", { percent });
+            emitUpdaterEvent(this.window, "updater:download-progress", { percent });
           },
         );
       }
@@ -783,7 +783,7 @@ export class MacCustomUpdater {
 
       this.savePendingState();
 
-      sendToWindow(this.window, "updater:update-downloaded", {
+      emitUpdaterEvent(this.window, "updater:update-downloaded", {
         version: release.version,
         releaseNotes,
         releaseDate: release.releaseDate,
@@ -797,7 +797,7 @@ export class MacCustomUpdater {
           // Ignore cleanup errors
         }
       }
-      sendToWindow(this.window, "updater:error", {
+      emitUpdaterEvent(this.window, "updater:error", {
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {

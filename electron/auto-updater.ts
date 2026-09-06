@@ -2,7 +2,7 @@ import { autoUpdater } from "electron-updater";
 import { BrowserWindow, ipcMain, app } from "electron";
 import fs from "fs";
 import path from "path";
-import { sendToWindow } from "./window-events";
+import { emitUpdaterEvent, getUpdaterSnapshot } from "./updater-state";
 import { MacCustomUpdater } from "./mac-updater";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
 
@@ -26,6 +26,11 @@ export function installDownloadedUpdate(): void {
 
 export function setupAutoUpdater(window: BrowserWindow): void {
   ipcMain.handle("updater:get-version", () => app.getVersion());
+
+  // Pull, not push. The renderer calls this when it mounts, so a window that
+  // was not listening yet when main broadcast still learns an update is ready
+  // instead of waiting out the next thirty-minute check.
+  ipcMain.handle("updater:get-state", () => getUpdaterSnapshot());
 
   if (IS_DEV) {
     ipcMain.handle("updater:check", () => null);
@@ -76,7 +81,7 @@ function setupElectronUpdater(window: BrowserWindow): () => void {
   cleanUpdaterCache();
 
   autoUpdater.on("update-available", (info) => {
-    sendToWindow(window, "updater:update-available", {
+    emitUpdaterEvent(window, "updater:update-available", {
       version: info.version,
       releaseNotes: info.releaseNotes ?? "",
       releaseDate: info.releaseDate,
@@ -84,13 +89,13 @@ function setupElectronUpdater(window: BrowserWindow): () => void {
   });
 
   autoUpdater.on("download-progress", (progress) => {
-    sendToWindow(window, "updater:download-progress", {
+    emitUpdaterEvent(window, "updater:download-progress", {
       percent: progress.percent,
     });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    sendToWindow(window, "updater:update-downloaded", {
+    emitUpdaterEvent(window, "updater:update-downloaded", {
       version: info.version,
       releaseNotes: info.releaseNotes ?? "",
       releaseDate: info.releaseDate,
@@ -98,7 +103,7 @@ function setupElectronUpdater(window: BrowserWindow): () => void {
   });
 
   autoUpdater.on("error", (error) => {
-    sendToWindow(window, "updater:error", {
+    emitUpdaterEvent(window, "updater:error", {
       message: error.message,
     });
   });

@@ -1097,6 +1097,10 @@ contextBridge.exposeInMainWorld("tacit", {
     install: () => ipcRenderer.send("updater:install"),
     getVersion: () =>
       ipcRenderer.invoke("updater:get-version") as Promise<string>,
+    getState: () =>
+      ipcRenderer.invoke("updater:get-state") as Promise<
+        import("./updater-state").UpdaterSnapshot
+      >,
     onUpdateAvailable: (
       callback: (info: {
         version: string;

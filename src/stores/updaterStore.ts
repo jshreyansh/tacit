@@ -40,6 +40,28 @@ export function initUpdaterListeners(): () => void {
     }),
   );
 
+  // Catch up on anything main decided before these listeners existed. Without
+  // it, a broadcast that arrived during renderer boot was lost outright: no
+  // toolbar button, no dialog, and a downloaded update unreachable until the
+  // next check half an hour later.
+  void window.tacit.updater
+    .getState?.()
+    .then((snapshot) => {
+      if (!snapshot || snapshot.status === "idle") return;
+      // Only fill a gap. A live event that landed while this was in flight is
+      // newer than the snapshot and must not be overwritten by it.
+      if (useUpdaterStore.getState().status !== "idle") return;
+      useUpdaterStore.setState({
+        status: snapshot.status,
+        info: snapshot.info,
+        downloadPercent: snapshot.downloadPercent,
+        errorMessage: snapshot.errorMessage,
+      });
+    })
+    .catch(() => {
+      // An older main process has no such handler. Events still work.
+    });
+
   cleanups.push(
     window.tacit.updater.onUpdateDownloaded((info) => {
       useUpdaterStore.setState({ status: "ready", info, downloadPercent: 100 });
