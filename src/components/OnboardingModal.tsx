@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { addProjectFromDirectoryPath } from "../canvas/sceneCommands";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -8,31 +9,48 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { addTerminal } from "../toolbar/AddNodeDock";
 import { useT } from "../i18n/useT";
 import type { TerminalType } from "../types";
+import folderIcon from "../assets/dock-icons/folder.png";
+import chromeIcon from "../assets/dock-icons/browser.png";
+import claudeIcon from "../assets/dock-icons/terminal-claude.png";
+import codexIcon from "../assets/dock-icons/codex.png";
 
 /**
  * First run, as a sequence you finish rather than a hint you ignore.
  *
- * This was a strip floating above the dock. It collided with the node dock and
- * with the terminals it had just created, and it advanced off app state — so
- * clicking "Claude" spawned an agent and immediately showed the next step over
- * the top of the trust prompt that agent was still waiting on. Two steps racing
- * each other, neither finished.
+ * This began as a strip floating above the dock. It collided with the node dock
+ * and with the terminals it had just created, and it advanced off app state —
+ * so clicking "Claude" spawned an agent and immediately showed the next step on
+ * top of the trust prompt that agent was still waiting on.
  *
- * So the panels no longer react to the app at all. The user answers three
- * questions, the modal closes, and only then does anything happen on the
- * canvas. Nothing can overlap something it created, because it creates nothing
- * until it is gone.
+ * So the panels no longer read the app. Three questions are answered up front,
+ * the takeover closes, and only then does anything happen on the canvas.
+ * Nothing can overlap something it created, because it creates nothing until it
+ * is gone.
  *
- * Modal is right here and wrong almost everywhere else. This is the first sixty
- * seconds, once, with `Skip setup` visible the whole way through and no second
- * showing after that.
+ * It fills the window rather than sitting in a card on a scrim: setup happens
+ * on the canvas, which is what the product is. Modal is right for the first
+ * sixty seconds and wrong almost everywhere after, so `Skip setup` is visible
+ * throughout, Escape works, and it never shows again.
  */
 
 /** Space, agent, browser. */
 const PANEL_COUNT = 3;
 
-type Panel = 0 | 1 | 2;
+type Panel = 0 | 1 | 2 | 3;
 type AgentChoice = Extract<TerminalType, "claude" | "codex">;
+type SlotState = "pending" | "done" | "skipped";
+
+interface Slot {
+  icons: string[];
+  label: string;
+  hint?: string;
+  state: SlotState;
+}
+
+const AGENT_ICON: Record<AgentChoice, string> = {
+  claude: claudeIcon,
+  codex: codexIcon,
+};
 
 export function OnboardingModal() {
   const t = useT();
@@ -41,7 +59,7 @@ export function OnboardingModal() {
   const notify = useNotificationStore((s) => s.notify);
 
   // Latched on mount. Panel one adds a project, which would otherwise flip the
-  // condition that opened this and tear the modal down mid-sequence.
+  // condition that opened this and tear the takeover down mid-sequence.
   const [open] = useState(
     () => !dismissed && useProjectStore.getState().projects.length === 0,
   );
@@ -50,24 +68,64 @@ export function OnboardingModal() {
   const [agent, setAgent] = useState<AgentChoice | null>(null);
   const [wantsBrowser, setWantsBrowser] = useState(false);
   const [busy, setBusy] = useState(false);
-  const finished = useRef(false);
+  const [justLit, setJustLit] = useState<string | null>(null);
+  const closed = useRef(false);
 
   useBodyScrollLock(open);
 
+  const space: Slot = spaceName
+    ? { icons: [folderIcon], label: spaceName, state: "done" }
+    : { icons: [folderIcon], label: t.onboarding_rail_space, state: "pending" };
+
+  const agentSlot: Slot = agent
+    ? { icons: [AGENT_ICON[agent]], label: agent === "claude" ? "Claude" : "Codex", state: "done" }
+    : panel > 1
+      ? { icons: [claudeIcon], label: t.onboarding_rail_agent_none, state: "skipped" }
+      : {
+          icons: [claudeIcon, codexIcon],
+          label: t.onboarding_rail_agent,
+          hint: t.onboarding_rail_agent_hint,
+          state: "pending",
+        };
+
+  const browserSlot: Slot = wantsBrowser
+    ? { icons: [chromeIcon], label: t.onboarding_rail_browser, state: "done" }
+    : panel > 2
+      ? { icons: [chromeIcon], label: t.onboarding_rail_browser_none, state: "skipped" }
+      : { icons: [chromeIcon], label: t.onboarding_rail_browser, state: "pending" };
+
+  /**
+   * Close, then act — in order, one thing at a time.
+   *
+   * Both actions used to fire in the same tick as the takeover unmounted. The
+   * profile manager closes on any click on its own scrim, so opening it inside
+   * the click that asked for it meant it shut again immediately; and a terminal
+   * spawning underneath it made that impossible to see. The agent now waits for
+   * the manager to close, and the manager waits for this to be off screen.
+   */
   const finish = useCallback(() => {
-    if (finished.current) return;
-    finished.current = true;
+    if (closed.current) return;
+    closed.current = true;
     setDismissed(true);
-    // Deferred so the modal is off screen before anything appears behind it.
-    // Spawning while it is still up is what produced a step sitting on top of
-    // the terminal it had just made.
-    setTimeout(() => {
+
+    const spawnAgent = () => {
       if (agent) addTerminal(agent);
-      if (wantsBrowser) {
-        usePreferencesStore.getState().setBrowserEnabled(true);
-        useIdentityManagerStore.getState().openManager();
+    };
+
+    window.setTimeout(() => {
+      if (!wantsBrowser) {
+        spawnAgent();
+        return;
       }
-    }, 0);
+      usePreferencesStore.getState().setBrowserEnabled(true);
+      useIdentityManagerStore.getState().openManager();
+      const unsubscribe = useIdentityManagerStore.subscribe((state, previous) => {
+        if (previous.open && !state.open) {
+          unsubscribe();
+          spawnAgent();
+        }
+      });
+    }, 140);
   }, [agent, wantsBrowser, setDismissed]);
 
   const chooseSpace = useCallback(
@@ -82,6 +140,7 @@ export function OnboardingModal() {
         const project = await addProjectFromDirectoryPath(dirPath, t);
         if (!project) return;
         setSpaceName(project.name);
+        setJustLit("space");
         setPanel(1);
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
@@ -104,157 +163,228 @@ export function OnboardingModal() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, finish]);
 
-  if (!open || finished.current) return null;
+  if (!open || closed.current) return null;
+
+  const ready = panel === 3;
+  const actions: Array<{ icon: string; text: string }> = [];
+  if (wantsBrowser) actions.push({ icon: chromeIcon, text: t.onboarding_ready_import });
+  if (agent) {
+    actions.push({
+      icon: AGENT_ICON[agent],
+      text: t.onboarding_ready_agent(agent === "claude" ? "Claude" : "Codex", spaceName ?? ""),
+    });
+  }
+  if (actions.length === 0) actions.push({ icon: folderIcon, text: t.onboarding_ready_empty });
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
+      className="tc-onboarding fixed inset-0 z-[300] flex flex-col"
       role="dialog"
       aria-modal="true"
       aria-label={t.onboarding_space_title}
     >
-      <div
-        className="tc-enter-fade-up relative rounded-2xl border shadow-2xl"
-        style={{
-          borderColor: "var(--border)",
-          background: "var(--surface)",
-          width: "min(460px, 92vw)",
-          padding: "28px 28px 20px",
-        }}
-      >
-        <button
-          type="button"
-          onClick={finish}
-          className="absolute right-4 top-4 text-[11px] px-2 py-1 rounded transition-colors duration-quick hover:bg-[var(--border)]"
-          style={{ color: "var(--text-faint)" }}
-        >
-          {t.onboarding_skip}
-        </button>
+      <div className="flex-1 grid gap-11 px-10 pt-11 pb-5 items-start tc-onboarding-stage">
+        <div>
+          <h2 className="tc-onboarding-title">
+            {panel === 0 && t.onboarding_space_title}
+            {panel === 1 && t.onboarding_agent_title}
+            {panel === 2 && t.onboarding_browser_title}
+            {ready && t.onboarding_ready_title}
+          </h2>
+          <p className="tc-onboarding-body">
+            {panel === 0 && t.onboarding_space_body}
+            {panel === 1 && t.onboarding_agent_body}
+            {panel === 2 && t.onboarding_browser_body}
+            {ready && (actions.length > 1 ? t.onboarding_ready_two : t.onboarding_ready_one)}
+          </p>
 
-        <div className="flex items-center gap-1.5 mb-6" aria-hidden>
-          {Array.from({ length: PANEL_COUNT }, (_, dot) => (
-            <span
-              key={dot}
-              className="rounded-full transition-colors duration-quick"
-              style={{
-                width: 5,
-                height: 5,
-                background:
-                  dot === panel
-                    ? "var(--accent)"
-                    : dot < panel
-                      ? "var(--text-faint)"
-                      : "var(--border)",
-              }}
-            />
-          ))}
+          {panel === 0 && (
+            <div className="tc-onboarding-choices two">
+              <Choice
+                icon={folderIcon}
+                plus
+                primary
+                title={t.onboarding_space_create}
+                detail={t.onboarding_space_create_desc}
+                disabled={busy}
+                onClick={() => void chooseSpace("create")}
+              />
+              <Choice
+                icon={folderIcon}
+                title={t.onboarding_space_open}
+                detail={t.onboarding_space_open_desc}
+                disabled={busy}
+                onClick={() => void chooseSpace("open")}
+              />
+            </div>
+          )}
+
+          {panel === 1 && (
+            <>
+              <div className="tc-onboarding-choices two">
+                <Choice
+                  icon={claudeIcon}
+                  primary
+                  title={t.onboarding_agent_claude}
+                  detail={t.onboarding_agent_claude_desc}
+                  onClick={() => { setAgent("claude"); setJustLit("agent"); setPanel(2); }}
+                />
+                <Choice
+                  icon={codexIcon}
+                  title={t.onboarding_agent_codex}
+                  detail={t.onboarding_agent_codex_desc}
+                  onClick={() => { setAgent("codex"); setJustLit("agent"); setPanel(2); }}
+                />
+              </div>
+              <QuietButton onClick={() => { setAgent(null); setPanel(2); }}>
+                {t.onboarding_not_now}
+              </QuietButton>
+            </>
+          )}
+
+          {panel === 2 && (
+            <>
+              <div className="tc-onboarding-choices">
+                <Choice
+                  icon={chromeIcon}
+                  primary
+                  title={t.onboarding_browser_action}
+                  detail={t.onboarding_browser_action_desc}
+                  onClick={() => { setWantsBrowser(true); setJustLit("browser"); setPanel(3); }}
+                />
+              </div>
+              <QuietButton onClick={() => { setWantsBrowser(false); setPanel(3); }}>
+                {t.onboarding_not_now}
+              </QuietButton>
+            </>
+          )}
+
+          {ready && (
+            <>
+              <ol className="tc-onboarding-handoff">
+                {actions.map((action) => (
+                  <li key={action.text}>
+                    <img src={action.icon} alt="" />
+                    <span>{action.text}</span>
+                  </li>
+                ))}
+              </ol>
+              <button type="button" className="tc-onboarding-start" onClick={finish}>
+                {t.onboarding_start}
+              </button>
+            </>
+          )}
         </div>
 
-        {panel === 0 && (
-          <Panel title={t.onboarding_space_title} body={t.onboarding_space_body}>
-            <Choice label={t.onboarding_space_create} onClick={() => void chooseSpace("create")} disabled={busy} primary />
-            <Choice label={t.onboarding_space_open} onClick={() => void chooseSpace("open")} disabled={busy} />
-          </Panel>
-        )}
+        <aside className="tc-onboarding-rail">
+          <h3>{t.onboarding_rail_title}</h3>
+          <ol>
+            <SlotRow slot={space} lit={justLit === "space"} />
+            <SlotRow slot={agentSlot} lit={justLit === "agent"} />
+            <SlotRow slot={browserSlot} lit={justLit === "browser"} />
+          </ol>
+        </aside>
+      </div>
 
-        {panel === 1 && (
-          <Panel
-            title={t.onboarding_agent_title}
-            body={t.onboarding_agent_body}
-            note={spaceName ? t.onboarding_space_chosen(spaceName) : undefined}
+      <div className="tc-onboarding-foot">
+        <div className="tc-onboarding-rule">
+          <span style={{ width: `${((panel + 1) / (PANEL_COUNT + 1)) * 100}%` }} />
+        </div>
+        <span className="tc-onboarding-step">
+          {ready ? t.onboarding_done : t.onboarding_progress(String(panel + 1), String(PANEL_COUNT))}
+        </span>
+        <div className="flex-1" />
+        {panel > 0 && !ready && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = (panel - 1) as Panel;
+              if (next === 0) setSpaceName(null);
+              if (next === 1) setAgent(null);
+              if (next === 2) setWantsBrowser(false);
+              setJustLit(null);
+              setPanel(next);
+            }}
           >
-            <Choice label={t.onboarding_agent_claude} onClick={() => { setAgent("claude"); setPanel(2); }} primary />
-            <Choice label={t.onboarding_agent_codex} onClick={() => { setAgent("codex"); setPanel(2); }} />
-            <Choice label={t.onboarding_not_now} onClick={() => { setAgent(null); setPanel(2); }} quiet />
-          </Panel>
+            {t.onboarding_back}
+          </button>
         )}
-
-        {panel === 2 && (
-          <Panel
-            title={t.onboarding_browser_title}
-            body={t.onboarding_browser_body}
-            note={wantsBrowser ? t.onboarding_browser_handoff : undefined}
-          >
-            <Choice label={t.onboarding_browser_action} onClick={() => { setWantsBrowser(true); finish(); }} primary />
-            <Choice label={t.onboarding_not_now} onClick={finish} quiet />
-          </Panel>
-        )}
-
-        {panel > 0 && (
-          <div className="mt-5 flex justify-start">
-            <button
-              type="button"
-              onClick={() => setPanel((p) => (p - 1) as Panel)}
-              className="text-[11px] px-2 py-1 rounded transition-colors duration-quick hover:bg-[var(--border)]"
-              style={{ color: "var(--text-faint)" }}
-            >
-              {t.onboarding_back}
-            </button>
-          </div>
+        {!ready && (
+          <button type="button" onClick={finish}>
+            {t.onboarding_skip}
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-function Panel({
-  title,
-  body,
-  note,
-  children,
-}: {
-  title: string;
-  body: string;
-  note?: string;
-  children: React.ReactNode;
-}) {
+function SlotRow({ slot, lit }: { slot: Slot; lit: boolean }) {
   return (
-    <>
-      <h2 className="tc-display" style={{ color: "var(--text-primary)", marginBottom: 6 }}>
-        {title}
-      </h2>
-      <p className="tc-meta" style={{ color: "var(--text-muted)", marginBottom: 20 }}>
-        {body}
-      </p>
-      <div className="flex flex-col gap-2">{children}</div>
-      {note && (
-        <p className="tc-meta mt-4" style={{ color: "var(--text-faint)" }}>
-          {note}
-        </p>
-      )}
-    </>
+    <li className="tc-onboarding-slot" data-state={slot.state} data-lit={lit ? "" : undefined}>
+      <span className="marks">
+        {slot.icons.map((icon) => (
+          <img key={icon} src={icon} alt="" />
+        ))}
+      </span>
+      <span className="text">
+        <span className="label">{slot.label}</span>
+        {slot.hint && <span className="hint">{slot.hint}</span>}
+      </span>
+    </li>
   );
 }
 
 function Choice({
-  label,
+  icon,
+  title,
+  detail,
   onClick,
   primary = false,
-  quiet = false,
+  plus = false,
   disabled = false,
 }: {
-  label: string;
+  icon: string;
+  title: string;
+  detail: string;
   onClick: () => void;
   primary?: boolean;
-  quiet?: boolean;
+  plus?: boolean;
   disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      className="tc-onboarding-choice"
+      data-primary={primary ? "" : undefined}
       disabled={disabled}
-      className="w-full text-left text-[13px] px-4 py-3 rounded-lg border transition-colors duration-quick disabled:opacity-50"
-      style={
-        primary
-          ? { borderColor: "var(--accent)", background: "var(--accent)", color: "var(--surface)", fontWeight: 600 }
-          : quiet
-            ? { borderColor: "transparent", color: "var(--text-faint)" }
-            : { borderColor: "var(--border)", color: "var(--text-secondary)" }
-      }
+      onClick={onClick}
     >
-      {label}
+      <span className="mark">
+        <img src={icon} alt="" />
+        {plus && (
+          <span className="plus">
+            {/* Drawn, not typed: a "+" glyph at this size lands wherever the
+                font's metrics put it, which reads as a misaligned badge. */}
+            <svg viewBox="0 0 8 8" aria-hidden="true">
+              <rect x="3.25" y="0.5" width="1.5" height="7" rx="0.75" />
+              <rect x="0.5" y="3.25" width="7" height="1.5" rx="0.75" />
+            </svg>
+          </span>
+        )}
+      </span>
+      <span className="txt">
+        <span className="t">{title}</span>
+        <span className="d">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function QuietButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="tc-onboarding-quiet" onClick={onClick}>
+      {children}
     </button>
   );
 }

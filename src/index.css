@@ -1424,3 +1424,173 @@ a.tc-kbd[data-dragover="true"] {
     animation-duration: 1ms !important;
   }
 }
+
+/* ── First-run takeover ──────────────────────────────────────────────
+   Fills the window rather than sitting in a card on a scrim: setup
+   happens on the canvas, which is what the product is. The dot grid is
+   the app's own, so the sequence reads as part of Tacit rather than a
+   dialog in front of it. */
+.tc-onboarding {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--tc-onboarding-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+:root,
+[data-theme="dark"] { --tc-onboarding-dot: rgba(228, 226, 223, 0.055); }
+[data-theme="light"] { --tc-onboarding-dot: rgba(28, 25, 23, 0.075); }
+
+.tc-onboarding-stage { grid-template-columns: minmax(0, 1fr) 262px; }
+@media (max-width: 900px) {
+  .tc-onboarding-stage { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+}
+
+.tc-onboarding-title {
+  margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em;
+  line-height: 1.15; text-wrap: balance; max-width: 30ch;
+  color: var(--text-primary);
+}
+.tc-onboarding-body {
+  margin: 10px 0 0; font-size: 14.5px; color: var(--text-secondary); max-width: 46ch;
+}
+
+.tc-onboarding-choices { display: grid; gap: 10px; margin-top: 26px; max-width: 580px; }
+.tc-onboarding-choices.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 640px) { .tc-onboarding-choices.two { grid-template-columns: 1fr; } }
+
+.tc-onboarding-choice {
+  /* The badge ring must be the colour of the card behind it or it reads as a
+     cut-out, so every state that changes the background republishes it. */
+  --tc-card-bg: var(--surface);
+  text-align: left; font: inherit; cursor: pointer; position: relative;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 11px;
+  padding: 15px 15px 16px; display: grid; gap: 11px;
+  grid-template-columns: 34px minmax(0, 1fr); align-items: start;
+  transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+.tc-onboarding-choice:hover {
+  border-color: var(--border-hover); background: var(--surface-hover);
+  transform: translateY(-1px); --tc-card-bg: var(--surface-hover);
+}
+.tc-onboarding-choice:active { transform: translateY(0); }
+.tc-onboarding-choice:disabled { opacity: .5; cursor: default; transform: none; }
+.tc-onboarding-choice[data-primary] {
+  border-color: var(--accent); background: var(--accent-soft); --tc-card-bg: #2a2926;
+}
+[data-theme="light"] .tc-onboarding-choice[data-primary] { --tc-card-bg: #eae8e3; }
+.tc-onboarding-choice .mark {
+  position: relative; width: 34px; height: 34px; display: grid; place-items: center;
+}
+.tc-onboarding-choice .mark img {
+  width: 30px; height: 30px; display: block;
+  transition: transform .18s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-choice:hover .mark img { transform: scale(1.07); }
+.tc-onboarding-choice .txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tc-onboarding-choice .t { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+.tc-onboarding-choice .d { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+.tc-onboarding-choice .plus {
+  position: absolute; right: -3px; bottom: -3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--pin); box-shadow: 0 0 0 2px var(--tc-card-bg);
+  display: flex; align-items: center; justify-content: center;
+  transition: box-shadow .14s ease, transform .18s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-choice .plus svg { display: block; width: 8px; height: 8px; }
+.tc-onboarding-choice .plus svg rect { fill: var(--pin-foreground); }
+.tc-onboarding-choice:hover .plus { transform: scale(1.08); }
+
+.tc-onboarding-quiet {
+  margin-top: 14px; background: none; border: 0; padding: 4px 0; font: inherit;
+  font-size: 13px; color: var(--text-muted); cursor: pointer;
+}
+.tc-onboarding-quiet:hover { color: var(--text-primary); }
+
+/* The rail: every slot present from the first frame, so the shape of the
+   workspace is visible before any of it is real. */
+.tc-onboarding-rail { border-left: 1px solid var(--border); padding-left: 22px; }
+@media (max-width: 900px) {
+  .tc-onboarding-rail {
+    border-left: 0; padding-left: 0;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+}
+.tc-onboarding-rail h3 {
+  margin: 0 0 14px; font-size: 11px; font-weight: 500; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.tc-onboarding-rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tc-onboarding-slot {
+  display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 12px;
+  align-items: center; padding: 7px 8px 7px 0; border-radius: 8px;
+  transition: background .2s ease;
+}
+/* Marks flush left in a fixed cell so one mark and a pair start at the same x.
+   They do not overlap: Claude's fills its box edge to edge and Codex's is a
+   round blob, so stacking them turns two shapes into one smudge. */
+.tc-onboarding-slot .marks { display: flex; align-items: center; gap: 6px; }
+.tc-onboarding-slot img {
+  width: 22px; height: 22px; display: block; border-radius: 4px;
+  filter: grayscale(1); opacity: .45;
+  transition: filter .34s ease, opacity .34s ease, transform .34s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-slot .text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tc-onboarding-slot .label {
+  font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px;
+  color: var(--text-faint); transition: color .3s ease;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tc-onboarding-slot .hint {
+  font-size: 11px; color: var(--text-faint); opacity: .8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tc-onboarding-slot[data-state="done"] img { filter: none; opacity: 1; }
+.tc-onboarding-slot[data-state="done"] .label { color: var(--text-metadata); }
+.tc-onboarding-slot[data-state="skipped"] .label {
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}
+/* The one moment of motion: a slot lighting up when you complete a step. */
+.tc-onboarding-slot[data-lit] { background: var(--pin-soft); }
+.tc-onboarding-slot[data-lit] img { animation: tc-onboarding-pop .42s cubic-bezier(.2, .7, .3, 1); }
+@keyframes tc-onboarding-pop {
+  0% { transform: scale(.82); }
+  55% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-onboarding-slot img, .tc-onboarding-slot .label, .tc-onboarding-choice { transition: none; }
+  .tc-onboarding-slot[data-lit] img { animation: none; }
+}
+
+.tc-onboarding-handoff { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 11px; max-width: 470px; }
+.tc-onboarding-handoff li {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px;
+  align-items: center; font-size: 13.5px; color: var(--text-secondary);
+}
+.tc-onboarding-handoff img { width: 22px; height: 22px; display: block; border-radius: 4px; }
+.tc-onboarding-start {
+  margin-top: 24px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: var(--accent-foreground);
+  border: 1px solid var(--accent); border-radius: 9px; padding: 10px 20px;
+  transition: transform .14s ease;
+}
+.tc-onboarding-start:hover { transform: translateY(-1px); }
+
+.tc-onboarding-foot {
+  display: flex; align-items: center; gap: 18px;
+  padding: 14px 40px 18px; border-top: 1px solid var(--border);
+}
+.tc-onboarding-rule {
+  flex: 1; height: 2px; background: var(--border); border-radius: 2px;
+  overflow: hidden; max-width: 250px;
+}
+.tc-onboarding-rule span {
+  display: block; height: 100%; background: var(--accent);
+  transition: width .34s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-step { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tc-onboarding-foot button {
+  font: inherit; font-size: 12.5px; background: none; border: 0; cursor: pointer;
+  color: var(--text-muted); padding: 4px 6px; border-radius: 5px;
+}
+.tc-onboarding-foot button:hover { color: var(--text-primary); }
