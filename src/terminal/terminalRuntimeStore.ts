@@ -137,6 +137,9 @@ interface ManagedTerminalRuntime {
   ptyId: number | null;
   ptyPromise: Promise<void> | null;
   previewAnsi: string;
+  previewPending: string[];
+  previewPendingLen: number;
+  previewSnapshotTimer: ReturnType<typeof setTimeout> | null;
   previewReplayedToRenderer: boolean;
   previewReplayInFlight: boolean;
   rendererMode: TerminalRendererMode;
@@ -281,8 +284,53 @@ function removeRuntimeSnapshot(terminalId: string) {
   });
 }
 
+// Output lands in chunks roughly every 8ms (OutputBatcher, pty-manager.ts),
+// and a Claude Code TUI repainting itself sits at that ceiling continuously.
+// Folding every chunk straight into previewAnsi cost a full 200k-char concat,
+// a clamp, two whole-buffer regex passes and a store write *per chunk* — and
+// all of it ran in front of the xterm.write that actually paints the
+// character you typed. Chunks now queue unmerged and fold only when someone
+// reads the buffer.
+const MAX_PREVIEW_PENDING_CHARS = 200_000;
+const PREVIEW_SNAPSHOT_INTERVAL_MS = 250;
+
+function readPreviewAnsi(runtime: ManagedTerminalRuntime): string {
+  if (runtime.previewPending.length > 0) {
+    const merged = runtime.previewAnsi + runtime.previewPending.join("");
+    runtime.previewPending.length = 0;
+    runtime.previewPendingLen = 0;
+    runtime.previewAnsi = clampPreviewAnsi(merged);
+  }
+  return runtime.previewAnsi;
+}
+
+function publishPreviewText(runtime: ManagedTerminalRuntime) {
+  updateRuntimeSnapshot(runtime.meta.terminal.id, {
+    previewText: toPreviewText(readPreviewAnsi(runtime)),
+  });
+}
+
+// PreviewPane renders only while a tile is parked or evicted — a live tile
+// shows the real xterm surface, so its preview text is work nobody can see.
+// Off the live path it still refreshes, on a timer rather than per chunk.
+function schedulePreviewSnapshot(runtime: ManagedTerminalRuntime) {
+  if (runtime.mode === "live" || runtime.previewSnapshotTimer) {
+    return;
+  }
+  runtime.previewSnapshotTimer = setTimeout(() => {
+    runtime.previewSnapshotTimer = null;
+    if (runtime.disposed) {
+      return;
+    }
+    publishPreviewText(runtime);
+  }, PREVIEW_SNAPSHOT_INTERVAL_MS);
+}
+
 function pushPreview(runtime: ManagedTerminalRuntime, serialized: string) {
   const nextAnsi = clampPreviewAnsi(serialized);
+  // This replaces the whole buffer, so anything still queued is stale.
+  runtime.previewPending.length = 0;
+  runtime.previewPendingLen = 0;
   if (nextAnsi === runtime.previewAnsi) {
     return;
   }
@@ -294,7 +342,17 @@ function pushPreview(runtime: ManagedTerminalRuntime, serialized: string) {
 }
 
 function appendPreview(runtime: ManagedTerminalRuntime, chunk: string) {
-  pushPreview(runtime, runtime.previewAnsi + chunk);
+  if (!chunk) {
+    return;
+  }
+  runtime.previewPending.push(chunk);
+  runtime.previewPendingLen += chunk.length;
+  // Keep the queue bounded: once it alone covers the clamp window, fold now
+  // and let clampPreviewAnsi drop the overflow.
+  if (runtime.previewPendingLen >= MAX_PREVIEW_PENDING_CHARS) {
+    readPreviewAnsi(runtime);
+  }
+  schedulePreviewSnapshot(runtime);
 }
 
 // createTerminalRenderer's own scrollback replay only fires once, at the
@@ -311,7 +369,7 @@ function replayPreviewIntoRenderer(runtime: ManagedTerminalRuntime) {
   if (
     !runtime.xterm ||
     runtime.previewReplayedToRenderer ||
-    !runtime.previewAnsi
+    !readPreviewAnsi(runtime)
   ) {
     return;
   }
@@ -323,7 +381,7 @@ function replayPreviewIntoRenderer(runtime: ManagedTerminalRuntime) {
   // let captureRuntimePreview refuse to overwrite previewAnsi while it's
   // open. See the comment there for what that used to destroy.
   runtime.previewReplayInFlight = true;
-  xterm.write(runtime.previewAnsi, () => {
+  xterm.write(readPreviewAnsi(runtime), () => {
     runtime.previewReplayInFlight = false;
     if (!runtime.disposed && runtime.xterm === xterm) {
       xterm.scrollToBottom();
@@ -1286,6 +1344,10 @@ function clearRuntimeTimers(runtime: ManagedTerminalRuntime) {
     clearInterval(runtime.telemetryTimer);
     runtime.telemetryTimer = null;
   }
+  if (runtime.previewSnapshotTimer) {
+    clearTimeout(runtime.previewSnapshotTimer);
+    runtime.previewSnapshotTimer = null;
+  }
 }
 
 function setupRuntimeSubscriptions(runtime: ManagedTerminalRuntime) {
@@ -1550,6 +1612,9 @@ function buildTerminalRuntime(
     ptyId: resolvedMeta.terminal.ptyId,
     ptyPromise: null,
     previewAnsi: clampPreviewAnsi(resolvedMeta.terminal.scrollback ?? ""),
+    previewPending: [],
+    previewPendingLen: 0,
+    previewSnapshotTimer: null,
     previewReplayedToRenderer: false,
     previewReplayInFlight: false,
     rendererMode: usePreferencesStore.getState().terminalRenderer,
@@ -1588,7 +1653,7 @@ function buildTerminalRuntime(
   updateRuntimeSnapshot(resolvedMeta.terminal.id, {
     epoch: ++runtimeEpochCounter,
     mode,
-    previewText: toPreviewText(runtime.previewAnsi),
+    previewText: toPreviewText(readPreviewAnsi(runtime)),
     telemetry: null,
   });
 
@@ -2006,7 +2071,7 @@ export function ensureTerminalRuntime(meta: TerminalRuntimeMeta) {
     existing.cliOverride =
       usePreferencesStore.getState().cliCommands[resolvedMeta.terminal.type] ??
       undefined;
-    if (!existing.previewAnsi && resolvedMeta.terminal.scrollback) {
+    if (!readPreviewAnsi(existing) && resolvedMeta.terminal.scrollback) {
       pushPreview(existing, resolvedMeta.terminal.scrollback);
     }
     replayPreviewIntoRenderer(existing);
@@ -2028,7 +2093,7 @@ export function updateTerminalRuntime(meta: TerminalRuntimeMeta) {
     usePreferencesStore.getState().cliCommands[resolvedMeta.terminal.type] ??
     undefined;
 
-  if (!runtime.previewAnsi && resolvedMeta.terminal.scrollback) {
+  if (!readPreviewAnsi(runtime) && resolvedMeta.terminal.scrollback) {
     pushPreview(runtime, resolvedMeta.terminal.scrollback);
   }
   replayPreviewIntoRenderer(runtime);
@@ -2057,6 +2122,14 @@ export function setTerminalRuntimeMode(
   if (mode === "live") {
     return;
   }
+
+  // Live tiles skip per-chunk preview upkeep, so the stored text is stale by
+  // the time the tile parks. Refresh it once on the way out.
+  if (runtime.previewSnapshotTimer) {
+    clearTimeout(runtime.previewSnapshotTimer);
+    runtime.previewSnapshotTimer = null;
+  }
+  publishPreviewText(runtime);
 
   if (mode === "evicted") {
     runtime.xterm?.blur();
@@ -2177,7 +2250,8 @@ export function touchTerminalRuntime(terminalId: string) {
 export function getTerminalRuntimePreviewAnsi(
   terminalId: string,
 ): string | null {
-  return runtimeRegistry.get(terminalId)?.previewAnsi ?? null;
+  const runtime = runtimeRegistry.get(terminalId);
+  return runtime ? readPreviewAnsi(runtime) : null;
 }
 
 export function serializeAllTerminalRuntimeBuffers(): Record<string, string> {
@@ -2192,7 +2266,7 @@ export function serializeAllTerminalRuntimeBuffers(): Record<string, string> {
     const liveSerialized = runtime.previewReplayInFlight
       ? null
       : serializeTerminal(terminalId);
-    serialized[terminalId] = liveSerialized || runtime.previewAnsi;
+    serialized[terminalId] = liveSerialized || readPreviewAnsi(runtime);
   }
 
   return serialized;
