@@ -3,7 +3,11 @@ import type {
   RenderDiagnosticEventInput,
   RenderDiagnosticsLogInfo,
 } from "../shared/render-diagnostics";
-import type { CaptureEvent, CaptureHealth } from "../shared/capture";
+import type {
+  CaptureEntryView,
+  CaptureEvent,
+  CaptureHealth,
+} from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
@@ -270,6 +274,7 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   project: {
     selectDirectory: () => ipcRenderer.invoke("project:select-directory"),
+    selectDirectories: () => ipcRenderer.invoke("project:select-directories"),
     createDirectory: () =>
       ipcRenderer.invoke("project:create-directory") as Promise<string | null>,
     scan: (dirPath: string) => ipcRenderer.invoke("project:scan", dirPath),
@@ -776,6 +781,13 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("memory:changed", listener);
       return () => ipcRenderer.removeListener("memory:changed", listener);
     },
+  },
+  record: {
+    /** Newest-first slice of the decision record. */
+    list: (options?: { limit?: number; canvasId?: string | null }) =>
+      ipcRenderer.invoke("record:list", options ?? {}) as Promise<
+        CaptureEntryView[]
+      >,
   },
   cli: {
     isRegistered: () =>

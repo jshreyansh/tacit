@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import type { CaptureEntryView } from "../../../shared/capture";
 import { useMemoryStore, positionKey } from "../../stores/memoryStore";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useT } from "../../i18n/useT";
@@ -588,7 +589,124 @@ interface Props {
   onFileClick: (filePath: string) => void;
 }
 
-type MemoryScope = "worktree" | "workspace";
+type MemoryScope = "worktree" | "workspace" | "activity";
+
+const ACTIVITY_LIMIT = 300;
+// The record grows while you are looking at it — a browser node alone writes
+// a line per action. Polling beats fs.watch here: a read is a couple of files
+// and the cache in RecallService makes a repeat cheap, whereas a watcher on an
+// append-heavy directory fires far more often than this list needs to change.
+const ACTIVITY_POLL_MS = 15_000;
+
+const KIND_TOKEN: Record<string, string> = {
+  prompt: "var(--accent)",
+  spawn: "var(--cyan)",
+  close: "var(--text-faint)",
+  wire: "var(--purple)",
+  unwire: "var(--text-faint)",
+  retype_wire: "var(--purple)",
+  rename: "var(--text-muted)",
+  manager: "var(--amber)",
+  browser_action: "var(--cyan)",
+  topology: "var(--text-faint)",
+};
+
+function kindLabel(kind: string, t: ReturnType<typeof useT>): string {
+  const key = `activity_kind_${kind}` as keyof typeof t;
+  const label = t[key];
+  return typeof label === "string" ? label : kind;
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const today = new Date();
+  const same = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (same(d, today)) return "Today";
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (same(d, yesterday)) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  });
+}
+
+function timeLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ActivityList({ entries }: { entries: CaptureEntryView[] }) {
+  const t = useT();
+  let lastDay = "";
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
+      {entries.map((entry) => {
+        const day = dayLabel(entry.at);
+        const newDay = day !== lastDay;
+        lastDay = day;
+        const isDecision = entry.intent === "decision";
+
+        return (
+          <div key={entry.id}>
+            {newDay && (
+              <div
+                className="tc-label sticky top-0 z-[1] px-1 pt-3 pb-1 text-[10px] uppercase tracking-wide"
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--surface) 92%, transparent)",
+                  color: "var(--text-faint)",
+                }}
+              >
+                {day}
+              </div>
+            )}
+            <div
+              className="flex gap-2 px-1 py-[5px] rounded text-[11px] leading-snug"
+              style={{
+                borderLeft: `2px solid ${
+                  isDecision
+                    ? (KIND_TOKEN[entry.kind] ?? "var(--text-faint)")
+                    : "transparent"
+                }`,
+                paddingLeft: 6,
+              }}
+            >
+              <span
+                className="shrink-0 tabular-nums"
+                style={{ color: "var(--text-faint)" }}
+              >
+                {timeLabel(entry.at)}
+              </span>
+              <span
+                className="shrink-0 font-medium"
+                style={{ color: KIND_TOKEN[entry.kind] ?? "var(--text-muted)" }}
+              >
+                {kindLabel(entry.kind, t)}
+              </span>
+              <span
+                className="min-w-0 break-words"
+                style={{ color: "var(--text-primary)" }}
+              >
+                {entry.summary}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function MemoryContent({ worktreePath, onFileClick }: Props) {
   const t = useT();
@@ -596,8 +714,40 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
     useMemoryStore();
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const [scope, setScope] = useState<MemoryScope>("worktree");
+  const [entries, setEntries] = useState<CaptureEntryView[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  // Bumped by the refresh button to re-run whichever loader the active tab
+  // uses, without either effect needing to know about the button.
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
+    if (scope !== "activity") return;
+    let cancelled = false;
+
+    const load = (showSpinner: boolean) => {
+      if (showSpinner) setActivityLoading(true);
+      window.tacit.record
+        .list({ limit: ACTIVITY_LIMIT, canvasId: activeCanvasId })
+        .then((rows) => {
+          if (cancelled) return;
+          setEntries(rows);
+          setActivityLoading(false);
+        })
+        .catch(() => {
+          if (!cancelled) setActivityLoading(false);
+        });
+    };
+
+    load(true);
+    const timer = setInterval(() => load(false), ACTIVITY_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [scope, activeCanvasId, refreshNonce]);
+
+  useEffect(() => {
+    if (scope === "activity") return;
     let cancelled = false;
 
     if (scope === "workspace") {
@@ -645,11 +795,13 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
       window.tacit.memory.unwatch(worktreePath);
       unsubscribe();
     };
-  }, [scope, worktreePath, activeCanvasId, setGraph, setLoading]);
+  }, [scope, worktreePath, activeCanvasId, setGraph, setLoading, refreshNonce]);
+
+  const busy = scope === "activity" ? activityLoading : loading;
 
   const scopeTabs = (
     <div className="flex items-center gap-1 px-2 pt-2 pb-1 shrink-0">
-      {(["worktree", "workspace"] as const).map((s) => (
+      {(["worktree", "workspace", "activity"] as const).map((s) => (
         <button
           key={s}
           onClick={() => setScope(s)}
@@ -659,11 +811,57 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
               : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           }`}
         >
-          {s === "worktree" ? t.memory_scope_worktree : t.memory_scope_workspace}
+          {s === "worktree"
+            ? t.memory_scope_worktree
+            : s === "workspace"
+              ? t.memory_scope_workspace
+              : t.memory_scope_activity}
         </button>
       ))}
+      <button
+        onClick={() => setRefreshNonce((n) => n + 1)}
+        title={t.memory_refresh}
+        aria-label={t.memory_refresh}
+        className="ml-auto p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] transition-colors"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={busy ? { animation: "tc-spin 0.9s linear infinite" } : undefined}
+        >
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+      </button>
     </div>
   );
+
+  if (scope === "activity") {
+    return (
+      <div className="flex-1 flex flex-col min-h-0">
+        {scopeTabs}
+        {activityLoading && entries.length === 0 ? (
+          <div className="tc-label flex-1 flex items-center justify-center">
+            {t.activity_loading}
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="tc-label flex-1 flex flex-col items-center justify-center px-4 text-center leading-relaxed">
+            <span>{t.activity_empty}</span>
+            <span>{t.activity_empty_hint}</span>
+          </div>
+        ) : (
+          <ActivityList entries={entries} />
+        )}
+      </div>
+    );
+  }
 
   if (scope === "worktree" && !worktreePath) {
     return (

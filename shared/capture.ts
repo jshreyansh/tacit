@@ -292,6 +292,25 @@ export function buildCaptureEnvelope(
   } as CaptureEntry;
 }
 
+/**
+ * One decision-record entry flattened for display.
+ *
+ * The record is append-only JSONL whose lines are a discriminated union; a
+ * list in the UI wants one flat row per line, with the prose already made.
+ * Summarising in main keeps the union — and the twelve-case switch that
+ * reads it — on one side of the IPC boundary.
+ */
+export interface CaptureEntryView {
+  id: string;
+  at: string;
+  kind: CaptureKind;
+  summary: string;
+  nodes: CaptureNodeRef[];
+  intent: CaptureIntent;
+  canvas: string | null;
+  actorKind: CaptureActorKind;
+}
+
 export interface CaptureHealth {
   /** Directory holding the daily files, so the UI can point at something real. */
   dirPath: string;
@@ -372,7 +391,7 @@ export class InjectedTextTracker {
   constructor(private readonly ttlMs = 30_000) {}
 
   private key(terminalId: string, text: string): string {
-    return `${terminalId} ${text.trim()}`;
+    return `${terminalId}\0${text.trim()}`;
   }
 
   note(terminalId: string, text: string, now = Date.now()): void {

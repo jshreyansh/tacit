@@ -10,7 +10,11 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
-import type { CaptureEvent, CaptureHealth } from "../../shared/capture";
+import type {
+  CaptureEntryView,
+  CaptureEvent,
+  CaptureHealth,
+} from "../../shared/capture";
 import type { UpdaterSnapshot } from "../../electron/updater-state";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
 import type { ManagerSessionRow, ManagerTenure } from "../../shared/manager-role";
@@ -754,6 +758,9 @@ export interface TacitAPI {
   };
   project: {
     selectDirectory: () => Promise<string | null>;
+    /** Multi-select sibling of `selectDirectory`; `[]` when the sheet is
+     * cancelled. Used by first-run setup, which asks for folders plural. */
+    selectDirectories: () => Promise<string[]>;
     createDirectory: () => Promise<string | null>;
     scan: (dirPath: string) => Promise<{
       name: string;
@@ -1066,6 +1073,16 @@ export interface TacitAPI {
     unwatchDir: (dirPath: string) => Promise<void>;
     unwatchAllDirs: () => Promise<void>;
     onDirChanged: (callback: (dirPath: string) => void) => () => void;
+  };
+  record: {
+    /**
+     * Newest-first slice of the decision record — the same append-only log
+     * the `recall` tool reads, finally pointed at the UI as well.
+     */
+    list: (options?: {
+      limit?: number;
+      canvasId?: string | null;
+    }) => Promise<CaptureEntryView[]>;
   };
   memory: {
     scan: (worktreePath: string) => Promise<{

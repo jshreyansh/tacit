@@ -700,6 +700,9 @@ function createWindow() {
   const isMac = process.platform === "darwin";
   const isWin = process.platform === "win32";
 
+/** Keep in step with src/toolbar/titleStripHeight.ts. */
+const TITLE_STRIP_HEIGHT = 28;
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -724,7 +727,9 @@ function createWindow() {
       titleBarOverlay: {
         color: "#00000000",
         symbolColor: "#888888",
-        height: 44,
+        // Matches TITLE_STRIP_HEIGHT in the renderer. If these two disagree the
+        // native caption buttons are drawn over the rails.
+        height: TITLE_STRIP_HEIGHT,
       },
     }),
     ...(!isMac &&
@@ -1121,6 +1126,22 @@ function setupIpc() {
       return false;
     },
   );
+
+  /**
+   * Pick several folders in one sheet.
+   *
+   * Kept separate from `project:select-directory` rather than widening it:
+   * the ordinary "add a project" command wants exactly one folder and would
+   * have to discard the extras, so the two callers ask different questions
+   * and get different answers.
+   */
+  ipcMain.handle("project:select-directories", async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ["openDirectory", "multiSelections", "createDirectory"],
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
+  });
 
   ipcMain.handle("project:select-directory", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
@@ -2056,6 +2077,22 @@ function setupIpc() {
       const memDir = getMemoryDirForWorkspace(canvasId);
       unwatchMemoryDir(memDir);
     },
+  );
+
+  /**
+   * The decision record, for the Activity tab.
+   *
+   * Until now the record was written by the renderer and read only by agents,
+   * over the HTTP API that backs the `recall` tool — so the app could answer
+   * "what happened here" for a model and not for the person sitting in front
+   * of it. This is the missing direction.
+   */
+  ipcMain.handle(
+    "record:list",
+    async (
+      _event,
+      options: { limit?: number; canvasId?: string | null } = {},
+    ) => recallService.listRecord(options),
   );
 
   ipcMain.handle("workspace:save", async (_event, data: string) => {

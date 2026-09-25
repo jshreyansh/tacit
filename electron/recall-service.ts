@@ -4,6 +4,7 @@ import { detectHarnessText, detectLegacyAppText } from "../shared/capture";
 import {
   normalizeCaptureEntry,
   type CaptureEntry,
+  type CaptureEntryView,
   type CaptureNodeRef,
   type LegacyCaptureEntry,
 } from "../shared/capture";
@@ -129,6 +130,72 @@ export class RecallService {
     return docs;
   }
 
+  /**
+   * Newest-first slice of the decision record, for the UI's Activity tab.
+   *
+   * Walks files newest-first and stops the moment `limit` is met, so opening
+   * the tab reads a file or two rather than parsing a year of history. The
+   * digest path deliberately does the opposite — it loads everything and
+   * caches on mtime — because it is asked once a session and this is asked
+   * every time someone clicks refresh.
+   */
+  listRecord(
+    options: { limit?: number; canvasId?: string | null } = {},
+  ): CaptureEntryView[] {
+    const limit = Math.max(1, Math.min(options.limit ?? 200, 2000));
+    const canvasId = options.canvasId ?? null;
+
+    let files: string[];
+    try {
+      files = fs
+        .readdirSync(this.recordDir)
+        .filter((name) => name.endsWith(".jsonl"))
+        // File names are ISO dates, so lexical order is chronological.
+        .sort()
+        .reverse()
+        .map((name) => path.join(this.recordDir, name));
+    } catch {
+      return []; // No record directory yet — an empty history, not an error.
+    }
+
+    const out: CaptureEntryView[] = [];
+    for (const filePath of files) {
+      let lines: string[];
+      try {
+        lines = fs.readFileSync(filePath, "utf-8").split("\n");
+      } catch {
+        continue; // One unreadable day must not cost the rest.
+      }
+      const base = path.basename(filePath);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (!lines[i].trim()) continue;
+        let entry: CaptureEntry;
+        try {
+          entry = normalizeCaptureEntry(
+            JSON.parse(lines[i]) as CaptureEntry | LegacyCaptureEntry,
+          );
+        } catch {
+          continue; // a truncated tail is normal on a hard kill
+        }
+        // Entries written before the renderer reported a canvas carry null,
+        // and those belong to every canvas rather than none.
+        if (canvasId && entry.canvas && entry.canvas !== canvasId) continue;
+        out.push({
+          id: `${base}#${i}`,
+          at: entry.at,
+          kind: entry.kind,
+          summary: summarize(entry),
+          nodes: nodesOf(entry),
+          intent: entry.intent,
+          canvas: entry.canvas,
+          actorKind: entry.actor_identity?.kind ?? "system",
+        });
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
+  }
+
   private listFiles(): Array<{ path: string; mtimeMs: number; kind: "record" | "journal" }> {
     const out: Array<{ path: string; mtimeMs: number; kind: "record" | "journal" }> = [];
     const scan = (dir: string | null, kind: "record" | "journal", ext: string) => {
@@ -163,6 +230,8 @@ function summarize(entry: CaptureEntry): string {
       return `connected ${entry.from} to ${entry.to} (${entry.origin})`;
     case "unwire":
       return `disconnected ${entry.from} from ${entry.to}`;
+    case "retype_wire":
+      return `rewired ${entry.from} to ${entry.to}: ${entry.previous_type} became ${entry.connection_type}`;
     case "close":
       return `closed ${entry.node}`;
     case "rename":
@@ -185,6 +254,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
       return [entry.node];
     case "wire":
     case "unwire":
+    case "retype_wire":
       return [entry.from, entry.to];
     case "prompt":
       return [entry.actor];
