@@ -1,13 +1,11 @@
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
+import { zoomToFitAllTerminals } from "./zoomActions";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { getTerminalFocusOrder } from "../stores/projectFocus";
 import { activateTerminalInScene } from "../actions/sceneSelectionActions";
 import { panToTerminal } from "../utils/panToTerminal";
 import {
-  getCanvasRightInset,
-  getCanvasLeftInset,
 } from "./viewportBounds";
 
 function getAllTerminals() {
@@ -31,48 +29,6 @@ function getFocusedTerminalIndex(
   return -1;
 }
 
-function zoomToFitAll() {
-  const { projects } = useProjectStore.getState();
-  const {
-    rightPanelCollapsed,
-    rightPanelWidth,
-    leftPanelCollapsed,
-    leftPanelWidth,
-  } = useCanvasStore.getState();
-  if (projects.length === 0) return;
-  const padding = 80;
-  const toolbarH = 44;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of projects) {
-    for (const w of p.worktrees) {
-      for (const t of w.terminals) {
-        if (t.stashed) continue;
-        minX = Math.min(minX, t.x);
-        minY = Math.min(minY, t.y);
-        maxX = Math.max(maxX, t.x + t.width);
-        maxY = Math.max(maxY, t.y + t.height);
-      }
-    }
-  }
-  const contentW = maxX - minX;
-  const contentH = maxY - minY;
-  const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
-  );
-  const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
-  const viewH = window.innerHeight - toolbarH - padding * 2;
-  const scale = Math.min(1, viewW / contentW, viewH / contentH);
-  useViewportFocusStore.getState().setFitAllScale(scale);
-  const x = -minX * scale + padding;
-  const y = -minY * scale + padding + toolbarH;
-  useCanvasStore.getState().animateTo(x, y, scale);
-}
 
 export function toggleClearFocus(): void {
   const list = getAllTerminals();
@@ -86,7 +42,7 @@ export function toggleClearFocus(): void {
       panToTerminal(focused.terminalId);
       store.setZoomedOutTerminalId(null);
     } else {
-      zoomToFitAll();
+      zoomToFitAllTerminals();
       store.setZoomedOutTerminalId(focused.terminalId);
     }
   } else if (store.lastFocusedTerminalId) {

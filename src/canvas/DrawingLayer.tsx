@@ -24,26 +24,22 @@ import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
 import {
-  getCanvasLeftInset,
-  getCanvasRightInset,
+  getCanvasContainerLeft,
   screenPointToCanvasPoint,
 } from "./viewportBounds";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
-import {
-  PANEL_TRANSITION_DURATION_MS,
-  PANEL_TRANSITION_EASING_CSS,
-} from "../utils/panelAnimation";
 
-export function getDrawingLayerViewportSize(
-  leftInset: number,
-  rightInset: number,
-  innerWidth: number,
-  innerHeight: number,
-): { width: number; height: number } {
-  return {
-    width: Math.max(0, innerWidth - leftInset - rightInset),
-    height: Math.max(0, innerHeight),
-  };
+/**
+ * Where the annotation layer's own coordinate origin sits.
+ *
+ * It has to match the canvas element's, because the `<g>` inside this layer
+ * applies the same `translate(viewport.x, viewport.y)` the canvas does — an
+ * offset container with an identical transform draws every annotation that far
+ * from the node it marks. Exported so the pairing is a thing a test can hold
+ * onto rather than a coincidence between two style blocks.
+ */
+export function getDrawingLayerOrigin(): { left: number; top: number } {
+  return { left: getCanvasContainerLeft(), top: 0 };
 }
 
 function getSvgPathFromStroke(stroke: number[][]) {
@@ -218,7 +214,6 @@ export function DrawingLayer() {
   const taskDrawerOpen = usePinStore(
     (state) => state.openProjectPath !== null,
   );
-  const sidebarDragging = useSidebarDragStore((state) => state.active);
   const projects = useProjectStore((state) => state.projects);
   const selectedItems = useSelectionStore((state) => state.selectedItems);
   const selectedAnnotationIds = useMemo(
@@ -404,33 +399,32 @@ export function DrawingLayer() {
   }, [selectedAnnotationIds, tool]);
 
   const isDrawing = tool !== "select";
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
-  const rightInset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const { width, height } = getDrawingLayerViewportSize(
-    leftInset,
-    rightInset,
-    window.innerWidth,
-    window.innerHeight,
-  );
 
   return (
     <svg
-      className="fixed top-0 bottom-0"
+      /**
+       * Full-bleed, exactly like the canvas it annotates.
+       *
+       * This used to sit at `left: leftInset` and span only the gap between the
+       * panels. That was right when the canvas element did the same, because
+       * both shared an origin — but the canvas is full-bleed now, and the inner
+       * `<g translate(viewport.x, viewport.y)>` below is the same transform the
+       * canvas uses. An offset container with an identical transform draws
+       * every annotation `leftInset` pixels away from the node it marks.
+       *
+       * Drawing under the chrome is also simply correct: a stroke that runs
+       * past the rail should still exist, clipped by the rail rather than cut.
+       */
+      className="fixed"
       style={{
-        left: leftInset,
-        width,
-        height,
+        left: getDrawingLayerOrigin().left,
+        top: getDrawingLayerOrigin().top,
+        width: "100vw",
+        height: "100vh",
         display: "block",
         pointerEvents: isDrawing ? "auto" : "none",
         cursor: isDrawing ? "crosshair" : "default",
         zIndex: isDrawing ? 30 : 20,
-        transition: sidebarDragging
-          ? undefined
-          : `left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`,
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useT } from "../i18n/useT";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
-import { useCanvasStore, COLLAPSED_TAB_WIDTH } from "../stores/canvasStore";
+import { useCanvasStore } from "../stores/canvasStore";
+import { getRightPanelInset } from "../canvas/viewportBounds";
 import { shouldIgnoreShortcutTarget } from "../hooks/shortcutTarget";
 
 const platform = window.tacit?.app.platform ?? "darwin";
@@ -51,7 +52,7 @@ export function ShortcutHints() {
     { key: shortcuts.clearFocus, desc: t.shortcut_clear_focus },
   ];
 
-  const rightOffset = (rightPanelCollapsed ? COLLAPSED_TAB_WIDTH : rightPanelWidth) + 16;
+  const rightOffset = (getRightPanelInset(rightPanelCollapsed, rightPanelWidth)) + 16;
 
   return (
     <div

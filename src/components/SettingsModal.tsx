@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useLocaleStore } from "../stores/localeStore";
+import { useThemeStore } from "../stores/themeStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { PROVIDER_PRESETS, getPreset } from "../agentProviders";
 import type { TerminalType } from "../types";
@@ -177,7 +178,7 @@ function OnOffSegment({
   const inactive =
     "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]";
   return (
-    <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
+    <div className="tc-segment inline-flex border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
       <button
         type="button"
         className={`${base} ${value ? active : inactive}`}
@@ -208,7 +209,7 @@ function ChoiceSegment<T extends string>({
   onChange: (next: T) => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
+    <div className="tc-segment inline-flex border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
       {options.map((opt) => {
         const selected = opt.value === value;
         return (
@@ -739,8 +740,6 @@ export function SettingsModal({ onClose }: Props) {
   useBodyScrollLock(true);
   const { locale, setLocale } = useLocaleStore();
   const {
-    animationBlur,
-    setAnimationBlur,
     canvasOpacity,
     setCanvasOpacity,
     canvasBackgroundImage,
@@ -788,6 +787,8 @@ export function SettingsModal({ onClose }: Props) {
   );
   const [downloadingFont, setDownloadingFont] = useState<string | null>(null);
   const t = useT();
+  const theme = useThemeStore((state) => state.theme);
+  const setTheme = useThemeStore((state) => state.setTheme);
   const initialTab = useSettingsModalStore((s) => s.initialTab);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [recordingKey, setRecordingKey] = useState<keyof ShortcutMap | null>(
@@ -1003,7 +1004,7 @@ export function SettingsModal({ onClose }: Props) {
     >
       <div
         ref={shellRef}
-        className="tc-enter-fade-up flex h-[85vh] w-full max-w-3xl mx-4 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
+        className="tc-enter-fade-up tc-squircle flex h-[85vh] w-full max-w-3xl mx-4 flex-col overflow-hidden border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
         style={{ minHeight: 540 }}
       >
         {/* Header — settings title plus the discoverability cue: ⌘,
@@ -1148,6 +1149,23 @@ export function SettingsModal({ onClose }: Props) {
               <section>
                 <SectionHeader title={t.settings_appearance} />
                 <div className="flex flex-col gap-6">
+                  {/* Theme was a one-shot toggle in the title bar, which is
+                      chrome spent on something you set once. As a row here the
+                      control names the theme it selects instead of flipping
+                      you to whichever one you are not on. */}
+                  <SettingsRow
+                    label={t.settings_theme}
+                    description={t.settings_theme_desc}
+                  >
+                    <ChoiceSegment
+                      value={theme}
+                      onChange={setTheme}
+                      options={[
+                        { value: "light" as const, label: t.settings_theme_light },
+                        { value: "dark" as const, label: t.settings_theme_dark },
+                      ]}
+                    />
+                  </SettingsRow>
                   <SettingsRow label={t.terminal_font_size}>
                     <SliderControl
                       min={6}
@@ -1332,17 +1350,6 @@ export function SettingsModal({ onClose }: Props) {
                         { value: "wterm", label: t.terminal_engine_wterm },
                       ]}
                       onChange={(v) => setTerminalEngine(v)}
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow label={t.animation_blur}>
-                    <SliderControl
-                      min={0}
-                      max={3}
-                      step={0.1}
-                      value={animationBlur}
-                      onChange={setAnimationBlur}
-                      format={(v) => (v === 0 ? t.setting_off : v.toFixed(1))}
                     />
                   </SettingsRow>
 

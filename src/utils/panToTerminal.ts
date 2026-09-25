@@ -12,6 +12,7 @@ import {
   clampCenterX,
 } from "../canvas/viewportBounds";
 import { clampScale } from "../canvas/viewportZoom";
+import { CHROME_BOTTOM, CHROME_TOP } from "../canvas/floatingChrome";
 import {
   setTrackSidebar,
   recomputeTileDimensions,
@@ -58,11 +59,15 @@ export function flyToBounds(
     leftPanelCollapsed,
     leftPanelWidth,
     usePinStore.getState().openProjectPath !== null,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const padding = 40;
-  const topInset = 56;
+  // The band the floating chrome leaves uncovered. `topInset` was a literal 56
+  // — the old 44px toolbar plus a margin — which stopped meaning anything when
+  // the toolbar became a 28px title strip.
   const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
-  const viewH = window.innerHeight - padding * 2;
+  const viewH = window.innerHeight - CHROME_TOP - CHROME_BOTTOM - padding * 2;
 
   const scale = opts?.preserveScale
     ? clampScale(viewport.scale)
@@ -70,7 +75,8 @@ export function flyToBounds(
 
   const centerX = clampCenterX(absX, absW, scale, leftOffset, rightOffset);
   const centerY =
-    -(absY + absH / 2) * scale + (topInset + window.innerHeight) / 2;
+    -(absY + absH / 2) * scale +
+    (CHROME_TOP + window.innerHeight - CHROME_BOTTOM) / 2;
 
   if (opts?.immediate) {
     useCanvasStore.getState().setViewport({ x: centerX, y: centerY, scale });

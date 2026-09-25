@@ -394,6 +394,8 @@ export function PetOverlay() {
       canvas.leftPanelCollapsed,
       canvas.leftPanelWidth,
       usePinStore.getState().openProjectPath !== null,
+      canvas.rightPanelCollapsed,
+      canvas.rightPanelWidth,
     );
     const sx = clientX - inset;
     const sy = clientY;
@@ -524,6 +526,8 @@ export function PetOverlay() {
     leftPanelCollapsed,
     leftPanelWidth,
     taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const rightInset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
   const svgWidth = Math.max(0, window.innerWidth - leftInset - rightInset);

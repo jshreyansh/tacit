@@ -6,6 +6,10 @@ export type Theme = "dark" | "light";
 interface ThemeStore {
   theme: Theme;
   toggleTheme: () => void;
+  /** Set it directly. The title-bar button could only flip between two
+   *  states; as a row in Settings > Appearance the control names the theme
+   *  it selects, so it needs to be able to ask for one. */
+  setTheme: (theme: Theme) => void;
 }
 
 function loadTheme(): Theme {
@@ -21,17 +25,21 @@ if (initialTheme === "light") {
   document.documentElement.setAttribute("data-theme", "light");
 }
 
+function applyTheme(next: Theme): Theme {
+  document.documentElement.setAttribute("data-theme", next);
+  try {
+    localStorage.setItem("tacit-theme", next);
+  } catch {}
+  return next;
+}
+
 export const useThemeStore = create<ThemeStore>((set) => ({
   theme: initialTheme,
   toggleTheme: () =>
-    set((state) => {
-      const next = state.theme === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", next);
-      try {
-        localStorage.setItem("tacit-theme", next);
-      } catch {}
-      return { theme: next };
-    }),
+    set((state) => ({
+      theme: applyTheme(state.theme === "dark" ? "light" : "dark"),
+    })),
+  setTheme: (theme) => set({ theme: applyTheme(theme) }),
 }));
 
 export const XTERM_THEMES: Record<Theme, ITheme> = {

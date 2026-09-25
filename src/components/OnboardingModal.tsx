@@ -1,57 +1,67 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { addProjectFromDirectoryPath } from "../canvas/sceneCommands";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
-import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { addTerminal } from "../toolbar/AddNodeDock";
+import { addTerminal } from "../actions/dockActions";
 import { useT } from "../i18n/useT";
 import type { TerminalType } from "../types";
 import folderIcon from "../assets/dock-icons/folder.png";
-import chromeIcon from "../assets/dock-icons/browser.png";
 import claudeIcon from "../assets/dock-icons/terminal-claude.png";
 import codexIcon from "../assets/dock-icons/codex.png";
+import geminiIcon from "../assets/dock-icons/gemini.png";
+import opencodeIcon from "../assets/dock-icons/opencode-logo.png";
 
 /**
  * First run, as a sequence you finish rather than a hint you ignore.
  *
- * This began as a strip floating above the dock. It collided with the node dock
- * and with the terminals it had just created, and it advanced off app state —
- * so clicking "Claude" spawned an agent and immediately showed the next step on
- * top of the trust prompt that agent was still waiting on.
+ * Two questions, both plural.
  *
- * So the panels no longer read the app. Three questions are answered up front,
- * the takeover closes, and only then does anything happen on the canvas.
- * Nothing can overlap something it created, because it creates nothing until it
- * is gone.
+ * It used to ask three, all singular: one space, one agent, one browser. Someone
+ * who finished it had one folder and one agent open — which is a worse terminal.
+ * What Tacit does that a terminal cannot is run several agents at once where you
+ * can see all of them, so both remaining steps ask for several, and the last
+ * thing you press opens the canvas with everything on it. There is no summary
+ * screen: the payoff is the view, not a list of what was configured.
+ *
+ * The singular framing was also a real bug. Choosing a folder, going Back, and
+ * choosing again left two projects on the canvas and one in the summary, because
+ * "choose" was written as though there could only be one. Adding is now all the
+ * button does, and any row can be dropped again.
+ *
+ * The browser step is gone. Importing Chrome profiles is a real feature with a
+ * dialog of its own, and putting it third meant first run ended inside someone
+ * else's modal instead of on the canvas. Settings → Browser is where it lives.
  *
  * It is a dialog on a scrim, in the family Settings belongs to. Blocking is
  * about focus rather than about covering every pixel: a full-bleed version made
- * three questions feel like an installer. Modal is right for the first sixty
- * seconds and wrong almost everywhere after, so `Skip setup` is visible
- * throughout, Escape works, and it never shows again.
+ * setup feel like an installer. Modal is right for the first sixty seconds and
+ * wrong almost everywhere after, so `Skip setup` is visible throughout, Escape
+ * works, and it never shows again.
  */
 
-/** Space, agent, browser. */
-const PANEL_COUNT = 3;
+const STEP_COUNT = 2;
 
-type Panel = 0 | 1 | 2 | 3;
-type AgentChoice = Extract<TerminalType, "claude" | "codex">;
-type SlotState = "pending" | "done" | "skipped";
+type Step = 0 | 1;
+type AgentChoice = Extract<
+  TerminalType,
+  "claude" | "codex" | "gemini" | "opencode"
+>;
 
-interface Slot {
-  icons: string[];
-  label: string;
-  hint?: string;
-  state: SlotState;
+interface AgentEntry {
+  id: AgentChoice;
+  name: string;
+  /** The maker, not a sentence. In a tile a full description wraps to three
+   *  lines and turns the grid into mush; the logo already says which agent this
+   *  is, so the second line only has to disambiguate. */
+  vendor: string;
+  icon: string;
+  /** OpenCode ships an opaque mark carrying its own ground, where the rest
+   *  are transparent — it needs a radius so the edge does not read as an
+   *  unstyled rectangle. */
+  opaque?: boolean;
 }
-
-const AGENT_ICON: Record<AgentChoice, string> = {
-  claude: claudeIcon,
-  codex: codexIcon,
-};
 
 export function OnboardingModal() {
   const t = useT();
@@ -59,90 +69,74 @@ export function OnboardingModal() {
   const setDismissed = usePreferencesStore((s) => s.setOnboardingDismissed);
   const notify = useNotificationStore((s) => s.notify);
 
-  // Latched on mount. Panel one adds a project, which would otherwise flip the
+  // Latched on mount. Step one adds projects, which would otherwise flip the
   // condition that opened this and tear the takeover down mid-sequence.
   const [open] = useState(
     () => !dismissed && useProjectStore.getState().projects.length === 0,
   );
-  const [panel, setPanel] = useState<Panel>(0);
-  const [spaceName, setSpaceName] = useState<string | null>(null);
-  const [agent, setAgent] = useState<AgentChoice | null>(null);
-  const [wantsBrowser, setWantsBrowser] = useState(false);
+  const [step, setStep] = useState<Step>(0);
+  const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([]);
+  const [picked, setPicked] = useState<AgentChoice[]>([]);
   const [busy, setBusy] = useState(false);
-  const [justLit, setJustLit] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
   const closed = useRef(false);
 
   useBodyScrollLock(open);
 
-  const space: Slot = spaceName
-    ? { icons: [folderIcon], label: spaceName, state: "done" }
-    : { icons: [folderIcon], label: t.onboarding_rail_space, state: "pending" };
-
-  const agentSlot: Slot = agent
-    ? { icons: [AGENT_ICON[agent]], label: agent === "claude" ? "Claude" : "Codex", state: "done" }
-    : panel > 1
-      ? { icons: [claudeIcon], label: t.onboarding_rail_agent_none, state: "skipped" }
-      : {
-          icons: [claudeIcon, codexIcon],
-          label: t.onboarding_rail_agent,
-          hint: t.onboarding_rail_agent_hint,
-          state: "pending",
-        };
-
-  const browserSlot: Slot = wantsBrowser
-    ? { icons: [chromeIcon], label: t.onboarding_rail_browser, state: "done" }
-    : panel > 2
-      ? { icons: [chromeIcon], label: t.onboarding_rail_browser_none, state: "skipped" }
-      : { icons: [chromeIcon], label: t.onboarding_rail_browser, state: "pending" };
+  const agents: readonly AgentEntry[] = [
+    { id: "claude", name: "Claude", vendor: "Anthropic", icon: claudeIcon },
+    { id: "codex", name: "Codex", vendor: "OpenAI", icon: codexIcon },
+    { id: "gemini", name: "Gemini", vendor: "Google", icon: geminiIcon },
+    {
+      id: "opencode",
+      name: "OpenCode",
+      vendor: t.onboarding_agent_open_source,
+      icon: opencodeIcon,
+      opaque: true,
+    },
+  ];
 
   /**
-   * Close, then act — in order, one thing at a time.
-   *
-   * Both actions used to fire in the same tick as the takeover unmounted. The
-   * profile manager closes on any click on its own scrim, so opening it inside
-   * the click that asked for it meant it shut again immediately; and a terminal
-   * spawning underneath it made that impossible to see. The agent now waits for
-   * the manager to close, and the manager waits for this to be off screen.
+   * Close, then act. The agents used to spawn in the same tick this unmounted,
+   * which put a terminal's trust prompt underneath a dialog that was still on
+   * screen. Nothing happens on the canvas until this is gone.
    */
   const finish = useCallback(() => {
     if (closed.current) return;
     closed.current = true;
     setDismissed(true);
-
-    const spawnAgent = () => {
-      if (agent) addTerminal(agent);
-    };
-
+    if (picked.length === 0) return;
     window.setTimeout(() => {
-      if (!wantsBrowser) {
-        spawnAgent();
-        return;
-      }
-      usePreferencesStore.getState().setBrowserEnabled(true);
-      useIdentityManagerStore.getState().openManager();
-      const unsubscribe = useIdentityManagerStore.subscribe((state, previous) => {
-        if (previous.open && !state.open) {
-          unsubscribe();
-          spawnAgent();
-        }
-      });
+      for (const agent of picked) addTerminal(agent);
     }, 140);
-  }, [agent, wantsBrowser, setDismissed]);
+  }, [picked, setDismissed]);
 
-  const chooseSpace = useCallback(
+  const addFolders = useCallback(
     async (mode: "create" | "open") => {
       const api = window.tacit?.project;
       if (!api) return;
       setBusy(true);
       try {
-        const dirPath =
-          mode === "create" ? await api.createDirectory() : await api.selectDirectory();
-        if (!dirPath) return; // Backed out of the sheet; stay on this panel.
-        const project = await addProjectFromDirectoryPath(dirPath, t);
-        if (!project) return;
-        setSpaceName(project.name);
-        setJustLit("space");
-        setPanel(1);
+        const dirPaths =
+          mode === "create"
+            ? [await api.createDirectory()].filter(
+                (path): path is string => path !== null,
+              )
+            : await api.selectDirectories();
+        // Backed out of the sheet; stay on this step with what is already here.
+        if (dirPaths.length === 0) return;
+        let lastAdded: string | null = null;
+        for (const dirPath of dirPaths) {
+          const project = await addProjectFromDirectoryPath(dirPath, t);
+          if (!project) continue;
+          lastAdded = project.id;
+          setFolders((current) =>
+            current.some((folder) => folder.id === project.id)
+              ? current
+              : [...current, { id: project.id, name: project.name }],
+          );
+        }
+        setJustAdded(lastAdded);
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
       } finally {
@@ -151,6 +145,13 @@ export function OnboardingModal() {
     },
     [notify, t],
   );
+
+  // Dropping a row un-adds the project too. Leaving it registered was the old
+  // bug in the other direction: a folder gone from the list but still on canvas.
+  const dropFolder = useCallback((id: string) => {
+    setFolders((current) => current.filter((folder) => folder.id !== id));
+    useProjectStore.getState().removeProject(id);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -166,176 +167,143 @@ export function OnboardingModal() {
 
   if (!open || closed.current) return null;
 
-  const ready = panel === 3;
-  const actions: Array<{ icon: string; text: string }> = [];
-  if (wantsBrowser) actions.push({ icon: chromeIcon, text: t.onboarding_ready_import });
-  if (agent) {
-    actions.push({
-      icon: AGENT_ICON[agent],
-      text: t.onboarding_ready_agent(agent === "claude" ? "Claude" : "Codex", spaceName ?? ""),
-    });
-  }
-  if (actions.length === 0) actions.push({ icon: folderIcon, text: t.onboarding_ready_empty });
-
   return (
     <div
       className="tc-onboarding fixed inset-0 z-[300] grid place-items-center p-8"
       role="dialog"
       aria-modal="true"
-      aria-label={t.onboarding_space_title}
+      aria-label={t.onboarding_folders_title}
     >
       <div className="tc-onboarding-scrim" />
       <div className="tc-onboarding-card">
-      <div className="grid items-start tc-onboarding-stage">
-        <div>
+        <div className="tc-onboarding-stage">
           <h2 className="tc-onboarding-title">
-            {panel === 0 && t.onboarding_space_title}
-            {panel === 1 && t.onboarding_agent_title}
-            {panel === 2 && t.onboarding_browser_title}
-            {ready && t.onboarding_ready_title}
+            {step === 0 ? t.onboarding_folders_title : t.onboarding_agents_title}
           </h2>
           <p className="tc-onboarding-body">
-            {panel === 0 && t.onboarding_space_body}
-            {panel === 1 && t.onboarding_agent_body}
-            {panel === 2 && t.onboarding_browser_body}
-            {ready && (actions.length > 1 ? t.onboarding_ready_two : t.onboarding_ready_one)}
+            {step === 0 ? t.onboarding_folders_body : t.onboarding_agents_body}
           </p>
 
-          {panel === 0 && (
-            <div className="tc-onboarding-choices two">
-              <Choice
-                icon={folderIcon}
-                plus
-                primary
-                title={t.onboarding_space_create}
-                detail={t.onboarding_space_create_desc}
-                disabled={busy}
-                onClick={() => void chooseSpace("create")}
-              />
-              <Choice
-                icon={folderIcon}
-                title={t.onboarding_space_open}
-                detail={t.onboarding_space_open_desc}
-                disabled={busy}
-                onClick={() => void chooseSpace("open")}
-              />
-            </div>
-          )}
-
-          {panel === 1 && (
-            <>
-              <div className="tc-onboarding-choices two">
-                <Choice
-                  icon={claudeIcon}
-                  primary
-                  title={t.onboarding_agent_claude}
-                  detail={t.onboarding_agent_claude_desc}
-                  onClick={() => { setAgent("claude"); setJustLit("agent"); setPanel(2); }}
-                />
-                <Choice
-                  icon={codexIcon}
-                  title={t.onboarding_agent_codex}
-                  detail={t.onboarding_agent_codex_desc}
-                  onClick={() => { setAgent("codex"); setJustLit("agent"); setPanel(2); }}
-                />
-              </div>
-              <QuietButton onClick={() => { setAgent(null); setPanel(2); }}>
-                {t.onboarding_not_now}
-              </QuietButton>
-            </>
-          )}
-
-          {panel === 2 && (
+          {step === 0 && (
             <>
               <div className="tc-onboarding-choices">
                 <Choice
-                  icon={chromeIcon}
+                  icon={folderIcon}
                   primary
-                  title={t.onboarding_browser_action}
-                  detail={t.onboarding_browser_action_desc}
-                  onClick={() => { setWantsBrowser(true); setJustLit("browser"); setPanel(3); }}
+                  title={
+                    folders.length
+                      ? t.onboarding_folders_add_more
+                      : t.onboarding_folders_add
+                  }
+                  detail={t.onboarding_folders_add_desc}
+                  disabled={busy}
+                  onClick={() => void addFolders("open")}
+                />
+                <Choice
+                  icon={folderIcon}
+                  plus
+                  title={t.onboarding_space_create}
+                  detail={t.onboarding_space_create_desc}
+                  disabled={busy}
+                  onClick={() => void addFolders("create")}
                 />
               </div>
-              <QuietButton onClick={() => { setWantsBrowser(false); setPanel(3); }}>
-                {t.onboarding_not_now}
-              </QuietButton>
+
+              {/* Under the buttons that added them, and only once there is
+                  something to show. A standing side panel spent a third of the
+                  card saying "None yet" twice before you had done anything. */}
+              {folders.length > 0 && (
+                <ul className="tc-onboarding-picked">
+                  {folders.map((folder) => (
+                    <li
+                      key={folder.id}
+                      className="tc-onboarding-row"
+                      data-just={justAdded === folder.id ? "" : undefined}
+                    >
+                      <img src={folderIcon} alt="" />
+                      <span className="label">{folder.name}</span>
+                      <button
+                        type="button"
+                        className="drop"
+                        aria-label={t.onboarding_folder_remove(folder.name)}
+                        onClick={() => dropFolder(folder.id)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </>
           )}
 
-          {ready && (
-            <>
-              <ol className="tc-onboarding-handoff">
-                {actions.map((action) => (
-                  <li key={action.text}>
-                    <img src={action.icon} alt="" />
-                    <span>{action.text}</span>
-                  </li>
-                ))}
-              </ol>
-              <button type="button" className="tc-onboarding-start" onClick={finish}>
-                {t.onboarding_start}
-              </button>
-            </>
+          {step === 1 && (
+            <div className="tc-onboarding-agents">
+              {agents.map((agent) => {
+                const on = picked.includes(agent.id);
+                return (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    className="tc-onboarding-agent"
+                    aria-pressed={on}
+                    onClick={() =>
+                      setPicked((current) =>
+                        on
+                          ? current.filter((id) => id !== agent.id)
+                          : [...current, agent.id],
+                      )
+                    }
+                  >
+                    <img
+                      src={agent.icon}
+                      alt=""
+                      className={agent.opaque ? "tile" : undefined}
+                    />
+                    <span className="info">
+                      <span className="t">{agent.name}</span>
+                      <span className="d">{agent.vendor}</span>
+                    </span>
+                    <span className="check">
+                      {/* Drawn, not typed: a tick glyph at this size lands
+                          wherever the font's metrics put it. */}
+                      <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <path d="M2.5 6.4 L4.8 8.7 L9.5 3.6" />
+                      </svg>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        <aside className="tc-onboarding-rail">
-          <h3>{t.onboarding_rail_title}</h3>
-          <ol>
-            <SlotRow slot={space} lit={justLit === "space"} />
-            <SlotRow slot={agentSlot} lit={justLit === "agent"} />
-            <SlotRow slot={browserSlot} lit={justLit === "browser"} />
-          </ol>
-        </aside>
-      </div>
-
-      <div className="tc-onboarding-foot">
-        <div className="tc-onboarding-rule">
-          <span style={{ width: `${((panel + 1) / (PANEL_COUNT + 1)) * 100}%` }} />
-        </div>
-        <span className="tc-onboarding-step">
-          {ready ? t.onboarding_done : t.onboarding_progress(String(panel + 1), String(PANEL_COUNT))}
-        </span>
-        <div className="flex-1" />
-        {panel > 0 && !ready && (
-          <button
-            type="button"
-            onClick={() => {
-              const next = (panel - 1) as Panel;
-              if (next === 0) setSpaceName(null);
-              if (next === 1) setAgent(null);
-              if (next === 2) setWantsBrowser(false);
-              setJustLit(null);
-              setPanel(next);
-            }}
-          >
-            {t.onboarding_back}
-          </button>
-        )}
-        {!ready && (
+        <div className="tc-onboarding-foot">
+          <div className="tc-onboarding-rule">
+            <span style={{ width: `${((step + 1) / STEP_COUNT) * 100}%` }} />
+          </div>
+          <span className="tc-onboarding-step">
+            {t.onboarding_progress(String(step + 1), String(STEP_COUNT))}
+          </span>
+          <div className="flex-1" />
+          {step > 0 && (
+            <button type="button" onClick={() => setStep(0)}>
+              {t.onboarding_back}
+            </button>
+          )}
           <button type="button" onClick={finish}>
             {t.onboarding_skip}
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            className="go"
+            onClick={() => (step === 0 ? setStep(1) : finish())}
+          >
+            {step === 0 ? t.onboarding_next : t.onboarding_open}
+          </button>
+        </div>
       </div>
     </div>
-  );
-}
-
-function SlotRow({ slot, lit }: { slot: Slot; lit: boolean }) {
-  return (
-    <li className="tc-onboarding-slot" data-state={slot.state} data-lit={lit ? "" : undefined}>
-      <span className="marks">
-        {slot.icons.map((icon) => (
-          <img key={icon} src={icon} alt="" />
-        ))}
-      </span>
-      <span className="text">
-        <span className="label">{slot.label}</span>
-        {slot.hint && <span className="hint">{slot.hint}</span>}
-      </span>
-    </li>
   );
 }
 
@@ -381,14 +349,6 @@ function Choice({
         <span className="t">{title}</span>
         <span className="d">{detail}</span>
       </span>
-    </button>
-  );
-}
-
-function QuietButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" className="tc-onboarding-quiet" onClick={onClick}>
-      {children}
     </button>
   );
 }

@@ -19,7 +19,7 @@ import {
   fitAllProjects,
   setZoomToHundred,
 } from "../../canvas/zoomActions";
-import { addBrowserCardToScene } from "../../actions/sceneCardActions";
+import { addBrowser, visibleCanvasCenter } from "../../actions/dockActions";
 import { createNoteInScene } from "../../actions/scenePinActions";
 import {
   stashTerminalInScene,
@@ -393,7 +393,11 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
     title: t["palette.cmd.add_browser"],
     keywords: ["web", "open browser", "internet"],
     perform: () => {
-      addBrowserCardToScene();
+      // Placed in the visible canvas, like the rail does it. Called bare, this
+      // fell through to a fallback that used window dimensions as world
+      // coordinates — so a card from the palette landed wherever the viewport
+      // happened to make that mean.
+      addBrowser();
     },
   });
 
@@ -407,7 +411,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       const project =
         projects.find((p) => p.id === focusedProjectId) ?? projects[0];
       if (!project) return;
-      void createNoteInScene(project.path);
+      void createNoteInScene(project.path, visibleCanvasCenter());
     },
   });
 

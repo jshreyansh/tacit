@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
-  PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
+import {
+  getCanvasLeftInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
 import { useSessionStore } from "../stores/sessionStore";
 import {
@@ -33,7 +37,7 @@ import { SessionReplayView } from "./SessionReplayView";
  * others.
  */
 
-const TOOLBAR_HEIGHT = 44;
+
 
 /**
  * Below this gap width the drawer is too cramped to read. Matches
@@ -100,12 +104,14 @@ export function SessionsOverlay() {
 
   if (!open) return null;
 
-  const leftInset =
-    (leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth) +
-    (taskDrawerOpen ? PIN_DRAWER_WIDTH : 0);
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getCanvasLeftInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
+  );
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   // Auto-hide when canvas gap is too narrow — same contract as
   // UsageOverlay. Store state stays open, so shrinking the side
@@ -124,11 +130,11 @@ export function SessionsOverlay() {
 
   return (
     <div
-      className="fixed z-[55] bg-[var(--bg)] border-l border-r border-[var(--border)] shadow-2xl flex flex-col usage-overlay-enter"
+      className="tc-float fixed z-[55] flex flex-col overflow-hidden usage-overlay-enter"
       style={{
-        top: TOOLBAR_HEIGHT,
+        top: CHROME_TOP,
         left: leftInset,
-        height: `calc(100vh - ${TOOLBAR_HEIGHT}px)`,
+        height: CHROME_HEIGHT,
         width: widthStyle,
         transition: animateLayout
           ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`

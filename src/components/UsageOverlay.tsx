@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { useUsageStore } from "../stores/usageStore";
-import { useCanvasStore, COLLAPSED_TAB_WIDTH } from "../stores/canvasStore";
+import { useCanvasStore } from "../stores/canvasStore";
+import {
+  getLeftPanelInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
 import { useAuthStore } from "../stores/authStore";
 import { useQuotaStore } from "../stores/quotaStore";
 import { useCodexQuotaStore } from "../stores/codexQuotaStore";
@@ -549,10 +555,8 @@ export function UsageOverlay() {
 
   if (!open) return null;
 
-  const leftInset = leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
   const gapWidth =
     typeof window !== "undefined"
       ? window.innerWidth - leftInset - rightInset
@@ -597,12 +601,12 @@ export function UsageOverlay() {
       a pane sandwiched between two user-resizable side panels.
     */
     <div
-      className="fixed z-[55] bg-[var(--bg)] overflow-y-auto usage-overlay-enter @container"
+      className="tc-float fixed z-[55] overflow-y-auto usage-overlay-enter @container"
       style={{
-        top: 44,
+        top: CHROME_TOP,
         left: leftInset,
         right: rightInset,
-        height: "calc(100vh - 44px)",
+        height: CHROME_HEIGHT,
       }}
       role="dialog"
       aria-modal="false"

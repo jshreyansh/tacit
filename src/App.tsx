@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import { CanvasRoot } from "./canvas/CanvasRoot";
 import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
-import { Toolbar } from "./toolbar/Toolbar";
-import { BottomToolbar } from "./toolbar/BottomToolbar";
-import { AddNodeDock } from "./toolbar/AddNodeDock";
+import { TitleStrip } from "./toolbar/TitleStrip";
+import { SettingsModal } from "./components/SettingsModal";
+import { useSettingsModalStore } from "./stores/settingsModalStore";
+import { RightRail } from "./toolbar/RightRail";
+import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
@@ -1117,12 +1119,13 @@ export function App() {
         IS_MAC ? "" : "bg-[var(--bg)]"
       }`}
     >
-      <Toolbar />
+      <TitleStrip />
+      <SettingsModalHost />
+      <LeftRail />
+      <RightRail />
       <LeftPanel />
       <RightPanel />
       <CanvasRoot />
-      <BottomToolbar />
-      <AddNodeDock />
       <OnboardingModal />
       <WorkspaceManagerPill />
       {drawingEnabled && <DrawingPanel />}
@@ -1146,4 +1149,16 @@ export function App() {
       <AgentProfilePromptModal />
     </div>
   );
+}
+
+/**
+ * Settings used to be mounted by the top toolbar, which no longer exists.
+ * It hangs off the store rather than any one control, because three things
+ * open it: the left rail, the palette, and a keyboard shortcut.
+ */
+function SettingsModalHost() {
+  const open = useSettingsModalStore((s) => s.open);
+  const closeSettings = useSettingsModalStore((s) => s.closeSettings);
+  if (!open) return null;
+  return <SettingsModal onClose={closeSettings} />;
 }

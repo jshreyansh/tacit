@@ -193,6 +193,8 @@ export function SpatialWaypointsLayer() {
     leftPanelCollapsed,
     leftPanelWidth,
     pinDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const rightInset = getCanvasRightInset(
     rightPanelCollapsed,

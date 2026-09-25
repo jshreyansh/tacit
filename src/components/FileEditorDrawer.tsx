@@ -6,11 +6,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
-  PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
+import {
+  getCanvasLeftInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { usePinStore } from "../stores/pinStore";
 import {
   PANEL_TRANSITION_DURATION_MS,
@@ -144,7 +148,6 @@ const MonacoEditor = lazy(async () => {
 
 // Toolbar height above which the drawer starts. Keep in sync with
 // App.tsx's Toolbar.
-const TOOLBAR_HEIGHT = 44;
 
 function guessLanguage(path: string): string {
   const lower = path.toLowerCase();
@@ -362,12 +365,14 @@ export function FileEditorDrawer() {
 
   if (!open || !path) return null;
 
-  const leftInset =
-    (leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth) +
-    (taskDrawerOpen ? PIN_DRAWER_WIDTH : 0);
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getCanvasLeftInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
+  );
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
   // Drawer is anchored so its RIGHT edge sits flush against the
   // LEFT edge of the right panel — the drawer pulls out from the
   // right panel's seam, leaving that panel fully visible so the
@@ -385,13 +390,12 @@ export function FileEditorDrawer() {
 
   return (
     <div
-      className="tc-enter-fade-up fixed z-50 bg-[var(--bg)] border-l border-r border-[var(--border)] flex flex-col"
+      className="tc-enter-fade-up tc-float fixed z-50 flex flex-col overflow-hidden"
       style={{
-        top: TOOLBAR_HEIGHT,
+        top: CHROME_TOP,
         right: rightInset,
-        height: `calc(100vh - ${TOOLBAR_HEIGHT}px)`,
+        height: CHROME_HEIGHT,
         width: widthStyle,
-        boxShadow: "var(--shadow-elev-2)",
         transition: animateLayout
           ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, right ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
           : undefined,

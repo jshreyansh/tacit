@@ -6,8 +6,11 @@ import {
 } from "../stores/statusDigestStore";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
 } from "../stores/canvasStore";
+import {
+  getLeftPanelInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
 import { panToTerminal } from "../utils/panToTerminal";
 import { useT } from "../i18n/useT";
 
@@ -81,10 +84,8 @@ export function StatusDigest() {
 
   if (!open) return null;
 
-  const leftInset = leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   const handleRowClick = (signal: DigestSignal) => {
     closeDigest();

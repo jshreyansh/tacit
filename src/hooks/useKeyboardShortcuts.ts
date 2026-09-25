@@ -1,4 +1,7 @@
 import { useEffect } from "react";
+import { zoomToFitAllTerminals } from "../canvas/zoomActions";
+import { usePinStore } from "../stores/pinStore";
+import { CHROME_BOTTOM, CHROME_TOP } from "../canvas/floatingChrome";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { deleteSelectedSceneItems } from "../actions/sceneDeleteActions";
 import {
@@ -60,10 +63,9 @@ import { panToWorktree } from "../utils/panToWorktree";
 import { toggleClearFocus } from "../canvas/toggleClearFocus";
 import { recordRenderDiagnostic } from "../terminal/renderDiagnostics";
 import {
-  getCanvasRightInset,
   getCanvasLeftInset,
+  getCanvasRightInset,
 } from "../canvas/viewportBounds";
-import { usePinStore } from "../stores/pinStore";
 import {
   isWaypointSlot,
   recallWaypointFromActiveProject,
@@ -182,48 +184,6 @@ export function navigateToTerminalWithViewport(
   return null;
 }
 
-function zoomToFitAll() {
-  const { projects } = useProjectStore.getState();
-  const {
-    rightPanelCollapsed,
-    rightPanelWidth,
-    leftPanelCollapsed,
-    leftPanelWidth,
-  } = useCanvasStore.getState();
-  if (projects.length === 0) return;
-  const padding = 80;
-  const toolbarH = 44;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of projects) {
-    for (const w of p.worktrees) {
-      for (const t of w.terminals) {
-        if (t.stashed) continue;
-        minX = Math.min(minX, t.x);
-        minY = Math.min(minY, t.y);
-        maxX = Math.max(maxX, t.x + t.width);
-        maxY = Math.max(maxY, t.y + t.height);
-      }
-    }
-  }
-  const contentW = maxX - minX;
-  const contentH = maxY - minY;
-  const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
-  );
-  const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
-  const viewH = window.innerHeight - toolbarH - padding * 2;
-  const scale = Math.min(1, viewW / contentW, viewH / contentH);
-  useViewportFocusStore.getState().setFitAllScale(scale);
-  const x = -minX * scale + padding;
-  const y = -minY * scale + padding + toolbarH;
-  useCanvasStore.getState().animateTo(x, y, scale);
-}
 
 async function handleAddProject(t: ReturnType<typeof useT>) {
   const createdProject = await promptAndAddProjectToScene(t, {
@@ -273,10 +233,22 @@ async function handleAddProject(t: ReturnType<typeof useT>) {
     viewport: { scale },
     rightPanelCollapsed,
     rightPanelWidth,
+    leftPanelCollapsed,
+    leftPanelWidth,
   } = useCanvasStore.getState();
+  // Centre in the band the chrome leaves, on both sides. This only ever
+  // subtracted the right inset, so a new project landed left of centre even
+  // before the canvas went full-bleed — and behind the rail after.
   const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const screenCenterX = (window.innerWidth - rightOffset) / 2;
-  const screenCenterY = window.innerHeight / 2;
+  const leftOffset = getCanvasLeftInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    usePinStore.getState().openProjectPath !== null,
+    rightPanelCollapsed,
+    rightPanelWidth,
+  );
+  const screenCenterX = (leftOffset + window.innerWidth - rightOffset) / 2;
+  const screenCenterY = (CHROME_TOP + window.innerHeight - CHROME_BOTTOM) / 2;
   const targetX =
     -(newProjectBounds.x + newProjectBounds.w / 2) * scale + screenCenterX;
   const targetY =

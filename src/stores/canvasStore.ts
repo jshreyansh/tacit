@@ -19,10 +19,14 @@ export interface FocusModeState {
   currentKey: string | null;
 }
 /**
- * Tabs shown in the RIGHT panel — the code-navigation surface
- * (Files / Diff / Git / Memory). Previously these lived in the LEFT
- * panel under `LeftPanelTab`; they moved to the right when the left
- * panel became the project-management surface.
+ * The code-navigation surface (Files / Diff / Git / Memory).
+ *
+ * Named for the right panel because that is where it used to open. It opens
+ * at the LEFT edge now, beside Sessions and History, and the right edge holds
+ * only the creation dock. The state keeps its old name so the two dozen call
+ * sites that read `rightPanel*` did not all have to move at once; what changed
+ * is where the panel paints and that it cannot be open at the same time as
+ * the sessions panel.
  *
  * "preview" used to be a fallback tab that took over when the user
  * clicked a file. That tab is gone — file previews/edits happen in
@@ -43,7 +47,33 @@ export interface CanvasViewportAdapter {
 // `rightPanelWidth` from the store so drag-resize works.
 export const DEFAULT_RIGHT_PANEL_WIDTH = 360;
 export const RIGHT_PANEL_WIDTH = DEFAULT_RIGHT_PANEL_WIDTH;
-export const COLLAPSED_TAB_WIDTH = 32;
+/**
+ * The right rail — the panel's four surfaces, plus the update indicator and
+ * the Hub.
+ *
+ * Like the left rail it replaces the panel's own collapsed tab strip rather
+ * than sitting beside it. Every consumer of "right chrome width" goes through
+ * `getRightPanelInset`.
+ */
+// Narrower than the left rail on purpose: this one holds icon tiles, which
+// read at their own size, where the left holds stroke glyphs that need a
+// little more air around them to stay legible.
+export const RIGHT_RAIL_WIDTH = 46;
+/** Gap between the window edge and the floating chrome. */
+export const CHROME_INSET = 12;
+/** Gap between a rail and the panel beside it. */
+export const CHROME_GAP = 8;
+/**
+ * The left rail — the always-present strip of add-a-node buttons plus the
+ * Folders and Settings controls.
+ *
+ * It replaces LeftPanel's own collapsed tab strip rather than sitting beside
+ * it: two 32px strips at the same edge would be worse than the crowding this
+ * moved away from the bottom. So the panel no longer has a collapsed width of
+ * its own — collapsed means zero, and the rail is the handle that reopens it.
+ * Every consumer of "left chrome width" goes through `getLeftPanelInset`.
+ */
+export const LEFT_RAIL_WIDTH = 52;
 // PinDrawer slides out from the LeftPanel's right edge. When open,
 // every consumer of "left chrome width" (canvas tile placement, screen↔
 // canvas conversions, layered drawers) treats it as part of the left
@@ -144,6 +174,19 @@ function viewportEquals(a: Viewport, b: Viewport) {
   );
 }
 
+/**
+ * The Hub hinges on the same edge as the panels and paints above them, so an
+ * open Hub would simply hide whichever panel was just opened. Imported lazily
+ * inside the call rather than at module scope: hubStore is tiny and has no
+ * imports of its own today, and keeping the reference inside the function
+ * means adding one later cannot turn this into an evaluation cycle.
+ */
+function closeHubForPanel() {
+  void import("./hubStore").then(({ useHubStore }) => {
+    useHubStore.getState().closeHub();
+  });
+}
+
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   viewport: { ...DEFAULT_VIEWPORT },
   isAnimating: false,
@@ -192,7 +235,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setFocusModeCurrentKey: (key) =>
     set((state) => ({ focusMode: { ...state.focusMode, currentKey: key } })),
   setRightPanelCollapsed: (collapsed) => {
-    set({ rightPanelCollapsed: collapsed });
+    // Both panels open at the left edge now, so opening one has to close the
+    // other — otherwise they stack in the same place and the lower one is
+    // simply unreachable. Collapsing is not exclusive: closing this panel
+    // must not reopen the other.
+    set(
+      collapsed
+        ? { rightPanelCollapsed: true }
+        : { rightPanelCollapsed: false, leftPanelCollapsed: true },
+    );
+    if (!collapsed) closeHubForPanel();
     markDirty();
   },
   setRightPanelActiveTab: (tab) => {
@@ -272,7 +324,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setSessionsOverlayExpanded: (expanded) =>
     set({ sessionsOverlayExpanded: expanded }),
   setLeftPanelCollapsed: (collapsed) => {
-    set({ leftPanelCollapsed: collapsed });
+    // Mirror of setRightPanelCollapsed — see the note there.
+    set(
+      collapsed
+        ? { leftPanelCollapsed: true }
+        : { leftPanelCollapsed: false, rightPanelCollapsed: true },
+    );
+    if (!collapsed) closeHubForPanel();
     markDirty();
   },
   setLeftPanelActiveTab: (tab) => {

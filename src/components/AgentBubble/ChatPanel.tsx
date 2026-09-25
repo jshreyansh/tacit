@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TITLE_STRIP_HEIGHT } from "../../toolbar/titleStripHeight";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import type { BubbleMessage } from "./types";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
 } from "../../stores/canvasStore";
+import { getRightPanelInset } from "../../canvas/viewportBounds";
 import { useAgentBubbleStore } from "../../stores/agentBubbleStore";
 
 interface ChatPanelProps {
@@ -21,7 +22,6 @@ const MAX_HEIGHT = 700;
 const INITIAL_WIDTH = 380;
 const INITIAL_HEIGHT = 520;
 const EDGE_ZONE = 8;
-const TOOLBAR_HEIGHT = 44;
 
 function clampPos(
   bottom: number,
@@ -33,8 +33,8 @@ function clampPos(
   // Right: must not overlap with the right panel area
   const maxRight = window.innerWidth - w;
   const clampedRight = Math.max(minRight, Math.min(maxRight, right));
-  // Bottom: top edge must not go above toolbar (top = innerHeight - bottom - h >= TOOLBAR_HEIGHT)
-  const maxBottom = window.innerHeight - h - TOOLBAR_HEIGHT;
+  // Bottom: top edge must not go above toolbar (top = innerHeight - bottom - h >= TITLE_STRIP_HEIGHT)
+  const maxBottom = window.innerHeight - h - TITLE_STRIP_HEIGHT;
   const clampedBottom = Math.max(0, Math.min(maxBottom, bottom));
   return { bottom: clampedBottom, right: clampedRight };
 }
@@ -73,7 +73,7 @@ export function ChatPanel({ messages, onSendMessage, onCollapse }: ChatPanelProp
   const panelRef = useRef<HTMLDivElement>(null);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const minRight = rightPanelCollapsed ? COLLAPSED_TAB_WIDTH : rightPanelWidth;
+  const minRight = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   const sessions = useAgentBubbleStore((s) => s.sessions);
   const activeSessionId = useAgentBubbleStore((s) => s.activeSessionId);
@@ -93,7 +93,7 @@ export function ChatPanel({ messages, onSendMessage, onCollapse }: ChatPanelProp
 
   const [size, setSize] = useState({ w: INITIAL_WIDTH, h: INITIAL_HEIGHT });
   const [pos, setPos] = useState(() =>
-    clampPos(128, 16, INITIAL_WIDTH, INITIAL_HEIGHT, rightPanelCollapsed ? COLLAPSED_TAB_WIDTH : rightPanelWidth),
+    clampPos(128, 16, INITIAL_WIDTH, INITIAL_HEIGHT, getRightPanelInset(rightPanelCollapsed, rightPanelWidth)),
   );
 
   // ESC to collapse — only when focus is inside the panel

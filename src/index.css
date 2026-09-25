@@ -115,6 +115,12 @@
      — same value the existing modals had hand-coded; the token just
      makes it consistent and trackable. */
   --scrim: rgba(0, 0, 0, 0.55);
+  /* Floating chrome: rails and the panels beside them. Glass rather than a
+     flat surface, because they sit *over* the canvas now instead of taking a
+     slice out of it. */
+  --chrome-glass: rgba(34, 33, 32, 0.74);
+  --chrome-edge: rgba(236, 235, 231, 0.09);
+  --chrome-shadow: 0 18px 46px rgba(0, 0, 0, 0.46);
   --radius: 8px;
   /* Find-match decorations. Dark theme gets a low-luminance brass marker:
      warm enough to belong to the neutral palette, far enough from xterm's
@@ -187,6 +193,9 @@
      feeling lifted from the same surface family, and the lower alpha
      stops the popup from looking like it's floating on coal. */
   --scrim: rgba(28, 25, 23, 0.42);
+  --chrome-glass: rgba(255, 255, 255, 0.80);
+  --chrome-edge: rgba(26, 25, 24, 0.09);
+  --chrome-shadow: 0 18px 42px rgba(28, 25, 23, 0.14);
   --radius: 8px;
   /* Light theme uses the same brass role but shifted darker and less
      saturated. It should read like an editorial marker on paper, not a neon
@@ -955,6 +964,68 @@ html.tc-scrolling ::-webkit-scrollbar-thumb {
    a single role; combine via wrapping elements when you need
    layered behavior (e.g. fade-in container + pop child).
    ───────────────────────────────────────────────────────────── */
+/* The tile a bare dock mark sits on.
+   Claude, Codex, Gemini, OpenCode and Chrome ship as logos with no tile of
+   their own, where Shell and Note are drawn as a squircle and a card. Without
+   this the rail was a mix of solid icons and floating glyphs; with it every
+   dock entry occupies the same squircle, which is what a macOS dock does.
+
+   Dark rather than white: the marks all sit in the same mid-luminance band
+   (Claude's coral, Codex's periwinkle, Gemini's blue, Chrome's primaries), so
+   they read cleanly on a dark ground, and it matches the squircle Shell
+   already draws for itself.
+
+   Lit from above, the way Apple lights a tile. Three things do that job and
+   each is doing something specific:
+     · the fill is a vertical gradient, lighter at the crown than the base, so
+       the face reads as curved rather than flat;
+     · a hairline of near-white along the top inner edge is the specular — the
+       light catching the tile's rounded shoulder — with a matching dark line
+       at the bottom where the form turns away;
+     · a short drop shadow grounds it, so the tile sits ON the rail instead of
+       being a coloured patch cut into it.
+   Fixed across themes on purpose: these are vendor marks with fixed colours,
+   and macOS does not invert dock icons for dark mode either. */
+.tc-icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 30%;
+  /* The same true superellipse the rail buttons use, rather than an
+     approximation with border-radius alone. */
+  corner-shape: squircle;
+  background: linear-gradient(
+    180deg,
+    #3c3c43 0%,
+    #313136 48%,
+    #26262b 100%
+  );
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -0.5px 0 rgba(0, 0, 0, 0.55),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.07),
+    0 1px 2.5px rgba(0, 0, 0, 0.45);
+}
+
+/* Refresh affordance in the Memory panel tabs; spins only while a load is
+   actually in flight, so a still icon means the list is current. */
+@keyframes tc-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="tc-spin"] {
+    animation: none !important;
+  }
+}
+
 @keyframes tc-fade-in {
   from {
     opacity: 0;
@@ -1425,15 +1496,267 @@ a.tc-kbd[data-dragover="true"] {
   }
 }
 
-/* ── First-run takeover ──────────────────────────────────────────────
-   Fills the window rather than sitting in a card on a scrim: setup
-   happens on the canvas, which is what the product is. The dot grid is
-   the app's own, so the sequence reads as part of Tacit rather than a
-   dialog in front of it. */
-/* A dialog, in the family Settings belongs to. Blocking is about focus, not
-   about covering every pixel — a full-bleed version made three questions feel
-   like an installer. The canvas stays visible behind and stays unreachable, and
-   it paints its own dot grid, so this only needs the scrim. */
+/* Floating chrome.
+   `corner-shape: squircle` is Apple's actual corner geometry — a superellipse,
+   not a circular arc, which is why a plain border-radius never quite reads as
+   macOS. It is Chromium-only on the open web; Tacit ships its own Chromium, so
+   here it is simply available. It needs a non-zero border-radius to do
+   anything, hence the pairing below. */
+.tc-float {
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  backdrop-filter: blur(22px) saturate(1.6);
+  border: 1px solid var(--chrome-edge);
+  border-radius: 26px;
+  corner-shape: squircle;
+  box-shadow: var(--chrome-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* A rail button, and the chip that marks the open one.
+   The selected state used to be a bar against the window edge, which said
+   "attached to this edge" — true of a welded rail, and a lie in a floating
+   dock, where it hung off a rounded corner into the canvas. A filled squircle
+   belongs to the object it sits in and needs no edge to lean on. */
+/* Shared corner language: one radius family across the chrome, so the modal
+   and the docks read as the same system rather than two rounded-rect styles. */
+.tc-squircle { border-radius: 22px; corner-shape: squircle; }
+.tc-segment { border-radius: 10px; corner-shape: squircle; }
+.tc-pill { border-radius: 18px; corner-shape: squircle; }
+.tc-menu { border-radius: 12px; corner-shape: squircle; }
+
+/* ── The seat ────────────────────────────────────────────────────────
+   The workspace-manager control is one object that deforms, not a pill
+   that swaps itself for a panel. Building it as two components and
+   cross-fading always reads as two things, because it is two things.
+
+   Height animates to content rather than to a hard-coded pixel value:
+   `interpolate-size` makes `height: auto` interpolable, and Tacit ships
+   its own Chromium (Electron 41 = Chrome 146) so it is simply available
+   here rather than a progressive enhancement. */
+:root { interpolate-size: allow-keywords; }
+
+.tc-seat {
+  /* Fast out of the gate, long settle — what makes a size change read as
+     one object moving rather than a box being resized. */
+  transition:
+    width 460ms cubic-bezier(.32, .72, 0, 1),
+    height 460ms cubic-bezier(.32, .72, 0, 1),
+    background 420ms ease,
+    border-color 420ms ease,
+    box-shadow 420ms ease;
+  will-change: width, height;
+}
+
+/* Expanded, it is a reading surface. Black rather than a step lighter:
+   every card on the canvas lives between #1a1918 and #222120, so going
+   lighter joins that family and going down leaves it — separating from
+   every card at once instead of competing with each in turn. A lighter
+   panel over a dark workspace is also a lamp in your eye; black is a page. */
+.tc-seat[data-open] {
+  background: #000;
+  border-color: color-mix(in srgb, var(--seat-hue, var(--accent)) 22%, var(--border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--seat-hue, var(--accent)) 26%, rgba(255, 255, 255, 0.10)),
+    0 26px 60px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+/* Light theme goes the other way for the same reason: white is already
+   clear of the #faf9f7 canvas and every card on it. */
+[data-theme="light"] .tc-seat[data-open] {
+  background: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 24px 54px rgba(28, 25, 23, 0.18),
+    0 0 0 1px rgba(28, 25, 23, 0.06);
+}
+
+/* Faces. Every state of the seat is a face swapped inside one shell.
+   The shell leads and the content follows: size runs 460ms, and the incoming
+   face waits 140ms before it starts to appear. That delay is the whole trick —
+   content arriving while the box is still travelling reads as a glitch, and
+   content arriving as the box settles reads as the box revealing it.
+
+   `backwards` is what makes this work on a freshly mounted element: during the
+   delay the animation holds its first keyframe, so a face React just rendered
+   sits invisible until the shell has nearly arrived rather than flashing in at
+   full opacity and then animating. */
+.tc-seat-face { animation: tc-seat-face-in 200ms ease 140ms backwards; }
+@keyframes tc-seat-face-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Section headings inside a face. */
+.tc-seat-group {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--text-faint); padding: 10px 12px 4px;
+}
+
+/* A row in the roster: who could hold the seat. */
+.tc-seat-option {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 10px; text-align: left;
+  border: 0; background: none; cursor: pointer; color: var(--text-secondary);
+  border-radius: 11px; corner-shape: squircle;
+  font-size: 12.5px;
+  transition: background .13s ease, color .13s ease;
+}
+.tc-seat-option:hover { background: color-mix(in srgb, var(--text-primary) 7%, transparent); color: var(--text-primary); }
+.tc-seat-option:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tc-seat-option img { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+.tc-seat-option[data-danger]:hover { color: var(--red); }
+
+/* The occupant is the control: clicking who holds the seat is how you
+   change who holds it, which retires the separate "change ▾" trigger. */
+.tc-seat-avatar {
+  position: relative; display: grid; place-items: center;
+  width: 30px; height: 30px; flex-shrink: 0;
+  border: 0; padding: 0; cursor: pointer;
+  border-radius: 10px; corner-shape: squircle;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  transition: background .15s ease, transform .15s ease;
+}
+.tc-seat-avatar:hover { background: color-mix(in srgb, var(--text-primary) 12%, transparent); }
+.tc-seat-avatar:active { transform: scale(0.93); }
+.tc-seat-avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-seat-avatar img { width: 21px; height: 21px; object-fit: contain; display: block; }
+
+/* Vacant is a chair, not a sentence. "Assign workspace manager" reads as a
+   settings row; an empty seat reads as something missing an occupant. */
+.tc-seat-avatar[data-empty] {
+  background: none;
+  border: 1.4px dashed color-mix(in srgb, var(--text-primary) 26%, transparent);
+}
+.tc-seat-avatar[data-empty]::after {
+  content: ""; width: 10px; height: 10px;
+  background:
+    linear-gradient(var(--text-muted), var(--text-muted)) center / 10px 1.4px no-repeat,
+    linear-gradient(var(--text-muted), var(--text-muted)) center / 1.4px 10px no-repeat;
+}
+
+/* A working manager breathes. A collapsed control that only sits there is
+   wasted space; this is the cheapest possible way to make it report. */
+.tc-seat-avatar .tc-seat-pulse {
+  position: absolute; inset: -2px; pointer-events: none;
+  border-radius: 12px; corner-shape: squircle;
+  animation: tc-seat-breathe 2.4s ease-in-out infinite;
+}
+@keyframes tc-seat-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 46%, transparent); }
+  55% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--green) 0%, transparent); }
+}
+
+/* Reading a predecessor's tenure. Tinted with the seat hue, which is that
+   agent's colour while their transcript is on screen — so "live or archive"
+   is answered by the room before you have read the banner. */
+.tc-seat-archive {
+  display: flex; align-items: center; gap: 9px; flex-shrink: 0;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--seat-hue, var(--accent)) 11%, transparent);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text-muted);
+}
+.tc-seat-archive img { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; }
+.tc-seat-archive b { color: var(--text-secondary); font-weight: 500; }
+.tc-seat-archive button {
+  flex-shrink: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 11.5px; padding: 0;
+  color: color-mix(in srgb, var(--seat-hue, var(--accent)) 70%, var(--text-primary));
+}
+.tc-seat-archive button:hover { text-decoration: underline; }
+
+/* The handover, at the head of a conversation.
+   Centred and quiet: it is an event, not a turn, and it should not look like
+   either side spoke. The briefing it hides is setup the agent was given — worth
+   being able to read, not worth reading every time. */
+.tc-handover {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 6px 8px 12px;
+  text-align: center;
+}
+.tc-handover-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+.tc-handover-row img { width: 15px; height: 15px; object-fit: contain; }
+.tc-handover-row .tc-mono { color: var(--text-secondary); }
+.tc-handover-time { color: var(--text-faint); }
+.tc-handover-toggle {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 10.5px; color: var(--text-faint);
+}
+.tc-handover-toggle:hover { color: var(--text-secondary); text-decoration: underline; }
+.tc-handover-briefing {
+  margin: 4px 0 0; text-align: left;
+  font-size: 11.5px; line-height: 1.55; color: var(--text-muted);
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 10px;
+}
+
+/* Session tiles. An earlier draft drew this as a connected timeline, which
+   described the data precisely and read as a diagram — you scan history
+   asking "which one was that", and a row you can scan beats a line you have
+   to follow. The agent mark still says who held the seat. */
+.tc-seat-session {
+  display: flex; gap: 11px; align-items: flex-start;
+  width: 100%; padding: 9px 10px; text-align: left;
+  border: 0; background: none; cursor: pointer; color: inherit;
+  border-radius: 12px; corner-shape: squircle;
+  transition: background .13s ease;
+}
+.tc-seat-session:hover { background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.tc-seat-session:disabled { opacity: .4; cursor: default; }
+.tc-seat-session:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tc-seat-session .mark {
+  width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px;
+  display: grid; place-items: center;
+  border-radius: 7px; corner-shape: squircle;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+.tc-seat-session .mark img { width: 15px; height: 15px; object-fit: contain; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-seat { transition: none; }
+  .tc-seat-avatar .tc-seat-pulse { animation: none; }
+}
+
+/* Menus that open over the seat.
+   Glass is right for chrome and wrong for reading, and a popover is read. It
+   keeps the blur — that is what separates it from whatever is behind — but the
+   tint goes nearly opaque so the words are legible. A step lighter than the
+   seat's black on purpose, so a menu over the panel reads as on top of it. */
+.tc-pill-reading {
+  background: color-mix(in srgb, var(--surface) 96%, transparent) !important;
+}
+.tc-segment > button { border-radius: 8px; corner-shape: squircle; }
+
+.tc-rail-btn {
+  border-radius: 12px;
+  corner-shape: squircle;
+}
+.tc-rail-btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+}
+.tc-rail-btn[data-on] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-primary);
+}
+.tc-rail-btn[data-on]:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* The rail's creation group scrolls when the window is too short for every
+   button, but a visible gutter inside 52px would crop the icons. */
+.tc-rail-scroll { scrollbar-width: none; }
+.tc-rail-scroll::-webkit-scrollbar { display: none; }
+
+/* ── First run ───────────────────────────────────────────────────────
+   A dialog, in the family Settings belongs to. Blocking is about focus, not
+   about covering every pixel — a full-bleed version made setup feel like an
+   installer. The canvas stays visible behind and stays unreachable, and it
+   paints its own dot grid, so this only needs the scrim. */
 .tc-onboarding-scrim { position: absolute; inset: 0; background: var(--scrim); }
 .tc-onboarding-card {
   position: relative; width: min(820px, 100%);
@@ -1441,26 +1764,37 @@ a.tc-kbd[data-dragover="true"] {
   border-radius: 14px; box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
   overflow: hidden; display: flex; flex-direction: column;
 }
+/* Centred, because left-ragged content in a wide card left a dead quarter on
+   the right — worst on step two, where five tiles in threes leave the last row
+   hanging off one edge. On a centre axis the short row sits under the middle of
+   the row above it. The footer keeps its own left/right split: it is a chrome
+   bar with its own border and fill, not part of the content column. */
 .tc-onboarding-stage {
-  grid-template-columns: minmax(0, 1fr) 232px;
-  gap: 40px; padding: 26px 30px 24px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 30px 30px 26px;
 }
-@media (max-width: 820px) {
-  .tc-onboarding-stage { grid-template-columns: minmax(0, 1fr); gap: 26px; padding: 24px 22px 20px; }
-}
+@media (max-width: 820px) { .tc-onboarding-stage { padding: 26px 22px 22px; } }
 
 .tc-onboarding-title {
   margin: 0; font-size: 23px; font-weight: 600; letter-spacing: -0.02em;
-  line-height: 1.2; text-wrap: balance; max-width: 34ch;
+  line-height: 1.2; text-wrap: balance; max-width: 30ch; margin-inline: auto;
   color: var(--text-primary);
 }
 .tc-onboarding-body {
-  margin: 8px 0 0; font-size: 13.5px; color: var(--text-secondary); max-width: 46ch;
+  margin: 9px auto 0; font-size: 13.5px; color: var(--text-secondary);
+  max-width: 46ch; text-wrap: pretty;
 }
 
-.tc-onboarding-choices { display: grid; gap: 9px; margin-top: 20px; max-width: 560px; }
-.tc-onboarding-choices.two { grid-template-columns: 1fr 1fr; }
-@media (max-width: 640px) { .tc-onboarding-choices.two { grid-template-columns: 1fr; } }
+/* ── Step 1: folders, plural ─────────────────────────────────────── */
+/* Fixed tracks rather than 1fr, so a short final row centres under the one
+   above it instead of stretching to the edges. */
+.tc-onboarding-choices {
+  display: grid; grid-template-columns: repeat(2, 252px);
+  justify-content: center; gap: 10px; margin-top: 22px;
+}
+@media (max-width: 640px) {
+  .tc-onboarding-choices { grid-template-columns: minmax(0, 300px); }
+}
 
 .tc-onboarding-choice {
   /* The badge ring must be the colour of the card behind it or it reads as a
@@ -1487,7 +1821,7 @@ a.tc-kbd[data-dragover="true"] {
   position: relative; width: 34px; height: 34px; display: grid; place-items: center;
 }
 .tc-onboarding-choice .mark img {
-  width: 30px; height: 30px; display: block;
+  width: 30px; height: 30px; display: block; object-fit: contain;
   transition: transform .18s cubic-bezier(.2, .7, .3, 1);
 }
 .tc-onboarding-choice:hover .mark img { transform: scale(1.07); }
@@ -1505,84 +1839,108 @@ a.tc-kbd[data-dragover="true"] {
 .tc-onboarding-choice .plus svg rect { fill: var(--pin-foreground); }
 .tc-onboarding-choice:hover .plus { transform: scale(1.08); }
 
-.tc-onboarding-quiet {
-  margin-top: 14px; background: none; border: 0; padding: 4px 0; font: inherit;
-  font-size: 13px; color: var(--text-muted); cursor: pointer;
+/* What has been added, under the buttons that added it. There is no standing
+   summary panel: an empty one spent a third of the card on two "None yet"
+   labels before you had done anything. The paths themselves stay left-ragged
+   inside the centred block — centred paths are unreadable. */
+.tc-onboarding-picked {
+  list-style: none; margin: 22px auto 0; padding: 0; display: grid; gap: 2px;
+  width: 514px; max-width: 100%; text-align: left;
 }
-.tc-onboarding-quiet:hover { color: var(--text-primary); }
-
-/* The rail: every slot present from the first frame, so the shape of the
-   workspace is visible before any of it is real. */
-.tc-onboarding-rail { border-left: 1px solid var(--border); padding-left: 24px; }
-@media (max-width: 820px) {
-  .tc-onboarding-rail {
-    border-left: 0; padding-left: 0;
-    border-top: 1px solid var(--border); padding-top: 18px;
-  }
+.tc-onboarding-row {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) 18px; gap: 10px;
+  align-items: center; padding: 6px 8px 6px 10px; margin-left: -10px;
+  border-radius: 8px; transition: background .2s ease;
 }
-.tc-onboarding-rail h3 {
-  margin: 0 0 14px; font-size: 11px; font-weight: 500; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--text-faint);
-}
-.tc-onboarding-rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-/* Padded on all four sides and pulled left by the same amount, so the lit
-   background has room around the mark instead of starting flush against it,
-   while the marks stay aligned with the heading above them. */
-.tc-onboarding-slot {
-  display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 12px;
-  align-items: center; padding: 8px 10px; margin-left: -10px;
-  border-radius: 9px; transition: background .2s ease;
-}
-/* Marks flush left in a fixed cell so one mark and a pair start at the same x.
-   They do not overlap: Claude's fills its box edge to edge and Codex's is a
-   round blob, so stacking them turns two shapes into one smudge. */
-.tc-onboarding-slot .marks { display: flex; align-items: center; gap: 6px; }
-.tc-onboarding-slot img {
-  width: 22px; height: 22px; display: block; border-radius: 4px;
-  filter: grayscale(1); opacity: .45;
-  transition: filter .34s ease, opacity .34s ease, transform .34s cubic-bezier(.2, .7, .3, 1);
-}
-.tc-onboarding-slot .text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.tc-onboarding-slot .label {
+.tc-onboarding-row img { width: 20px; height: 20px; display: block; object-fit: contain; }
+.tc-onboarding-row .label {
   font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px;
-  color: var(--text-faint); transition: color .3s ease;
+  color: var(--text-metadata);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tc-onboarding-slot .hint {
-  font-size: 11px; color: var(--text-faint); opacity: .8;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.tc-onboarding-row .drop {
+  opacity: 0; background: none; border: 0; cursor: pointer; padding: 0;
+  color: var(--text-muted); font: inherit; font-size: 15px; line-height: 1;
+  transition: opacity .14s ease, color .14s ease;
 }
-.tc-onboarding-slot[data-state="done"] img { filter: none; opacity: 1; }
-.tc-onboarding-slot[data-state="done"] .label { color: var(--text-metadata); }
-.tc-onboarding-slot[data-state="skipped"] .label {
-  text-decoration: line-through; text-decoration-thickness: 1px;
+.tc-onboarding-row:hover .drop { opacity: 1; }
+.tc-onboarding-row .drop:hover { color: var(--text-primary); }
+.tc-onboarding-row .drop:focus-visible {
+  opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
 }
-/* The one moment of motion: a slot lighting up when you complete a step. */
-.tc-onboarding-slot[data-lit] { background: var(--pin-soft); }
-.tc-onboarding-slot[data-lit] img { animation: tc-onboarding-pop .42s cubic-bezier(.2, .7, .3, 1); }
+/* The one moment of motion: a row lighting up when you add a folder. */
+.tc-onboarding-row[data-just] { background: var(--pin-soft); }
+.tc-onboarding-row[data-just] img { animation: tc-onboarding-pop .42s cubic-bezier(.2, .7, .3, 1); }
 @keyframes tc-onboarding-pop {
   0% { transform: scale(.82); }
   55% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .tc-onboarding-slot img, .tc-onboarding-slot .label, .tc-onboarding-choice { transition: none; }
-  .tc-onboarding-slot[data-lit] img { animation: none; }
+
+/* ── Step 2: agents, plural ──────────────────────────────────────── */
+/* A grid, not a list. Agents down a column read as a settings panel and
+   scroll; laid out as tiles they are scannable at a glance and the whole set
+   fits without the card outgrowing the window. Four across is one clean row —
+   three columns would leave the fourth stranded on a row of its own. */
+.tc-onboarding-agents {
+  display: grid; grid-template-columns: repeat(4, 150px);
+  justify-content: center; gap: 10px; margin-top: 22px;
+}
+@media (max-width: 760px) {
+  .tc-onboarding-agents { grid-template-columns: repeat(2, 150px); }
+}
+.tc-onboarding-agent {
+  position: relative; text-align: center; font: inherit; cursor: pointer;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 11px;
+  padding: 16px 12px 14px; display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+  transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+.tc-onboarding-agent:hover {
+  border-color: var(--border-hover); background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+.tc-onboarding-agent:active { transform: translateY(0); }
+.tc-onboarding-agent:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-onboarding-agent[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+/* Not every mark is square — OpenCode's is 4:5 — so contain rather than
+   stretch. Kimi and OpenCode carry their own opaque ground where the rest are
+   transparent, and need a radius so the edge does not read as a raw rectangle. */
+.tc-onboarding-agent img {
+  width: 30px; height: 30px; display: block; object-fit: contain;
+  transition: transform .18s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-agent img.tile { border-radius: 6px; }
+.tc-onboarding-agent:hover img { transform: scale(1.06); }
+.tc-onboarding-agent .info {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%;
+}
+.tc-onboarding-agent .t { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.tc-onboarding-agent .d {
+  font-size: 11.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Drawn, not typed — a tick glyph at this size lands wherever the font's
+   metrics put it. */
+.tc-onboarding-agent .check {
+  position: absolute; top: 9px; right: 9px;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--border-hover); display: grid; place-items: center;
+  transition: background .16s ease, border-color .16s ease;
+}
+.tc-onboarding-agent[aria-pressed="true"] .check { background: var(--accent); border-color: var(--accent); }
+.tc-onboarding-agent .check svg { width: 10px; height: 10px; opacity: 0; transition: opacity .16s ease; }
+.tc-onboarding-agent[aria-pressed="true"] .check svg { opacity: 1; }
+.tc-onboarding-agent .check svg path {
+  stroke: var(--accent-foreground); stroke-width: 2.2; fill: none;
+  stroke-linecap: round; stroke-linejoin: round;
 }
 
-.tc-onboarding-handoff { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 11px; max-width: 470px; }
-.tc-onboarding-handoff li {
-  display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px;
-  align-items: center; font-size: 13.5px; color: var(--text-secondary);
+@media (prefers-reduced-motion: reduce) {
+  .tc-onboarding-choice, .tc-onboarding-agent, .tc-onboarding-row { transition: none; }
+  .tc-onboarding-row[data-just] img { animation: none; }
 }
-.tc-onboarding-handoff img { width: 22px; height: 22px; display: block; border-radius: 4px; }
-.tc-onboarding-start {
-  margin-top: 24px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  background: var(--accent); color: var(--accent-foreground);
-  border: 1px solid var(--accent); border-radius: 9px; padding: 10px 20px;
-  transition: transform .14s ease;
-}
-.tc-onboarding-start:hover { transform: translateY(-1px); }
 
 .tc-onboarding-foot {
   display: flex; align-items: center; gap: 16px;
@@ -1592,7 +1950,7 @@ a.tc-kbd[data-dragover="true"] {
 @media (max-width: 820px) { .tc-onboarding-foot { padding: 13px 22px; } }
 .tc-onboarding-rule {
   flex: 1; height: 2px; background: var(--border); border-radius: 2px;
-  overflow: hidden; max-width: 250px;
+  overflow: hidden; max-width: 200px;
 }
 .tc-onboarding-rule span {
   display: block; height: 100%; background: var(--accent);
@@ -1604,3 +1962,9 @@ a.tc-kbd[data-dragover="true"] {
   color: var(--text-muted); padding: 4px 6px; border-radius: 5px;
 }
 .tc-onboarding-foot button:hover { color: var(--text-primary); }
+.tc-onboarding-foot button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-onboarding-foot button.go {
+  background: var(--accent); color: var(--accent-foreground); font-weight: 600;
+  padding: 7px 15px; border-radius: 8px; font-size: 13px;
+}
+.tc-onboarding-foot button.go:hover { color: var(--accent-foreground); }

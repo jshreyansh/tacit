@@ -330,6 +330,9 @@ export function WorktreeLabelLayer() {
   const viewport = useCanvasStore((s) => s.viewport);
   const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
   const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
+  // The code panel shares the left edge, so it widens the same chrome.
+  const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
+  const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
   const compactColumns = usePreferencesStore(
     (s) => s.worktreeCompactColumns,
@@ -393,6 +396,8 @@ export function WorktreeLabelLayer() {
     leftPanelCollapsed,
     leftPanelWidth,
     taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
 
   const clusterEntries: ClusterEntry[] = useLodMode

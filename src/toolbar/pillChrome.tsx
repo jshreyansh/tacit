@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
-import {
-  fitAllProjects,
-  setZoomToHundred,
-  stepZoomAtCenter,
-} from "../canvas/zoomActions";
-import {
-  clampScale,
-  getViewportCenterClientPoint,
-  zoomAtClientPoint,
-} from "../canvas/viewportZoom";
-import { TOOLBAR_HEIGHT } from "./toolbarHeight";
-import { useT } from "../i18n/useT";
+
+/**
+ * Shared chrome for the floating pills.
+ *
+ * This was BottomToolbar.tsx, which owned the zoom controls as well. Those
+ * moved into the right rail — a canvas app should not put its view controls in
+ * a fourth place — and what is left is the glass, the popover hooks and the
+ * composer offset, which the workspace manager pill still needs.
+ */
 
 // ComposerBar sits at `bottom-4` (16 px). Its height varies — single
 // line vs multi-line vs with image attachments vs rename mode — so a
@@ -74,46 +69,6 @@ const ZOOM_PRESETS: ZoomPreset[] = [
   { scale: 1, label: "100%", hint: KEY_HINT.zoom100 },
   { scale: 2, label: "200%" },
 ];
-
-export // Corner-bracket "fit to screen" glyph — the same viewfinder metaphor
-// October's own zoom pill uses for its expand icon, in place of a text
-// label.
-function FitIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-    >
-      <path d="M1.5 5V2.5a1 1 0 0 1 1-1H5" />
-      <path d="M10 1.5h2.5a1 1 0 0 1 1 1V5" />
-      <path d="M13.5 10v2.5a1 1 0 0 1-1 1H10" />
-      <path d="M5 13.5H2.5a1 1 0 0 1-1-1V10" />
-    </svg>
-  );
-}
-
-// Target/crosshair glyph for Focus view — "bring one thing into focus" is
-// a camera-focus metaphor, reads clearly at icon size unlike a text label.
-function FocusIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    >
-      <circle cx="7.5" cy="7.5" r="5.25" />
-      <circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
 
 export function useCloseOnOutsideClick(
   open: boolean,
@@ -198,8 +153,8 @@ export function usePopoverKeyboardNav({
 }
 
 /**
- * Shared by every floating bottom-center pill (this toolbar, AddNodeDock)
- * so they all sit consistently just above ComposerBar's measured height
+ * Shared by every floating bottom-center pill (this toolbar, the workspace
+ * manager) so they all sit consistently just above ComposerBar's measured height
  * (published as `--composer-height`) instead of each hard-coding its own
  * guess, or drifting out of sync if the composer's layout ever changes.
  */
@@ -208,186 +163,4 @@ export function useComposerBottomOffset(): string {
   return composerEnabled
     ? `calc(${COMPOSER_BOTTOM_INSET}px + var(--composer-height, ${COMPOSER_FALLBACK_HEIGHT}px) + ${COMPOSER_GAP}px)`
     : `${BOTTOM_OFFSET_PLAIN}px`;
-}
-
-export function BottomToolbar() {
-  const t = useT();
-  const viewport = useCanvasStore((s) => s.viewport);
-  const focusModeActive = useCanvasStore((s) => s.focusMode.active);
-
-  const [presetOpen, setPresetOpen] = useState(false);
-  const presetWrapperRef = useRef<HTMLDivElement>(null);
-  const presetPopoverRef = useRef<HTMLDivElement>(null);
-  const presetTriggerRef = useRef<HTMLButtonElement>(null);
-
-  const closePresetMenu = useCallback(() => setPresetOpen(false), []);
-  const togglePresetMenu = useCallback(
-    () => setPresetOpen((prev) => !prev),
-    [],
-  );
-
-  useCloseOnOutsideClick(presetOpen, presetWrapperRef, closePresetMenu);
-
-  usePopoverKeyboardNav({
-    open: presetOpen,
-    popoverRef: presetPopoverRef,
-    triggerRef: presetTriggerRef,
-    // +1 for the Reset row appended after the presets.
-    itemCount: ZOOM_PRESETS.length + 1,
-    close: closePresetMenu,
-  });
-
-  const applyPreset = useCallback((nextScale: number) => {
-    if (nextScale === 1) {
-      setZoomToHundred();
-      return;
-    }
-    const {
-      leftPanelCollapsed,
-      leftPanelWidth,
-      rightPanelCollapsed,
-      rightPanelWidth,
-      viewport: current,
-    } = useCanvasStore.getState();
-    const taskDrawerOpen = usePinStore.getState().openProjectPath !== null;
-    const center = getViewportCenterClientPoint({
-      leftPanelCollapsed,
-      leftPanelWidth,
-      rightPanelCollapsed,
-      rightPanelWidth,
-      taskDrawerOpen,
-      topInset: TOOLBAR_HEIGHT,
-    });
-    useCanvasStore.getState().setViewport(
-      zoomAtClientPoint({
-        clientX: center.x,
-        clientY: center.y,
-        leftPanelCollapsed,
-        leftPanelWidth,
-        taskDrawerOpen,
-        nextScale: clampScale(nextScale),
-        viewport: current,
-      }),
-    );
-  }, []);
-
-  const zoomPercent = Math.round(viewport.scale * 100);
-  const bottomOffset = useComposerBottomOffset();
-
-  return (
-    <div
-      className="fixed right-4 z-[95] pointer-events-none"
-      style={{ bottom: bottomOffset }}
-    >
-      <div
-        className={`pointer-events-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 ${PILL_GLASS}`}
-      >
-        <div className={groupBase}>
-          <button
-            className={iconButton}
-            onClick={() => stepZoomAtCenter("out")}
-            title={t.zoom_out}
-            aria-label={t.zoom_out}
-          >
-            <span className="text-[14px] leading-none">−</span>
-          </button>
-
-          <div className="relative" ref={presetWrapperRef}>
-            <button
-              ref={presetTriggerRef}
-              className={zoomReadout}
-              onClick={togglePresetMenu}
-              title={t.canvas_zoom_to}
-              aria-haspopup="menu"
-              aria-expanded={presetOpen}
-              style={{ fontFamily: '"Geist Mono", monospace' }}
-            >
-              {zoomPercent}%
-            </button>
-            {presetOpen && (
-              <div
-                ref={presetPopoverRef}
-                role="menu"
-                aria-label={t.canvas_zoom_to}
-                className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 min-w-[140px] rounded-md py-1 ${PILL_GLASS}`}
-              >
-                {ZOOM_PRESETS.map((preset) => (
-                  <button
-                    key={preset.scale}
-                    data-popover-item
-                    role="menuitem"
-                    tabIndex={-1}
-                    className="flex w-full items-center justify-between px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] focus:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] focus:text-[var(--text-primary)] focus:outline-none"
-                    onClick={() => {
-                      applyPreset(preset.scale);
-                      closePresetMenu();
-                    }}
-                  >
-                    <span>{preset.label}</span>
-                    <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                      {preset.hint ?? ""}
-                    </span>
-                  </button>
-                ))}
-                <div className="my-1 h-px bg-[var(--border)] opacity-60" />
-                <button
-                  data-popover-item
-                  role="menuitem"
-                  tabIndex={-1}
-                  className="flex w-full items-center justify-between px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] focus:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] focus:text-[var(--text-primary)] focus:outline-none"
-                  onClick={() => {
-                    useCanvasStore.getState().resetViewport();
-                    closePresetMenu();
-                  }}
-                >
-                  <span>{t.reset}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button
-            className={iconButton}
-            onClick={() => stepZoomAtCenter("in")}
-            title={t.zoom_in}
-            aria-label={t.zoom_in}
-          >
-            <span className="text-[14px] leading-none">+</span>
-          </button>
-        </div>
-
-        <div aria-hidden="true" className={dividerCls} />
-
-        <button
-          className={iconButton}
-          onClick={fitAllProjects}
-          title={`${t.fit} (${KEY_HINT.fit})`}
-          aria-label={t.fit}
-        >
-          <FitIcon />
-        </button>
-
-        <button
-          className={`${iconButton} ${
-            focusModeActive
-              ? "bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] text-[var(--text-primary)]"
-              : ""
-          }`}
-          onClick={() => {
-            const store = useCanvasStore.getState();
-            if (store.focusMode.active) {
-              store.exitFocusMode();
-            } else {
-              store.enterFocusMode();
-            }
-          }}
-          title={focusModeActive ? t.exit_focus_view : t.focus_view}
-          aria-label={focusModeActive ? t.exit_focus_view : t.focus_view}
-          aria-pressed={focusModeActive}
-        >
-          <FocusIcon />
-        </button>
-      </div>
-    </div>
-  );
 }

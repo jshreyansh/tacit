@@ -29,7 +29,6 @@ import { usePreferencesStore } from "../stores/preferencesStore";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
 import {
   PANEL_TRANSITION_DURATION_MS,
-  PANEL_TRANSITION_EASING_CSS,
 } from "../utils/panelAnimation";
 import { useT } from "../i18n/useT";
 import { FamilyTreeOverlay } from "../components/FamilyTreeOverlay";
@@ -354,7 +353,6 @@ function XyFlowCanvasInner() {
   const activityHeatmapEnabled = usePreferencesStore(
     (state) => state.activityHeatmapEnabled,
   );
-  const animationBlur = usePreferencesStore((state) => state.animationBlur);
   const canvasOpacity = usePreferencesStore((state) => state.canvasOpacity);
   const canvasBackgroundImage = usePreferencesStore(
     (state) => state.canvasBackgroundImage,
@@ -369,12 +367,6 @@ function XyFlowCanvasInner() {
     [pinsByProject],
   );
   const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
-  const sidebarDragging = useSidebarDragStore((s) => s.active);
   const isDrawing = drawingEnabled && drawingTool !== "select";
   const isPanMode = canvasTool === "hand" || spaceHeld;
   const [isPanning, setIsPanning] = useState(false);
@@ -1011,15 +1003,11 @@ function XyFlowCanvasInner() {
   return (
     <div
       ref={canvasContainerRef}
-      className={`fixed top-0 right-0 bottom-0 overflow-hidden canvas-bg ${cursorClass}`}
+      // Full-bleed. The chrome floats over the canvas rather than squeezing
+      // it, so there is no edge for an unpainted corner to appear at.
+      className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass}`}
       data-activity-heatmap={activityHeatmapEnabled ? "true" : undefined}
-      style={{
-        left: leftOffset,
-        transition: sidebarDragging
-          ? undefined
-          : `left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`,
-        ...canvasBgStyle,
-      }}
+      style={canvasBgStyle}
       onMouseDownCapture={handleContainerMouseDown}
       onDragEnter={dragOverHandlers.onDragEnter}
       onDragOver={dragOverHandlers.onDragOver}
@@ -1037,14 +1025,7 @@ function XyFlowCanvasInner() {
       />
       <ReactFlow
         className="tc-xyflow"
-        style={{
-          willChange: isAnimating ? "transform" : undefined,
-          filter:
-            animationBlur > 0 && isAnimating
-              ? `blur(${animationBlur}px)`
-              : "none",
-          transition: animationBlur > 0 ? "filter 0.15s ease" : "none",
-        }}
+        style={{ willChange: isAnimating ? "transform" : undefined }}
         defaultViewport={toFlowViewport(viewport)}
         nodes={nodes}
         edges={EMPTY_EDGES}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { createPortal } from "react-dom";
 import type { ProjectData, TerminalData } from "../types";
 import {
@@ -8,7 +9,6 @@ import {
 } from "../stores/projectStore";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
 } from "../stores/canvasStore";
 import { usePinStore } from "../stores/pinStore";
 import { panToTerminal } from "../utils/panToTerminal";
@@ -16,6 +16,7 @@ import { useT } from "../i18n/useT";
 import {
   canvasPointToScreenPoint,
   getCanvasLeftInset,
+  getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { useResolvedTerminalRuntimeState } from "../stores/terminalRuntimeStateStore";
 
@@ -50,7 +51,6 @@ const OVERLAY_GAP = 12;
 const OVERLAY_MARGIN = 8;
 const OVERLAY_MAX_WIDTH = 260;
 const OVERLAY_FALLBACK_HEIGHT = 240;
-const TOOLBAR_HEIGHT = 44;
 
 function FamilyTreeNodeRow({
   node,
@@ -233,16 +233,16 @@ export function FamilyTreeOverlay() {
   const portalTarget = document.body;
   if (!portalTarget) return null;
 
-  const panelWidth = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const panelWidth = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
   const leftInset = getCanvasLeftInset(
     leftPanelCollapsed,
     leftPanelWidth,
     taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const safeLeft = leftInset + OVERLAY_MARGIN;
-  const safeTop = TOOLBAR_HEIGHT + OVERLAY_MARGIN;
+  const safeTop = TITLE_STRIP_HEIGHT + OVERLAY_MARGIN;
   const safeRight = Math.max(
     safeLeft + 1,
     window.innerWidth - panelWidth - OVERLAY_MARGIN,
@@ -289,7 +289,7 @@ export function FamilyTreeOverlay() {
         zIndex: 120,
         minWidth: 180,
         maxWidth: 260,
-        maxHeight: `calc(100vh - ${TOOLBAR_HEIGHT + OVERLAY_MARGIN * 2}px)`,
+        maxHeight: `calc(100vh - ${TITLE_STRIP_HEIGHT + OVERLAY_MARGIN * 2}px)`,
         overflowY: "auto",
         animation: "fadeIn 0.15s ease",
       }}

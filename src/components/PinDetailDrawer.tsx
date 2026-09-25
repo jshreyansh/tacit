@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import type { ClipboardEvent, DragEvent } from "react";
 import { ExternalLink } from "lucide-react";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
   PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
+import {
+  getCanvasLeftInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
 import { usePinDragStore } from "../stores/pinDragStore";
 import type { Pin } from "../types";
@@ -22,7 +27,7 @@ import {
 import { useT } from "../i18n/useT";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 
-const TOOLBAR_HEIGHT = 44;
+
 
 function StatusBadge({ status }: { status: Pin["status"] }) {
   const t = useT();
@@ -370,12 +375,14 @@ export function PinDetailDrawer() {
   // require openProjectPath, so by the time isOpen is true the pin
   // drawer is open and the +320 is folded into the inset.
   const pinDrawerOpen = openProjectPath !== null || composingForPin !== null;
-  const effectiveLeftInset =
-    (leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth) +
-    (pinDrawerOpen ? PIN_DRAWER_WIDTH : 0);
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const effectiveLeftInset = getCanvasLeftInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    pinDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
+  );
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   // Memoize markdown parse so editing-buffer re-renders or unrelated parent
   // updates don't re-parse a multi-KB body and re-construct a Marked
@@ -399,12 +406,12 @@ export function PinDetailDrawer() {
   return (
     <>
       <div
-        className="fixed bg-[var(--bg)] border-l border-[var(--border)] flex flex-col overflow-hidden"
+        className="tc-float fixed flex flex-col overflow-hidden"
         style={{
           zIndex: 45,
-          top: TOOLBAR_HEIGHT,
+          top: CHROME_TOP,
           left: effectiveLeftInset,
-          height: `calc(100vh - ${TOOLBAR_HEIGHT}px)`,
+          height: CHROME_HEIGHT,
           width: `calc(100vw - ${effectiveLeftInset}px - ${rightInset}px)`,
           opacity: isOpen ? 1 : 0,
           // Opacity rides the role-based motion tokens; left/width stay on

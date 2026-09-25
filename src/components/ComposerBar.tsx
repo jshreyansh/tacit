@@ -11,7 +11,8 @@ import { findTerminalById, useProjectStore } from "../stores/projectStore";
 import { useComposerStore } from "../stores/composerStore";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { useCanvasStore, COLLAPSED_TAB_WIDTH } from "../stores/canvasStore";
+import { useCanvasStore } from "../stores/canvasStore";
+import { getRightPanelInset } from "../canvas/viewportBounds";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import { getComposerAdapter } from "../terminal/cliConfig";
 import { filterSlashCommands } from "../terminal/slashCommands";
@@ -140,7 +141,7 @@ export function ComposerBar() {
   );
   const composerLeft = 0;
   const composerRight = useCanvasStore((s) =>
-    s.rightPanelCollapsed ? COLLAPSED_TAB_WIDTH : s.rightPanelWidth,
+    getRightPanelInset(s.rightPanelCollapsed, s.rightPanelWidth),
   );
   const isRenameMode = mode === "renameTerminalTitle";
 

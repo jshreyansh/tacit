@@ -8,7 +8,6 @@ export function CanvasCardLayer() {
   const viewport = useCanvasStore((state) => state.viewport);
   const isAnimating = useCanvasStore((state) => state.isAnimating);
   const browserCardMap = useBrowserCardStore((state) => state.cards);
-  const animationBlur = usePreferencesStore((state) => state.animationBlur);
   const browserCards = useMemo(
     () => Object.values(browserCardMap),
     [browserCardMap],
@@ -29,9 +28,6 @@ export function CanvasCardLayer() {
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
           transformOrigin: "0 0",
           willChange: isAnimating ? "transform" : undefined,
-          filter:
-            animationBlur > 0 && isAnimating ? `blur(${animationBlur}px)` : "none",
-          transition: animationBlur > 0 ? "filter 0.15s ease" : "none",
         }}
       >
         {browserCards.map((card) => (

@@ -1,18 +1,25 @@
 import { useCallback, useState, useRef, useMemo, useEffect } from "react";
-import { useCanvasStore, COLLAPSED_TAB_WIDTH } from "../stores/canvasStore";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import {
+  useCanvasStore,
+  CHROME_GAP,
+  CHROME_INSET,
+  LEFT_RAIL_WIDTH,
+} from "../stores/canvasStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
 import { useT } from "../i18n/useT";
+import { PanelCollapseButton } from "./PanelCollapseButton";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { panToTerminal } from "../utils/panToTerminal";
 import {
+  PANEL_REVEAL_TRANSITION,
   PANEL_TRANSITION_DURATION_MS,
   PANEL_TRANSITION_EASING_FN,
 } from "../utils/panelAnimation";
-import type { LeftPanelTab } from "../stores/canvasStore";
 import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { buildProjectTree, type CanvasTerminalItem } from "./sessionPanelModel";
 import { ProjectTree } from "./ProjectTree";
@@ -29,51 +36,6 @@ import { PinDrawer } from "./PinDrawer";
  *      the replay drawer.
  */
 
-function IconSessions({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 3.5h10v9H3z" />
-      <path d="M5 6h6M5 8.5h4" />
-    </svg>
-  );
-}
-
-function IconHistory({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M8 3a5 5 0 1 1-4.2 2.3" />
-      <path d="M3.2 3.5v2.2h2.2" />
-      <path d="M8 5.5V8l1.8 1.2" />
-    </svg>
-  );
-}
-
-const LEFT_TAB_CONFIG: {
-  id: LeftPanelTab;
-  icon: typeof IconSessions;
-  labelKey: "left_panel_sessions" | "left_panel_history";
-}[] = [
-  { id: "sessions", icon: IconSessions, labelKey: "left_panel_sessions" },
-  { id: "history", icon: IconHistory, labelKey: "left_panel_history" },
-];
 
 export function LeftPanel() {
   const t = useT();
@@ -82,7 +44,6 @@ export function LeftPanel() {
   const activeTab = useCanvasStore((s) => s.leftPanelActiveTab);
   const setCollapsed = useCanvasStore((s) => s.setLeftPanelCollapsed);
   const setWidth = useCanvasStore((s) => s.setLeftPanelWidth);
-  const setActiveTab = useCanvasStore((s) => s.setLeftPanelActiveTab);
 
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
@@ -181,24 +142,35 @@ export function LeftPanel() {
     [openSessions, loadReplay],
   );
 
-  // When the panel collapses or expands, re-centre the focused
-  // terminal in the canvas. Use the same duration / easing as the
-  // panel width transition so the viewport pan stays in lockstep
-  // with the CSS-animated panel + canvas edges.
+  /**
+   * Keep the focused terminal framed while the panel animates.
+   *
+   * There is deliberately no branch for "nothing focused". An earlier version
+   * offset the viewport by the panel's width to hold the scene still, which was
+   * right when the canvas element's own left edge moved and the whole scene
+   * really did slide. The canvas is full-bleed now and the panel floats over
+   * it, so the scene already holds still — compensating moved it for no reason,
+   * and only on this side, because the right panel never had the branch.
+   *
+   * `preserveScale` is the other half: `flyToBounds` refits the zoom by
+   * default, so opening a list silently changed how far in you were zoomed.
+   */
   const prevCollapsedRef = useRef(collapsed);
   useEffect(() => {
     if (prevCollapsedRef.current === collapsed) return;
     prevCollapsedRef.current = collapsed;
+
     const tid = projects
       .flatMap((p) => p.worktrees)
       .flatMap((w) => w.terminals)
       .find((term) => term.focused)?.id;
-    if (tid) {
-      panToTerminal(tid, {
-        duration: PANEL_TRANSITION_DURATION_MS,
-        easing: PANEL_TRANSITION_EASING_FN,
-      });
-    }
+    if (!tid) return;
+
+    panToTerminal(tid, {
+      preserveScale: true,
+      duration: PANEL_TRANSITION_DURATION_MS,
+      easing: PANEL_TRANSITION_EASING_FN,
+    });
   }, [collapsed, projects]);
 
   const handleResizeStart = useCallback(
@@ -252,10 +224,11 @@ export function LeftPanel() {
   // two states is ever in the DOM, so there are no persistent
   // compositor layers that can get stuck unpainted after a
   // foreground/background switch.
-  const displayedWidth = collapsed ? COLLAPSED_TAB_WIDTH : width;
-  const widthTransition = dragging
-    ? undefined
-    : "width 240ms cubic-bezier(0.22, 0.61, 0.36, 1)";
+  // Collapsed is zero, not a strip. The rail to the left of this panel is the
+  // handle that reopens it, and a second 32px strip beside the rail would be
+  // exactly the edge-crowding the rail moved away from.
+  const displayedWidth = collapsed ? 0 : width;
+  const widthTransition = dragging ? undefined : PANEL_REVEAL_TRANSITION;
 
   const renderTerminal = useCallback(
     (item: CanvasTerminalItem) => (
@@ -275,109 +248,45 @@ export function LeftPanel() {
   return (
     <>
       <PinDrawer />
+      {/* Floats beside the rail, over the canvas. Hidden rather than zero-width
+          when collapsed: a glass box with a shadow still casts one at 0px. */}
       <div
-        className="fixed left-0 z-40 bg-[var(--surface)] border-r border-[var(--border)] overflow-hidden"
-        style={{
-          top: 44,
-          height: "calc(100vh - 44px)",
+        className="tc-float fixed z-40 overflow-hidden"
+          style={{
+          top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+          left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
+          bottom: CHROME_INSET,
           width: displayedWidth,
+        opacity: collapsed ? 0 : 1,
+        pointerEvents: collapsed ? "none" : undefined,
           transition: widthTransition,
         }}
       >
-        {collapsed ? (
-          // Collapsed strip — keep the same tab affordance as the right panel.
-          <div
-            className="tc-row-hover absolute inset-y-0 left-0 flex flex-col items-center pt-3 gap-1 cursor-pointer"
-            style={{ width: COLLAPSED_TAB_WIDTH }}
-            onClick={() => setCollapsed(false)}
-            title={t.left_panel_sessions}
-          >
-            {LEFT_TAB_CONFIG.map(({ id, icon: Icon, labelKey }) => (
-              <button
-                key={id}
-                className={`tc-row-icon flex items-center justify-center w-6 h-6 rounded-md ${
-                  activeTab === id
-                    ? "text-[var(--accent)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                }`}
-                title={t[labelKey]}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveTab(id);
-                  setCollapsed(false);
-                }}
-              >
-                <Icon size={14} />
-              </button>
-            ))}
-            <button
-              className="tc-row-icon flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
-              disabled={addingProject}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveTab("sessions");
-                setCollapsed(false);
-                void handleAddProject();
-              }}
-              title={t.shortcut_add_project}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M6 2V10M2 6H10"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-            <div className="mt-auto mb-3 pointer-events-none">
-              <div className="flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)]">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path
-                    d="M3 2L7 5L3 8"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+        {/* Laid out at the user-configured width so content does not reflow
+            while the outer width animates; the outer overflow-hidden clips it
+            during the transition. */}
+        <div
+          className="absolute inset-y-0 left-0 flex flex-col"
+          style={{ width }}
+        >
+          {/* No tab strip: the rail has a button per surface, and it is the
+              only place that says which one you are on. Two ways to switch the
+              same two tabs is the duplication the rail already removed once
+              when it absorbed this panel's collapsed strip. */}
+          <div className="shrink-0 px-2 pt-2 pb-2">
+            <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg)] p-0.5">
+              <div className="flex-1 min-w-0 truncate px-2 text-[11px] font-semibold text-[var(--text-primary)]">
+                {activeTab === "sessions" ? t.left_panel_sessions : t.left_panel_history}
               </div>
-            </div>
-          </div>
-        ) : (
-          // Expanded surface — laid out at the user-configured width so
-          // content does not reflow while the outer width animates;
-          // the outer overflow-hidden clips it during the transition.
-          <div
-            className="absolute inset-y-0 left-0 flex flex-col"
-            style={{ width }}
-          >
-            <div className="shrink-0 px-2 pt-2 pb-2">
-              <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg)] p-0.5">
-                {LEFT_TAB_CONFIG.map(({ id, icon: Icon, labelKey }) => {
-                  const isActive = activeTab === id;
-                  return (
-                    <button
-                      key={id}
-                      className={`tc-row-icon flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium ${
-                        isActive
-                          ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
-                          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                      }`}
-                      onClick={() => setActiveTab(id)}
-                    >
-                      <Icon size={13} />
-                      {width > 260 && <span>{t[labelKey]}</span>}
-                    </button>
-                  );
-                })}
+              {/* Add-project belongs to Sessions, so it only appears there.
+                  While a tab strip sat in this header it could switch you to
+                  Sessions on the way; now the header names one surface, and a
+                  control that silently moves you to the other one is a lie. */}
+              {activeTab === "sessions" && (
                 <button
                   className="tc-row-icon flex items-center justify-center w-7 h-7 rounded-md text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 ml-0.5 shrink-0"
                   disabled={addingProject}
-                  onClick={() => {
-                    setActiveTab("sessions");
-                    void handleAddProject();
-                  }}
+                  onClick={() => void handleAddProject()}
                   title={t.shortcut_add_project}
                 >
                   <svg
@@ -395,63 +304,48 @@ export function LeftPanel() {
                     />
                   </svg>
                 </button>
-                <button
-                  className="tc-row-icon flex items-center justify-center w-7 h-7 rounded-md text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] shrink-0"
-                  onClick={() => setCollapsed(true)}
-                  title={t.right_panel_collapse}
-                >
-                  {/* Points LEFT — collapsing shrinks the left panel leftward. */}
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path
-                      d="M7 2L3 5L7 8"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="tc-sidebar-tree-font flex-1 min-h-0 overflow-y-auto">
-              {activeTab === "sessions" ? (
-                <>
-                  <ProjectTree
-                    projects={projectTree}
-                    renderTerminal={renderTerminal}
-                  />
-                  {!hasAnyProjects && (
-                    <div className="tc-label flex-1 px-4 py-6 text-center">
-                      {t.sessions_no_canvas_items}
-                    </div>
-                  )}
-                  <StashedSection items={stashedItems} t={t} />
-                </>
-              ) : (
-                <HistorySection
-                  projectDirs={canvasProjectDirs}
-                  onOpen={handleOpenReplay}
-                  t={t}
-                  showHeader={false}
-                />
               )}
-            </div>
-
-            <div
-              className="absolute top-0 right-0 w-1.5 h-full cursor-ew-resize group/resize"
-              onPointerDown={handleResizeStart}
-            >
-              <div
-                className="absolute right-0 top-0 w-px h-full bg-[var(--border)] group-hover/resize:bg-[var(--accent)] group-hover/resize:opacity-70"
-                style={{
-                  transition:
-                    "background-color var(--duration-quick) var(--ease-out-soft), opacity var(--duration-quick) var(--ease-out-soft)",
-                }}
-              />
+              <PanelCollapseButton onCollapse={() => setCollapsed(true)} />
             </div>
           </div>
-        )}
+
+          <div className="tc-sidebar-tree-font flex-1 min-h-0 overflow-y-auto">
+            {activeTab === "sessions" ? (
+              <>
+                <ProjectTree
+                  projects={projectTree}
+                  renderTerminal={renderTerminal}
+                />
+                {!hasAnyProjects && (
+                  <div className="tc-label flex-1 px-4 py-6 text-center">
+                    {t.sessions_no_canvas_items}
+                  </div>
+                )}
+                <StashedSection items={stashedItems} t={t} />
+              </>
+            ) : (
+              <HistorySection
+                projectDirs={canvasProjectDirs}
+                onOpen={handleOpenReplay}
+                t={t}
+                showHeader={false}
+              />
+            )}
+          </div>
+
+          <div
+            className="absolute top-0 right-0 w-1.5 h-full cursor-ew-resize group/resize"
+            onPointerDown={handleResizeStart}
+          >
+            <div
+              className="absolute right-0 top-0 w-px h-full bg-[var(--border)] group-hover/resize:bg-[var(--accent)] group-hover/resize:opacity-70"
+              style={{
+                transition:
+                  "background-color var(--duration-quick) var(--ease-out-soft), opacity var(--duration-quick) var(--ease-out-soft)",
+              }}
+            />
+          </div>
+        </div>
       </div>
     </>
   );

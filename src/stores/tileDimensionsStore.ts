@@ -49,6 +49,8 @@ export function recomputeTileDimensions() {
     leftPanelCollapsed,
     leftPanelWidth,
     usePinStore.getState().openProjectPath !== null,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
   const dims = computeTileDimensions(

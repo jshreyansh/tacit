@@ -1,7 +1,8 @@
 import { useCanvasStore } from "../stores/canvasStore";
+import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { useProjectStore } from "../stores/projectStore";
 import { usePinStore } from "../stores/pinStore";
-import { TOOLBAR_HEIGHT } from "../toolbar/toolbarHeight";
+import { CHROME_BOTTOM, CHROME_TOP } from "./floatingChrome";
 import {
   getCanvasLeftInset,
   getCanvasRightInset,
@@ -33,9 +34,26 @@ function getCanvasInsets() {
   };
 }
 
-export function fitAllProjects(): void {
+/**
+ * Where the viewport has to sit for every terminal to be in view.
+ *
+ * The one copy. This geometry existed three times — here, in
+ * `toggleClearFocus`, and in `useKeyboardShortcuts` — two of them byte for
+ * byte identical. That is why the move to a full-bleed canvas only got fixed
+ * in one of them: the same arithmetic in three files means a change to the
+ * coordinate system has to be found three times, and it will not be.
+ *
+ * Returns null when the geometry is degenerate: a window narrower than its own
+ * padding, or content with no size because a terminal has not been laid out
+ * yet. Either fed NaN into the scale and parked the viewport off-screen.
+ */
+export function computeFitAllViewport(): {
+  x: number;
+  y: number;
+  scale: number;
+} | null {
   const { projects } = useProjectStore.getState();
-  if (projects.length === 0) return;
+  if (projects.length === 0) return null;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -52,7 +70,7 @@ export function fitAllProjects(): void {
       }
     }
   }
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
 
   const contentW = maxX - minX;
   const contentH = maxY - minY;
@@ -61,25 +79,49 @@ export function fitAllProjects(): void {
     insets.leftPanelCollapsed,
     insets.leftPanelWidth,
     insets.taskDrawerOpen,
+    insets.rightPanelCollapsed,
+    insets.rightPanelWidth,
   );
   const rightOffset = getCanvasRightInset(
     insets.rightPanelCollapsed,
     insets.rightPanelWidth,
   );
   const viewW = window.innerWidth - leftOffset - rightOffset - FIT_PADDING * 2;
-  const viewH = window.innerHeight - TOOLBAR_HEIGHT - FIT_PADDING * 2;
-  // Bail if the geometry is degenerate. With a tiny window
-  // (narrower than the padding) viewW / viewH go non-positive; with
-  // zero-sized content (a single terminal that hasn't been laid out
-  // yet) contentW / contentH do. Either case feeds NaN / -Infinity
-  // into the scale calc and lands the viewport off-screen.
-  if (contentW <= 0 || contentH <= 0 || viewW <= 0 || viewH <= 0) {
-    return;
-  }
+  const viewH =
+    window.innerHeight - CHROME_TOP - CHROME_BOTTOM - FIT_PADDING * 2;
+  if (contentW <= 0 || contentH <= 0 || viewW <= 0 || viewH <= 0) return null;
+
   const scale = clampScale(Math.min(1, viewW / contentW, viewH / contentH));
-  const x = -minX * scale + FIT_PADDING;
-  const y = -minY * scale + FIT_PADDING + TOOLBAR_HEIGHT;
-  useCanvasStore.getState().setViewport({ x, y, scale });
+  // Offset by the chrome, not just the padding. These used to be
+  // container-relative — the canvas element started after the left chrome, so
+  // padding alone put content just inside it. Full-bleed, the same number puts
+  // content behind the rail.
+  return {
+    x: -minX * scale + leftOffset + FIT_PADDING,
+    y: -minY * scale + CHROME_TOP + FIT_PADDING,
+    scale,
+  };
+}
+
+/** Fit everything, immediately — the Fit control in the right rail. */
+export function fitAllProjects(): void {
+  const next = computeFitAllViewport();
+  if (!next) return;
+  useCanvasStore.getState().setViewport(next);
+}
+
+/**
+ * Fit everything, animated, and remember the scale.
+ *
+ * The keyboard path and the clear-focus path. It records `fitAllScale` because
+ * overview mode compares against it to decide whether a double-click should
+ * zoom in — which is the only thing separating this from `fitAllProjects`.
+ */
+export function zoomToFitAllTerminals(): void {
+  const next = computeFitAllViewport();
+  if (!next) return;
+  useViewportFocusStore.getState().setFitAllScale(next.scale);
+  useCanvasStore.getState().animateTo(next.x, next.y, next.scale);
 }
 
 export function setZoomToHundred(): void {
@@ -100,7 +142,7 @@ function zoomAroundCenter(nextScale: number): void {
     rightPanelCollapsed: insets.rightPanelCollapsed,
     rightPanelWidth: insets.rightPanelWidth,
     taskDrawerOpen: insets.taskDrawerOpen,
-    topInset: TOOLBAR_HEIGHT,
+    topInset: CHROME_TOP,
   });
   const viewport = useCanvasStore.getState().viewport;
   useCanvasStore.getState().setViewport(

@@ -32,22 +32,24 @@ async function loadPreferencesStoreModule(tag: string) {
   return import(`../src/stores/preferencesStore.ts?${tag}`);
 }
 
-test("preferences default animation blur is off", async () => {
+test("preferences defaults", async () => {
   installLocalStorage();
 
   const { usePreferencesStore } = await loadPreferencesStoreModule("default-off");
 
-  assert.equal(usePreferencesStore.getState().animationBlur, 0);
   assert.equal(usePreferencesStore.getState().terminalRenderer, "webgl");
   assert.equal(usePreferencesStore.getState().completionGlowEnabled, false);
+  // Nearly solid, not half see-through: the desktop behind a working canvas is
+  // noise behind every terminal you read.
+  assert.equal(usePreferencesStore.getState().canvasOpacity, 95);
 });
 
-test("preferences migrate legacy enabled blur booleans to the legacy intensity", async () => {
-  installLocalStorage(JSON.stringify({ animationBlur: true }));
+test("preferences drop the removed animation-blur setting on load", async () => {
+  installLocalStorage(JSON.stringify({ animationBlur: 1.5 }));
 
-  const { usePreferencesStore } = await loadPreferencesStoreModule("legacy-true");
+  const { usePreferencesStore } = await loadPreferencesStoreModule("blur-removed");
 
-  assert.equal(usePreferencesStore.getState().animationBlur, 1.5);
+  assert.equal("animationBlur" in usePreferencesStore.getState(), false);
 });
 
 test("preferences stores and retrieves cliCommands", async () => {
@@ -96,20 +98,20 @@ test("preferences persist terminal renderer mode and default to webgl for unknow
 test("preferences ignore removed smart render settings while preserving supported values", async () => {
   installLocalStorage(JSON.stringify({
     smartRenderEnabled: false,
-    animationBlur: 1.5,
+    terminalFontSize: 15,
   }));
 
   const { usePreferencesStore } = await loadPreferencesStoreModule("smart-render-removed");
   const store = usePreferencesStore.getState();
 
   assert.equal("smartRenderEnabled" in store, false);
-  assert.equal(store.animationBlur, 1.5);
+  assert.equal(store.terminalFontSize, 15);
 
-  store.setAnimationBlur(0);
+  store.setTerminalFontSize(16);
 
   const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal("smartRenderEnabled" in raw, false);
-  assert.equal(raw.animationBlur, 0);
+  assert.equal(raw.terminalFontSize, 16);
 });
 
 test("preferences default terminal size defaults to null (fresh install)", async () => {
@@ -157,7 +159,6 @@ test("preferences persist and sanitize defaultTerminalSize", async () => {
 test("preferences ignore corrupt defaultTerminalSize on load", async () => {
   installLocalStorage(
     JSON.stringify({
-      animationBlur: 0,
       defaultTerminalSize: { w: "huge", h: null },
     }),
   );

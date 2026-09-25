@@ -66,3 +66,21 @@ export const PANEL_TRANSITION_EASING_FN = makeCubicBezierEasing(
   PANEL_BEZIER_P2X,
   PANEL_BEZIER_P2Y,
 );
+
+
+/**
+ * The reveal every floating panel uses: the box unfolds its width while the
+ * contents hold still behind an `overflow-hidden` clip, with a slightly
+ * shorter fade so it never looks like it is arriving empty.
+ *
+ * Stated once because it was written out twice as a literal — in LeftPanel and
+ * RightPanel — and the Hub had grown a third, different one: a translateX
+ * slide on its own duration tokens. Three panels off the same rail should not
+ * open three ways, and a shared string is the only version of that which stays
+ * true after someone edits one of them.
+ *
+ * Pair it with an inner child laid out at the panel's full width and anchored
+ * to the edge the panel hinges from, so content does not reflow mid-animation.
+ */
+export const PANEL_REVEAL_TRANSITION =
+  `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, opacity 180ms ease`;

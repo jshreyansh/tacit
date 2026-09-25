@@ -7,11 +7,12 @@ import {
   sanitizeWorktreeCompactColumns,
 } from "../canvas/worktreeCompactLayout";
 
-const DEFAULT_BLUR = 0;
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_MIN_CONTRAST = 1;
-const LEGACY_ENABLED_BLUR = 1.5;
-const DEFAULT_CANVAS_OPACITY = 50;
+// Nearly solid. Half-transparent was a striking default and a bad one: the
+// desktop showing through a working canvas is noise behind every terminal you
+// read. It stays adjustable for people who want the effect.
+const DEFAULT_CANVAS_OPACITY = 95;
 
 export type TerminalRendererMode = "dom" | "webgl";
 
@@ -28,7 +29,6 @@ export interface StoredTerminalSize {
 }
 
 interface PreferencesStore {
-  animationBlur: number;
   /** Canvas background transparency, 0-100 (100 = fully opaque). macOS only — see setCanvasOpacity. */
   canvasOpacity: number;
   /** tc-attachment:// URL of a user-picked local image shown behind the canvas, or null for none. */
@@ -73,8 +73,6 @@ interface PreferencesStore {
    * lets new cue ids drop in without a migration.
    */
   seenHints: Record<string, true>;
-
-  setAnimationBlur: (value: number) => void;
   setCanvasOpacity: (value: number) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
@@ -107,7 +105,6 @@ const SECURE_API_KEY_STORAGE_KEY = "tacit-secure-apikey";
 const PLAINTEXT_FALLBACK_PREFIX = "plain:";
 
 interface SavedPrefs {
-  animationBlur: number;
   canvasOpacity: number;
   canvasBackgroundImage: string | null;
   terminalFontSize: number;
@@ -205,11 +202,6 @@ function loadPreferences(): SavedPrefs {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      let blur = DEFAULT_BLUR;
-      const v = parsed.animationBlur;
-      if (v === true) blur = LEGACY_ENABLED_BLUR;
-      else if (v === false) blur = 0;
-      else if (typeof v === "number" && v >= 0 && v <= 3) blur = v;
 
       let canvasOpacity = DEFAULT_CANVAS_OPACITY;
       const co = parsed.canvasOpacity;
@@ -300,7 +292,6 @@ function loadPreferences(): SavedPrefs {
       const seenHints = sanitizeSeenHints(parsed.seenHints);
 
       return {
-        animationBlur: blur,
         canvasOpacity,
         canvasBackgroundImage,
         terminalFontSize: fontSize,
@@ -330,7 +321,6 @@ function loadPreferences(): SavedPrefs {
   } catch {
   }
   return {
-    animationBlur: DEFAULT_BLUR,
     canvasOpacity: DEFAULT_CANVAS_OPACITY,
     canvasBackgroundImage: null,
     terminalFontSize: DEFAULT_FONT_SIZE,
@@ -440,7 +430,6 @@ function readLegacyApiKey(): string {
 
 function getSaveState(state: PreferencesStore): SavedPrefs {
   return {
-    animationBlur: state.animationBlur,
     canvasOpacity: state.canvasOpacity,
     canvasBackgroundImage: state.canvasBackgroundImage,
     terminalFontSize: state.terminalFontSize,
@@ -471,7 +460,6 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
 const initialPrefs = loadPreferences();
 
 export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
-  animationBlur: initialPrefs.animationBlur,
   canvasOpacity: initialPrefs.canvasOpacity,
   canvasBackgroundImage: initialPrefs.canvasBackgroundImage,
   terminalFontSize: initialPrefs.terminalFontSize,
@@ -498,11 +486,6 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   apiKeyReady: false,
   seenHints: initialPrefs.seenHints,
 
-  setAnimationBlur: (value) => {
-    const clamped = Math.round(Math.max(0, Math.min(3, value)) * 10) / 10;
-    set({ animationBlur: clamped });
-    savePreferences(getSaveState({ ...get(), animationBlur: clamped }));
-  },
   setCanvasOpacity: (value) => {
     const clamped = Math.round(Math.max(0, Math.min(100, value)));
     set({ canvasOpacity: clamped });

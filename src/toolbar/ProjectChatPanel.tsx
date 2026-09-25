@@ -13,6 +13,10 @@ import {
   type Turn,
 } from "../components/transcriptModel";
 import { markdownClassName, renderMarkdown } from "../utils/markdownClass";
+import {
+  WORKSPACE_MANAGER_BRIEFING,
+  isWorkspaceManagerBriefing,
+} from "../../shared/manager-role";
 
 /**
  * The parts of the Project Chat control that deal with the conversation.
@@ -280,12 +284,22 @@ function ToolTags({ node }: { node: AssistantNode }) {
 export function ConversationBody({
   conversation,
   isLive,
+  handover,
 }: {
   conversation: ManagerConversation;
   isLive: boolean;
+  /**
+   * When this agent took the seat, from the tenure log. Rendered as the first
+   * thing in the conversation so scrolling back explains why the agent knows
+   * what it knows — and so the panel says something true the instant a role is
+   * assigned, rather than "nothing said yet" while the terminal beside it
+   * plainly shows otherwise.
+   */
+  handover?: { cli: string | null; at: string; icon?: string | null } | null;
 }) {
   const t = useT();
   const { turns, loading, telemetry, now } = conversation;
+  const [briefingOpen, setBriefingOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const running = isLive && telemetry?.turn_state === "in_turn";
 
@@ -298,7 +312,39 @@ export function ConversationBody({
 
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-      {turns.length === 0 && (
+      {handover && (
+        <div className="tc-handover">
+          <div className="tc-handover-row">
+            {handover.icon && <img src={handover.icon} alt="" />}
+            <span className="tc-mono">{handover.cli ?? "agent"}</span>
+            <span>{t.project_chat_took_the_seat}</span>
+            <span className="tc-handover-time tc-mono">
+              {new Date(handover.at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          {/* What it was told, on request. Kept behind a disclosure because it
+              is setup rather than conversation — but findable, since it is the
+              reason the agent behaves as it does. */}
+          <button
+            type="button"
+            className="tc-handover-toggle"
+            onClick={() => setBriefingOpen((v) => !v)}
+            aria-expanded={briefingOpen}
+          >
+            {briefingOpen
+              ? t.project_chat_hide_briefing
+              : t.project_chat_show_briefing}
+          </button>
+          {briefingOpen && (
+            <p className="tc-handover-briefing">{WORKSPACE_MANAGER_BRIEFING}</p>
+          )}
+        </div>
+      )}
+
+      {turns.length === 0 && !handover && (
         <div
           className="py-6 text-center"
           style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}
@@ -311,7 +357,7 @@ export function ConversationBody({
         const nodes = buildAssistantNodes(turn.assistantEvents);
         return (
           <div key={turn.startIndex} className="mb-3 space-y-1">
-            {turn.userEvent && (
+            {turn.userEvent && !isWorkspaceManagerBriefing(turn.userEvent.textPreview) && (
               <div className="flex justify-end">
                 <div
                   className="max-w-[85%] rounded-lg rounded-br-sm border border-[var(--border)] bg-[var(--surface-hover)] px-2.5 py-1.5"

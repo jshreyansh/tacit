@@ -1,6 +1,10 @@
 import { useT } from "../i18n/useT";
-import { COLLAPSED_TAB_WIDTH, useCanvasStore } from "../stores/canvasStore";
-import { TOOLBAR_HEIGHT } from "../toolbar/toolbarHeight";
+import { useCanvasStore } from "../stores/canvasStore";
+import {
+  getLeftPanelInset,
+  getRightPanelInset,
+} from "./viewportBounds";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 
 interface CanvasDragoverCueProps {
   active: boolean;
@@ -27,10 +31,8 @@ export function CanvasDragoverCue({ active, showChip }: CanvasDragoverCueProps) 
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
 
-  const leftInset = leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   return (
     <>
@@ -42,7 +44,7 @@ export function CanvasDragoverCue({ active, showChip }: CanvasDragoverCueProps) 
       <div
         className="fixed pointer-events-none flex justify-center"
         style={{
-          top: TOOLBAR_HEIGHT + 12,
+          top: TITLE_STRIP_HEIGHT + 12,
           left: leftInset,
           right: rightInset,
           zIndex: 35,

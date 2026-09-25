@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useState } from "react";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
   PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
+import { getLeftPanelInset } from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
 import { usePinDragStore } from "../stores/pinDragStore";
 import type { Pin, PinEvent } from "../types";
@@ -14,7 +16,6 @@ import {
 import { useT } from "../i18n/useT";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 
-const TOOLBAR_HEIGHT = 44;
 
 function StatusDot({ status }: { status: Pin["status"] }) {
   const t = useT();
@@ -216,6 +217,9 @@ export function PinDrawer() {
   const t = useT();
   const collapsed = useCanvasStore((s) => s.leftPanelCollapsed);
   const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
+  // The code panel shares the left edge, so it widens the same chrome.
+  const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
+  const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const openProjectPath = usePinStore((s) => s.openProjectPath);
   const pinsByProject = usePinStore((s) => s.pinsByProject);
   const closeDrawer = usePinStore((s) => s.closeDrawer);
@@ -235,7 +239,7 @@ export function PinDrawer() {
         ? pins
         : pins.filter((pin) => pin.status === "open");
 
-  const leftOffset = collapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
+  const leftOffset = getLeftPanelInset(collapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
 
   useEffect(() => {
     const unsub = window.tacit.pins.subscribe((event: PinEvent) => {
@@ -263,14 +267,20 @@ export function PinDrawer() {
 
   return (
     <div
-      className="fixed bg-[var(--surface)] border-r border-[var(--border)] flex flex-col overflow-hidden"
+      className="tc-float fixed flex flex-col overflow-hidden"
       style={{
         zIndex: 39,
-        top: TOOLBAR_HEIGHT,
+        top: CHROME_TOP,
         left: leftOffset,
-        height: `calc(100vh - ${TOOLBAR_HEIGHT}px)`,
+        height: CHROME_HEIGHT,
         width: PIN_DRAWER_WIDTH,
-        transform: isOpen ? "translateX(0)" : `translateX(-${PIN_DRAWER_WIDTH}px)`,
+        // Slide clear of the window, not merely by its own width. Anchored at
+        // `left` it used to stop with its left edge still on screen, painting a
+        // strip behind the rail that the old welded rail happened to cover.
+        transform: isOpen
+          ? "translateX(0)"
+          : `translateX(-${PIN_DRAWER_WIDTH + leftOffset}px)`,
+        opacity: isOpen ? 1 : 0,
         // `transform` rides the role-based motion tokens; `left` stays on
         // PANEL_TRANSITION because it must track LeftPanel's width tween.
         transition:

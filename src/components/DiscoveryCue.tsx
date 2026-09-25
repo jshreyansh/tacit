@@ -1,10 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useT } from "../i18n/useT";
-import { TOOLBAR_HEIGHT } from "../toolbar/toolbarHeight";
+import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import {
   useCanvasStore,
-  COLLAPSED_TAB_WIDTH,
 } from "../stores/canvasStore";
+import {
+  getLeftPanelInset,
+  getRightPanelInset,
+} from "../canvas/viewportBounds";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useNotificationStore } from "../stores/notificationStore";
@@ -478,16 +481,14 @@ export function DiscoveryCue() {
   if (!topCue) return null;
   const cue = topCue;
 
-  const leftInset = leftPanelCollapsed ? COLLAPSED_TAB_WIDTH : leftPanelWidth;
-  const rightInset = rightPanelCollapsed
-    ? COLLAPSED_TAB_WIDTH
-    : rightPanelWidth;
+  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   return (
     <div
       className="fixed pointer-events-none flex justify-center"
       style={{
-        top: TOOLBAR_HEIGHT + 12,
+        top: TITLE_STRIP_HEIGHT + 12,
         left: leftInset,
         right: rightInset,
         zIndex: 30,

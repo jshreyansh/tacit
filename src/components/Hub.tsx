@@ -6,8 +6,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  CHROME_GAP,
+  CHROME_INSET,
+  LEFT_RAIL_WIDTH,
+} from "../stores/canvasStore";
+import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 
 import { useHubStore } from "../stores/hubStore";
+import { PanelCollapseButton } from "./PanelCollapseButton";
 import { useProjectStore } from "../stores/projectStore";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -23,6 +30,7 @@ import { useStatusDigestStore } from "../stores/statusDigestStore";
 import { useCommandPaletteStore } from "../stores/commandPaletteStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import { useT } from "../i18n/useT";
+import { PANEL_REVEAL_TRANSITION } from "../utils/panelAnimation";
 import {
   ACTIVITY_WINDOW_MS,
   getActivityBuckets,
@@ -45,12 +53,13 @@ import type {
 
 // Anchored side-drawer chrome. Width chosen to fit a row of:
 // glyph + label + project meta + sparkline + timestamp without truncating
-// at typical project naming density. Narrower than the right panel's
-// expanded width on purpose — the Hub overlays the panel rather than
-// sharing the column, so a slimmer drawer leaves more canvas visible
-// past the curtain.
+// at typical project naming density. Narrower than the panel's expanded
+// width on purpose — the Hub overlays the panel rather than sharing the
+// column, so a slimmer drawer leaves more canvas visible past the curtain.
 export const HUB_WIDTH = 340;
-const TOOLBAR_INSET = 44;
+/** Hinges on the left rail, beside the button that opens it and in the same
+ *  place as every other surface that rail opens. */
+const HUB_LEFT = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP;
 
 const RUNNING_STATUSES = new Set<TerminalStatus>([
   "running",
@@ -317,18 +326,6 @@ function detectIsMac(): boolean {
   return /Mac|iPhone|iPad/.test(window.navigator.userAgent);
 }
 
-function CloseIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-      <path
-        d="M2 2L8 8M8 2L2 8"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function PinGlyph() {
   return (
@@ -602,21 +599,27 @@ export function Hub() {
       role="complementary"
       aria-label={`${t["hub.title"]} ${t["hub.subtitle"]}`}
       aria-hidden={!open}
-      className="fixed right-0 z-[60] flex flex-col"
+      // Unfolds like the panels either rail opens, rather than sliding in
+      // from off-screen on its own timing tokens. Same surface class, same
+      // gesture: the box grows from the edge it hinges on while the contents
+      // sit still behind the clip.
+      className="tc-float fixed z-[60] overflow-hidden"
       style={{
-        top: TOOLBAR_INSET,
-        height: `calc(100vh - ${TOOLBAR_INSET}px)`,
-        width: HUB_WIDTH,
-        background: "var(--surface)",
-        borderLeft: "1px solid var(--border)",
-        boxShadow: open ? "var(--shadow-elev-2)" : "none",
-        transform: open ? "translateX(0)" : `translateX(${HUB_WIDTH + 24}px)`,
+        top: CHROME_TOP,
+        left: HUB_LEFT,
+        height: CHROME_HEIGHT,
+        width: open ? HUB_WIDTH : 0,
         opacity: open ? 1 : 0,
-        transition:
-          "transform var(--duration-deliberate) var(--ease-out-soft), opacity var(--duration-natural) var(--ease-out-soft), box-shadow var(--duration-natural) var(--ease-out-soft)",
+        transition: PANEL_REVEAL_TRANSITION,
         pointerEvents: open ? "auto" : "none",
       }}
     >
+      {/* Laid out at full width and pinned to the hinge edge, so the content
+          does not reflow while the outer width animates. */}
+      <div
+        className="absolute inset-y-0 left-0 flex flex-col"
+        style={{ width: HUB_WIDTH }}
+      >
       <header
         className="flex items-center justify-between px-4 pt-3 pb-3"
         style={{ borderBottom: "1px solid var(--border)" }}
@@ -633,14 +636,7 @@ export function Hub() {
           </span>
           <span className="tc-eyebrow">{t["hub.subtitle"]}</span>
         </div>
-        <button
-          type="button"
-          onClick={closeHub}
-          aria-label={t["hub.close"]}
-          className="tc-row-icon inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-        >
-          <CloseIcon />
-        </button>
+        <PanelCollapseButton onCollapse={closeHub} />
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1156,6 +1152,7 @@ export function Hub() {
           {t["hub.escCloses"]}
         </span>
       </footer>
+      </div>
     </div>
   );
 }

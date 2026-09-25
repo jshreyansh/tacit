@@ -77,14 +77,12 @@ export function zoomAtClientPoint({
     leftPanelWidth,
     taskDrawerOpen,
   );
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
-
+  // No inset here. The canvas container is full-bleed, so a client point and a
+  // container point are the same number — subtracting the chrome width shifted
+  // the viewport left by that much on every zoom step, which is why zooming in
+  // walked the canvas off toward the rail.
   return {
-    x: clientX - leftInset - worldPoint.x * scale,
+    x: clientX - worldPoint.x * scale,
     y: clientY - worldPoint.y * scale,
     scale,
   };
@@ -109,6 +107,8 @@ export function getViewportCenterClientPoint({
     leftPanelCollapsed,
     leftPanelWidth,
     taskDrawerOpen,
+    rightPanelCollapsed,
+    rightPanelWidth,
   );
   const rightInset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
   const visibleWidth = window.innerWidth - leftInset - rightInset;
