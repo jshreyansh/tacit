@@ -396,6 +396,17 @@ export function App() {
     return initCanvasBridgeEventIPC();
   }, []);
   useEffect(() => {
+    if (!window.tacit?.terminal?.onToolsUnavailable) return;
+    return window.tacit.terminal.onToolsUnavailable(({ terminalType, reason }) => {
+      useNotificationStore
+        .getState()
+        .notify(
+          "warn",
+          `This ${terminalType ?? "agent"} terminal has no Tacit workspace tools: ${reason}`,
+        );
+    });
+  }, []);
+  useEffect(() => {
     if (!window.tacit?.browser?.onExternalAuthRedirect) return;
     return window.tacit.browser.onExternalAuthRedirect(({ url }) => {
       let host = url;

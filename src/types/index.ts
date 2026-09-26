@@ -582,6 +582,17 @@ export interface TacitAPI {
     notifyThemeChanged: (ptyId: number) => void;
     onOutput: (callback: (ptyId: number, data: string) => void) => () => void;
     onExit: (callback: (ptyId: number, exitCode: number) => void) => () => void;
+    /**
+     * An agent terminal started without Tacit's workspace tools, and why.
+     * The terminal itself still opens.
+     */
+    onToolsUnavailable: (
+      callback: (notice: {
+        terminalId: string;
+        terminalType?: string;
+        reason: string;
+      }) => void,
+    ) => () => void;
     detectCli: (ptyId: number) => Promise<{
       cliType: TerminalType;
       pid?: number;

@@ -56,6 +56,21 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("terminal:exit", listener);
       return () => ipcRenderer.removeListener("terminal:exit", listener);
     },
+    onToolsUnavailable: (
+      callback: (notice: {
+        terminalId: string;
+        terminalType?: string;
+        reason: string;
+      }) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        notice: { terminalId: string; terminalType?: string; reason: string },
+      ) => callback(notice);
+      ipcRenderer.on("terminal:tools-unavailable", listener);
+      return () =>
+        ipcRenderer.removeListener("terminal:tools-unavailable", listener);
+    },
     detectCli: (ptyId: number) =>
       ipcRenderer.invoke("terminal:detect-cli", ptyId),
   },

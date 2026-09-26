@@ -74,6 +74,8 @@ import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
 import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
+import { prepareBridgeLaunch } from "./agent-launch";
+import { applyLaunchArgs } from "../shared/agent-adapters";
 import {
   isCliRegistered,
   registerCli,
@@ -932,13 +934,34 @@ function setupIpc() {
       );
       const cliDir = getCliDir();
 
-      if (options.terminalType === "claude" && options.terminalId) {
-        const mcpArgs = buildClaudeTacitBridgeArgs(options.terminalId);
-        if (mcpArgs.length > 0) {
-          options.args = spliceArgsBeforeDoubleDash(
-            options.args ?? [],
-            mcpArgs,
+      // Every agent terminal — manager, canvas worker, spawned worker — gets
+      // the workspace tools through its adapter (shared/agent-adapters.ts).
+      let bridgeEnv: Record<string, string> = {};
+      if (options.terminalId) {
+        try {
+          const plan = prepareBridgeLaunch({
+            terminalType: options.terminalType,
+            terminalId: options.terminalId,
+            serverPath: getTacitBridgeCliPath(),
+            portFile: PORT_FILE,
+          });
+          if (plan) {
+            options.args = applyLaunchArgs(options.args ?? [], plan);
+            bridgeEnv = plan.env;
+          }
+        } catch (error) {
+          // The terminal still opens — an agent without workspace tools is
+          // still a usable agent — but never silently: the person is told
+          // why, and the debug log keeps it.
+          const reason = error instanceof Error ? error.message : String(error);
+          dbg(
+            `terminal:create tools-unavailable terminalId=${options.terminalId} type=${options.terminalType} reason=${reason}`,
           );
+          sendToWindow(mainWindow, "terminal:tools-unavailable", {
+            terminalId: options.terminalId,
+            terminalType: options.terminalType,
+            reason,
+          });
         }
       }
 
@@ -948,9 +971,10 @@ function setupIpc() {
           cliDir,
           options.terminalType,
         ),
-        ...(hookSocketPath
-          ? { envOverrides: { TACIT_SOCKET: hookSocketPath } }
-          : {}),
+        envOverrides: {
+          ...bridgeEnv,
+          ...(hookSocketPath ? { TACIT_SOCKET: hookSocketPath } : {}),
+        },
       });
       const pid = ptyManager.getPid(ptyId);
       dbg(`terminal:create => ptyId=${ptyId} pid=${pid ?? "null"}`);
@@ -3238,94 +3262,6 @@ function getTacitBridgeCliPath(): string | null {
     "tacit-bridge.js",
   );
   return fs.existsSync(devPath) ? devPath : null;
-}
-
-/**
- * `--mcp-config` (like other Claude variadic options) otherwise consumes
- * whatever positional value follows it — including a `--` separated
- * initial-prompt arg (see getTerminalPromptArgs in
- * src/terminal/cliConfig.ts) — so it must land strictly before any `--`
- * in argv, never after.
- */
-function spliceArgsBeforeDoubleDash(args: string[], extra: string[]): string[] {
-  if (extra.length === 0) return args;
-  const separatorIndex = args.indexOf("--");
-  if (separatorIndex === -1) return [...args, ...extra];
-  return [
-    ...args.slice(0, separatorIndex),
-    ...extra,
-    ...args.slice(separatorIndex),
-  ];
-}
-
-/**
- * Grants a native "claude"-typed terminal (the one actually created via the
- * canvas's dock/context menu/command palette — see terminalRuntimeStore.ts's
- * spawnPty) access to tacit-bridge, scoped to just this one terminal
- * via a per-terminal MCP config file rather than a global ~/.claude.json
- * registration — see the removed "Computer Use MCP" (electron/skill-manager.ts
- * history, commit 44640b24 -> 8c9d1eb1) for why that global-mutation pattern
- * was abandoned.
- *
- * This is a SEPARATE injection point from cli/agent-shims/run.ts's own copy
- * of this same idea: that shim only fires when a user manually types
- * `claude`/`codex` inside a plain Shell-type terminal (PATH-intercepted —
- * see getTerminalExtraPathEntries, which only prepends the shim dir for
- * terminalType === "shell"). Tacit's own native "claude" terminal type
- * launches the real `claude` binary directly via cliConfig.ts's launch
- * config, never touching that shim at all — so without this second
- * injection point, every terminal created from the dock/context menu/
- * command palette (i.e. the terminal type actually shown in this app's UI)
- * would silently never get tacit-bridge tools.
- *
- * Claude-only today (guarded by terminalType === "claude" at the call site)
- * — Codex/Gemini terminals get no MCP wiring at all yet, native or shimmed.
- * That means those two can't actually hold the workspace-manager role with
- * working tools until this gets extended; tracked as a known gap, not fixed
- * here.
- */
-function buildClaudeTacitBridgeArgs(terminalId: string): string[] {
-  const serverPath = getTacitBridgeCliPath();
-  if (!serverPath) return [];
-
-  const config = {
-    mcpServers: {
-      // The key becomes the prefix on every tool name the agent sees
-      // (mcp__tacit__spawn_browser). Deliberately renamed while the workspace
-      // directory stays `tacit-bridge` — the packaged resource path and
-      // extraResources entry are keyed on that directory name, and renaming it
-      // is filesystem churn that buys nothing an agent or a user can see.
-      tacit: {
-        type: "stdio",
-        command: process.execPath,
-        args: [serverPath],
-        env: {
-          TACIT_TERMINAL_ID: terminalId,
-          TACIT_PORT_FILE: PORT_FILE,
-          // `process.execPath` is the Electron binary, and a PACKAGED Electron
-          // app ignores an app path in argv — it always boots its own bundled
-          // asar. So without this, every terminal launch would silently start
-          // a second copy of Tacit instead of the MCP server, and the
-          // agent would sit there with no tools. Unpackaged Electron happens
-          // to honour argv[1], which is why dev never caught it. Running as
-          // plain node is also what the bridge actually needs (no Electron
-          // APIs), and it skips booting a GPU and network process per server.
-          ELECTRON_RUN_AS_NODE: "1",
-        },
-      },
-    },
-  };
-
-  try {
-    const configPath = path.join(
-      os.tmpdir(),
-      `tacit-mcp-${terminalId}.json`,
-    );
-    fs.writeFileSync(configPath, JSON.stringify(config), "utf-8");
-    return ["--mcp-config", configPath];
-  } catch {
-    return [];
-  }
 }
 
 function dataUrlToPngBuffer(dataUrl: string): Buffer {
