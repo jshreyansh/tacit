@@ -75,6 +75,7 @@ import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
 import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
+import { writeShellIntegrationFiles } from "./shell-integration";
 import { applyLaunchArgs } from "../shared/agent-adapters";
 import {
   isCliRegistered,
@@ -273,6 +274,8 @@ if (!gotLock) {
 }
 
 const PORT_FILE = path.join(TACIT_DIR, "port");
+/** Generated shell startup files; see electron/shell-integration.ts. */
+const SHELL_INTEGRATION_DIR = path.join(TACIT_DIR, "shell-integration");
 
 function perfLog(label: string, details: Record<string, unknown>) {
   if (!isDev) return;
@@ -971,6 +974,7 @@ function setupIpc() {
           cliDir,
           options.terminalType,
         ),
+        shellIntegrationDir: SHELL_INTEGRATION_DIR,
         envOverrides: {
           ...bridgeEnv,
           ...(hookSocketPath ? { TACIT_SOCKET: hookSocketPath } : {}),
@@ -3325,6 +3329,16 @@ if (process.defaultApp) {
 }
 
 app.whenReady().then(async () => {
+  // Before any terminal can open. If this fails, shell terminals start the
+  // old way, and typing `claude` in one may miss its workspace tools.
+  try {
+    writeShellIntegrationFiles(SHELL_INTEGRATION_DIR);
+  } catch (error) {
+    fs.rmSync(SHELL_INTEGRATION_DIR, { recursive: true, force: true });
+    console.error("[shell-integration] could not write startup files:", error);
+    dbg(`shell-integration write failed: ${String(error)}`);
+  }
+
   renderDiagnostics.recordMainEvent("app_ready", {
     app_version: app.getVersion(),
     isDev,

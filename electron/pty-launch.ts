@@ -6,12 +6,18 @@ import {
   getTacitDataDir,
   type TacitInstance,
 } from "../shared/tacit-instance";
+import { shellIntegrationLaunch } from "./shell-integration";
 
 export interface PtyLaunchOptions {
   cwd: string;
   shell?: string;
   args?: string[];
   extraPathEntries?: string[];
+  /**
+   * Folder holding the generated startup files (electron/shell-integration.ts)
+   * that keep extraPathEntries first after a login shell's own startup.
+   */
+  shellIntegrationDir?: string;
   envOverrides?: Record<string, string | undefined>;
   terminalId?: string;
   terminalType?: string;
@@ -64,6 +70,8 @@ const TACIT_RUNTIME_ENV_BLOCKLIST = new Set([
   "TACIT_TERMINAL_TYPE",
   "TACIT_INSTANCE",
   "TACIT_PORT_FILE",
+  "TACIT_PATH_FIRST",
+  "TACIT_USER_ZDOTDIR",
   // Claude Code sets this on processes it spawns, and switches transcript
   // saving OFF when it sees it inherited — a nested agent shouldn't litter
   // the user's session history. Launch Tacit from inside a Claude Code
@@ -534,10 +542,39 @@ export async function buildLaunchSpec(
   }
 
   const shell = resolveUserShell(shellEnv, deps);
+  if (deps.platform === "win32") {
+    return { cwd: options.cwd, file: shell, args: launchArgs, env: shellEnv };
+  }
+
+  // Prepending above is undone by a login shell's own startup files, so for
+  // shells we know, re-apply the order after them (see shell-integration.ts).
+  // The PATH as built above is the order to keep: the last entry unshifted
+  // is first.
+  if (
+    options.extraPathEntries?.length &&
+    options.shellIntegrationDir &&
+    deps.existsSync(options.shellIntegrationDir)
+  ) {
+    const integration = shellIntegrationLaunch({
+      shell,
+      integrationDir: options.shellIntegrationDir,
+      pathFirst: [...options.extraPathEntries].reverse(),
+      env: shellEnv,
+    });
+    if (integration) {
+      return {
+        cwd: options.cwd,
+        file: shell,
+        args: [...integration.args, ...launchArgs],
+        env: { ...shellEnv, ...integration.env },
+      };
+    }
+  }
+
   return {
     cwd: options.cwd,
     file: shell,
-    args: deps.platform === "win32" ? launchArgs : ["-l", ...launchArgs],
+    args: ["-l", ...launchArgs],
     env: shellEnv,
   };
 }
