@@ -101,6 +101,10 @@ export interface AgentAdapter {
   /** Matches the terminal type (src/types TerminalType). */
   id: string;
   displayName: string;
+  /** The executable Tacit launches for this agent, unless Settings overrides it. */
+  command: string;
+  /** Prints the CLI's version, for detection. */
+  versionArgs: readonly string[];
   mcpInjection: McpInjection | null;
   planBridgeLaunch?: (
     bridge: BridgeDescriptor,
@@ -141,6 +145,8 @@ export class AgentCapabilityError extends Error {
 const claude: AgentAdapter = {
   id: "claude",
   displayName: "Claude Code",
+  command: "claude",
+  versionArgs: ["--version"],
   // Claude Code merges --mcp-config with the servers the user already has, so
   // this adds the bridge without hiding anything. The file is per terminal
   // rather than a global ~/.claude.json registration — see the removed
@@ -202,6 +208,8 @@ export const CODEX_TOOLS_REQUIRING_APPROVAL: readonly string[] = ["browser_eval"
 const codex: AgentAdapter = {
   id: "codex",
   displayName: "Codex",
+  command: "codex",
+  versionArgs: ["--version"],
   // Codex has no --mcp-config; each `-c` overrides one dotted key of
   // ~/.codex/config.toml for this run only. The file is never written, and
   // the user's own mcp_servers entries load alongside (verified against
@@ -241,6 +249,8 @@ const codex: AgentAdapter = {
 const opencode: AgentAdapter = {
   id: "opencode",
   displayName: "OpenCode",
+  command: "opencode",
+  versionArgs: ["--version"],
   // OpenCode merges OPENCODE_CONFIG_CONTENT over its config files, so the
   // bridge rides in the environment and nothing is written. Verified against
   // opencode 1.18.29 with `opencode mcp list`, which starts the server:
@@ -317,6 +327,8 @@ function joinTo(dir: string, name: string): string {
 const gemini: AgentAdapter = {
   id: "gemini",
   displayName: "Gemini CLI",
+  command: "gemini",
+  versionArgs: ["--version"],
   // Gemini has no per-run MCP flag, but it merges MCP servers by name across
   // its settings layers, and GEMINI_CLI_SYSTEM_SETTINGS_PATH names the
   // system layer. So the bridge goes in a system settings file of our own,
@@ -438,4 +450,28 @@ export function applyLaunchArgs(args: string[], plan: AgentLaunchPlan): string[]
     ...plan.args,
     ...args.slice(separatorIndex),
   ];
+}
+
+/**
+ * The version number in a CLI's `--version` output, whatever surrounds it:
+ * "2.1.283 (Claude Code)", "codex-cli 0.157.1", "1.18.29". Null when there is
+ * none, so a CLI that prints something unexpected is recorded as unknown
+ * rather than as a made-up version.
+ */
+export function parseCliVersion(output: string): string | null {
+  // Not `\b` at the start: it finds no boundary in "v3.2.0" and would skip
+  // to "2.0". A version may follow a letter, just not a digit or a dot.
+  const match = output.match(/(?<![\d.])(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?)\b/);
+  return match ? match[1] : null;
+}
+
+/** Whether an agent CLI is on this machine, and which version. */
+export interface AgentDetection {
+  id: string;
+  installed: boolean;
+  /** Absolute path of the executable that would be launched. */
+  path: string | null;
+  version: string | null;
+  /** Why it counts as unavailable, or why the version could not be read. */
+  reason: string | null;
 }

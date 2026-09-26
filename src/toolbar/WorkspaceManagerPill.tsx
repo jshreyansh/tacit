@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import {
@@ -118,6 +119,8 @@ export function WorkspaceManagerPill() {
     }
     return null;
   }, [projects, workspaceManagerTerminalId]);
+
+  const agentDetections = useAgentAvailabilityStore((state) => state.byId);
 
   const eligibleManagerTerminals = useMemo(() => {
     const list: Array<{ id: string; type: WorkspaceManagerAgentType; label: string }> = [];
@@ -939,19 +942,36 @@ export function WorkspaceManagerPill() {
               </button>
             ))}
             <div className="tc-seat-group">{t.project_chat_start_new}</div>
-            {WORKSPACE_MANAGER_AGENT_TYPES.map((type) => (
-              <button
-                key={type}
-                data-popover-item
-                role="menuitem"
-                tabIndex={-1}
-                className="tc-seat-option"
-                onClick={() => spawnAndAssignManager(type)}
-              >
-                <img src={AGENT_ICON[type]} alt="" />
-                <span>{AGENT_DISPLAY_NAME[type]}</span>
-              </button>
-            ))}
+            {WORKSPACE_MANAGER_AGENT_TYPES.map((type) => {
+              // An agent whose CLI isn't installed stays listed, dimmed, with
+              // the reason, rather than spawning a manager that fails at
+              // launch. Unknown (detection still running) counts as available.
+              const detection = agentDetections[type];
+              const missing = detection !== undefined && !detection.installed;
+              return (
+                <button
+                  key={type}
+                  data-popover-item
+                  role="menuitem"
+                  tabIndex={-1}
+                  className={`tc-seat-option${missing ? " opacity-50" : ""}`}
+                  aria-disabled={missing || undefined}
+                  title={missing ? (detection.reason ?? undefined) : undefined}
+                  onClick={() => {
+                    if (missing) return;
+                    spawnAndAssignManager(type);
+                  }}
+                >
+                  <img src={AGENT_ICON[type]} alt="" />
+                  <span className="min-w-0 flex-1 truncate">{AGENT_DISPLAY_NAME[type]}</span>
+                  {missing && (
+                    <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+                      {t.agent_not_installed}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {/* Emptying the seat. It was the last item of a menu that ran off
                 the bottom of the window, so the one option you open this to
                 find was the one you could not reach. In a face it is simply

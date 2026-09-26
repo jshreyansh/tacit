@@ -23,6 +23,7 @@ export const en = {
   project_chat_collapse: "Just the message box",
   project_chat_running_now: "Running now",
   project_chat_start_new: "Start a new one",
+  agent_not_installed: "Not installed",
   project_chat_reading_past: "Reading a past session —",
   project_chat_archive_readonly: "Read-only — a past session",
   project_chat_took_the_seat: "took the seat",

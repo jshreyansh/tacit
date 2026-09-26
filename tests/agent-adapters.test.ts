@@ -113,7 +113,13 @@ test("terminal types that are not agents have no adapter", () => {
 });
 
 test("an agent with no way to receive tools throws instead of returning nothing", () => {
-  const mute: AgentAdapter = { id: "mute", displayName: "Mute CLI", mcpInjection: null };
+  const mute: AgentAdapter = {
+    id: "mute",
+    displayName: "Mute CLI",
+    command: "mute",
+    versionArgs: ["--version"],
+    mcpInjection: null,
+  };
   assert.throws(
     () => planBridgeLaunch(mute, bridge, context),
     (error: unknown) =>

@@ -9,6 +9,7 @@ import type {
   CaptureHealth,
 } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
+import type { AgentDetection } from "../shared/agent-adapters";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 import type {
@@ -796,6 +797,16 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("memory:changed", listener);
       return () => ipcRenderer.removeListener("memory:changed", listener);
     },
+  },
+  agents: {
+    /** Which agent CLIs are installed, and their versions. */
+    detect: (options?: {
+      commandOverrides?: Record<string, string>;
+      refresh?: boolean;
+    }) =>
+      ipcRenderer.invoke("agents:detect", options ?? {}) as Promise<
+        AgentDetection[]
+      >,
   },
   record: {
     /** Newest-first slice of the decision record. */

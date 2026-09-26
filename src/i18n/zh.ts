@@ -23,6 +23,7 @@ export const zh = {
   project_chat_collapse: "只保留输入框",
   project_chat_running_now: "正在运行",
   project_chat_start_new: "新建一个",
+  agent_not_installed: "未安装",
   project_chat_reading_past: "正在查看历史会话 —",
   project_chat_archive_readonly: "只读 — 历史会话",
   project_chat_took_the_seat: "接管了工作区",

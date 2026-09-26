@@ -18,6 +18,7 @@ import type {
 import type { UpdaterSnapshot } from "../../electron/updater-state";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
 import type { ManagerSessionRow, ManagerTenure } from "../../shared/manager-role";
+import type { AgentDetection } from "../../shared/agent-adapters";
 import type {
   Pin,
   PinLink,
@@ -1084,6 +1085,16 @@ export interface TacitAPI {
     unwatchDir: (dirPath: string) => Promise<void>;
     unwatchAllDirs: () => Promise<void>;
     onDirChanged: (callback: (dirPath: string) => void) => () => void;
+  };
+  agents: {
+    /**
+     * Which agent CLIs are installed, and their versions. Cached in main for
+     * the app's lifetime; `refresh` re-runs detection.
+     */
+    detect: (options?: {
+      commandOverrides?: Record<string, string>;
+      refresh?: boolean;
+    }) => Promise<AgentDetection[]>;
   };
   record: {
     /**

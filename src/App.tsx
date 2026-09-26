@@ -10,6 +10,7 @@ import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
 import { useNotificationStore } from "./stores/notificationStore";
+import { startAgentAvailability } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
 import { useIdentityManagerStore } from "./stores/identityManagerStore";
 import { LeftPanel } from "./components/LeftPanel";
@@ -395,6 +396,7 @@ export function App() {
     if (!window.tacit?.browser?.onCanvasBridgeEvent) return;
     return initCanvasBridgeEventIPC();
   }, []);
+  useEffect(() => startAgentAvailability(), []);
   useEffect(() => {
     if (!window.tacit?.terminal?.onToolsUnavailable) return;
     return window.tacit.terminal.onToolsUnavailable(({ terminalType, reason }) => {

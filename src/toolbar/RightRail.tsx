@@ -15,6 +15,8 @@ import { useUpdaterStore } from "../stores/updaterStore";
 import { UpdateModal } from "../components/UpdateModal";
 import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
 import { addTerminal, addBrowser, addNote } from "../actions/dockActions";
+import { useAgentDetection } from "../stores/agentAvailabilityStore";
+import { useNotificationStore } from "../stores/notificationStore";
 import type { TerminalType } from "../types";
 import shellIcon from "../assets/dock-icons/terminal-shell.png";
 import claudeIcon from "../assets/dock-icons/terminal-claude.png";
@@ -129,6 +131,39 @@ const AGENTS: readonly RailEntry[] = [
   { id: "opencode", label: "OpenCode", icon: opencodeIcon, inner: "h-[24px] w-[24px]" },
 ] as const;
 
+/**
+ * One agent in the dock. An agent whose CLI isn't installed stays visible
+ * but dimmed, and a click says why instead of opening a terminal that fails
+ * with "executable not found". It is aria-disabled rather than disabled so
+ * the hover tooltip still shows the reason.
+ */
+function DockAgentButton({ entry }: { entry: RailEntry }) {
+  const detection = useAgentDetection(entry.id);
+  const missing = detection !== null && !detection.installed;
+  const title = missing
+    ? (detection.reason ?? `${entry.label} isn't installed`)
+    : detection?.version
+      ? `${entry.label} ${detection.version}`
+      : entry.label;
+  return (
+    <button
+      className={`${buttonCls}${missing ? " opacity-40" : ""}`}
+      aria-disabled={missing || undefined}
+      onClick={() => {
+        if (missing) {
+          useNotificationStore.getState().notify("warn", title);
+          return;
+        }
+        addTerminal(entry.id);
+      }}
+      title={title}
+      aria-label={title}
+    >
+      <RailIcon art={entry} />
+    </button>
+  );
+}
+
 const BROWSER_ART: RailArt = { icon: browserIcon, inner: "h-[23px] w-[23px]" };
 const NOTE_ART: RailArt = { icon: noteIcon, tiled: true };
 
@@ -215,15 +250,7 @@ export function RightRail() {
             reach, so they stay fixed and this takes what is left. */}
         <div className="tc-rail-scroll flex min-h-0 flex-col items-center gap-0.5 overflow-y-auto">
           {AGENTS.map((entry) => (
-            <button
-              key={entry.id}
-              className={buttonCls}
-              onClick={() => addTerminal(entry.id)}
-              title={entry.label}
-              aria-label={entry.label}
-            >
-              <RailIcon art={entry} />
-            </button>
+            <DockAgentButton key={entry.id} entry={entry} />
           ))}
 
           <div

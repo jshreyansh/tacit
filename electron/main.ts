@@ -75,6 +75,7 @@ import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
 import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
+import { detectAgents } from "./agent-detect";
 import { writeShellIntegrationFiles } from "./shell-integration";
 import { applyLaunchArgs } from "../shared/agent-adapters";
 import {
@@ -2116,6 +2117,27 @@ function setupIpc() {
    * "what happened here" for a model and not for the person sitting in front
    * of it. This is the missing direction.
    */
+  // Which agent CLIs are installed, for the dock and the manager roster.
+  // Overrides are the commands set in Settings, which is what a launch uses.
+  ipcMain.handle(
+    "agents:detect",
+    async (
+      _event,
+      options: { commandOverrides?: Record<string, string>; refresh?: boolean } = {},
+    ) => {
+      const results = await detectAgents(
+        options.commandOverrides ?? {},
+        options.refresh === true,
+      );
+      dbg(
+        `agents:detect ${results
+          .map((r) => `${r.id}=${r.installed ? r.version ?? "unknown-version" : "missing"}`)
+          .join(" ")}`,
+      );
+      return results;
+    },
+  );
+
   ipcMain.handle(
     "record:list",
     async (
