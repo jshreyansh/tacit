@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   AgentCapabilityError,
@@ -185,3 +189,83 @@ test("a failed write names the file and the cause", () => {
       error.message.includes("EACCES"),
   );
 });
+
+// ── Codex ───────────────────────────────────────────────────────────────
+
+test("codex passes the bridge as -c overrides, ahead of any subcommand", () => {
+  const codex = findAgentAdapter("codex");
+  assert.ok(codex);
+  const result = planBridgeLaunch(codex, bridge, context);
+
+  assert.equal(result.placement, "prepend");
+  assert.deepEqual(result.files, [], "codex needs no file on disk");
+  assert.deepEqual(result.env, {});
+  assert.deepEqual(result.args, [
+    "-c", 'mcp_servers.tacit.command="/Applications/Tacit.app/Contents/MacOS/Tacit"',
+    "-c", 'mcp_servers.tacit.args=["/Applications/Tacit.app/Contents/Resources/tacit-bridge/tacit-bridge.js"]',
+    "-c", 'mcp_servers.tacit.env.TACIT_TERMINAL_ID="term-1"',
+    "-c", 'mcp_servers.tacit.env.TACIT_PORT_FILE="/Users/me/.tacit/port"',
+    "-c", 'mcp_servers.tacit.env.ELECTRON_RUN_AS_NODE="1"',
+  ]);
+  assert.deepEqual(
+    applyLaunchArgs(["resume", "abc"], result).slice(-2),
+    ["resume", "abc"],
+  );
+});
+
+test("codex quotes values so a path with spaces, quotes and backslashes survives", () => {
+  const codex = findAgentAdapter("codex")!;
+  const tricky = makeBridgeDescriptor({
+    execPath: '/Users/Jane "J" Doe/Tacit.app/bin\\tacit',
+    serverPath: "/tmp/with space/tacit-bridge.js",
+    terminalId: "t-1",
+    portFile: "/tmp/port",
+  });
+  const args = planBridgeLaunch(codex, tricky, context).args;
+  assert.ok(args.includes('mcp_servers.tacit.command="/Users/Jane \\"J\\" Doe/Tacit.app/bin\\\\tacit"'));
+  assert.ok(args.includes('mcp_servers.tacit.args=["/tmp/with space/tacit-bridge.js"]'));
+});
+
+test("codex refuses an env name that cannot be a TOML key, instead of mangling it", () => {
+  const codex = findAgentAdapter("codex")!;
+  const odd = { ...bridge, env: { ...bridge.env, "BAD.NAME": "x" } };
+  assert.throws(() => planBridgeLaunch(codex, odd, context), AgentCapabilityError);
+});
+
+const codexBinary = (() => {
+  try {
+    return execFileSync("sh", ["-c", "command -v codex"], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
+test(
+  "the real codex CLI parses the overrides into exactly the bridge descriptor",
+  { skip: codexBinary ? false : "codex is not installed" },
+  () => {
+    const codex = findAgentAdapter("codex")!;
+    const tricky = makeBridgeDescriptor({
+      execPath: '/opt/Jane "J" Doe/node',
+      serverPath: "/tmp/with space/tacit-bridge.js",
+      terminalId: "term-42",
+      portFile: "/tmp/port",
+    });
+    const { args } = planBridgeLaunch(codex, tricky, context);
+    // An empty CODEX_HOME: the test reads nothing of the machine's own config.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-codex-home-"));
+    const out = execFileSync(codexBinary!, [...args, "mcp", "list", "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, CODEX_HOME: home },
+    });
+    const servers = JSON.parse(out) as Array<{
+      name: string;
+      transport: { command?: string; args?: string[]; env?: Record<string, string> };
+    }>;
+    const tacit = servers.find((server) => server.name === "tacit");
+    assert.ok(tacit, `tacit missing from ${out}`);
+    assert.equal(tacit.transport.command, tricky.command);
+    assert.deepEqual(tacit.transport.args, tricky.args);
+    assert.deepEqual(tacit.transport.env, tricky.env);
+  },
+);

@@ -91,7 +91,7 @@ export interface AgentLaunchPlan {
  * has no per-launch way to be told — that agent cannot be given workspace
  * tools, and asking it to be is an error rather than a quiet no-op.
  */
-export type McpInjection = "config-file-flag";
+export type McpInjection = "config-file-flag" | "config-overrides";
 
 export interface AgentAdapter {
   /** Matches the terminal type (src/types TerminalType). */
@@ -156,7 +156,55 @@ const claude: AgentAdapter = {
   },
 };
 
-const ADAPTERS: readonly AgentAdapter[] = [claude];
+/**
+ * A TOML basic string. JSON's string escapes (\" \\ \n \uXXXX …) are all
+ * valid TOML, so JSON.stringify produces one exactly — including for a path
+ * with spaces, quotes or backslashes. Quoting is not optional: Codex falls
+ * back to the raw text when a value fails to parse as TOML, so an unquoted
+ * value that happens to parse as something else would silently change type.
+ */
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+/** Env names become bare TOML keys, which allow only these characters. */
+const TOML_BARE_KEY = /^[A-Za-z0-9_-]+$/;
+
+const codex: AgentAdapter = {
+  id: "codex",
+  displayName: "Codex",
+  // Codex has no --mcp-config; each `-c` overrides one dotted key of
+  // ~/.codex/config.toml for this run only. The file is never written, and
+  // the user's own mcp_servers entries load alongside (verified against
+  // codex-cli 0.153.4 with `codex mcp list`).
+  mcpInjection: "config-overrides",
+  planBridgeLaunch(bridge) {
+    const key = `mcp_servers.${TACIT_MCP_SERVER_NAME}`;
+    const overrides = [
+      `${key}.command=${tomlString(bridge.command)}`,
+      `${key}.args=[${bridge.args.map(tomlString).join(", ")}]`,
+      ...Object.entries(bridge.env).map(([name, value]) => {
+        if (!TOML_BARE_KEY.test(name)) {
+          throw new AgentCapabilityError(
+            "codex",
+            "mcpInjection",
+            `Environment variable name ${JSON.stringify(name)} cannot be passed to Codex as a config key.`,
+          );
+        }
+        return `${key}.env.${name}=${tomlString(value)}`;
+      }),
+    ];
+    return {
+      args: overrides.flatMap((override) => ["-c", override]),
+      // Global options must come before a subcommand: `codex resume <id>`.
+      placement: "prepend",
+      env: {},
+      files: [],
+    };
+  },
+};
+
+const ADAPTERS: readonly AgentAdapter[] = [claude, codex];
 
 /** The adapter for a terminal type, or null for one that is not an agent. */
 export function findAgentAdapter(id: string | undefined): AgentAdapter | null {
