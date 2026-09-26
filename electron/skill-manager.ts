@@ -573,6 +573,30 @@ const LIFECYCLE_HOOK_EVENTS = [
 
 const LIFECYCLE_MARKER = "tacit-hook.mjs";
 
+/**
+ * Hook scripts this app installed under earlier names. Before the rename,
+ * TermCanvas registered `termcanvas-hook.mjs`; matching only the new marker
+ * meant those entries were never recognised as ours, so they outlived the
+ * script they point to and fail on every Claude or Codex event
+ * ("hook exited with code 1"). Treating them as ours lets the next install
+ * replace them and an uninstall remove them.
+ */
+const LEGACY_LIFECYCLE_MARKERS = ["termcanvas-hook.mjs"];
+
+function isOwnHookEntry(entry: {
+  hooks?: Array<{ command?: string }>;
+}): boolean {
+  return (
+    entry.hooks?.some((hook) => {
+      const command = hook.command ?? "";
+      return (
+        command.includes(LIFECYCLE_MARKER) ||
+        LEGACY_LIFECYCLE_MARKERS.some((marker) => command.includes(marker))
+      );
+    }) ?? false
+  );
+}
+
 function ensureLifecycleHooks(settingsFile: string, scriptPath: string): void {
   let data: Record<string, unknown> = {};
   try {
@@ -593,10 +617,7 @@ function ensureLifecycleHooks(settingsFile: string, scriptPath: string): void {
       }>;
     }>;
 
-    const filtered = existing.filter(
-      (entry) =>
-        !entry.hooks?.some((h) => h.command.includes(LIFECYCLE_MARKER)),
-    );
+    const filtered = existing.filter((entry) => !isOwnHookEntry(entry));
 
     // SessionStart blocks briefly to capture session_id; all others are async
     const isAsync = eventName !== "SessionStart";
@@ -641,10 +662,7 @@ function removeLifecycleHooks(settingsFile: string): void {
       hooks?: Array<{ type: string; command: string }>;
     }>;
 
-    const filtered = existing.filter(
-      (entry) =>
-        !entry.hooks?.some((h) => h.command.includes(LIFECYCLE_MARKER)),
-    );
+    const filtered = existing.filter((entry) => !isOwnHookEntry(entry));
 
     if (filtered.length !== existing.length) {
       changed = true;
@@ -806,10 +824,7 @@ function ensureCodexHooks(scriptPath: string, home: string): void {
       hooks?: Array<{ type: string; command: string; timeout?: number }>;
     }>;
 
-    const filtered = existing.filter(
-      (entry) =>
-        !entry.hooks?.some((h) => h.command.includes(LIFECYCLE_MARKER)),
-    );
+    const filtered = existing.filter((entry) => !isOwnHookEntry(entry));
 
     filtered.push({
       matcher: "",
@@ -846,10 +861,7 @@ function removeCodexHooks(home: string): void {
       hooks?: Array<{ type: string; command: string }>;
     }>;
 
-    const filtered = existing.filter(
-      (entry) =>
-        !entry.hooks?.some((h) => h.command.includes(LIFECYCLE_MARKER)),
-    );
+    const filtered = existing.filter((entry) => !isOwnHookEntry(entry));
 
     if (filtered.length !== existing.length) {
       changed = true;
@@ -1019,6 +1031,25 @@ function ensureCodexHooksFeatureFlagInToml(
     .replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * Where our matcher group sits in hooks.json for this event. Read back from
+ * the file ensureCodexHooks just wrote, so the trust record names the entry
+ * that is actually there.
+ */
+function ownCodexHookGroupIndex(
+  hooksFile: string,
+  eventName: (typeof CODEX_HOOK_EVENTS)[number],
+): number {
+  const data = JSON.parse(fs.readFileSync(hooksFile, "utf-8")) as {
+    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
+  };
+  const index = (data.hooks?.[eventName] ?? []).findIndex(isOwnHookEntry);
+  if (index === -1) {
+    throw new Error(`Tacit's ${eventName} hook is missing from ${hooksFile}`);
+  }
+  return index;
+}
+
 function ensureCodexHookTrustStates(home: string, scriptPath: string): void {
   const configFile = path.join(getCodexConfigDir(home), "config.toml");
   fs.mkdirSync(path.dirname(configFile), { recursive: true });
@@ -1030,9 +1061,13 @@ function ensureCodexHookTrustStates(home: string, scriptPath: string): void {
 
   const hooksFile = path.join(getCodexConfigDir(home), "hooks.json");
   const hookCommand = `node '${scriptPath}'`;
+  // Codex keys each trust record by the hook's position — event, matcher
+  // group, hook — and our group is appended after any the user has. Keying
+  // by `:0:0` trusted whatever happened to be first, and left ours untrusted
+  // whenever something else came before it.
   const states = Object.fromEntries(
     CODEX_HOOK_EVENTS.map((eventName) => [
-      `${hooksFile}:${CODEX_HOOK_EVENT_KEY_LABELS[eventName]}:0:0`,
+      `${hooksFile}:${CODEX_HOOK_EVENT_KEY_LABELS[eventName]}:${ownCodexHookGroupIndex(hooksFile, eventName)}:0`,
       codexCommandHookHash(eventName, hookCommand),
     ]),
   );

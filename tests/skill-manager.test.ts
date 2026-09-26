@@ -898,3 +898,87 @@ test("installSkillLinks creates codex hooks.json with all 5 events", () => {
     );
   }
 });
+
+// ── Hooks left behind by the TermCanvas → Tacit rename ──────────────────
+
+const CODEX_EVENTS = ["PreToolUse", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"];
+const LEGACY_COMMAND = "node '/Users/me/termcanvas/skills/scripts/termcanvas-hook.mjs'";
+const USER_COMMAND = "node '/Users/me/my-own-hook.mjs'";
+
+function group(command: string) {
+  return { matcher: "", hooks: [{ type: "command", command, timeout: 5 }] };
+}
+
+function commandsFor(hooksFile: string, event: string): string[] {
+  const data = JSON.parse(fs.readFileSync(hooksFile, "utf-8"));
+  return (data.hooks?.[event] ?? []).flatMap(
+    (entry: { hooks?: Array<{ command: string }> }) => (entry.hooks ?? []).map((h) => h.command),
+  );
+}
+
+test("ensureSkillLinks removes TermCanvas-era Codex hooks and keeps the user's own", () => {
+  const { home, sourceDir } = makeTempEnv();
+  const hooksFile = path.join(home, ".codex", "hooks.json");
+  fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
+  fs.writeFileSync(
+    hooksFile,
+    JSON.stringify({
+      hooks: Object.fromEntries(CODEX_EVENTS.map((event) => [event, [group(USER_COMMAND), group(LEGACY_COMMAND)]])),
+    }),
+  );
+
+  ensureSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
+
+  for (const event of CODEX_EVENTS) {
+    const commands = commandsFor(hooksFile, event);
+    assert.ok(!commands.some((c) => c.includes("termcanvas-hook.mjs")), `${event} kept the TermCanvas hook`);
+    assert.equal(commands[0], USER_COMMAND, `${event} lost the user's own hook`);
+    assert.ok(commands[1]?.includes("tacit-hook.mjs"), `${event} has no Tacit hook`);
+    assert.equal(commands.length, 2);
+  }
+});
+
+test("ensureSkillLinks removes TermCanvas-era Claude hooks", () => {
+  const { home, sourceDir } = makeTempEnv();
+  const settingsFile = path.join(home, ".claude", "settings.json");
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  fs.writeFileSync(settingsFile, JSON.stringify({ hooks: { Stop: [group(LEGACY_COMMAND)] } }));
+
+  ensureSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
+
+  const commands = commandsFor(settingsFile, "Stop");
+  assert.ok(!commands.some((c) => c.includes("termcanvas-hook.mjs")));
+  assert.equal(commands.filter((c) => c.includes("tacit-hook.mjs")).length, 1);
+});
+
+test("Codex trust records name the position Tacit's hook actually occupies", () => {
+  const { home, sourceDir } = makeTempEnv();
+  const hooksFile = path.join(home, ".codex", "hooks.json");
+  fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
+  // The user's own hook comes first, so Tacit's lands at group 1.
+  fs.writeFileSync(
+    hooksFile,
+    JSON.stringify({ hooks: Object.fromEntries(CODEX_EVENTS.map((event) => [event, [group(USER_COMMAND)]])) }),
+  );
+
+  ensureSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
+
+  const config = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf-8");
+  for (const label of ["pre_tool_use", "post_tool_use", "session_start", "stop", "user_prompt_submit"]) {
+    assert.match(config, new RegExp(`\\[hooks\\.state\\."${escapeRegExp(`${hooksFile}:${label}:1:0`)}"\\]`), `${label} trusted at the wrong position`);
+    assert.doesNotMatch(config, new RegExp(escapeRegExp(`${hooksFile}:${label}:0:0`)), `${label} trusted the user's hook`);
+  }
+});
+
+test("uninstallSkillLinks also removes TermCanvas-era Codex hooks", () => {
+  const { home, sourceDir } = makeTempEnv();
+  installSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
+  const hooksFile = path.join(home, ".codex", "hooks.json");
+  const data = JSON.parse(fs.readFileSync(hooksFile, "utf-8"));
+  data.hooks.Stop.unshift(group(LEGACY_COMMAND));
+  fs.writeFileSync(hooksFile, JSON.stringify(data));
+
+  uninstallSkillLinks({ home, sourceDir });
+
+  assert.deepEqual(commandsFor(hooksFile, "Stop"), []);
+});
