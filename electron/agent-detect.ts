@@ -1,13 +1,12 @@
 import { execFile } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import os from "node:os";
 import {
   listAgentAdapters,
   parseCliVersion,
   type AgentAdapter,
   type AgentDetection,
 } from "../shared/agent-adapters";
-import { getLoginShellEnv, resolveExecutable } from "./pty-launch";
+import { buildLaunchSpec, PtyLaunchError } from "./pty-launch";
 
 /**
  * Which agent CLIs are installed, found the same way a launch would find
@@ -22,9 +21,21 @@ import { getLoginShellEnv, resolveExecutable } from "./pty-launch";
 
 const VERSION_TIMEOUT_MS = 5_000;
 
-export interface DetectDeps {
+export interface LocatedCommand {
+  /** The executable a launch would run. */
+  path: string;
+  /** Arguments a launch puts before the CLI's own (Windows `cmd.exe /c x.cmd`). */
+  prefixArgs: string[];
   env: Record<string, string>;
-  resolve: (command: string, env: Record<string, string>) => string | null;
+}
+
+export interface DetectDeps {
+  /**
+   * Where `command` would be launched from, and the environment it would get,
+   * or null when it can't be found. In the app this is buildLaunchSpec itself,
+   * so "installed" means exactly "a launch would find it".
+   */
+  locate: (command: string) => Promise<LocatedCommand | null>;
   runVersion: (
     executable: string,
     args: readonly string[],
@@ -37,8 +48,8 @@ export async function detectAgent(
   command: string,
   deps: DetectDeps,
 ): Promise<AgentDetection> {
-  const executable = deps.resolve(command, deps.env);
-  if (!executable) {
+  const located = await deps.locate(command);
+  if (!located) {
     return {
       id: adapter.id,
       installed: false,
@@ -48,8 +59,13 @@ export async function detectAgent(
     };
   }
 
+  const executable = located.path;
   try {
-    const output = await deps.runVersion(executable, adapter.versionArgs, deps.env);
+    const output = await deps.runVersion(
+      executable,
+      [...located.prefixArgs, ...adapter.versionArgs],
+      located.env,
+    );
     const version = parseCliVersion(output);
     return {
       id: adapter.id,
@@ -74,7 +90,7 @@ export async function detectAgent(
   }
 }
 
-function runVersion(
+export function runVersion(
   executable: string,
   args: readonly string[],
   env: Record<string, string>,
@@ -96,12 +112,23 @@ function runVersion(
   });
 }
 
-function isExecutable(file: string): boolean {
+/**
+ * Resolves a command exactly as a terminal launch would (buildLaunchSpec:
+ * login-shell PATH, Tacit's CLI folder, Windows launchers), or null when the
+ * launch would fail to find it.
+ */
+export async function locateCommand(
+  command: string,
+  extraPathEntries: string[] = [],
+): Promise<LocatedCommand | null> {
   try {
-    fs.accessSync(file, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
+    const spec = await buildLaunchSpec({ cwd: os.homedir(), shell: command, extraPathEntries });
+    return { path: spec.file, prefixArgs: spec.args, env: spec.env };
+  } catch (error) {
+    if (error instanceof PtyLaunchError && error.code === "executable-not-found") {
+      return null;
+    }
+    throw error;
   }
 }
 
@@ -116,32 +143,20 @@ let cachedKey = "";
 export function detectAgents(
   commandOverrides: Record<string, string | undefined> = {},
   refresh = false,
+  /** The same folders an agent launch adds to PATH (Tacit's CLI folder). */
+  extraPathEntries: string[] = [],
 ): Promise<AgentDetection[]> {
-  const key = JSON.stringify(commandOverrides);
+  const key = JSON.stringify([commandOverrides, extraPathEntries]);
   if (cached && !refresh && key === cachedKey) return cached;
   cachedKey = key;
-  cached = (async () => {
-    const env = Object.fromEntries(
-      Object.entries(await getLoginShellEnv()).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
-      ),
-    );
-    const deps: DetectDeps = {
-      env,
-      resolve: (command, searchEnv) =>
-        resolveExecutable(command, searchEnv, {
-          platform: process.platform,
-          pathDelimiter: path.delimiter,
-          existsSync: (file) => fs.existsSync(file),
-          isExecutable,
-        }),
-      runVersion,
-    };
-    return Promise.all(
-      listAgentAdapters().map((adapter) =>
-        detectAgent(adapter, commandOverrides[adapter.id]?.trim() || adapter.command, deps),
-      ),
-    );
-  })();
+  const deps: DetectDeps = {
+    locate: (command) => locateCommand(command, extraPathEntries),
+    runVersion,
+  };
+  cached = Promise.all(
+    listAgentAdapters().map((adapter) =>
+      detectAgent(adapter, commandOverrides[adapter.id]?.trim() || adapter.command, deps),
+    ),
+  );
   return cached;
 }

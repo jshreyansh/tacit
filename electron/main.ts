@@ -75,7 +75,7 @@ import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
 import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
-import { detectAgents } from "./agent-detect";
+import { detectAgents, locateCommand, runVersion } from "./agent-detect";
 import { writeShellIntegrationFiles } from "./shell-integration";
 import { applyLaunchArgs } from "../shared/agent-adapters";
 import {
@@ -2128,6 +2128,7 @@ function setupIpc() {
       const results = await detectAgents(
         options.commandOverrides ?? {},
         options.refresh === true,
+        getTerminalExtraPathEntries(getCliDir(), "claude"),
       );
       dbg(
         `agents:detect ${results
@@ -2610,29 +2611,24 @@ function setupIpc() {
   ipcMain.handle(
     "cli:validate-command",
     async (_event, command: string, _args?: string[]) => {
+      // The same lookup the dock's agent detection and a real launch use
+      // (electron/agent-detect.ts), so Settings can't disagree with either.
       try {
-        const spec = await buildLaunchSpec({
-          cwd: process.cwd(),
-          shell: command,
-          extraPathEntries: [getCliDir()],
-        });
-        const { execFile } = await import("child_process");
-        const version = await new Promise<string | null>((resolve) => {
-          execFile(
-            spec.file,
-            ["--version"],
-            { timeout: 5000, env: spec.env },
-            (err, stdout) => {
-              if (err) {
-                resolve(null);
-                return;
-              }
-              const line = stdout.toString().trim().split("\n")[0];
-              resolve(line || null);
-            },
-          );
-        });
-        return { ok: true as const, resolvedPath: spec.file, version };
+        const located = await locateCommand(command, [getCliDir()]);
+        if (!located) {
+          return {
+            ok: false as const,
+            error: `Executable not found: ${command}`,
+          };
+        }
+        const version = await runVersion(
+          located.path,
+          [...located.prefixArgs, "--version"],
+          located.env,
+        )
+          .then((output) => output.trim().split("\n")[0] || null)
+          .catch(() => null);
+        return { ok: true as const, resolvedPath: located.path, version };
       } catch (err) {
         return {
           ok: false as const,

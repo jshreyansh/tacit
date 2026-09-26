@@ -16,15 +16,18 @@ test("versions are read from each CLI's own --version format", () => {
 
 function deps(overrides: Partial<DetectDeps> = {}): DetectDeps {
   return {
-    env: { PATH: "/usr/bin" },
-    resolve: (command) => `/usr/local/bin/${command}`,
+    locate: async (command) => ({
+      path: `/usr/local/bin/${command}`,
+      prefixArgs: [],
+      env: { PATH: "/usr/bin" },
+    }),
     runVersion: async () => "codex-cli 0.157.1",
     ...overrides,
   };
 }
 
 test("a CLI that isn't on PATH is reported missing, with the command named, and never throws", async () => {
-  const result = await detectAgent(findAgentAdapter("codex")!, "codex", deps({ resolve: () => null }));
+  const result = await detectAgent(findAgentAdapter("codex")!, "codex", deps({ locate: async () => null }));
   assert.equal(result.installed, false);
   assert.equal(result.path, null);
   assert.equal(result.version, null);
@@ -58,9 +61,39 @@ test("the command overridden in Settings is the one looked up", async () => {
   await detectAgent(
     findAgentAdapter("claude")!,
     "/opt/claude-nightly/bin/claude",
-    deps({ resolve: (command) => { looked.push(command); return command; } }),
+    deps({
+      locate: async (command) => {
+        looked.push(command);
+        return { path: command, prefixArgs: [], env: {} };
+      },
+    }),
   );
   assert.deepEqual(looked, ["/opt/claude-nightly/bin/claude"]);
+});
+
+test("a CLI launched through a wrapper is asked its version through the same wrapper", async () => {
+  // Windows runs npm's .cmd launchers via cmd.exe; asking cmd.exe itself for
+  // --version would report on the wrong program.
+  let ran: { executable: string; args: readonly string[] } | null = null;
+  await detectAgent(
+    findAgentAdapter("claude")!,
+    "claude",
+    deps({
+      locate: async () => ({
+        path: "C:\\Windows\\System32\\cmd.exe",
+        prefixArgs: ["/d", "/s", "/c", "C:\\npm\\claude.cmd"],
+        env: {},
+      }),
+      runVersion: async (executable, args) => {
+        ran = { executable, args };
+        return "2.1.283 (Claude Code)";
+      },
+    }),
+  );
+  assert.deepEqual(ran, {
+    executable: "C:\\Windows\\System32\\cmd.exe",
+    args: ["/d", "/s", "/c", "C:\\npm\\claude.cmd", "--version"],
+  });
 });
 
 test("every registered agent names a command and a way to print its version", () => {
