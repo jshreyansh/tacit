@@ -91,7 +91,11 @@ export interface AgentLaunchPlan {
  * has no per-launch way to be told — that agent cannot be given workspace
  * tools, and asking it to be is an error rather than a quiet no-op.
  */
-export type McpInjection = "config-file-flag" | "config-overrides" | "env-config";
+export type McpInjection =
+  | "config-file-flag"
+  | "config-overrides"
+  | "env-config"
+  | "system-settings-file";
 
 export interface AgentAdapter {
   /** Matches the terminal type (src/types TerminalType). */
@@ -113,6 +117,13 @@ export interface LaunchContext {
    * add to a variable the person may already set rather than replace it.
    */
   inheritedEnv?: Record<string, string | undefined>;
+  /** The OS the agent runs on, for adapters whose defaults differ by OS. */
+  platform?: string;
+  /**
+   * Reads a file an adapter must merge rather than replace, or null when it
+   * does not exist. Any other failure throws.
+   */
+  readFile?: (path: string) => string | null;
 }
 
 /** A request for something an agent cannot do. Never swallowed. */
@@ -286,7 +297,106 @@ const opencode: AgentAdapter = {
   },
 };
 
-const ADAPTERS: readonly AgentAdapter[] = [claude, codex, opencode];
+/** Where Gemini CLI looks for its system settings when nothing overrides it. */
+function geminiDefaultSystemSettingsPath(platform: string | undefined): string {
+  if (platform === "darwin") return "/Library/Application Support/GeminiCli/settings.json";
+  if (platform === "win32") return "C:\\ProgramData\\gemini-cli\\settings.json";
+  return "/etc/gemini-cli/settings.json";
+}
+
+function dirnameOf(file: string): string {
+  const cut = Math.max(file.lastIndexOf("/"), file.lastIndexOf("\\"));
+  return cut <= 0 ? file.slice(0, cut + 1) : file.slice(0, cut);
+}
+
+function joinTo(dir: string, name: string): string {
+  const separator = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
+  return `${dir}${separator}${name}`;
+}
+
+const gemini: AgentAdapter = {
+  id: "gemini",
+  displayName: "Gemini CLI",
+  // Gemini has no per-run MCP flag, but it merges MCP servers by name across
+  // its settings layers, and GEMINI_CLI_SYSTEM_SETTINGS_PATH names the
+  // system layer. So the bridge goes in a system settings file of our own,
+  // and ~/.gemini/settings.json is never touched (verified against gemini
+  // 0.46.0: `gemini mcp list` shows the user's servers and tacit together).
+  //
+  // Two things the env var would otherwise break, both handled here:
+  // - It replaces the system file an administrator may have set to enforce
+  //   policy. Whatever is there is copied in, and our server added to it.
+  // - Gemini derives the system-defaults path from that file's folder, so
+  //   moving the file would silently move the defaults too. The original
+  //   defaults path is pinned explicitly.
+  //
+  // `trust: true` skips Gemini's per-call confirmation for Tacit's tools.
+  // Gemini can only trust a whole server, not one tool, so unlike Codex this
+  // includes browser_eval (chosen by the user, 26 Sep). Gemini's own
+  // folder-trust gate still applies: in a folder the person has not trusted,
+  // Gemini disables every MCP server, theirs and ours.
+  mcpInjection: "system-settings-file",
+  planBridgeLaunch(bridge, { terminalId, tempFile, inheritedEnv, platform, readFile }) {
+    const systemPath =
+      inheritedEnv?.GEMINI_CLI_SYSTEM_SETTINGS_PATH ||
+      geminiDefaultSystemSettingsPath(platform);
+    const defaultsPath =
+      inheritedEnv?.GEMINI_CLI_SYSTEM_DEFAULTS_PATH ||
+      joinTo(dirnameOf(systemPath), "system-defaults.json");
+
+    let settings: Record<string, unknown> = {};
+    const existing = readFile?.(systemPath);
+    if (existing != null && existing.trim()) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(existing);
+      } catch {
+        throw new AgentCapabilityError(
+          "gemini",
+          "mcpInjection",
+          `Gemini's system settings at ${systemPath} could not be read as JSON, so Tacit's tools were not added rather than risk hiding them.`,
+        );
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new AgentCapabilityError(
+          "gemini",
+          "mcpInjection",
+          `Gemini's system settings at ${systemPath} are not a JSON object, so Tacit's tools were not added.`,
+        );
+      }
+      settings = parsed as Record<string, unknown>;
+    }
+    const servers =
+      settings.mcpServers && typeof settings.mcpServers === "object" && !Array.isArray(settings.mcpServers)
+        ? (settings.mcpServers as Record<string, unknown>)
+        : {};
+    settings = {
+      ...settings,
+      mcpServers: {
+        ...servers,
+        [TACIT_MCP_SERVER_NAME]: {
+          command: bridge.command,
+          args: bridge.args,
+          env: bridge.env,
+          trust: true,
+        },
+      },
+    };
+
+    const file = tempFile(`tacit-gemini-system-${terminalId}.json`);
+    return {
+      args: [],
+      placement: "prepend",
+      env: {
+        GEMINI_CLI_SYSTEM_SETTINGS_PATH: file,
+        GEMINI_CLI_SYSTEM_DEFAULTS_PATH: defaultsPath,
+      },
+      files: [{ path: file, contents: JSON.stringify(settings) }],
+    };
+  },
+};
+
+const ADAPTERS: readonly AgentAdapter[] = [claude, codex, opencode, gemini];
 
 /** The adapter for a terminal type, or null for one that is not an agent. */
 export function findAgentAdapter(id: string | undefined): AgentAdapter | null {

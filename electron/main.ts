@@ -3278,7 +3278,7 @@ function dataUrlToPngBuffer(dataUrl: string): Buffer {
 }
 
 const CLI_NAMES = ["tacit", "hydra", "browse"];
-const AGENT_SHIM_NAMES = ["codex", "claude", "opencode"];
+const AGENT_SHIM_NAMES = ["codex", "claude", "opencode", "gemini"];
 
 function ensureCliLinks(): void {
   const cliDir = getCliDir();

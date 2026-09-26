@@ -40,7 +40,19 @@ export interface BridgeLaunchOptions {
   tempFile?: (name: string) => string;
   /** What the agent would start with; see LaunchContext.inheritedEnv. */
   inheritedEnv?: Record<string, string | undefined>;
+  platform?: string;
+  readFile?: (file: string) => string | null;
   writeFile?: (file: string, contents: string) => void;
+}
+
+/** A file's contents, or null when it does not exist. Other errors throw. */
+function readFileIfPresent(file: string): string | null {
+  try {
+    return fs.readFileSync(file, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 /**
@@ -75,6 +87,8 @@ export function prepareBridgeLaunch(
     terminalId: options.terminalId,
     tempFile: options.tempFile ?? ((name) => path.join(os.tmpdir(), name)),
     inheritedEnv: options.inheritedEnv,
+    platform: options.platform ?? process.platform,
+    readFile: options.readFile ?? readFileIfPresent,
   });
 
   const writeFile =

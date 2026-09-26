@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { prepareBridgeLaunch } from "../../electron/agent-launch";
 import { applyLaunchArgs } from "../../shared/agent-adapters";
 
-type AgentShimProvider = "claude" | "codex" | "opencode";
+type AgentShimProvider = "claude" | "codex" | "opencode" | "gemini";
 
 function moduleDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));

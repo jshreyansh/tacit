@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -428,5 +428,152 @@ test(
       timeout: 60_000,
     }).replace(/\u001b\[[0-9;]*m/g, "");
     assert.match(out, /✓ tacit\s+connected/, out);
+  },
+);
+
+// ── Gemini ──────────────────────────────────────────────────────────────
+
+function geminiPlan(options: {
+  inheritedEnv?: Record<string, string | undefined>;
+  platform?: string;
+  files?: Record<string, string>;
+} = {}) {
+  const read: string[] = [];
+  const plan = planBridgeLaunch(findAgentAdapter("gemini")!, bridge, {
+    ...context,
+    inheritedEnv: options.inheritedEnv,
+    platform: options.platform ?? "darwin",
+    readFile: (file) => {
+      read.push(file);
+      return options.files?.[file] ?? null;
+    },
+  });
+  const settings = JSON.parse(plan.files[0].contents);
+  return { plan, settings, read };
+}
+
+test("gemini gets the bridge in a system settings file of its own, trusted, with no args", () => {
+  const { plan, settings } = geminiPlan();
+  assert.deepEqual(plan.args, []);
+  assert.equal(plan.files.length, 1);
+  assert.equal(plan.files[0].path, "/tmp/tacit-gemini-system-term-1.json");
+  assert.equal(plan.env.GEMINI_CLI_SYSTEM_SETTINGS_PATH, "/tmp/tacit-gemini-system-term-1.json");
+  assert.deepEqual(settings, {
+    mcpServers: {
+      tacit: { command: bridge.command, args: bridge.args, env: bridge.env, trust: true },
+    },
+  });
+});
+
+test("gemini pins the system-defaults path where it was, since Gemini derives it from the settings folder", () => {
+  assert.equal(
+    geminiPlan({ platform: "darwin" }).plan.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+    "/Library/Application Support/GeminiCli/system-defaults.json",
+  );
+  assert.equal(
+    geminiPlan({ platform: "linux" }).plan.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+    "/etc/gemini-cli/system-defaults.json",
+  );
+  assert.equal(
+    geminiPlan({ platform: "win32" }).plan.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+    "C:\\ProgramData\\gemini-cli\\system-defaults.json",
+  );
+  assert.equal(
+    geminiPlan({ inheritedEnv: { GEMINI_CLI_SYSTEM_DEFAULTS_PATH: "/corp/defaults.json" } }).plan.env
+      .GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+    "/corp/defaults.json",
+  );
+  assert.equal(
+    geminiPlan({ inheritedEnv: { GEMINI_CLI_SYSTEM_SETTINGS_PATH: "/corp/gemini/settings.json" } }).plan.env
+      .GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+    "/corp/gemini/system-defaults.json",
+  );
+});
+
+test("gemini keeps an administrator's system settings and adds tacit to them", () => {
+  const adminPath = "/Library/Application Support/GeminiCli/settings.json";
+  const { settings, read } = geminiPlan({
+    files: {
+      [adminPath]: JSON.stringify({
+        security: { auth: { enforcedType: "oauth-personal" } },
+        mcpServers: { corp: { command: "corp-server" } },
+      }),
+    },
+  });
+  assert.deepEqual(read, [adminPath]);
+  assert.deepEqual(settings.security, { auth: { enforcedType: "oauth-personal" } });
+  assert.deepEqual(settings.mcpServers.corp, { command: "corp-server" });
+  assert.equal(settings.mcpServers.tacit.trust, true);
+});
+
+test("gemini reads an inherited system settings path, not the default", () => {
+  const { read } = geminiPlan({ inheritedEnv: { GEMINI_CLI_SYSTEM_SETTINGS_PATH: "/corp/settings.json" } });
+  assert.deepEqual(read, ["/corp/settings.json"]);
+});
+
+test("gemini refuses to replace system settings it cannot read", () => {
+  const adminPath = "/Library/Application Support/GeminiCli/settings.json";
+  for (const contents of ["{ // comment\n}", "[1]"]) {
+    assert.throws(
+      () => geminiPlan({ files: { [adminPath]: contents } }),
+      (error: unknown) => error instanceof AgentCapabilityError && error.message.includes(adminPath),
+    );
+  }
+});
+
+test("every agent the workspace-manager roster offers can be given Tacit's tools", async () => {
+  const source = fs.readFileSync(path.resolve("src/toolbar/WorkspaceManagerPill.tsx"), "utf8");
+  const match = source.match(/WORKSPACE_MANAGER_AGENT_TYPES = \[([^\]]*)\]/);
+  assert.ok(match, "roster list not found");
+  const roster = [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(roster.length > 0);
+  for (const id of roster) {
+    const adapter = findAgentAdapter(id);
+    assert.ok(adapter, `${id} is offered as manager but has no adapter`);
+    assert.ok(adapter.mcpInjection, `${id} is offered as manager but cannot receive tools`);
+  }
+});
+
+const geminiBinary = (() => {
+  try {
+    return execFileSync("sh", ["-c", "command -v gemini"], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
+test(
+  "the real gemini lists the person's own servers and tacit together",
+  { skip: geminiBinary ? false : "gemini is not installed", timeout: 120_000 },
+  () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-gemini-"));
+    const home = path.join(root, "home");
+    fs.mkdirSync(path.join(home, ".gemini"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, ".gemini", "settings.json"),
+      JSON.stringify({ mcpServers: { mine: { command: "/usr/bin/true" } } }),
+    );
+    const written = new Map<string, string>();
+    const plan = prepareBridgeLaunch({
+      terminalType: "gemini",
+      terminalId: "term-g",
+      serverPath: "/tmp/tacit-bridge.js",
+      portFile: "/tmp/port",
+      tempFile: (name) => path.join(root, name),
+      readFile: () => null,
+      writeFile: (file, contents) => {
+        written.set(file, contents);
+        fs.writeFileSync(file, contents);
+      },
+    })!;
+    // Gemini writes the list to stderr.
+    const result = spawnSync(geminiBinary!, ["mcp", "list"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home, ...plan.env },
+      timeout: 90_000,
+    });
+    const out = `${result.stdout}${result.stderr}`;
+    assert.match(out, /mine:/, out);
+    assert.match(out, /tacit:.*tacit-bridge\.js/, out);
   },
 );
