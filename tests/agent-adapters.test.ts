@@ -20,6 +20,7 @@ import {
   BridgeUnavailableError,
   prepareBridgeLaunch,
 } from "../electron/agent-launch.ts";
+import { tacitBridgeCandidates } from "../cli/agent-shims/run.ts";
 
 const bridge = makeBridgeDescriptor({
   execPath: "/Applications/Tacit.app/Contents/MacOS/Tacit",
@@ -583,3 +584,22 @@ test(
     assert.match(out, /tacit:.*tacit-bridge\.js/, out);
   },
 );
+
+// ── Shell shim: where it finds the bridge ───────────────────────────────
+
+test("the shell shim finds the bridge in the packaged app's layout", () => {
+  // electron-builder.yml: dist-cli -> Resources/cli, tacit-bridge/dist -> Resources/tacit-bridge
+  const shimDir = "/Applications/Tacit.app/Contents/Resources/cli/agent-shims";
+  assert.ok(
+    tacitBridgeCandidates(shimDir).includes(
+      "/Applications/Tacit.app/Contents/Resources/tacit-bridge/tacit-bridge.js",
+    ),
+  );
+});
+
+test("the shell shim finds the bridge in a development checkout", () => {
+  const shimDir = "/Users/me/tacit/dist-cli/agent-shims";
+  assert.ok(
+    tacitBridgeCandidates(shimDir).includes("/Users/me/tacit/tacit-bridge/dist/tacit-bridge.js"),
+  );
+});

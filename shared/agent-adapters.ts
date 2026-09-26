@@ -5,7 +5,7 @@
  * canvas, a worker the manager spawns — gets the same MCP server, the bridge.
  * What differs is only how each CLI is told about it: Claude reads a config
  * file named by a flag, Codex takes dotted overrides on the command line,
- * OpenCode reads an env var. This module is that per-agent knowledge in one
+ * OpenCode reads an env var, Gemini a system settings file. This module is that per-agent knowledge in one
  * place, so a new agent is one entry here and nothing else.
  *
  * It used to be two hand-written copies — electron/main.ts for terminals made
@@ -213,7 +213,7 @@ const codex: AgentAdapter = {
   // Codex has no --mcp-config; each `-c` overrides one dotted key of
   // ~/.codex/config.toml for this run only. The file is never written, and
   // the user's own mcp_servers entries load alongside (verified against
-  // codex-cli 0.153.4 with `codex mcp list`).
+  // codex-cli 0.153.4 and 0.157.1 with `codex mcp list`).
   mcpInjection: "config-overrides",
   planBridgeLaunch(bridge) {
     const key = `mcp_servers.${TACIT_MCP_SERVER_NAME}`;
@@ -246,6 +246,43 @@ const codex: AgentAdapter = {
   },
 };
 
+/**
+ * A config the person already has, parsed so ours can be added to it. One
+ * that can't be read as a JSON object is refused rather than replaced:
+ * overwriting it would silently drop their configuration.
+ */
+function parseExistingConfig(
+  text: string,
+  agentId: string,
+  what: string,
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new AgentCapabilityError(
+      agentId,
+      "mcpInjection",
+      `${what} could not be read as JSON, so Tacit's tools were not added rather than risk replacing it.`,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AgentCapabilityError(
+      agentId,
+      "mcpInjection",
+      `${what} is not a JSON object, so Tacit's tools were not added to it.`,
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/** A nested object from a parsed config, or an empty one. */
+function objectOrEmpty(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 const opencode: AgentAdapter = {
   id: "opencode",
   displayName: "OpenCode",
@@ -258,34 +295,12 @@ const opencode: AgentAdapter = {
   mcpInjection: "env-config",
   planBridgeLaunch(bridge, { inheritedEnv }) {
     const existing = inheritedEnv?.OPENCODE_CONFIG_CONTENT?.trim();
-    let config: Record<string, unknown> = {};
-    if (existing) {
-      // Someone who sets this themselves keeps everything in it; only our
-      // one server is added. Unreadable, it is refused rather than replaced,
-      // since overwriting it would silently drop their configuration.
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(existing);
-      } catch {
-        throw new AgentCapabilityError(
-          "opencode",
-          "mcpInjection",
-          "OPENCODE_CONFIG_CONTENT is set but is not valid JSON, so Tacit's tools were not added to it.",
-        );
-      }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new AgentCapabilityError(
-          "opencode",
-          "mcpInjection",
-          "OPENCODE_CONFIG_CONTENT is set but is not a JSON object, so Tacit's tools were not added to it.",
-        );
-      }
-      config = parsed as Record<string, unknown>;
-    }
-    const mcp =
-      config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)
-        ? (config.mcp as Record<string, unknown>)
-        : {};
+    // Someone who sets this themselves keeps everything in it; only our one
+    // server is added.
+    let config = existing
+      ? parseExistingConfig(existing, "opencode", "OPENCODE_CONFIG_CONTENT")
+      : {};
+    const mcp = objectOrEmpty(config.mcp);
     config = {
       ...config,
       mcp: {
@@ -321,7 +336,7 @@ function dirnameOf(file: string): string {
 
 function joinTo(dir: string, name: string): string {
   const separator = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
-  return `${dir}${separator}${name}`;
+  return dir.endsWith(separator) ? `${dir}${name}` : `${dir}${separator}${name}`;
 }
 
 const gemini: AgentAdapter = {
@@ -356,32 +371,12 @@ const gemini: AgentAdapter = {
       inheritedEnv?.GEMINI_CLI_SYSTEM_DEFAULTS_PATH ||
       joinTo(dirnameOf(systemPath), "system-defaults.json");
 
-    let settings: Record<string, unknown> = {};
     const existing = readFile?.(systemPath);
-    if (existing != null && existing.trim()) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(existing);
-      } catch {
-        throw new AgentCapabilityError(
-          "gemini",
-          "mcpInjection",
-          `Gemini's system settings at ${systemPath} could not be read as JSON, so Tacit's tools were not added rather than risk hiding them.`,
-        );
-      }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new AgentCapabilityError(
-          "gemini",
-          "mcpInjection",
-          `Gemini's system settings at ${systemPath} are not a JSON object, so Tacit's tools were not added.`,
-        );
-      }
-      settings = parsed as Record<string, unknown>;
-    }
-    const servers =
-      settings.mcpServers && typeof settings.mcpServers === "object" && !Array.isArray(settings.mcpServers)
-        ? (settings.mcpServers as Record<string, unknown>)
+    let settings =
+      existing != null && existing.trim()
+        ? parseExistingConfig(existing, "gemini", `Gemini's system settings at ${systemPath}`)
         : {};
+    const servers = objectOrEmpty(settings.mcpServers);
     settings = {
       ...settings,
       mcpServers: {

@@ -97,7 +97,7 @@ import {
   checkHydraProjectStatus,
   enableHydraForProject,
 } from "./hydra-project.ts";
-import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
+import { getLoginShellEnv } from "./pty-launch.js";
 import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
@@ -941,6 +941,7 @@ function setupIpc() {
       // Every agent terminal — manager, canvas worker, spawned worker — gets
       // the workspace tools through its adapter (shared/agent-adapters.ts).
       let bridgeEnv: Record<string, string> = {};
+      let bridgeFiles: string[] = [];
       if (options.terminalId) {
         try {
           const plan = prepareBridgeLaunch({
@@ -953,6 +954,7 @@ function setupIpc() {
           if (plan) {
             options.args = applyLaunchArgs(options.args ?? [], plan);
             bridgeEnv = plan.env;
+            bridgeFiles = plan.files.map((file) => file.path);
           }
         } catch (error) {
           // The terminal still opens — an agent without workspace tools is
@@ -1012,6 +1014,9 @@ function setupIpc() {
         throttlingCoordinator?.markActivity("pty");
       });
       ptyManager.onExit(ptyId, (exitCode: number) => {
+        // The agent has read its per-terminal config by now; don't let one
+        // file per terminal ever opened accumulate in the temp folder.
+        for (const file of bridgeFiles) fs.rmSync(file, { force: true });
         dbg(
           `terminal:exit ptyId=${ptyId} pid=${pid ?? "null"} exitCode=${exitCode}`,
         );
@@ -2128,7 +2133,8 @@ function setupIpc() {
       const results = await detectAgents(
         options.commandOverrides ?? {},
         options.refresh === true,
-        getTerminalExtraPathEntries(getCliDir(), "claude"),
+        // What an agent launch adds to PATH; see getTerminalExtraPathEntries.
+        [getCliDir()],
       );
       dbg(
         `agents:detect ${results

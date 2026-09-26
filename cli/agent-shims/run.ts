@@ -50,24 +50,32 @@ function resolveRealCommand(command: string): string | null {
 }
 
 /**
- * Best-effort dev/packaged resolver for the tacit-bridge MCP server
- * built from ../../tacit-bridge (see that package's build.ts). Mirrors
- * the multi-candidate fallback pattern used elsewhere in this codebase
- * (e.g. getMacBlurHelperPath in electron/main.ts) rather than hard failing —
- * a terminal simply doesn't get tacit-bridge tools if none of these
- * resolve, which is a safe degradation, not a broken launch.
+ * Where the built tacit-bridge server may sit relative to this shim.
+ *
+ * The packaged candidate was missing: electron-builder puts the shims in
+ * Resources/cli/agent-shims/ and the bridge in Resources/tacit-bridge/, and
+ * none of the old guesses pointed there. So in an installed app, `claude` or
+ * `codex` typed in a canvas shell never got Tacit's tools, silently. Pinned
+ * by a test against both layouts.
+ */
+export function tacitBridgeCandidates(shimDir: string): string[] {
+  return [
+    // Packaged: Resources/cli/agent-shims -> Resources/tacit-bridge/tacit-bridge.js
+    path.resolve(shimDir, "..", "..", "tacit-bridge", "tacit-bridge.js"),
+    // Dev: dist-cli/agent-shims -> tacit-bridge/dist/tacit-bridge.js
+    path.resolve(shimDir, "..", "..", "tacit-bridge", "dist", "tacit-bridge.js"),
+  ];
+}
+
+/**
+ * The bridge this shim hands to the agent, or null when it can't be found —
+ * which runAgentShim reports in the terminal rather than ignoring.
  */
 function resolveTacitBridgeCliPath(): string | null {
-  const dir = moduleDir();
-  const candidates = [
-    // Dev: cli/agent-shims/run.ts -> tacit-bridge/dist/tacit-bridge.js
-    path.resolve(dir, "..", "..", "tacit-bridge", "dist", "tacit-bridge.js"),
-    // Packaged, if bundled as a sibling of the shim's own output dir
-    path.resolve(dir, "..", "tacit-bridge.js"),
-    // Packaged, if bundled as a sibling of dist-cli/ itself
-    path.resolve(dir, "..", "..", "tacit-bridge.js"),
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+  return (
+    tacitBridgeCandidates(moduleDir()).find((candidate) => fs.existsSync(candidate)) ??
+    null
+  );
 }
 
 export function runAgentShim(provider: AgentShimProvider): never {
