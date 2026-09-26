@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import {
   findAgentAdapter,
   makeBridgeDescriptor,
   planBridgeLaunch,
+  CODEX_TOOLS_REQUIRING_APPROVAL,
   TACIT_MCP_SERVER_NAME,
   type AgentAdapter,
   type AgentLaunchPlan,
@@ -206,6 +207,8 @@ test("codex passes the bridge as -c overrides, ahead of any subcommand", () => {
     "-c", 'mcp_servers.tacit.env.TACIT_TERMINAL_ID="term-1"',
     "-c", 'mcp_servers.tacit.env.TACIT_PORT_FILE="/Users/me/.tacit/port"',
     "-c", 'mcp_servers.tacit.env.ELECTRON_RUN_AS_NODE="1"',
+    "-c", 'mcp_servers.tacit.default_tools_approval_mode="approve"',
+    "-c", 'mcp_servers.tacit.tools.browser_eval.approval_mode="prompt"',
   ]);
   assert.deepEqual(
     applyLaunchArgs(["resume", "abc"], result).slice(-2),
@@ -267,5 +270,81 @@ test(
     assert.equal(tacit.transport.command, tricky.command);
     assert.deepEqual(tacit.transport.args, tricky.args);
     assert.deepEqual(tacit.transport.env, tricky.env);
+  },
+);
+
+test("codex auto-approves Tacit's tools except the ones that must ask", () => {
+  assert.deepEqual([...CODEX_TOOLS_REQUIRING_APPROVAL], ["browser_eval"]);
+  const args = planBridgeLaunch(findAgentAdapter("codex")!, bridge, context).args;
+  const approvals = args.filter((arg) => arg.includes("approval_mode"));
+  assert.deepEqual(approvals, [
+    'mcp_servers.tacit.default_tools_approval_mode="approve"',
+    'mcp_servers.tacit.tools.browser_eval.approval_mode="prompt"',
+  ]);
+  // Only Tacit's server: nothing touches another server's approval.
+  assert.ok(approvals.every((arg) => arg.startsWith("mcp_servers.tacit.")));
+});
+
+/**
+ * Asks the real codex CLI whether it recognises every config key in `args`.
+ *
+ * Codex silently ignores unknown keys, so a misspelled approval setting
+ * would leave a tool auto-approved with no error. `exec --strict-config`
+ * rejects them instead — the only subcommand that honours it. It points at
+ * a local address that refuses connections, so nothing goes online, and is
+ * stopped as soon as its banner prints, which happens only after the config
+ * has been validated.
+ */
+function codexStrictConfigCheck(args: string[]): Promise<"accepted" | string> {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-codex-strict-"));
+  const offline = [
+    "-c", 'model_provider="tacit_offline"',
+    "-c", 'model_providers.tacit_offline.name="offline"',
+    "-c", 'model_providers.tacit_offline.base_url="http://127.0.0.1:9/v1"',
+    "-c", 'model_providers.tacit_offline.wire_api="responses"',
+    "-c", "model_providers.tacit_offline.request_max_retries=0",
+    "-c", "model_providers.tacit_offline.stream_max_retries=0",
+  ];
+  return new Promise((resolve) => {
+    const child = spawn(codexBinary!, ["exec", "--strict-config", ...offline, ...args, "noop"], {
+      env: { ...process.env, CODEX_HOME: home },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    let settled = false;
+    const finish = (result: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish(`no answer from codex: ${output}`), 15_000);
+    const onData = (chunk: Buffer) => {
+      output += chunk.toString();
+      if (/unknown configuration field/.test(output)) finish(output);
+      else if (/workdir:/.test(output)) finish("accepted");
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    child.on("exit", () => finish(output || "codex exited without output"));
+  });
+}
+
+test(
+  "the real codex CLI recognises every approval key, and would reject a misspelling",
+  { skip: codexBinary ? false : "codex is not installed" },
+  async () => {
+    const { args } = planBridgeLaunch(findAgentAdapter("codex")!, bridge, context);
+    assert.equal(await codexStrictConfigCheck(args), "accepted");
+    // The check itself has teeth: Codex silently ignores unknown keys without
+    // strict mode, so prove strict mode catches one.
+    const misspelled = await codexStrictConfigCheck([
+      "-c",
+      'mcp_servers.tacit.command="/usr/bin/true"',
+      "-c",
+      'mcp_servers.tacit.tools.browser_eval.aproval_mode="prompt"',
+    ]);
+    assert.match(misspelled, /unknown configuration field `mcp_servers\.tacit\.tools\.browser_eval\.aproval_mode`/);
   },
 );

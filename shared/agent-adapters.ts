@@ -170,6 +170,19 @@ function tomlString(value: string): string {
 /** Env names become bare TOML keys, which allow only these characters. */
 const TOML_BARE_KEY = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * Tacit tools that still ask the person before Codex runs them. Codex asks
+ * before every MCP tool call by default, which makes a workspace manager —
+ * calling tools constantly — unusable. The canvas tools only touch Tacit's
+ * own canvas, and browser profiles already pass Tacit's own permission check,
+ * so they run without asking. browser_eval runs arbitrary JavaScript in a
+ * page you may be signed in to; that one keeps a human yes.
+ *
+ * Applies to Tacit's server only: the user's own MCP servers keep whatever
+ * approval they have. Emptying this list approves all of Tacit's tools.
+ */
+export const CODEX_TOOLS_REQUIRING_APPROVAL: readonly string[] = ["browser_eval"];
+
 const codex: AgentAdapter = {
   id: "codex",
   displayName: "Codex",
@@ -193,6 +206,11 @@ const codex: AgentAdapter = {
         }
         return `${key}.env.${name}=${tomlString(value)}`;
       }),
+      // Codex applies a per-tool approval_mode over the server default.
+      `${key}.default_tools_approval_mode=${tomlString("approve")}`,
+      ...CODEX_TOOLS_REQUIRING_APPROVAL.map(
+        (tool) => `${key}.tools.${tool}.approval_mode=${tomlString("prompt")}`,
+      ),
     ];
     return {
       args: overrides.flatMap((override) => ["-c", override]),
