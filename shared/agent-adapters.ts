@@ -91,7 +91,7 @@ export interface AgentLaunchPlan {
  * has no per-launch way to be told — that agent cannot be given workspace
  * tools, and asking it to be is an error rather than a quiet no-op.
  */
-export type McpInjection = "config-file-flag" | "config-overrides";
+export type McpInjection = "config-file-flag" | "config-overrides" | "env-config";
 
 export interface AgentAdapter {
   /** Matches the terminal type (src/types TerminalType). */
@@ -108,6 +108,11 @@ export interface LaunchContext {
   terminalId: string;
   /** A path in the temp directory for a file of this name. */
   tempFile: (name: string) => string;
+  /**
+   * The environment the agent would otherwise start with, for adapters that
+   * add to a variable the person may already set rather than replace it.
+   */
+  inheritedEnv?: Record<string, string | undefined>;
 }
 
 /** A request for something an agent cannot do. Never swallowed. */
@@ -222,7 +227,66 @@ const codex: AgentAdapter = {
   },
 };
 
-const ADAPTERS: readonly AgentAdapter[] = [claude, codex];
+const opencode: AgentAdapter = {
+  id: "opencode",
+  displayName: "OpenCode",
+  // OpenCode merges OPENCODE_CONFIG_CONTENT over its config files, so the
+  // bridge rides in the environment and nothing is written. Verified against
+  // opencode 1.18.29 with `opencode mcp list`, which starts the server:
+  // "tacit connected". OpenCode runs MCP tools without asking by default.
+  mcpInjection: "env-config",
+  planBridgeLaunch(bridge, { inheritedEnv }) {
+    const existing = inheritedEnv?.OPENCODE_CONFIG_CONTENT?.trim();
+    let config: Record<string, unknown> = {};
+    if (existing) {
+      // Someone who sets this themselves keeps everything in it; only our
+      // one server is added. Unreadable, it is refused rather than replaced,
+      // since overwriting it would silently drop their configuration.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(existing);
+      } catch {
+        throw new AgentCapabilityError(
+          "opencode",
+          "mcpInjection",
+          "OPENCODE_CONFIG_CONTENT is set but is not valid JSON, so Tacit's tools were not added to it.",
+        );
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new AgentCapabilityError(
+          "opencode",
+          "mcpInjection",
+          "OPENCODE_CONFIG_CONTENT is set but is not a JSON object, so Tacit's tools were not added to it.",
+        );
+      }
+      config = parsed as Record<string, unknown>;
+    }
+    const mcp =
+      config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)
+        ? (config.mcp as Record<string, unknown>)
+        : {};
+    config = {
+      ...config,
+      mcp: {
+        ...mcp,
+        [TACIT_MCP_SERVER_NAME]: {
+          type: "local",
+          command: [bridge.command, ...bridge.args],
+          enabled: true,
+          environment: bridge.env,
+        },
+      },
+    };
+    return {
+      args: [],
+      placement: "prepend",
+      env: { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
+      files: [],
+    };
+  },
+};
+
+const ADAPTERS: readonly AgentAdapter[] = [claude, codex, opencode];
 
 /** The adapter for a terminal type, or null for one that is not an agent. */
 export function findAgentAdapter(id: string | undefined): AgentAdapter | null {

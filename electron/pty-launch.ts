@@ -460,6 +460,16 @@ export class PtyLaunchError extends Error {
   }
 }
 
+/**
+ * The environment a terminal starts from — the person's login shell, as
+ * captured once and cached. Exposed so a launch plan that must merge into a
+ * variable the person already sets (OpenCode's OPENCODE_CONFIG_CONTENT) sees
+ * the same value the terminal will.
+ */
+export function getLoginShellEnv(): Promise<Record<string, string | undefined>> {
+  return defaultDeps.getShellEnv();
+}
+
 export async function buildLaunchSpec(
   options: PtyLaunchOptions,
   deps: LaunchResolverDeps = defaultDeps,

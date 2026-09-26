@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { prepareBridgeLaunch } from "../../electron/agent-launch";
 import { applyLaunchArgs } from "../../shared/agent-adapters";
 
-type AgentShimProvider = "claude" | "codex";
+type AgentShimProvider = "claude" | "codex" | "opencode";
 
 function moduleDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));
@@ -89,6 +89,7 @@ export function runAgentShim(provider: AgentShimProvider): never {
         terminalId,
         serverPath: resolveTacitBridgeCliPath(),
         portFile: process.env.TACIT_PORT_FILE ?? "",
+        inheritedEnv: process.env,
       });
       if (plan) {
         args = applyLaunchArgs(args, plan);

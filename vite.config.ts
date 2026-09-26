@@ -201,7 +201,7 @@ function buildTacitBridge(): Plugin {
 }
 
 function buildAgentShims(): Plugin {
-  const shimNames = ["codex", "claude"] as const;
+  const shimNames = ["codex", "claude", "opencode"] as const;
   const buildOptions = shimNames.map((name) => {
     const outfile = `dist-cli/agent-shims/${name}.js`;
     return {

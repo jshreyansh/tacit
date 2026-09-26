@@ -38,6 +38,8 @@ export interface BridgeLaunchOptions {
   portFile: string;
   execPath?: string;
   tempFile?: (name: string) => string;
+  /** What the agent would start with; see LaunchContext.inheritedEnv. */
+  inheritedEnv?: Record<string, string | undefined>;
   writeFile?: (file: string, contents: string) => void;
 }
 
@@ -72,6 +74,7 @@ export function prepareBridgeLaunch(
   const plan = planBridgeLaunch(adapter, bridge, {
     terminalId: options.terminalId,
     tempFile: options.tempFile ?? ((name) => path.join(os.tmpdir(), name)),
+    inheritedEnv: options.inheritedEnv,
   });
 
   const writeFile =

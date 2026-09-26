@@ -348,3 +348,85 @@ test(
     assert.match(misspelled, /unknown configuration field `mcp_servers\.tacit\.tools\.browser_eval\.aproval_mode`/);
   },
 );
+
+// ── OpenCode ────────────────────────────────────────────────────────────
+
+function opencodeConfig(inheritedEnv?: Record<string, string | undefined>) {
+  const plan = planBridgeLaunch(findAgentAdapter("opencode")!, bridge, { ...context, inheritedEnv });
+  return { plan, config: JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT) };
+}
+
+test("opencode gets the bridge through OPENCODE_CONFIG_CONTENT, with no args or files", () => {
+  const { plan, config } = opencodeConfig();
+  assert.deepEqual(plan.args, []);
+  assert.deepEqual(plan.files, []);
+  assert.deepEqual(config, {
+    mcp: {
+      tacit: {
+        type: "local",
+        command: [bridge.command, ...bridge.args],
+        enabled: true,
+        environment: bridge.env,
+      },
+    },
+  });
+});
+
+test("opencode keeps everything already in the person's OPENCODE_CONFIG_CONTENT", () => {
+  const { config } = opencodeConfig({
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      model: "anthropic/claude-sonnet-5",
+      mcp: { mine: { type: "local", command: ["my-server"] }, tacit: { stale: true } },
+    }),
+  });
+  assert.equal(config.model, "anthropic/claude-sonnet-5");
+  assert.deepEqual(config.mcp.mine, { type: "local", command: ["my-server"] });
+  assert.equal(config.mcp.tacit.stale, undefined, "our entry replaces an old one");
+  assert.equal(config.mcp.tacit.type, "local");
+});
+
+test("opencode refuses to overwrite an OPENCODE_CONFIG_CONTENT it cannot read", () => {
+  for (const value of ["{not json", "[1,2]", '"text"']) {
+    assert.throws(
+      () => opencodeConfig({ OPENCODE_CONFIG_CONTENT: value }),
+      (error: unknown) => error instanceof AgentCapabilityError && /OPENCODE_CONFIG_CONTENT/.test(error.message),
+      value,
+    );
+  }
+});
+
+const opencodeBinary = (() => {
+  try {
+    return execFileSync("sh", ["-c", "command -v opencode"], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+const builtBridge = path.resolve("tacit-bridge/dist/tacit-bridge.js");
+
+test(
+  "the real opencode starts the bridge from the generated config and connects",
+  {
+    skip: !opencodeBinary
+      ? "opencode is not installed"
+      : !fs.existsSync(builtBridge)
+        ? "tacit-bridge is not built"
+        : false,
+    timeout: 90_000,
+  },
+  () => {
+    const real = makeBridgeDescriptor({
+      execPath: process.execPath,
+      serverPath: builtBridge,
+      terminalId: "test-opencode",
+      portFile: path.join(os.tmpdir(), "tacit-test-port"),
+    });
+    const { env } = planBridgeLaunch(findAgentAdapter("opencode")!, real, context);
+    const out = execFileSync(opencodeBinary!, ["mcp", "list"], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+      timeout: 60_000,
+    }).replace(/\u001b\[[0-9;]*m/g, "");
+    assert.match(out, /✓ tacit\s+connected/, out);
+  },
+);

@@ -96,7 +96,7 @@ import {
   checkHydraProjectStatus,
   enableHydraForProject,
 } from "./hydra-project.ts";
-import { buildLaunchSpec } from "./pty-launch.js";
+import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
@@ -947,6 +947,7 @@ function setupIpc() {
             terminalId: options.terminalId,
             serverPath: getTacitBridgeCliPath(),
             portFile: PORT_FILE,
+            inheritedEnv: await getLoginShellEnv(),
           });
           if (plan) {
             options.args = applyLaunchArgs(options.args ?? [], plan);
@@ -3277,7 +3278,7 @@ function dataUrlToPngBuffer(dataUrl: string): Buffer {
 }
 
 const CLI_NAMES = ["tacit", "hydra", "browse"];
-const AGENT_SHIM_NAMES = ["codex", "claude"];
+const AGENT_SHIM_NAMES = ["codex", "claude", "opencode"];
 
 function ensureCliLinks(): void {
   const cliDir = getCliDir();
