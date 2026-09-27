@@ -91,3 +91,30 @@ test("patchXtermMouseService scales selection drag-scroll threshold checks", () 
     1,
   );
 });
+
+// SHR-111: with a NaN zoom, every mouse move over an agent became a
+// `NaN;NaN` mouse report the agent typed out as text.
+test("patchXtermMouseService reports no position rather than NaN under an unusable zoom", () => {
+  const screenElement = createRectElement({ left: 100, top: 50 });
+  let underlyingCalls = 0;
+  const mouseService = {
+    getCoords(): [number, number] {
+      underlyingCalls += 1;
+      return [1, 1];
+    },
+    getMouseReportCoords(): unknown {
+      underlyingCalls += 1;
+      return {};
+    },
+  };
+  for (const scale of [Number.NaN, Number.POSITIVE_INFINITY, 0]) {
+    const dispose = patchXtermMouseService(
+      createTerminal({ _mouseService: mouseService }),
+      () => scale,
+    );
+    assert.equal(mouseService.getCoords({ clientX: 300, clientY: 250 } as never, screenElement, 80, 24), undefined);
+    assert.equal(mouseService.getMouseReportCoords({ clientX: 300, clientY: 250 } as never, screenElement), undefined);
+    dispose();
+  }
+  assert.equal(underlyingCalls, 0);
+});

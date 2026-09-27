@@ -149,6 +149,36 @@ interface CanvasStore {
 }
 
 const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 };
+
+/**
+ * A viewport with a NaN or infinite value is refused at every way into the
+ * store, and reported with the caller's stack (SHR-111).
+ *
+ * One got in on 26 Sep: the zoom became NaN, and since the terminal mouse
+ * patch divides by it, every mouse move over an agent was sent as a
+ * `NaN;NaN` mouse report the agent typed out as text, and clicks stopped
+ * working. clampScale passes NaN through, so nothing downstream catches it.
+ * The last good viewport stays; the error names where the bad one came
+ * from, which is the part still unknown.
+ */
+export function isFiniteViewport(viewport: Partial<Viewport>): boolean {
+  return (["x", "y", "scale"] as const).every(
+    (key) => viewport[key] === undefined || Number.isFinite(viewport[key]),
+  );
+}
+
+function refuseNonFiniteViewport(source: string, viewport: Partial<Viewport>): boolean {
+  if (isFiniteViewport(viewport)) return false;
+  console.error(
+    `[canvas] refused a non-finite viewport from ${source}: ${JSON.stringify({
+      x: String(viewport.x),
+      y: String(viewport.y),
+      scale: String(viewport.scale),
+    })}`,
+    new Error("non-finite viewport").stack,
+  );
+  return true;
+}
 const ANIM_DURATION = 400;
 
 let animationId = 0;
@@ -217,6 +247,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   restoreViewport: (viewport) => {
+    if (refuseNonFiniteViewport("restoreViewport", viewport)) return;
     clearAnimationResetTimer();
     set({ viewport, isAnimating: false });
     activeViewportAdapter?.setViewport(viewport);
@@ -343,6 +374,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   setViewport: (partial) => {
+    if (refuseNonFiniteViewport("setViewport", partial)) return;
     const nextViewport = { ...get().viewport, ...partial };
     if (viewportEquals(nextViewport, get().viewport)) {
       return;
@@ -354,6 +386,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   syncViewportFromRenderer: (viewport) => {
+    if (refuseNonFiniteViewport("syncViewportFromRenderer", viewport)) {
+      // The canvas renderer already holds the bad value; put the last good
+      // one back so what is drawn and what the mouse maths uses agree.
+      activeViewportAdapter?.setViewport(get().viewport);
+      return;
+    }
     if (viewportEquals(viewport, get().viewport)) {
       return;
     }
@@ -363,6 +401,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   commitViewportFromRenderer: (viewport) => {
     clearAnimationResetTimer();
+    if (refuseNonFiniteViewport("commitViewportFromRenderer", viewport)) {
+      set({ isAnimating: false });
+      activeViewportAdapter?.setViewport(get().viewport);
+      return;
+    }
     if (viewportEquals(viewport, get().viewport)) {
       set({ isAnimating: false });
       markDirty();
@@ -382,6 +425,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   animateTo: (targetX, targetY, targetScale, opts) => {
+    if (
+      refuseNonFiniteViewport("animateTo", {
+        x: targetX,
+        y: targetY,
+        scale: targetScale,
+      })
+    ) {
+      return;
+    }
     const { viewport } = get();
     const startX = viewport.x;
     const startY = viewport.y;

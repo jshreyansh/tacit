@@ -69,6 +69,16 @@ type XtermInternals = {
   };
 };
 
+/**
+ * A zoom the maths can't divide by. The viewport store refuses these
+ * (SHR-111), so this is the second line: with a NaN zoom every mouse move over
+ * an agent became a `NaN;NaN` mouse report the agent typed out as text.
+ * Reporting no position is what xterm does for a pointer outside the grid.
+ */
+function unusableScale(scale: number): boolean {
+  return !Number.isFinite(scale) || scale <= 0;
+}
+
 function adjust(
   event: MouseEventCoords,
   element: HTMLElement,
@@ -100,6 +110,7 @@ export function patchXtermMouseService(
       if (scale === 1) {
         return origGetCoords.call(ms, event, element, cols, rows, isSelection);
       }
+      if (unusableScale(scale)) return undefined;
       return origGetCoords.call(
         ms,
         adjust(event, element, scale),
@@ -115,6 +126,7 @@ export function patchXtermMouseService(
     ms.getMouseReportCoords = (event, element) => {
       const scale = getScale();
       if (scale === 1) return origGetReportCoords.call(ms, event, element);
+      if (unusableScale(scale)) return undefined;
       return origGetReportCoords.call(ms, adjust(event, element, scale), element);
     };
 
@@ -136,6 +148,7 @@ export function patchXtermMouseService(
       if (scale === 1 || !screenElement) {
         return origGetScrollAmount.call(selectionService, event);
       }
+      if (unusableScale(scale)) return 0;
       return origGetScrollAmount.call(
         selectionService,
         adjust(event, screenElement, scale),
