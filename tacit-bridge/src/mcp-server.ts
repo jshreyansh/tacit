@@ -167,6 +167,39 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
+    "close_node",
+    {
+      title: "Close a terminal or browser (workspace manager only)",
+      description:
+        "Closes one terminal or browser on the canvas: its process stops, its tile and its wires go, and the close is recorded as yours, with your reason. Use it to reap a worker that has finished, or a browser you no longer need. A terminal in the middle of a task, or one whose agent doesn't report its progress to Tacit, is not closed unless you pass force: true, since closing it would lose its work. You can't close yourself. Only the workspace manager can call this.",
+      inputSchema: {
+        kind: z.enum(["terminal", "browser"]).describe("What the id names"),
+        id: z.string().describe("The node's id, from list_nodes"),
+        force: z
+          .boolean()
+          .optional()
+          .describe("Close a terminal even if it's working or its state is unknown"),
+        reason: z
+          .string()
+          .optional()
+          .describe("Why it's being closed, e.g. 'finished the research'; kept in the record"),
+      },
+    },
+    async ({ kind, id, force, reason }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/close-node`,
+        { kind, id, force, reason },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
     "remember",
     {
       title: "Save a durable note for this project",

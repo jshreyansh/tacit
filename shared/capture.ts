@@ -124,7 +124,13 @@ export type CaptureEvent =
       origin: string;
       by: CaptureActor;
     }
-  | { kind: "close"; node: CaptureNodeRef; by: CaptureActor }
+  | {
+      kind: "close";
+      node: CaptureNodeRef;
+      by: CaptureActor;
+      /** Why, when an agent closed it and said (close_node's `reason`). */
+      reason?: string;
+    }
   | { kind: "rename"; node: CaptureNodeRef; title: string; by: CaptureActor }
   | { kind: "manager"; node: CaptureNodeRef | null; by: CaptureActor }
   | {

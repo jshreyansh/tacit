@@ -179,6 +179,22 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 }));
 
+/**
+ * Drop every wire touching a node that is being closed. Wires used to
+ * outlive their node: emit_event then tried to deliver along them, and the
+ * record's topology kept listing them. Not recorded as unwires; the node's
+ * `close` entry already says why they went.
+ */
+export function removeConnectionsInvolving(
+  kind: ConnectionEndpointKind,
+  id: string,
+): void {
+  const store = useConnectionStore.getState();
+  for (const connection of connectionsInvolving(store.connections, kind, id)) {
+    store.removeConnection(connection.id);
+  }
+}
+
 /** All connections touching a given endpoint, in either direction. */
 export function connectionsInvolving(
   connections: Record<string, ConnectionData>,

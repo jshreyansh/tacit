@@ -875,6 +875,29 @@ export function App() {
         return null;
       },
 
+      // Backs close_node. The manager is recorded as the one who closed it,
+      // with its reason; the same path as the close button otherwise, so the
+      // PTY, the tile and the node's wires all go.
+      closeNode: (opts: {
+        requesterTerminalId: string;
+        kind: "terminal" | "browser";
+        id: string;
+        reason?: string;
+      }) => {
+        const by = `terminal:${opts.requesterTerminalId}` as const;
+        if (opts.kind === "terminal") {
+          const found = findTerminal(opts.id);
+          if (!found) return { ok: false, reason: "not_found" };
+          closeTerminalInScene(found.project.id, found.worktree.id, opts.id, by, opts.reason);
+          return { ok: true };
+        }
+        if (!useBrowserCardStore.getState().cards[opts.id]) {
+          return { ok: false, reason: "not_found" };
+        }
+        removeBrowserCardFromScene(opts.id, by, opts.reason);
+        return { ok: true };
+      },
+
       // Backs send_prompt_to_node: which kind of node an id is, and for a
       // terminal what delivery needs. The manager addresses by id alone, so
       // the kind is looked up here rather than trusted from the caller.

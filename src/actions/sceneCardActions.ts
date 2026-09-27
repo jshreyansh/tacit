@@ -8,6 +8,7 @@ import { useIdentityStore } from "../stores/identityStore";
 import { DEFAULT_IDENTITY_ID } from "../types/workspace";
 import { recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
+import { removeConnectionsInvolving } from "../stores/connectionStore";
 import { normalizeBrowserNodeBinding } from "../../shared/browser-controller";
 import type { ConnectedBrowserConnection, ConnectedTabBinding } from "../../shared/browser-connection";
 
@@ -129,16 +130,26 @@ export function updateBrowserCardInScene(
   useBrowserCardStore.getState().updateCard(cardId, patch);
 }
 
-export function removeBrowserCardFromScene(cardId: string) {
+export function removeBrowserCardFromScene(
+  cardId: string,
+  closedBy: CaptureActor = "user",
+  reason?: string,
+) {
   const existed = !!useBrowserCardStore.getState().cards[cardId];
   useBrowserCardStore.getState().removeCard(cardId);
   removeCardSelection(`browser:${cardId}`);
+  removeConnectionsInvolving("browser", cardId);
   // Closing something is as much a decision as opening it — a browser opened
   // and shut minutes later says the page was the wrong lead, which is exactly
   // the abandoned path that exists nowhere else. Guarded on it having actually
   // been there so a repeated delete doesn't record a second one.
   if (existed) {
-    recordDecision({ kind: "close", node: `browser:${cardId}`, by: "user" });
+    recordDecision({
+      kind: "close",
+      node: `browser:${cardId}`,
+      by: closedBy,
+      ...(reason ? { reason } : {}),
+    });
   }
 }
 

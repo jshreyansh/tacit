@@ -30,6 +30,7 @@ import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import type { CaptureNodeRef } from "../shared/capture";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
+import { busyStateOf, closeNode } from "./node-close";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -334,6 +335,10 @@ export class ApiServer {
       const query = url.searchParams.get("q") ?? "";
       const worktree = url.searchParams.get("worktree");
       return this.workspaceMemoryQuery(scope, query, worktree);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/close-node$/)) {
+      const id = pathname.split("/")[2];
+      return this.closeNodeFor(id, body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-prompt$/)) {
       const id = pathname.split("/")[2];
@@ -1423,6 +1428,33 @@ export class ApiServer {
   private async sendPromptToNode(terminalId: string, body: any) {
     await this.requireWorkspaceManager(terminalId);
     return this.nodePrompts.send(terminalId, body);
+  }
+
+  /** Backs the close_node MCP tool. */
+  private async closeNodeFor(terminalId: string, body: any) {
+    await this.requireWorkspaceManager(terminalId);
+    return closeNode(
+      {
+        findNode: (id) =>
+          this.execRenderer(
+            `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
+          ) as Promise<PromptTargetNode | null>,
+        busyState: (node) =>
+          busyStateOf(
+            node.terminalType,
+            this.deps.telemetryService.getTerminalSnapshot(node.id),
+          ),
+        close: (input) =>
+          this.execRenderer(
+            `window.__tcApi.closeNode(${JSON.stringify({
+              requesterTerminalId: terminalId,
+              ...input,
+            })})`,
+          ),
+      },
+      terminalId,
+      body,
+    );
   }
 
   /** Backs the spawn_terminal MCP tool. */

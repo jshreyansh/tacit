@@ -15,6 +15,8 @@ import { usePinStore } from "../stores/pinStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { createConnectionInScene } from "./sceneConnectionActions";
 import { recordDecision } from "../capture";
+import type { CaptureActor } from "../../shared/capture";
+import { removeConnectionsInvolving } from "../stores/connectionStore";
 
 interface CreateTerminalInSceneOptions {
   projectId: string;
@@ -231,15 +233,24 @@ export function closeTerminalInScene(
   projectId: string,
   worktreeId: string,
   terminalId: string,
+  closedBy: CaptureActor = "user",
+  reason?: string,
 ): void {
   destroyTerminalRuntime(terminalId, {
     caller: "closeTerminalInScene",
     reason: "close_terminal",
   });
   useProjectStore.getState().removeTerminal(projectId, worktreeId, terminalId);
+  removeConnectionsInvolving("terminal", terminalId);
   // A closed agent is a decision — often the abandoned half of a delegation
-  // whose spawn entry is already in the record.
-  recordDecision({ kind: "close", node: `terminal:${terminalId}`, by: "user" });
+  // whose spawn entry is already in the record. `closedBy` keeps a manager's
+  // close_node apart from yours.
+  recordDecision({
+    kind: "close",
+    node: `terminal:${terminalId}`,
+    by: closedBy,
+    ...(reason ? { reason } : {}),
+  });
 }
 
 export function updateTerminalCustomTitleInScene(
