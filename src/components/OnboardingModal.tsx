@@ -10,7 +10,7 @@ import type { TerminalType } from "../types";
 import folderIcon from "../assets/dock-icons/folder.png";
 import claudeIcon from "../assets/dock-icons/terminal-claude.png";
 import codexIcon from "../assets/dock-icons/codex.png";
-import geminiIcon from "../assets/dock-icons/gemini.png";
+import antigravityIcon from "../assets/dock-icons/antigravity.png";
 import opencodeIcon from "../assets/dock-icons/opencode-logo.png";
 
 /**
@@ -46,7 +46,7 @@ const STEP_COUNT = 2;
 type Step = 0 | 1;
 type AgentChoice = Extract<
   TerminalType,
-  "claude" | "codex" | "gemini" | "opencode"
+  "claude" | "codex" | "antigravity" | "opencode"
 >;
 
 interface AgentEntry {
@@ -86,7 +86,7 @@ export function OnboardingModal() {
   const agents: readonly AgentEntry[] = [
     { id: "claude", name: "Claude", vendor: "Anthropic", icon: claudeIcon },
     { id: "codex", name: "Codex", vendor: "OpenAI", icon: codexIcon },
-    { id: "gemini", name: "Gemini", vendor: "Google", icon: geminiIcon },
+    { id: "antigravity", name: "Antigravity", vendor: "Google", icon: antigravityIcon },
     {
       id: "opencode",
       name: "OpenCode",

@@ -141,10 +141,16 @@ export function toSessionRows(tenures: ManagerTenure[]): ManagerSessionRow[] {
 // continuity journal via get_workspace_summary rather than starting cold.
 // Deliberately doesn't state a raw memory directory path — the MCP tools
 // resolve that internally, so the agent never needs to know it.
+//
+// It names only the tools it gives an instruction about. The agent already
+// receives the full list, with descriptions, from the `tacit` MCP server; a
+// copy here is what drifted (it once named 10 of 17 and missed emit_event).
+// tests/manager-briefing.test.ts fails if a tool named here stops existing.
 export const WORKSPACE_MANAGER_BRIEFING = [
   "You've been assigned the workspace manager role for this canvas.",
-  "You now have access to Tacit's workspace-manager tools: list_nodes, get_node_state, query_memory, get_workspace_summary, spawn_terminal, spawn_browser, list_browser_profiles, spawn_note, connect_nodes, and log_activity.",
+  "Your tools come from the `tacit` MCP server; its tool list is the complete set, including the ones only a manager can use.",
   "Start by calling get_workspace_summary — it returns what's already on this canvas plus the most recent entries from the workspace's continuity journal, written by anyone who held this role before you (including a past version of you, if you're being reassigned back after being swapped out).",
+  "Delegate by starting workers with spawn_terminal (give each its task as the prompt), then steer one worker at a time with send_prompt_to_node; emit_event reaches every node wired to you at once.",
   "Call log_activity after spawning/wiring nodes or making a real decision, so a future agent who picks up this role — even a different underlying CLI — can actually pick up where you left off instead of starting cold.",
 ].join(" ");
 

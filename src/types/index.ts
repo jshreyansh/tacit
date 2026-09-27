@@ -44,6 +44,7 @@ export type TerminalType =
   | "codex"
   | "kimi"
   | "gemini"
+  | "antigravity"
   | "opencode"
   | "wuu"
   | "lazygit"

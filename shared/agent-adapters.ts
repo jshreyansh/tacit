@@ -68,6 +68,12 @@ export function makeBridgeDescriptor(options: {
 export interface LaunchFile {
   path: string;
   contents: string;
+  /**
+   * The agent's own shared config, merged rather than owned: it outlives the
+   * terminal and is never deleted when it closes. Absent means a per-launch
+   * temp file the caller removes on exit.
+   */
+  keep?: true;
 }
 
 export interface AgentLaunchPlan {
@@ -95,7 +101,8 @@ export type McpInjection =
   | "config-file-flag"
   | "config-overrides"
   | "env-config"
-  | "system-settings-file";
+  | "system-settings-file"
+  | "shared-config-file";
 
 export interface AgentAdapter {
   /** Matches the terminal type (src/types TerminalType). */
@@ -106,6 +113,11 @@ export interface AgentAdapter {
   /** Prints the CLI's version, for detection. */
   versionArgs: readonly string[];
   mcpInjection: McpInjection | null;
+  /**
+   * Why the agent is no longer offered for new terminals, when it isn't.
+   * Terminals already running it keep their tools.
+   */
+  retired?: string;
   planBridgeLaunch?: (
     bridge: BridgeDescriptor,
     context: LaunchContext,
@@ -128,6 +140,8 @@ export interface LaunchContext {
    * does not exist. Any other failure throws.
    */
   readFile?: (path: string) => string | null;
+  /** The user's home directory, for agents that only read config from it. */
+  homeDir?: string;
 }
 
 /** A request for something an agent cannot do. Never swallowed. */
@@ -344,6 +358,8 @@ const gemini: AgentAdapter = {
   displayName: "Gemini CLI",
   command: "gemini",
   versionArgs: ["--version"],
+  retired:
+    "Gemini CLI stopped serving consumer accounts on 18 June 2026 (enterprise API keys only); Antigravity replaces it.",
   // Gemini has no per-run MCP flag, but it merges MCP servers by name across
   // its settings layers, and GEMINI_CLI_SYSTEM_SETTINGS_PATH names the
   // system layer. So the bridge goes in a system settings file of our own,
@@ -403,7 +419,94 @@ const gemini: AgentAdapter = {
   },
 };
 
-const ADAPTERS: readonly AgentAdapter[] = [claude, codex, opencode, gemini];
+/** `values` with `extra` appended, skipping any already present. */
+function withEntries(values: unknown, extra: readonly string[]): string[] {
+  const list = Array.isArray(values) ? values.filter((v): v is string => typeof v === "string") : [];
+  return [...list, ...extra.filter((entry) => !list.includes(entry))];
+}
+
+const antigravity: AgentAdapter = {
+  id: "antigravity",
+  displayName: "Antigravity",
+  command: "agy",
+  versionArgs: ["--version"],
+  // Antigravity CLI (Google's successor to Gemini CLI) reads MCP servers only
+  // from ~/.gemini/config/mcp_config.json, which the Antigravity IDE shares;
+  // it has no per-run flag or variable for another file, and a project-local
+  // file is ignored (google-antigravity/antigravity-cli#60). So the bridge is
+  // one shared `tacit` entry, merged in beside the person's own servers.
+  //
+  // One entry serves every terminal because agy passes its own environment
+  // to the servers it starts, merged with the entry's `env` (verified against
+  // agy 1.2.12): TACIT_TERMINAL_ID and TACIT_PORT_FILE are set on the agy
+  // process below, and the child inherits them. Run outside Tacit, the
+  // bridge has no terminal id and its tools say so. ELECTRON_RUN_AS_NODE is
+  // in the entry itself, since the IDE starting it without that would boot a
+  // second Tacit.
+  //
+  // Approval lives in ~/.gemini/antigravity-cli/settings.json: allow the
+  // server, and ask for the tools that need it, as with Codex. Ask beats
+  // allow in Antigravity's rule order, and a deny the person wrote beats
+  // both.
+  mcpInjection: "shared-config-file",
+  planBridgeLaunch(bridge, { homeDir, readFile }) {
+    if (!homeDir) {
+      throw new AgentCapabilityError(
+        "antigravity",
+        "mcpInjection",
+        "Antigravity reads its MCP servers from the home directory, which was not given.",
+      );
+    }
+    const mcpPath = `${homeDir}/.gemini/config/mcp_config.json`;
+    const settingsPath = `${homeDir}/.gemini/antigravity-cli/settings.json`;
+    const readJson = (file: string, what: string) => {
+      const text = readFile?.(file);
+      return text != null && text.trim() ? parseExistingConfig(text, "antigravity", what) : {};
+    };
+
+    const mcpConfig = readJson(mcpPath, `Antigravity's MCP config at ${mcpPath}`);
+    const { TACIT_TERMINAL_ID, TACIT_PORT_FILE, ...entryEnv } = bridge.env;
+    const servers = objectOrEmpty(mcpConfig.mcpServers);
+    const nextMcp = {
+      ...mcpConfig,
+      mcpServers: {
+        ...servers,
+        [TACIT_MCP_SERVER_NAME]: {
+          command: bridge.command,
+          args: bridge.args,
+          env: entryEnv,
+          disabled: false,
+        },
+      },
+    };
+
+    const settings = readJson(settingsPath, `Antigravity's settings at ${settingsPath}`);
+    const permissions = objectOrEmpty(settings.permissions);
+    const nextSettings = {
+      ...settings,
+      permissions: {
+        ...permissions,
+        allow: withEntries(permissions.allow, [`mcp(${TACIT_MCP_SERVER_NAME}/*)`]),
+        ask: withEntries(
+          permissions.ask,
+          CODEX_TOOLS_REQUIRING_APPROVAL.map((tool) => `mcp(${TACIT_MCP_SERVER_NAME}/${tool})`),
+        ),
+      },
+    };
+
+    return {
+      args: [],
+      placement: "prepend",
+      env: { TACIT_TERMINAL_ID, TACIT_PORT_FILE },
+      files: [
+        { path: mcpPath, contents: `${JSON.stringify(nextMcp, null, 2)}\n`, keep: true },
+        { path: settingsPath, contents: `${JSON.stringify(nextSettings, null, 2)}\n`, keep: true },
+      ],
+    };
+  },
+};
+
+const ADAPTERS: readonly AgentAdapter[] = [claude, codex, opencode, antigravity, gemini];
 
 /** The adapter for a terminal type, or null for one that is not an agent. */
 export function findAgentAdapter(id: string | undefined): AgentAdapter | null {

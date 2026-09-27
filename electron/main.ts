@@ -210,6 +210,7 @@ import {
   type CaptureTextSource,
 } from "../shared/capture";
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
+import { isWorkspaceManagerBriefing } from "../shared/manager-role";
 import { RecallService } from "./recall-service";
 import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
@@ -355,6 +356,15 @@ managerRoleLog.load();
  */
 const injectedText = new InjectedTextTracker();
 /**
+ * Text one agent sent another through the bridge. It is recorded when sent,
+ * attributed to the sender, so the prompt hook drops its echo instead of
+ * recording it a second time as if the user had typed it.
+ */
+// Ten minutes, not the 30 seconds app notices get: a worker that is mid-turn
+// takes the message only when its turn ends (a 47-second count did, in the
+// T3.1 hand test), and a late echo must still be recognised.
+const agentSentText = new InjectedTextTracker(10 * 60 * 1000);
+/**
  * Reader over the decision record and the workspace journal. The journal
  * directory is resolved lazily because it is keyed on the active canvas, which
  * the renderer owns and which changes as canvases are switched.
@@ -383,12 +393,16 @@ const hookReceiver = new HookReceiver((event) => {
   if (event.hook_event_name === "UserPromptSubmit") {
     const prompt = (event as { prompt?: unknown }).prompt;
     const hasText = typeof prompt === "string";
+    if (hasText && agentSentText.claim(event.terminal_id, prompt)) return;
     // Three possible authors, only one of which is evidence of judgement.
     // App injections are matched exactly against what we just wrote; harness
     // wrappers are matched on their machine-only shape.
     let source: CaptureTextSource = "user";
     if (hasText) {
       if (injectedText.claim(event.terminal_id, prompt)) source = "app";
+      // A new manager gets the briefing as its launch prompt, not typed in,
+      // so nothing noted it; it is still the app speaking.
+      else if (isWorkspaceManagerBriefing(prompt)) source = "app";
       else if (detectHarnessText(prompt)) source = "harness";
     }
     captureService.record(
@@ -464,6 +478,22 @@ const apiServer = new ApiServer({
   dataUrlToPngBuffer,
   recallService,
   connectedBrowserBroker,
+  recordAgentPrompt: ({ targetTerminalId, by, text }) => {
+    agentSentText.note(targetTerminalId, text);
+    captureService.record(
+      {
+        kind: "prompt",
+        actor: `terminal:${targetTerminalId}`,
+        session: null,
+        text,
+        source: "agent",
+        by,
+      },
+      captureCanvasId,
+      new Date(),
+      { method: "main" },
+    );
+  },
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -954,7 +984,8 @@ function setupIpc() {
           if (plan) {
             options.args = applyLaunchArgs(options.args ?? [], plan);
             bridgeEnv = plan.env;
-            bridgeFiles = plan.files.map((file) => file.path);
+            // Shared configs an agent owns (`keep`) outlive the terminal.
+            bridgeFiles = plan.files.filter((file) => !file.keep).map((file) => file.path);
           }
         } catch (error) {
           // The terminal still opens — an agent without workspace tools is
@@ -3302,7 +3333,7 @@ function dataUrlToPngBuffer(dataUrl: string): Buffer {
 }
 
 const CLI_NAMES = ["tacit", "hydra", "browse"];
-const AGENT_SHIM_NAMES = ["codex", "claude", "opencode", "gemini"];
+const AGENT_SHIM_NAMES = ["codex", "claude", "opencode", "gemini", "agy"];
 
 function ensureCliLinks(): void {
   const cliDir = getCliDir();

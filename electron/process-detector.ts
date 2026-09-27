@@ -29,6 +29,7 @@ const CLI_PATTERNS: [RegExp, string][] = [
   [/\bcodex\b/, "codex"],
   [/\bkimi\b/, "kimi"],
   [/\bgemini\b/, "gemini"],
+  [/\bagy\b/, "antigravity"],
   [/\bopencode\b/, "opencode"],
   [/\bwuu\b/, "wuu"],
   [/\blazygit\b/, "lazygit"],

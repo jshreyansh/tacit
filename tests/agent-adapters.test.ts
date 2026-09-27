@@ -9,6 +9,7 @@ import {
   AgentCapabilityError,
   applyLaunchArgs,
   findAgentAdapter,
+  listAgentAdapters,
   makeBridgeDescriptor,
   planBridgeLaunch,
   CODEX_TOOLS_REQUIRING_APPROVAL,
@@ -528,16 +529,14 @@ test("gemini refuses to replace system settings it cannot read", () => {
   }
 });
 
-test("every agent the workspace-manager roster offers can be given Tacit's tools", async () => {
-  const source = fs.readFileSync(path.resolve("src/toolbar/WorkspaceManagerPill.tsx"), "utf8");
-  const match = source.match(/WORKSPACE_MANAGER_AGENT_TYPES = \[([^\]]*)\]/);
-  assert.ok(match, "roster list not found");
-  const roster = [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+// The manager picker (src/toolbar/WorkspaceManagerPill.tsx) offers every
+// registered adapter that isn't retired, so each one must be able to receive the tools the role
+// consists of.
+test("every agent the workspace-manager roster offers can be given Tacit's tools", () => {
+  const roster = listAgentAdapters().filter((adapter) => !adapter.retired);
   assert.ok(roster.length > 0);
-  for (const id of roster) {
-    const adapter = findAgentAdapter(id);
-    assert.ok(adapter, `${id} is offered as manager but has no adapter`);
-    assert.ok(adapter.mcpInjection, `${id} is offered as manager but cannot receive tools`);
+  for (const adapter of roster) {
+    assert.ok(adapter.mcpInjection, `${adapter.id} is offered as manager but cannot receive tools`);
   }
 });
 
@@ -582,6 +581,145 @@ test(
     const out = `${result.stdout}${result.stderr}`;
     assert.match(out, /mine:/, out);
     assert.match(out, /tacit:.*tacit-bridge\.js/, out);
+  },
+);
+
+// ── Antigravity: one shared entry, merged into the person's own config ──
+
+const AGY_MCP = "/Users/me/.gemini/config/mcp_config.json";
+const AGY_SETTINGS = "/Users/me/.gemini/antigravity-cli/settings.json";
+
+function antigravityPlan(existing: Record<string, string> = {}) {
+  return planBridgeLaunch(findAgentAdapter("antigravity")!, bridge, {
+    ...context,
+    homeDir: "/Users/me",
+    readFile: (file) => existing[file] ?? null,
+  });
+}
+
+function planFile(result: AgentLaunchPlan, file: string) {
+  const found = result.files.find((f) => f.path === file);
+  assert.ok(found, `${file} not in plan`);
+  return { keep: found.keep, json: JSON.parse(found.contents) };
+}
+
+test("antigravity is launched as agy and replaces gemini, which is retired", () => {
+  assert.equal(findAgentAdapter("antigravity")?.command, "agy");
+  assert.match(findAgentAdapter("gemini")?.retired ?? "", /Antigravity/);
+});
+
+test("antigravity gets a tacit entry in its shared MCP config, kept after the terminal closes", () => {
+  const result = antigravityPlan();
+  assert.deepEqual(result.args, []);
+  const mcp = planFile(result, AGY_MCP);
+  assert.equal(mcp.keep, true);
+  assert.deepEqual(mcp.json.mcpServers.tacit, {
+    command: bridge.command,
+    args: bridge.args,
+    env: { ELECTRON_RUN_AS_NODE: "1" },
+    disabled: false,
+  });
+});
+
+// One shared entry serves every terminal: which terminal it is travels in
+// agy's own environment, which agy passes to the servers it starts.
+test("antigravity carries the terminal's identity on the agy process, not in the shared entry", () => {
+  const result = antigravityPlan();
+  assert.deepEqual(result.env, {
+    TACIT_TERMINAL_ID: "term-1",
+    TACIT_PORT_FILE: "/Users/me/.tacit/port",
+  });
+  assert.doesNotMatch(result.files.map((f) => f.contents).join(""), /term-1/);
+});
+
+test("antigravity keeps the person's own servers and settings", () => {
+  const result = antigravityPlan({
+    [AGY_MCP]: JSON.stringify({ mcpServers: { mine: { command: "x" } }, other: 1 }),
+    [AGY_SETTINGS]: JSON.stringify({
+      theme: "dark",
+      permissions: { allow: ["command(git)"], deny: ["mcp(tacit/browser_click)"] },
+    }),
+  });
+  const mcp = planFile(result, AGY_MCP).json;
+  assert.deepEqual(mcp.mcpServers.mine, { command: "x" });
+  assert.equal(mcp.other, 1);
+  const settings = planFile(result, AGY_SETTINGS).json;
+  assert.equal(settings.theme, "dark");
+  assert.deepEqual(settings.permissions.allow, ["command(git)", "mcp(tacit/*)"]);
+  assert.deepEqual(settings.permissions.deny, ["mcp(tacit/browser_click)"]);
+});
+
+test("antigravity auto-approves Tacit's tools except the ones that must ask", () => {
+  const settings = planFile(antigravityPlan(), AGY_SETTINGS);
+  assert.equal(settings.keep, true);
+  assert.deepEqual(settings.json.permissions.allow, ["mcp(tacit/*)"]);
+  assert.deepEqual(
+    settings.json.permissions.ask,
+    CODEX_TOOLS_REQUIRING_APPROVAL.map((tool) => `mcp(tacit/${tool})`),
+  );
+});
+
+test("antigravity adds its rules once, however many terminals launch", () => {
+  const first = antigravityPlan();
+  const again = antigravityPlan({
+    [AGY_MCP]: first.files[0].contents,
+    [AGY_SETTINGS]: first.files[1].contents,
+  });
+  assert.deepEqual(again.files.map((f) => f.contents), first.files.map((f) => f.contents));
+});
+
+test("antigravity treats an empty config file as empty, and refuses one it cannot read", () => {
+  assert.ok(antigravityPlan({ [AGY_MCP]: "" }));
+  assert.throws(
+    () => antigravityPlan({ [AGY_MCP]: "{not json" }),
+    (error: unknown) => error instanceof AgentCapabilityError && error.message.includes(AGY_MCP),
+  );
+});
+
+test("a kept file is not among the files a terminal deletes on exit", () => {
+  const written = new Map<string, string>();
+  const result = prepareBridgeLaunch({
+    ...launchBase,
+    terminalType: "antigravity",
+    homeDir: "/Users/me",
+    readFile: () => null,
+    writeFile: (file, contents) => written.set(file, contents),
+  })!;
+  assert.deepEqual([...written.keys()].sort(), [AGY_SETTINGS, AGY_MCP].sort());
+  assert.deepEqual(result.files.filter((f) => !f.keep), []);
+});
+
+const agyBinary = (() => {
+  try {
+    return execFileSync("sh", ["-c", "command -v agy || ls $HOME/.local/bin/agy"], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
+test(
+  "the real agy lists the person's own servers and tacit together",
+  { skip: agyBinary ? false : "agy is not installed", timeout: 60_000 },
+  () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-agy-"));
+    fs.mkdirSync(path.join(home, ".gemini", "config"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, ".gemini", "config", "mcp_config.json"),
+      JSON.stringify({ mcpServers: { mine: { command: "/usr/bin/true" } } }),
+    );
+    prepareBridgeLaunch({
+      ...launchBase,
+      terminalType: "antigravity",
+      homeDir: home,
+    });
+    const result = spawnSync(agyBinary!, ["mcp", "list"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home },
+      timeout: 30_000,
+    });
+    const out = `${result.stdout}${result.stderr}`;
+    assert.match(out, /mine\s+stdio\s+enabled/, out);
+    assert.match(out, /tacit\s+stdio\s+enabled\s+\/usr\/local\/bin\/node \/srv\/tacit-bridge\.js/, out);
   },
 );
 

@@ -28,6 +28,8 @@ import type { RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
+import type { CaptureNodeRef } from "../shared/capture";
+import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -38,6 +40,15 @@ interface ApiServerDeps {
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
   recallService: RecallService;
   connectedBrowserBroker: ConnectedBrowserBroker;
+  /**
+   * Records text one agent typed into another terminal, attributed to the
+   * sender, and keeps the prompt hook from filing its echo as the user's.
+   */
+  recordAgentPrompt: (input: {
+    targetTerminalId: string;
+    by: CaptureNodeRef;
+    text: string;
+  }) => void;
 }
 
 const BROWSER_CONNECTOR_ROUTES = new Set([
@@ -56,6 +67,30 @@ export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
   private readonly authToken = createApiAuthToken();
+
+  private readonly nodePrompts = new NodePromptSender({
+    findNode: (id) =>
+      this.execRenderer(
+        `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
+      ) as Promise<PromptTargetNode | null>,
+    deliver: async (delivery) => {
+      const result = await this.submitToTerminal({
+        terminalId: delivery.terminalId,
+        ptyId: delivery.ptyId,
+        terminalType: delivery.terminalType as ComposerSubmitRequest["terminalType"],
+        worktreePath: delivery.worktreePath,
+        text: delivery.text,
+        images: [],
+      });
+      return { ok: result.ok, detail: result.ok ? undefined : (result.detail ?? result.error) };
+    },
+    recordPrompt: ({ target, by, text }) =>
+      this.deps.recordAgentPrompt({
+        targetTerminalId: target,
+        by: `terminal:${by}`,
+        text,
+      }),
+  });
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
@@ -111,7 +146,10 @@ export class ApiServer {
     } catch (err: any) {
       const status = err.status ?? 500;
       res.writeHead(status);
-      res.end(JSON.stringify({ error: err.message ?? "Internal error" }));
+      // A typed `code` travels with deliberate refusals (err.status set), so
+      // an agent can branch on it; Node's own error codes stay internal.
+      const code = err.status && typeof err.code === "string" ? err.code : undefined;
+      res.end(JSON.stringify({ error: err.message ?? "Internal error", ...(code ? { code } : {}) }));
     }
   }
 
@@ -296,6 +334,10 @@ export class ApiServer {
       const query = url.searchParams.get("q") ?? "";
       const worktree = url.searchParams.get("worktree");
       return this.workspaceMemoryQuery(scope, query, worktree);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-prompt$/)) {
+      const id = pathname.split("/")[2];
+      return this.sendPromptToNode(id, body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/spawn-terminal$/)) {
       const id = pathname.split("/")[2];
@@ -1095,15 +1137,14 @@ export class ApiServer {
             text: `[Event: ${type} from ${kind}:${id}] ${message}`,
             images: [],
           };
-          const result = await submitComposerRequest(
-            request,
-            createDefaultComposerSubmitDeps(
-              process.platform as "darwin" | "win32" | "linux",
-              this.deps.dataUrlToPngBuffer,
-              (ptyId: number, data: string) =>
-                this.deps.ptyManager.write(ptyId, data),
-            ),
-          );
+          const result = await this.submitToTerminal(request);
+          if (result.ok) {
+            this.deps.recordAgentPrompt({
+              targetTerminalId: target.id,
+              by: `${kind}:${id}` as CaptureNodeRef,
+              text: request.text,
+            });
+          }
           notified.push({
             kind: "terminal",
             id: target.id,
@@ -1356,11 +1397,32 @@ export class ApiServer {
     if (!isManager) {
       throw Object.assign(
         new Error(
-          "This terminal is not the workspace manager. Ask the user to assign the role from the Project chat pill first.",
+          "This terminal is not the workspace manager of the canvas on screen. Either the role belongs to another terminal (ask the user to assign it from the Project chat pill), or your canvas isn't the active one; manager tools only reach the canvas that is currently open.",
         ),
-        { status: 403 },
+        { status: 403, code: "not_workspace_manager" },
       );
     }
+  }
+
+  /**
+   * Types text into one terminal and submits it — the path emit_event and
+   * send_prompt_to_node share.
+   */
+  private submitToTerminal(request: ComposerSubmitRequest) {
+    return submitComposerRequest(
+      request,
+      createDefaultComposerSubmitDeps(
+        process.platform as "darwin" | "win32" | "linux",
+        this.deps.dataUrlToPngBuffer,
+        (ptyId: number, data: string) => this.deps.ptyManager.write(ptyId, data),
+      ),
+    );
+  }
+
+  /** Backs the send_prompt_to_node MCP tool. */
+  private async sendPromptToNode(terminalId: string, body: any) {
+    await this.requireWorkspaceManager(terminalId);
+    return this.nodePrompts.send(terminalId, body);
   }
 
   /** Backs the spawn_terminal MCP tool. */

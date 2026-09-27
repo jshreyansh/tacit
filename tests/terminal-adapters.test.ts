@@ -113,3 +113,19 @@ test("getTerminalPromptArgs uses kimi's explicit prompt flag", () => {
     "Explore the repo",
   ]);
 });
+
+// OpenCode's positional argument is the project folder: a bare prompt started
+// it in a folder named after the task.
+test("getTerminalPromptArgs gives opencode its prompt by flag, not as the project path", () => {
+  assert.deepEqual(getTerminalPromptArgs("opencode", "Explore the repo"), [
+    "--prompt",
+    "Explore the repo",
+  ]);
+});
+
+test("getTerminalPromptArgs starts antigravity interactively with the prompt", () => {
+  assert.deepEqual(getTerminalPromptArgs("antigravity", "Explore the repo"), [
+    "--prompt-interactive",
+    "Explore the repo",
+  ]);
+});

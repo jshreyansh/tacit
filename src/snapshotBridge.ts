@@ -136,6 +136,7 @@ function normalizeTerminalType(value: unknown): TerminalType {
     case "codex":
     case "kimi":
     case "gemini":
+    case "antigravity":
     case "opencode":
     case "wuu":
     case "lazygit":

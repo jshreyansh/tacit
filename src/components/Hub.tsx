@@ -198,6 +198,7 @@ const TYPE_GLYPH_LETTER: Record<TerminalType, string> = {
   codex: "X",
   kimi: "K",
   gemini: "G",
+  antigravity: "A",
   opencode: "O",
   wuu: "W",
   lazygit: "g",

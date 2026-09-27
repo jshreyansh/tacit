@@ -875,6 +875,29 @@ export function App() {
         return null;
       },
 
+      // Backs send_prompt_to_node: which kind of node an id is, and for a
+      // terminal what delivery needs. The manager addresses by id alone, so
+      // the kind is looked up here rather than trusted from the caller.
+      findPromptTarget: (id: string) => {
+        const found = findTerminal(id);
+        if (found) {
+          return {
+            kind: "terminal" as const,
+            id,
+            ptyId: getLivePtyId(id),
+            terminalType: found.terminal.type,
+            worktreePath: found.worktree.path,
+          };
+        }
+        if (useBrowserCardStore.getState().cards[id]) {
+          return { kind: "browser" as const, id };
+        }
+        const isPin = Object.values(usePinStore.getState().pinsByProject)
+          .flat()
+          .some((p) => p.id === id);
+        return isPin ? { kind: "pin" as const, id } : null;
+      },
+
       getWorkspaceLiveSummary: () => {
         const { projects } = useProjectStore.getState();
         let terminalCount = 0;

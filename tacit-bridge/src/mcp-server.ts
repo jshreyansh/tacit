@@ -1,6 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiRequest, getTerminalId } from "./client.ts";
+import { listAgentAdapters } from "../../shared/agent-adapters.ts";
+
+/** Every agent Tacit launches with these tools, plus the two plain types. */
+const SPAWNABLE_TERMINAL_TYPES = [
+  "shell",
+  ...listAgentAdapters().map((adapter) => adapter.id),
+  "lazygit",
+] as [string, ...string[]];
 
 /**
  * Tools are always registered — never added or removed mid-session — and
@@ -122,6 +130,37 @@ export function createTacitBridgeServer(): McpServer {
         "POST",
         `/node/terminal/${encodeURIComponent(terminalId)}/emit`,
         { type, payload },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "send_prompt_to_node",
+    {
+      title: "Send a prompt to one terminal (workspace manager only)",
+      description:
+        "Types a prompt into one terminal on the canvas and submits it, as a new message from you. An agent terminal sees it prefixed '[From the workspace manager]'; a shell terminal gets the text as-is and runs it as a command. Unlike emit_event, which goes to every node wired to you, this reaches only the terminal you name, and needs no wire. Use it to give a worker its next step, correct it, or pass it something it asked for (an OTP, an approval). A worker that is mid-turn receives it after its current turn. Terminals only; get ids from list_nodes or spawn_terminal. Only the workspace manager can call this.",
+      inputSchema: {
+        id: z.string().describe("The terminal's id, from list_nodes or spawn_terminal"),
+        prompt: z.string().describe("What to tell it"),
+        idempotency_key: z
+          .string()
+          .optional()
+          .describe(
+            "Optional. If you retry this call with the same key within 10 minutes, the prompt is not sent twice. Use a fresh key for each distinct message.",
+          ),
+      },
+    },
+    async ({ id, prompt, idempotency_key }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/send-prompt`,
+        { id, prompt, idempotency_key },
       );
       return textResult(JSON.stringify(result, null, 2));
     },
@@ -305,7 +344,7 @@ export function createTacitBridgeServer(): McpServer {
         "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the terminal's first message. Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. Only the workspace manager can call this.",
       inputSchema: {
         type: z
-          .enum(["shell", "claude", "codex", "gemini", "lazygit"])
+          .enum(SPAWNABLE_TERMINAL_TYPES)
           .optional()
           .describe("Defaults to 'shell'"),
         prompt: z.string().optional().describe("Auto-submitted as the first message"),

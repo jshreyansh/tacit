@@ -45,6 +45,7 @@ const COMMANDS_BY_TYPE: Record<TerminalType, readonly SlashCommand[]> = {
   shell: NO_COMMANDS,
   kimi: NO_COMMANDS,
   gemini: NO_COMMANDS,
+  antigravity: NO_COMMANDS,
   opencode: NO_COMMANDS,
   wuu: NO_COMMANDS,
   lazygit: NO_COMMANDS,

@@ -92,7 +92,7 @@ const CONTEXT_MENU_TERMINAL_TYPES: { label: string; type: TerminalType }[] = [
   { label: "New Shell", type: "shell" },
   { label: "New Claude", type: "claude" },
   { label: "New Codex", type: "codex" },
-  { label: "New Gemini", type: "gemini" },
+  { label: "New Antigravity", type: "antigravity" },
   { label: "New Lazygit", type: "lazygit" },
 ];
 // Canvas opacity only does anything on mac, where the window is created

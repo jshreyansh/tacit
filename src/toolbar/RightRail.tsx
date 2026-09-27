@@ -18,11 +18,7 @@ import { addTerminal, addBrowser, addNote } from "../actions/dockActions";
 import { useAgentDetection } from "../stores/agentAvailabilityStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import type { TerminalType } from "../types";
-import shellIcon from "../assets/dock-icons/terminal-shell.png";
-import claudeIcon from "../assets/dock-icons/terminal-claude.png";
-import codexIcon from "../assets/dock-icons/codex.png";
-import geminiIcon from "../assets/dock-icons/gemini.png";
-import opencodeIcon from "../assets/dock-icons/opencode-mark.png";
+import { AGENT_ICON } from "./agentIcons";
 import browserIcon from "../assets/dock-icons/browser.png";
 import noteIcon from "../assets/dock-icons/note.png";
 import { useT } from "../i18n/useT";
@@ -118,17 +114,17 @@ interface RailEntry extends RailArt {
 }
 
 const AGENTS: readonly RailEntry[] = [
-  { id: "shell", label: "Shell", icon: shellIcon, tiled: true },
-  { id: "claude", label: "Claude", icon: claudeIcon, inner: "h-6 w-6" },
-  { id: "codex", label: "Codex", icon: codexIcon, inner: "h-6 w-6" },
-  // The sparkle runs corner to corner where the others leave a margin, so it
-  // needs the only real correction in the set.
-  { id: "gemini", label: "Gemini", icon: geminiIcon, inner: "h-[22px] w-[22px]" },
+  { id: "shell", label: "Shell", icon: AGENT_ICON.shell, tiled: true },
+  { id: "claude", label: "Claude", icon: AGENT_ICON.claude, inner: "h-6 w-6" },
+  { id: "codex", label: "Codex", icon: AGENT_ICON.codex, inner: "h-6 w-6" },
+  // Replaces Gemini, whose CLI stopped serving consumer accounts on 18 June
+  // 2026; Antigravity CLI is Google's successor.
+  { id: "antigravity", label: "Antigravity", icon: AGENT_ICON.antigravity, inner: "h-[22px] w-[22px]" },
   // Ships as a dark mark baked onto a cream field, which made it the one
   // pale tile in a dark column. `opencode-mark.png` is that mark lifted off
   // its background with its tones flipped, so it sits on the same shell as
   // the rest — light glyph on a dark tile, exactly like Shell's own icon.
-  { id: "opencode", label: "OpenCode", icon: opencodeIcon, inner: "h-[24px] w-[24px]" },
+  { id: "opencode", label: "OpenCode", icon: AGENT_ICON.opencode, inner: "h-[24px] w-[24px]" },
 ] as const;
 
 /**

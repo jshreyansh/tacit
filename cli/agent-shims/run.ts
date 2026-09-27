@@ -3,9 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { prepareBridgeLaunch } from "../../electron/agent-launch";
-import { applyLaunchArgs } from "../../shared/agent-adapters";
+import { applyLaunchArgs, findAgentAdapter } from "../../shared/agent-adapters";
 
-type AgentShimProvider = "claude" | "codex" | "opencode" | "gemini";
+type AgentShimProvider = "claude" | "codex" | "opencode" | "gemini" | "antigravity";
 
 function moduleDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));
@@ -79,9 +79,11 @@ function resolveTacitBridgeCliPath(): string | null {
 }
 
 export function runAgentShim(provider: AgentShimProvider): never {
-  const realCommand = resolveRealCommand(provider);
+  // The executable isn't always the id: Antigravity's is `agy`.
+  const command = findAgentAdapter(provider)?.command ?? provider;
+  const realCommand = resolveRealCommand(command);
   if (!realCommand) {
-    console.error(`Tacit could not find the real ${provider} executable in PATH.`);
+    console.error(`Tacit could not find the real ${command} executable in PATH.`);
     process.exit(127);
   }
 

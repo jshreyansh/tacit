@@ -51,8 +51,10 @@ export const CAPTURE_MAX_TEXT_LENGTH = 4000;
  *
  *  - `app`     — Tacit injected it: a wire-up notice, the manager briefing.
  *  - `harness` — the CLI injected it: task notifications, system reminders.
+ *  - `agent`   — another agent sent it through the bridge (the manager's
+ *                send_prompt_to_node, emit_event). `by` names which one.
  */
-export type CaptureTextSource = "user" | "app" | "harness";
+export type CaptureTextSource = "user" | "app" | "harness" | "agent";
 
 export type CaptureEvent =
   | {
@@ -66,6 +68,8 @@ export type CaptureEvent =
        * off keeps the line readable. Anything else is not the user speaking.
        */
       source?: Exclude<CaptureTextSource, "user">;
+      /** The node that sent it; set only when `source` is `agent`. */
+      by?: CaptureNodeRef;
       truncated?: true;
       /**
        * Only set when the hook payload had no readable `prompt` field. Records
@@ -207,6 +211,7 @@ function eventActor(event: CaptureEvent): CaptureEntry["actor_identity"] {
   if (event.kind === "prompt") {
     if (event.source === "app") return { kind: "app", ref: "system" };
     if (event.source === "harness") return { kind: "harness", ref: "system" };
+    if (event.source === "agent") return { kind: "agent", ref: event.by ?? "system" };
     return { kind: "user", ref: "user" };
   }
   if (event.kind === "topology") return { kind: "system", ref: "system" };

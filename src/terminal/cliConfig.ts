@@ -143,6 +143,26 @@ export const TERMINAL_CONFIG: Record<TerminalType, TerminalAdapterConfig> = {
       shell: "gemini",
       resumeArgs: (id) => ["--resume", id],
       newArgs: () => [],
+      promptArgs: (prompt) => ["--prompt-interactive", prompt],
+    },
+    composer: {
+      supportsComposer: true,
+      allowedStatuses: INTERACTIVE_STATUSES,
+      inputMode: "bracketed-paste",
+      supportsImages: true,
+      pasteKeySequence: () => "",
+      imageFallback: "image-path",
+      pasteDelayMs: 120,
+      pasteStrategy: "separate",
+    },
+  },
+  antigravity: {
+    type: "antigravity",
+    launch: {
+      shell: "agy",
+      resumeArgs: (id) => ["--conversation", id],
+      newArgs: () => [],
+      promptArgs: (prompt) => ["--prompt-interactive", prompt],
     },
     composer: {
       supportsComposer: true,
@@ -161,6 +181,10 @@ export const TERMINAL_CONFIG: Record<TerminalType, TerminalAdapterConfig> = {
       shell: "opencode",
       resumeArgs: (id) => ["-s", id],
       newArgs: () => [],
+      // OpenCode's positional argument is the project folder, so the default
+      // (the prompt as a bare argument) started it in a folder named after
+      // the task.
+      promptArgs: (prompt) => ["--prompt", prompt],
     },
     composer: {
       supportsComposer: true,

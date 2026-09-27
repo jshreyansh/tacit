@@ -1452,6 +1452,11 @@ function scheduleSessionCapture(
   cliType: TerminalType,
   detectedCliPid?: number | null,
 ) {
+  // Session discovery (electron/session-discovery.ts) knows only these
+  // agents' session files. Polling for any other one (Antigravity, Gemini,
+  // lazygit) can only time out, and used to warn "Session capture timeout"
+  // on every launch.
+  if (!isSessionTelemetryProvider(cliType)) return;
   runtime.sessionCancel?.();
   let cancelled = false;
   runtime.sessionCancel = () => {

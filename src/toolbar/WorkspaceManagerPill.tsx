@@ -19,9 +19,9 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { useT } from "../i18n/useT";
-import claudeIcon from "../assets/dock-icons/terminal-claude.png";
-import codexIcon from "../assets/dock-icons/codex.png";
-import geminiIcon from "../assets/dock-icons/gemini.png";
+import { agentIcon } from "./agentIcons";
+import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
+import type { TerminalType } from "../types";
 
 /**
  * How long a tenure ran. The log records start and end, and "held it for 6h" is
@@ -54,33 +54,27 @@ function formatWhen(iso: string): string {
 const labelButtonCls =
   "inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium text-[var(--text-secondary)] transition-[color,background-color,transform] duration-quick hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] active:scale-[0.98] focus-visible:outline-none motion-reduce:transition-none disabled:opacity-60 disabled:pointer-events-none";
 
-// Agent types that can actually hold a Hydra role, per
-// hydra/src/roles/builtin/lead.md and docs/workspace_project_manager.md —
-// Lazygit/Shell terminals aren't agent loops, so they're not eligible for
-// the workspace manager role.
-const WORKSPACE_MANAGER_AGENT_TYPES = ["claude", "codex", "gemini"] as const;
-type WorkspaceManagerAgentType = (typeof WORKSPACE_MANAGER_AGENT_TYPES)[number];
-const AGENT_DISPLAY_NAME: Record<WorkspaceManagerAgentType, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  gemini: "Gemini",
-};
-// Same icon assets the left rail already uses — reused here, not duplicated,
-// so the two places you pick an agent stay visually consistent.
-const AGENT_ICON: Record<WorkspaceManagerAgentType, string> = {
-  claude: claudeIcon,
-  codex: codexIcon,
-  gemini: geminiIcon,
-};
+// Any agent Tacit launches with its bridge tools can hold the role: the role
+// is those tools plus the briefing, and every adapter in
+// shared/agent-adapters.ts gets both. Shell and Lazygit terminals aren't
+// agent loops, so they have no adapter and aren't offered.
+const MANAGER_AGENTS = listAgentAdapters().filter((adapter) => !adapter.retired);
+
+function agentName(type: string): string {
+  return findAgentAdapter(type)?.displayName ?? type;
+}
+
 /**
  * The lit edge along the top of the expanded seat is mixed with whoever holds
  * it. Hues are sampled from each agent's own mark rather than assigned, so a
  * handover is visible without anything announcing it.
  */
-const AGENT_HUE: Record<WorkspaceManagerAgentType, string> = {
+const AGENT_HUE: Record<string, string> = {
   claude: "#d98b6f",
   codex: "#7b7ce8",
   gemini: "#6ea6f5",
+  antigravity: "#3887fe",
+  opencode: "#cfc8bd",
 };
 
 
@@ -123,21 +117,16 @@ export function WorkspaceManagerPill() {
   const agentDetections = useAgentAvailabilityStore((state) => state.byId);
 
   const eligibleManagerTerminals = useMemo(() => {
-    const list: Array<{ id: string; type: WorkspaceManagerAgentType; label: string }> = [];
+    const list: Array<{ id: string; type: TerminalType; label: string }> = [];
     for (const project of projects) {
       for (const worktree of project.worktrees) {
         for (const terminal of worktree.terminals) {
           if (terminal.stashed) continue;
           if (terminal.id === workspaceManagerTerminalId) continue;
-          if (
-            !(WORKSPACE_MANAGER_AGENT_TYPES as readonly string[]).includes(
-              terminal.type,
-            )
-          )
-            continue;
+          if (!findAgentAdapter(terminal.type)) continue;
           list.push({
             id: terminal.id,
-            type: terminal.type as WorkspaceManagerAgentType,
+            type: terminal.type,
             // Qualified below via labelFor — kept raw here only as a fallback
             // for a terminal that has since disappeared from the store.
             label: terminal.customTitle || terminal.title || terminal.type,
@@ -219,14 +208,8 @@ export function WorkspaceManagerPill() {
   const speakingCli = viewing
     ? viewing.cli
     : (managerTerminal?.type ?? null);
-  const speakingHue =
-    speakingCli && speakingCli in AGENT_HUE
-      ? AGENT_HUE[speakingCli as WorkspaceManagerAgentType]
-      : undefined;
-  const speakingIcon =
-    speakingCli && speakingCli in AGENT_ICON
-      ? AGENT_ICON[speakingCli as WorkspaceManagerAgentType]
-      : null;
+  const speakingHue = speakingCli ? AGENT_HUE[speakingCli] : undefined;
+  const speakingIcon = agentIcon(speakingCli) ?? null;
   const conversation = useManagerConversation(
     managerTerminal?.id ?? "",
     isLive ? managerSessionFile : (viewing?.sessionFile ?? null),
@@ -247,7 +230,14 @@ export function WorkspaceManagerPill() {
           const terminal = worktree.terminals.find((x) => x.id === terminalId);
           if (!terminal) continue;
           if (terminal.customTitle) return terminal.customTitle;
-          const base = terminal.title || terminal.type;
+          // A title that is only the creation default ("Terminal" for a shell
+          // that later started an agent, or the type id) says nothing the
+          // row's agent name doesn't; the project does.
+          const isDefaultTitle =
+            !terminal.title ||
+            terminal.title === "Terminal" ||
+            terminal.title === terminal.type;
+          const base = isDefaultTitle ? project.name : terminal.title;
           return worktree.name ? `${base} · ${worktree.name}` : base;
         }
       }
@@ -444,7 +434,7 @@ export function WorkspaceManagerPill() {
   );
 
   const assignWorkspaceManager = useCallback(
-    (terminalId: string | null) => {
+    (terminalId: string | null, options?: { briefedAtLaunch?: boolean }) => {
       if (!activeCanvas) return;
       const outgoing = managerTerminal;
       useCanvasRegistryStore
@@ -467,21 +457,19 @@ export function WorkspaceManagerPill() {
               carries
                 ? t.project_chat_handover_keeps
                 : t.project_chat_handover_drops(
-                    AGENT_DISPLAY_NAME[outgoing.type as WorkspaceManagerAgentType] ??
-                      outgoing.type,
-                    AGENT_DISPLAY_NAME[incoming.type as WorkspaceManagerAgentType] ??
-                      incoming.type,
+                    agentName(outgoing.type),
+                    agentName(incoming.type),
                   ),
             );
         }
-        void sendWorkspaceManagerBriefing(terminalId);
+        if (!options?.briefedAtLaunch) void sendWorkspaceManagerBriefing(terminalId);
       }
     },
     [activeCanvas, returnToChat, sendWorkspaceManagerBriefing, managerTerminal, t],
   );
 
   const spawnAndAssignManager = useCallback(
-    (type: WorkspaceManagerAgentType) => {
+    (type: TerminalType) => {
       const {
         focusedProjectId,
         focusedWorktreeId,
@@ -511,8 +499,17 @@ export function WorkspaceManagerPill() {
         projectId = best.projectId;
         worktreeId = best.worktreeId;
       }
-      const terminal = createTerminalInScene({ projectId, worktreeId, type });
-      assignWorkspaceManager(terminal.id);
+      // A new agent gets the briefing as its launch prompt. Typed in, it
+      // could land before the agent had started: Antigravity then showed it
+      // as raw `^[[200~` text, echoed by the terminal while nothing was
+      // reading it yet.
+      const terminal = createTerminalInScene({
+        projectId,
+        worktreeId,
+        type,
+        initialPrompt: WORKSPACE_MANAGER_BRIEFING,
+      });
+      assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
     },
     [assignWorkspaceManager],
   );
@@ -628,7 +625,7 @@ export function WorkspaceManagerPill() {
                   {managerWorking && <span className="tc-seat-pulse" aria-hidden="true" />}
                   {managerTerminal && (
                     <img
-                      src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
+                      src={agentIcon(managerTerminal.type)}
                       alt=""
                     />
                   )}
@@ -709,9 +706,7 @@ export function WorkspaceManagerPill() {
                       cli: handoverRow.cli,
                       at: handoverRow.startedAt,
                       icon:
-                        handoverRow.cli && handoverRow.cli in AGENT_ICON
-                          ? AGENT_ICON[handoverRow.cli as WorkspaceManagerAgentType]
-                          : null,
+                        agentIcon(handoverRow.cli) ?? null,
                     }
                   : null
               }
@@ -749,7 +744,7 @@ export function WorkspaceManagerPill() {
               {managerWorking && <span className="tc-seat-pulse" aria-hidden="true" />}
               {managerTerminal && (
                 <img
-                  src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
+                  src={agentIcon(managerTerminal.type)}
                   alt=""
                 />
               )}
@@ -845,10 +840,7 @@ export function WorkspaceManagerPill() {
           <div className="tc-seat-face min-h-0 flex-1 overflow-y-auto p-1.5">
             {history.map((row) => {
               const cli = row.cli ?? "agent";
-              const icon =
-                cli in AGENT_ICON
-                  ? AGENT_ICON[cli as WorkspaceManagerAgentType]
-                  : null;
+              const icon = agentIcon(cli) ?? null;
               return (
                 <button
                   key={row.sessionId}
@@ -914,7 +906,7 @@ export function WorkspaceManagerPill() {
             {managerTerminal && (
               <div className="tc-seat-option pointer-events-none justify-between text-[var(--text-primary)]">
                 <img
-                  src={AGENT_ICON[managerTerminal.type as WorkspaceManagerAgentType]}
+                  src={agentIcon(managerTerminal.type)}
                   alt=""
                 />
                 <span className="min-w-0 flex-1 truncate">{managerLabel}</span>
@@ -932,17 +924,17 @@ export function WorkspaceManagerPill() {
                 className="tc-seat-option"
                 onClick={() => assignWorkspaceManager(term.id)}
               >
-                <img src={AGENT_ICON[term.type]} alt="" />
+                <img src={agentIcon(term.type)} alt="" />
                 <span className="min-w-0 flex-1 truncate">
                   {labelFor(term.id) || term.label}
                 </span>
                 <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
-                  {AGENT_DISPLAY_NAME[term.type]}
+                  {agentName(term.type)}
                 </span>
               </button>
             ))}
             <div className="tc-seat-group">{t.project_chat_start_new}</div>
-            {WORKSPACE_MANAGER_AGENT_TYPES.map((type) => {
+            {MANAGER_AGENTS.map(({ id: type, displayName }) => {
               // An agent whose CLI isn't installed stays listed, dimmed, with
               // the reason, rather than spawning a manager that fails at
               // launch. Unknown (detection still running) counts as available.
@@ -959,11 +951,12 @@ export function WorkspaceManagerPill() {
                   title={missing ? (detection.reason ?? undefined) : undefined}
                   onClick={() => {
                     if (missing) return;
-                    spawnAndAssignManager(type);
+                    // Adapter ids are terminal types by construction.
+                    spawnAndAssignManager(type as TerminalType);
                   }}
                 >
-                  <img src={AGENT_ICON[type]} alt="" />
-                  <span className="min-w-0 flex-1 truncate">{AGENT_DISPLAY_NAME[type]}</span>
+                  <img src={agentIcon(type)} alt="" />
+                  <span className="min-w-0 flex-1 truncate">{displayName}</span>
                   {missing && (
                     <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
                       {t.agent_not_installed}

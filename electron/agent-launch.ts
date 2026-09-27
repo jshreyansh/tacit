@@ -43,6 +43,7 @@ export interface BridgeLaunchOptions {
   platform?: string;
   readFile?: (file: string) => string | null;
   writeFile?: (file: string, contents: string) => void;
+  homeDir?: string;
 }
 
 /** A file's contents, or null when it does not exist. Other errors throw. */
@@ -53,6 +54,17 @@ function readFileIfPresent(file: string): string | null {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+/**
+ * Written beside the target and renamed over it, so an agent (or the
+ * person's other tools) reading a shared config never sees half a file.
+ */
+function writeFileAtomically(file: string, contents: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const staging = `${file}.tacit-${process.pid}-${Date.now()}.tmp`;
+  fs.writeFileSync(staging, contents, "utf-8");
+  fs.renameSync(staging, file);
 }
 
 /**
@@ -89,12 +101,10 @@ export function prepareBridgeLaunch(
     inheritedEnv: options.inheritedEnv,
     platform: options.platform ?? process.platform,
     readFile: options.readFile ?? readFileIfPresent,
+    homeDir: options.homeDir ?? os.homedir(),
   });
 
-  const writeFile =
-    options.writeFile ??
-    ((file: string, contents: string) =>
-      fs.writeFileSync(file, contents, "utf-8"));
+  const writeFile = options.writeFile ?? writeFileAtomically;
   for (const file of plan.files) {
     try {
       writeFile(file.path, file.contents);
