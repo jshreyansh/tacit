@@ -71,6 +71,8 @@ interface TerminalState {
   sessionReadInFlight: boolean;
   sessionRemainder: string;
   sessionWatcher: fs.FSWatcher | null;
+  /** A watcher-triggered read waiting to run; see startSessionTracking. */
+  sessionWatchTimer: ReturnType<typeof setTimeout> | null;
   sessionOffset: number;
   shellPid: number | null;
   snapshot: TerminalTelemetrySnapshot;
@@ -209,6 +211,9 @@ function shouldMarkClaudeNotificationAwaitingInput(
     message.includes("requires your permission")
   );
 }
+
+/** How long OpenCode database events are gathered before one read. */
+const OPENCODE_WATCH_COALESCE_MS = 500;
 
 function toSessionProvider(
   provider: TelemetryProvider,
@@ -1576,6 +1581,7 @@ export class TelemetryService {
       sessionReadInFlight: false,
       sessionRemainder: "",
       sessionWatcher: null,
+      sessionWatchTimer: null,
       sessionOffset: 0,
       shellPid: registration?.shellPid ?? null,
       snapshot: buildBaseSnapshot(
@@ -1804,15 +1810,31 @@ export class TelemetryService {
       const directory = path.dirname(state.sessionFile);
       const basename = path.basename(state.sessionFile);
       state.sessionWatcher = fs.watch(directory, (_event, changedFile) => {
+        const openCode = isOpenCodeProvider(state.snapshot.provider);
         if (changedFile) {
           const changed = String(changedFile);
-          if (isOpenCodeProvider(state.snapshot.provider)) {
+          if (openCode) {
             if (!changed.startsWith(basename)) return;
+            // SQLite updates the -shm index whenever the database is read,
+            // our own reads included. Reacting to it re-read the database,
+            // which touched -shm again: a loop that held Tacit's main process
+            // at 100% CPU for as long as an OpenCode terminal was open.
+            if (changed.endsWith("-shm")) return;
           } else if (changed !== basename) {
             return;
           }
         }
-        read();
+        if (!openCode) {
+          read();
+          return;
+        }
+        // A database write arrives as a burst of events; one read covers it,
+        // and none can pile up faster than this.
+        if (state.sessionWatchTimer) return;
+        state.sessionWatchTimer = setTimeout(() => {
+          state.sessionWatchTimer = null;
+          read();
+        }, OPENCODE_WATCH_COALESCE_MS);
       });
     } catch {
       state.sessionWatcher = null;
@@ -1826,6 +1848,10 @@ export class TelemetryService {
     }
     state.sessionWatcher?.close();
     state.sessionWatcher = null;
+    if (state.sessionWatchTimer) {
+      clearTimeout(state.sessionWatchTimer);
+      state.sessionWatchTimer = null;
+    }
     state.sessionReadInFlight = false;
     state.sessionOffset = 0;
     state.sessionRemainder = "";
