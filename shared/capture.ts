@@ -154,6 +154,18 @@ export type CaptureEvent =
       profile?: string;
     }
   | {
+      /**
+       * A manager asked for another worker at the worker cap and was refused
+       * (shared/worker-cap.ts). Kept so a run that hit its ceiling shows in
+       * the data afterwards.
+       */
+      kind: "spawn_refused";
+      node_kind: "terminal" | "browser";
+      by: CaptureActor;
+      open: number;
+      limit: number;
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -238,6 +250,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "retype_wire":
     case "unwire": return event.from;
     case "topology": return null;
+    case "spawn_refused": return null;
   }
 }
 

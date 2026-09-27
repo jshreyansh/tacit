@@ -875,6 +875,23 @@ export function App() {
         return null;
       },
 
+      // Backs the worker cap (shared/worker-cap.ts): open terminals and
+      // browsers a manager started. What the person opened never counts.
+      countManagerWorkers: () => {
+        let terminals = 0;
+        for (const project of useProjectStore.getState().projects) {
+          for (const worktree of project.worktrees) {
+            for (const terminal of worktree.terminals) {
+              if (terminal.origin === "agent" && !terminal.stashed) terminals += 1;
+            }
+          }
+        }
+        const browsers = Object.values(useBrowserCardStore.getState().cards).filter(
+          (card) => !!card.spawnedBy,
+        ).length;
+        return { terminals, browsers };
+      },
+
       // Backs close_node. The manager is recorded as the one who closed it,
       // with its reason; the same path as the close button otherwise, so the
       // PTY, the tile and the node's wires all go.

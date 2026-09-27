@@ -233,13 +233,15 @@ function summarize(entry: CaptureEntry): string {
     case "retype_wire":
       return `rewired ${entry.from} to ${entry.to}: ${entry.previous_type} became ${entry.connection_type}`;
     case "close":
-      return `closed ${entry.node}`;
+      return `closed ${entry.node}${entry.reason ? ` — ${entry.reason.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "rename":
       return `renamed ${entry.node} to "${entry.title}"`;
     case "manager":
       return entry.node ? `${entry.node} became the workspace manager` : "workspace manager unassigned";
     case "browser_action":
       return `${entry.ok ? "used" : "failed"} ${entry.action} on ${entry.node} via ${entry.backend}${entry.url ? ` — ${entry.url}` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
+    case "spawn_refused":
+      return `refused another ${entry.node_kind} for ${entry.by}: ${entry.open} of ${entry.limit} already open`;
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }
@@ -260,6 +262,8 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
       return [entry.actor];
     case "manager":
       return entry.node ? [entry.node] : [];
+    case "spawn_refused":
+      return entry.by === "user" || entry.by === "system" ? [] : [entry.by];
     case "topology":
       return [];
   }

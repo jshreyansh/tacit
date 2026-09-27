@@ -22,6 +22,11 @@ export interface BrowserCardData {
    * which is every card saved before this existed.
    */
   pageZoom?: number;
+  /**
+   * The agent that opened it through spawn_browser, as a node ref. Absent for
+   * a browser the person opened; only these count toward the worker cap.
+   */
+  spawnedBy?: string;
 }
 
 interface BrowserCardStore {

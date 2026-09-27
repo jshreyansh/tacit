@@ -31,6 +31,9 @@ import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection
 import type { CaptureNodeRef } from "../shared/capture";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { busyStateOf, closeNode } from "./node-close";
+import { WorkerAdmission } from "./worker-admission";
+import type { CaptureEvent } from "../shared/capture";
+import type { WorkerCaps } from "../shared/worker-cap";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -50,6 +53,10 @@ interface ApiServerDeps {
     by: CaptureNodeRef;
     text: string;
   }) => void;
+  /** Appends an entry to the decision record, attributed to main. */
+  recordDecision: (event: CaptureEvent) => void;
+  /** How many workers a manager may have open; shared/worker-cap.ts. */
+  workerCaps: WorkerCaps;
 }
 
 const BROWSER_CONNECTOR_ROUTES = new Set([
@@ -93,8 +100,22 @@ export class ApiServer {
       }),
   });
 
+  private readonly workerAdmission: WorkerAdmission;
+
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+    this.workerAdmission = new WorkerAdmission({
+      caps: deps.workerCaps,
+      count: () => this.execRenderer("window.__tcApi.countManagerWorkers()"),
+      recordRefusal: ({ kind, managerId, open, limit }) =>
+        deps.recordDecision({
+          kind: "spawn_refused",
+          node_kind: kind === "terminals" ? "terminal" : "browser",
+          by: `terminal:${managerId}`,
+          open,
+          limit,
+        }),
+    });
   }
 
   getAuthToken(): string {
@@ -1460,14 +1481,16 @@ export class ApiServer {
   /** Backs the spawn_terminal MCP tool. */
   private async spawnTerminal(terminalId: string, body: any) {
     await this.requireWorkspaceManager(terminalId);
-    return this.execRenderer(
-      `window.__tcApi.spawnTerminal(${JSON.stringify({
-        requesterTerminalId: terminalId,
-        type: body?.type,
-        prompt: body?.prompt,
-        position: body?.position,
-        connectTo: body?.connectTo,
-      })})`,
+    return this.workerAdmission.admit("terminals", terminalId, () =>
+      this.execRenderer(
+        `window.__tcApi.spawnTerminal(${JSON.stringify({
+          requesterTerminalId: terminalId,
+          type: body?.type,
+          prompt: body?.prompt,
+          position: body?.position,
+          connectTo: body?.connectTo,
+        })})`,
+      ),
     );
   }
 
@@ -1482,16 +1505,18 @@ export class ApiServer {
     if (profile !== undefined && typeof profile !== "string") {
       throw Object.assign(new Error("profile must be a string"), { status: 400 });
     }
-    return this.execRenderer(
-      `window.__tcApi.spawnBrowser(${JSON.stringify({
-        requesterTerminalId: terminalId,
-        url,
-        position: body?.position,
-        connectTo: body?.connectTo,
-        // A profile name or id. Resolved in the renderer, where the identity
-        // registry and this canvas's default both live — never defaulted here.
-        profile,
-      })})`,
+    return this.workerAdmission.admit("browsers", terminalId, () =>
+      this.execRenderer(
+        `window.__tcApi.spawnBrowser(${JSON.stringify({
+          requesterTerminalId: terminalId,
+          url,
+          position: body?.position,
+          connectTo: body?.connectTo,
+          // A profile name or id. Resolved in the renderer, where the identity
+          // registry and this canvas's default both live — never defaulted here.
+          profile,
+        })})`,
+      ),
     );
   }
 

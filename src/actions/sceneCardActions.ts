@@ -62,6 +62,9 @@ export function addBrowserCardToScene(
     usePreferencesStore.getState().setBrowserEnabled(true);
   }
   const id = createBrowserCardInScene(url, position, identityId);
+  if (by !== "user" && by !== "system") {
+    useBrowserCardStore.getState().updateCard(id, { spawnedBy: by });
+  }
   // Recorded here rather than at the call sites, the same way terminals are
   // recorded inside createTerminalInScene. Sitting only on the agent's path
   // meant a browser you opened yourself appeared in the record from nowhere —

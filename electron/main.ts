@@ -212,6 +212,7 @@ import {
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
 import { isWorkspaceManagerBriefing } from "../shared/manager-role";
 import { findAntigravityConversation } from "./antigravity-session";
+import { workerCapsFor } from "../shared/worker-cap";
 import { RecallService } from "./recall-service";
 import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
@@ -479,6 +480,9 @@ const apiServer = new ApiServer({
   dataUrlToPngBuffer,
   recallService,
   connectedBrowserBroker,
+  recordDecision: (event) =>
+    captureService.record(event, captureCanvasId, new Date(), { method: "main" }),
+  workerCaps: workerCapsFor(os.totalmem()),
   recordAgentPrompt: ({ targetTerminalId, by, text }) => {
     agentSentText.note(targetTerminalId, text);
     captureService.record(

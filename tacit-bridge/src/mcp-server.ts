@@ -374,7 +374,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Spawn a new terminal (workspace manager only)",
       description:
-        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the terminal's first message. Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. Only the workspace manager can call this.",
+        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the terminal's first message. Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals you can have open at once (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workspace manager can call this.",
       inputSchema: {
         type: z
           .enum(SPAWNABLE_TERMINAL_TYPES)
@@ -404,7 +404,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Spawn a new browser tile (workspace manager only)",
       description:
-        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Pass profile to choose which browser profile (signed-in identity) it opens as — call list_browser_profiles first if the task needs the user's real session, because the wrong choice means a signed-out page. The result always states which profile was used and why. Only the workspace manager can call this.",
+        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Pass profile to choose which browser profile (signed-in identity) it opens as — call list_browser_profiles first if the task needs the user's real session, because the wrong choice means a signed-out page. The result always states which profile was used and why. There is a limit on how many browsers you can have open at once; at the limit the call is refused, and closing one with close_node frees a slot. Only the workspace manager can call this.",
       inputSchema: {
         url: z.string().describe("URL to open"),
         position: positionSchema,
