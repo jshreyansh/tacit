@@ -211,6 +211,7 @@ import {
 } from "../shared/capture";
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
 import { isWorkspaceManagerBriefing } from "../shared/manager-role";
+import { findAntigravityConversation } from "./antigravity-session";
 import { RecallService } from "./recall-service";
 import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
@@ -1162,6 +1163,14 @@ function setupIpc() {
       return findBestKimiSession(cwd, startedAt);
     },
   );
+
+  ipcMain.handle("session:find-antigravity", (_event, ptyId: number) => {
+    // Tacit launches agy as the terminal's own process, so the PTY's pid is
+    // agy's; see electron/antigravity-session.ts for why the pid is the key.
+    if (!Number.isInteger(ptyId)) return null;
+    const pid = ptyManager.getPid(ptyId);
+    return pid ? findAntigravityConversation(pid) : null;
+  });
 
   ipcMain.handle(
     "session:find-opencode",

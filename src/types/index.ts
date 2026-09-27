@@ -654,6 +654,10 @@ export interface TacitAPI {
       filePath: string;
       confidence: "medium" | "weak";
     } | null>;
+    findAntigravity: (ptyId: number) => Promise<{
+      sessionId: string;
+      confidence: "strong";
+    } | null>;
     findOpenCode: (
       cwd: string,
       startedAt?: string,

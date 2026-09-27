@@ -38,6 +38,7 @@
  * attached" on a new agent.
  */
 export const SESSION_POLL_INTERVAL_MS = {
+  antigravity: 3_000,
   codex: 500,
   opencode: 1_000,
   wuu: 1_000,
@@ -56,6 +57,9 @@ export const SESSION_POLL_INTERVAL_MS = {
  * session file (CI cold starts, slow disks).
  */
 export const SESSION_POLL_MAX_ATTEMPTS = {
+  // agy creates its conversation only when the first message is sent, which
+  // may be long after launch: 400 * 3s = 20 minutes.
+  antigravity: 400,
   codex: 20,
   opencode: 120,
   wuu: 120,

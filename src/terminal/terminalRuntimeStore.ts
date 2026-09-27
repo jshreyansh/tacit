@@ -450,7 +450,9 @@ async function pollSessionId(
   startedAt?: string,
 ) {
   const maxAttempts =
-    cliType === "codex"
+    cliType === "antigravity"
+      ? SESSION_POLL_MAX_ATTEMPTS.antigravity
+      : cliType === "codex"
       ? SESSION_POLL_MAX_ATTEMPTS.codex
       : cliType === "opencode"
         ? SESSION_POLL_MAX_ATTEMPTS.opencode
@@ -458,7 +460,9 @@ async function pollSessionId(
         ? SESSION_POLL_MAX_ATTEMPTS.wuu
         : SESSION_POLL_MAX_ATTEMPTS.default;
   const interval =
-    cliType === "codex"
+    cliType === "antigravity"
+      ? SESSION_POLL_INTERVAL_MS.antigravity
+      : cliType === "codex"
       ? SESSION_POLL_INTERVAL_MS.codex
       : cliType === "opencode"
         ? SESSION_POLL_INTERVAL_MS.opencode
@@ -526,6 +530,10 @@ async function pollSessionId(
         worktreePath,
         startedAt,
       );
+      sessionId = candidate?.sessionId ?? null;
+      confidence = candidate?.confidence;
+    } else if (cliType === "antigravity") {
+      const candidate = await window.tacit.session.findAntigravity(ptyId);
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "opencode") {
@@ -1452,11 +1460,11 @@ function scheduleSessionCapture(
   cliType: TerminalType,
   detectedCliPid?: number | null,
 ) {
-  // Session discovery (electron/session-discovery.ts) knows only these
-  // agents' session files. Polling for any other one (Antigravity, Gemini,
-  // lazygit) can only time out, and used to warn "Session capture timeout"
-  // on every launch.
-  if (!isSessionTelemetryProvider(cliType)) return;
+  // Session discovery knows only these agents' sessions (Antigravity's
+  // through electron/antigravity-session.ts). Polling for any other one
+  // (Gemini, lazygit) can only time out, and used to warn "Session capture
+  // timeout" on every launch.
+  if (!isSessionTelemetryProvider(cliType) && cliType !== "antigravity") return;
   runtime.sessionCancel?.();
   let cancelled = false;
   runtime.sessionCancel = () => {
@@ -1480,7 +1488,9 @@ function scheduleSessionCapture(
     detectedCliPid,
     new Date().toISOString(),
   ).then((result) => {
-    if (result === "timeout") {
+    // An agy that was never sent a message has no conversation to find;
+    // that is normal, not a failure worth a warning.
+    if (result === "timeout" && cliType !== "antigravity") {
       notify(
         "warn",
         `Session capture timeout for ${getTerminalDisplayTitle(runtime.meta.terminal)}`,
