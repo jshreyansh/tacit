@@ -448,6 +448,7 @@ async function pollSessionId(
   shouldCancel: () => boolean,
   detectedCliPid?: number | null,
   startedAt?: string,
+  terminalId?: string,
 ) {
   const maxAttempts =
     cliType === "antigravity"
@@ -533,7 +534,9 @@ async function pollSessionId(
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "antigravity") {
-      const candidate = await window.tacit.session.findAntigravity(ptyId);
+      const candidate = terminalId
+        ? await window.tacit.session.findAntigravity(terminalId)
+        : null;
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
     } else if (cliType === "opencode") {
@@ -1487,6 +1490,7 @@ function scheduleSessionCapture(
     () => cancelled || runtime.disposed,
     detectedCliPid,
     new Date().toISOString(),
+    runtime.meta.terminal.id,
   ).then((result) => {
     // An agy that was never sent a message has no conversation to find;
     // that is normal, not a failure worth a warning.
@@ -1787,6 +1791,13 @@ async function spawnPty(
       isSessionTelemetryProvider(runtime.meta.terminal.type)
     ) {
       watchSession(runtime, runtime.meta.terminal.type, resumeSessionId);
+    }
+
+    // agy doesn't exit when asked to resume a conversation it can't find: it
+    // warns and starts a new one. Its log names whichever it ended up in, so
+    // read it after a resume too, or the next restart asks for the lost one.
+    if (resumeSessionId && runtime.meta.terminal.type === "antigravity") {
+      scheduleSessionCapture(runtime, ptyId, "antigravity");
     }
 
     if (!resumeSessionId && launch) {

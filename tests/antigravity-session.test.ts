@@ -4,12 +4,11 @@ import assert from "node:assert/strict";
 import {
   conversationIdFromLog,
   findAntigravityConversation,
-  openFilesFromLsof,
   type AntigravitySessionDeps,
 } from "../electron/antigravity-session.ts";
+import { antigravityLogPath } from "../shared/agent-adapters.ts";
 
 const HOME = "/Users/me";
-const LOG_DIR = `${HOME}/.gemini/antigravity-cli/log`;
 const CONVERSATIONS = `${HOME}/.gemini/antigravity-cli/conversations`;
 const ID_A = "1939909e-0693-46c4-acd6-6fed30f695ce";
 const ID_B = "2522080a-3456-4a41-8841-7511621f60d4";
@@ -21,16 +20,22 @@ const LOG_WITH_A = [
   `I0927 11:55:14.463068     978 server.go:3166] GetConversationDetail: found conversation ${ID_A} (active=true)`,
 ].join("\n");
 
-function deps(overrides: Partial<AntigravitySessionDeps> & { files?: Record<string, string> }): AntigravitySessionDeps {
-  const files = overrides.files ?? {};
+function deps(files: Record<string, string>, overrides: Partial<AntigravitySessionDeps> = {}): AntigravitySessionDeps {
   return {
     homeDir: HOME,
-    listOpenFiles: () => Object.keys(files),
     readFile: (file) => files[file] ?? null,
     exists: (file) => file.startsWith(CONVERSATIONS),
     ...overrides,
   };
 }
+
+test("each terminal's agy logs to a file of its own, named by the terminal", () => {
+  assert.equal(
+    antigravityLogPath(HOME, "1790489784638-1"),
+    `${HOME}/.gemini/antigravity-cli/log/tacit-1790489784638-1.log`,
+  );
+  assert.equal(antigravityLogPath(HOME, "../x y"), `${HOME}/.gemini/antigravity-cli/log/tacit-___x_y.log`);
+});
 
 test("a log names its conversation; before the first message it names none", () => {
   assert.equal(conversationIdFromLog(LOG_WITH_A), ID_A);
@@ -41,34 +46,23 @@ test("a log names its conversation; before the first message it names none", () 
 });
 
 test("a log that moved to a newer conversation reports the newer one", () => {
-  assert.equal(conversationIdFromLog(`${LOG_WITH_A}\nI0927 server.go:1239] Created conversation ${ID_B}`), ID_B);
+  assert.equal(conversationIdFromLog(`${LOG_WITH_A}\nI0927 common.go:401] Resuming conversation ${ID_B}`), ID_B);
 });
 
-test("lsof -Fn output lists the process's open files", () => {
-  assert.deepEqual(openFilesFromLsof("p123\nf1\nn/a/b.log\nf2\nn/c d.txt\n"), ["/a/b.log", "/c d.txt"]);
-});
-
-test("the conversation comes from the log this process holds open, not any other", () => {
-  const found = findAntigravityConversation(
-    42,
-    deps({
-      files: {
-        [`${LOG_DIR}/cli-20260927_115510.log`]: LOG_WITH_A,
-        "/Users/me/.gemini/antigravity-cli/settings.json": `conversation ${ID_B}`,
-      },
-    }),
-  );
-  assert.deepEqual(found, { sessionId: ID_A, confidence: "strong" });
+// Two terminals restored in the same second used to share agy's default log
+// and were both handed the first one's conversation.
+test("two terminals read two logs and get their own conversations", () => {
+  const files = {
+    [antigravityLogPath(HOME, "t-1")]: LOG_WITH_A,
+    [antigravityLogPath(HOME, "t-2")]: `Created conversation ${ID_B}`,
+  };
+  assert.equal(findAntigravityConversation("t-1", deps(files))?.sessionId, ID_A);
+  assert.equal(findAntigravityConversation("t-2", deps(files))?.sessionId, ID_B);
+  assert.equal(findAntigravityConversation("t-3", deps(files)), null);
 });
 
 test("no conversation yet, or one agy never saved, is not a session to resume", () => {
-  assert.equal(findAntigravityConversation(42, deps({ files: { [`${LOG_DIR}/x.log`]: "no conversation yet" } })), null);
-  assert.equal(
-    findAntigravityConversation(42, deps({ files: { [`${LOG_DIR}/x.log`]: LOG_WITH_A }, exists: () => false })),
-    null,
-  );
-});
-
-test("a process that is gone has nothing to find", () => {
-  assert.equal(findAntigravityConversation(42, deps({ listOpenFiles: () => [] })), null);
+  const log = antigravityLogPath(HOME, "t-1");
+  assert.equal(findAntigravityConversation("t-1", deps({ [log]: "no conversation yet" })), null);
+  assert.equal(findAntigravityConversation("t-1", deps({ [log]: LOG_WITH_A }, { exists: () => false })), null);
 });

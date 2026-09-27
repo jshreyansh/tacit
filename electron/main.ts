@@ -1164,12 +1164,9 @@ function setupIpc() {
     },
   );
 
-  ipcMain.handle("session:find-antigravity", (_event, ptyId: number) => {
-    // Tacit launches agy as the terminal's own process, so the PTY's pid is
-    // agy's; see electron/antigravity-session.ts for why the pid is the key.
-    if (!Number.isInteger(ptyId)) return null;
-    const pid = ptyManager.getPid(ptyId);
-    return pid ? findAntigravityConversation(pid) : null;
+  ipcMain.handle("session:find-antigravity", (_event, terminalId: string) => {
+    if (typeof terminalId !== "string" || !terminalId) return null;
+    return findAntigravityConversation(terminalId);
   });
 
   ipcMain.handle(

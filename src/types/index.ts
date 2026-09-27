@@ -654,7 +654,7 @@ export interface TacitAPI {
       filePath: string;
       confidence: "medium" | "weak";
     } | null>;
-    findAntigravity: (ptyId: number) => Promise<{
+    findAntigravity: (terminalId: string) => Promise<{
       sessionId: string;
       confidence: "strong";
     } | null>;

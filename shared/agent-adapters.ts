@@ -425,6 +425,17 @@ function withEntries(values: unknown, extra: readonly string[]): string[] {
   return [...list, ...extra.filter((entry) => !list.includes(entry))];
 }
 
+/**
+ * The log Tacit gives each agy it launches (`--log-file`), where the
+ * terminal's conversation id is read from (electron/antigravity-session.ts).
+ * agy's own default is named after the second it started, so terminals
+ * launched together shared a log and were handed each other's conversation.
+ */
+export function antigravityLogPath(homeDir: string, terminalId: string): string {
+  const safeId = terminalId.replace(/[^A-Za-z0-9_-]/g, "_");
+  return `${homeDir}/.gemini/antigravity-cli/log/tacit-${safeId}.log`;
+}
+
 const antigravity: AgentAdapter = {
   id: "antigravity",
   displayName: "Antigravity",
@@ -449,7 +460,7 @@ const antigravity: AgentAdapter = {
   // allow in Antigravity's rule order, and a deny the person wrote beats
   // both.
   mcpInjection: "shared-config-file",
-  planBridgeLaunch(bridge, { homeDir, readFile }) {
+  planBridgeLaunch(bridge, { terminalId, homeDir, readFile }) {
     if (!homeDir) {
       throw new AgentCapabilityError(
         "antigravity",
@@ -495,7 +506,7 @@ const antigravity: AgentAdapter = {
     };
 
     return {
-      args: [],
+      args: ["--log-file", antigravityLogPath(homeDir, terminalId)],
       placement: "prepend",
       env: { TACIT_TERMINAL_ID, TACIT_PORT_FILE },
       files: [

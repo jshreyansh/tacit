@@ -124,8 +124,8 @@ contextBridge.exposeInMainWorld("tacit", {
         filePath: string;
         confidence: "medium" | "weak";
       } | null>,
-    findAntigravity: (ptyId: number) =>
-      ipcRenderer.invoke("session:find-antigravity", ptyId) as Promise<{
+    findAntigravity: (terminalId: string) =>
+      ipcRenderer.invoke("session:find-antigravity", terminalId) as Promise<{
         sessionId: string;
         confidence: "strong";
       } | null>,

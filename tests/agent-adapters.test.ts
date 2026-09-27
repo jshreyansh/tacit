@@ -610,7 +610,8 @@ test("antigravity is launched as agy and replaces gemini, which is retired", () 
 
 test("antigravity gets a tacit entry in its shared MCP config, kept after the terminal closes", () => {
   const result = antigravityPlan();
-  assert.deepEqual(result.args, []);
+  // Its own log, so the conversation can be found per terminal.
+  assert.deepEqual(result.args, ["--log-file", "/Users/me/.gemini/antigravity-cli/log/tacit-term-1.log"]);
   const mcp = planFile(result, AGY_MCP);
   assert.equal(mcp.keep, true);
   assert.deepEqual(mcp.json.mcpServers.tacit, {
