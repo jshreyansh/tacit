@@ -204,6 +204,13 @@ export interface TerminalData {
   scrollback?: string;
   sessionId?: string;
   initialPrompt?: string;
+  /**
+   * The initial prompt has been handed to the agent once. It stays on the
+   * terminal as its stated intent, but a relaunch that can't resume the
+   * session must not send it again: that restarted a manager's briefing, or
+   * a worker's whole task, on every app restart.
+   */
+  initialPromptSent?: boolean;
   autoApprove?: boolean;
   stashed?: boolean;
   stashedAt?: number;

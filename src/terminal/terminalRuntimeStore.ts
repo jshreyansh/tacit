@@ -1689,14 +1689,21 @@ async function spawnPty(
     theme: useThemeStore.getState().theme,
   };
 
+  let sendInitialPrompt = false;
   if (launch) {
-    const promptArgs =
-      !resumeSessionId && runtime.meta.terminal.initialPrompt
-        ? getTerminalPromptArgs(
-            runtime.meta.terminal.type,
-            runtime.meta.terminal.initialPrompt,
-          )
-        : [];
+    // Once only: a relaunch without a session to resume (an agent Tacit
+    // can't discover sessions for, or one whose capture failed) would
+    // otherwise start the task over from the top.
+    sendInitialPrompt =
+      !resumeSessionId &&
+      !!runtime.meta.terminal.initialPrompt &&
+      !runtime.meta.terminal.initialPromptSent;
+    const promptArgs = sendInitialPrompt
+      ? getTerminalPromptArgs(
+          runtime.meta.terminal.type,
+          runtime.meta.terminal.initialPrompt!,
+        )
+      : [];
     options.shell = launch.shell;
     options.args = [...launch.args, ...promptArgs];
   }
@@ -1754,6 +1761,16 @@ async function spawnPty(
 
     setPtyId(runtime, ptyId);
     setStatus(runtime, "running");
+    if (sendInitialPrompt) {
+      updateTerminalInStore(runtime, (terminal) => ({ ...terminal, initialPromptSent: true }));
+      useProjectStore
+        .getState()
+        .markInitialPromptSent(
+          runtime.meta.projectId,
+          runtime.meta.worktreeId,
+          runtime.meta.terminal.id,
+        );
+    }
 
     if (
       resumeSessionId &&

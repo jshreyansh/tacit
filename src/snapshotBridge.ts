@@ -417,6 +417,10 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                       typeof terminal.initialPrompt === "string"
                         ? terminal.initialPrompt
                         : undefined,
+                    // A saved terminal was launched in an earlier run, so its
+                    // prompt went out then, whether or not this flag existed.
+                    initialPromptSent:
+                      typeof terminal.initialPrompt === "string" ? true : undefined,
                     minimized: terminal.minimized === true,
                     origin,
                     parentTerminalId:
@@ -559,6 +563,8 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
           id: t.id,
           initialPrompt:
             typeof t.initialPrompt === "string" ? t.initialPrompt : undefined,
+          initialPromptSent:
+            typeof t.initialPrompt === "string" ? true : undefined,
           minimized: false,
           origin,
           parentTerminalId:

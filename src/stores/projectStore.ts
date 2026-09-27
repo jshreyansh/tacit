@@ -89,6 +89,11 @@ interface ProjectStore {
     terminalId: string,
     autoApprove: boolean,
   ) => void;
+  markInitialPromptSent: (
+    projectId: string,
+    worktreeId: string,
+    terminalId: string,
+  ) => void;
   updateTerminalType: (
     projectId: string,
     worktreeId: string,
@@ -788,6 +793,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         worktreeId,
         terminalId,
         (t) => ({ ...t, autoApprove: autoApprove || undefined }),
+      ),
+    }));
+    markDirty();
+  },
+
+  markInitialPromptSent: (projectId, worktreeId, terminalId) => {
+    set((state) => ({
+      projects: mapTerminals(
+        state.projects,
+        projectId,
+        worktreeId,
+        terminalId,
+        (t) => ({ ...t, initialPromptSent: true }),
       ),
     }));
     markDirty();

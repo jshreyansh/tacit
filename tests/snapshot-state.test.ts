@@ -673,3 +673,43 @@ test("buildSnapshotState keeps stashed terminals in the project tree without dup
   assert.equal(terminal?.stashed, true);
   assert.equal(terminal?.stashedAt, 123);
 });
+
+// A terminal loaded from a save was launched in an earlier run, so its
+// initial prompt went out then. Without this, an agent Tacit can't resume
+// (Antigravity) got its manager briefing again on every app restart.
+test("readWorkspaceSnapshot marks a saved terminal's initial prompt as already sent", async () => {
+  const { readWorkspaceSnapshot } = await loadSnapshotState("initial-prompt-sent");
+
+  const restored = readWorkspaceSnapshot({
+    version: 1,
+    viewport: { x: 0, y: 0, scale: 1 },
+    projects: [
+      {
+        id: "project-1",
+        name: "Project One",
+        path: "/tmp/project-1",
+        position: { x: 0, y: 0 },
+        worktrees: [
+          {
+            id: "worktree-1",
+            name: "main",
+            path: "/tmp/project-1",
+            terminals: [
+              { id: "with-prompt", title: "agy", type: "antigravity", initialPrompt: "brief" },
+              { id: "no-prompt", title: "Terminal", type: "shell" },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.ok(restored && "legacy" in restored);
+  if (!restored || !("legacy" in restored)) return;
+  const [withPrompt, noPrompt] = restored.legacy.projects[0].worktrees[0].terminals;
+  assert.equal(withPrompt.initialPrompt, "brief");
+  assert.equal(withPrompt.initialPromptSent, true);
+  assert.equal(noPrompt.initialPromptSent, undefined);
+  const sceneTerminal = restored.scene.projects[0].worktrees[0].terminals[0];
+  assert.equal(sceneTerminal.initialPromptSent, true);
+});
