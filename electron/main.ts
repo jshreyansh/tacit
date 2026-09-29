@@ -213,6 +213,7 @@ import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
 import { isWorkspaceManagerBriefing } from "../shared/manager-role";
 import { findAntigravityConversation } from "./antigravity-session";
 import { workerCapsFor } from "../shared/worker-cap";
+import { NodeEventLog } from "./node-events";
 import { RecallService } from "./recall-service";
 import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
@@ -331,8 +332,11 @@ const fileTreeWatcher = new FileTreeWatcher(HIDDEN_DIRS, (dirPath) => {
   sendToWindow(mainWindow, "fs:dir-changed", dirPath);
 });
 const sessionWatcher = new SessionWatcher();
+// Worker state changes a manager can wait on (T3.5); see node-events.ts.
+const nodeEvents = new NodeEventLog();
 const telemetryService = new TelemetryService({
   onSnapshotChanged: (terminalId, snapshot) => {
+    nodeEvents.observeSnapshot(terminalId, snapshot);
     sendToWindow(mainWindow, "telemetry:snapshot-changed", {
       terminalId,
       snapshot,
@@ -388,6 +392,17 @@ let captureCanvasId: string | null = null;
 
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
+
+  // Claude reports its own subagents through these; other harnesses' are
+  // invisible to Tacit for now (SHR-118).
+  if (event.hook_event_name === "SubagentStart" || event.hook_event_name === "SubagentStop") {
+    const agentType = (event as { agent_type?: unknown }).agent_type;
+    nodeEvents.append(
+      `terminal:${event.terminal_id}`,
+      event.hook_event_name === "SubagentStart" ? "subagent_started" : "subagent_finished",
+      typeof agentType === "string" ? { detail: agentType } : {},
+    );
+  }
 
   // The one hook that is a choice point: the words the user actually typed.
   // Everything else the hooks deliver (tool calls, turn boundaries) is
@@ -483,6 +498,7 @@ const apiServer = new ApiServer({
   recordDecision: (event) =>
     captureService.record(event, captureCanvasId, new Date(), { method: "main" }),
   workerCaps: workerCapsFor(os.totalmem()),
+  nodeEvents,
   recordAgentPrompt: ({ targetTerminalId, by, text }) => {
     agentSentText.note(targetTerminalId, text);
     captureService.record(
@@ -1023,6 +1039,9 @@ function setupIpc() {
       const pid = ptyManager.getPid(ptyId);
       dbg(`terminal:create => ptyId=${ptyId} pid=${pid ?? "null"}`);
       const terminalId = options.terminalId ?? `pty-${ptyId}`;
+      nodeEvents.append(`terminal:${terminalId}`, "spawned", {
+        ...(options.terminalType ? { harness: options.terminalType } : {}),
+      });
       telemetryService.registerTerminal({
         terminalId,
         worktreePath: options.cwd,

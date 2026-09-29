@@ -32,6 +32,7 @@ import type { CaptureNodeRef } from "../shared/capture";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { busyStateOf, closeNode } from "./node-close";
 import { WorkerAdmission } from "./worker-admission";
+import type { NodeEventLog } from "./node-events";
 import type { CaptureEvent } from "../shared/capture";
 import type { WorkerCaps } from "../shared/worker-cap";
 
@@ -57,6 +58,8 @@ interface ApiServerDeps {
   recordDecision: (event: CaptureEvent) => void;
   /** How many workers a manager may have open; shared/worker-cap.ts. */
   workerCaps: WorkerCaps;
+  /** Worker state changes (T3.5); terminals feed it from telemetry. */
+  nodeEvents: NodeEventLog;
 }
 
 const BROWSER_CONNECTOR_ROUTES = new Set([
@@ -1465,13 +1468,20 @@ export class ApiServer {
             node.terminalType,
             this.deps.telemetryService.getTerminalSnapshot(node.id),
           ),
-        close: (input) =>
-          this.execRenderer(
+        close: async (input) => {
+          const result = await this.execRenderer(
             `window.__tcApi.closeNode(${JSON.stringify({
               requesterTerminalId: terminalId,
               ...input,
             })})`,
-          ),
+          );
+          // A terminal's close arrives from telemetry when its process exits;
+          // a browser has no process Tacit watches, so it is noted here.
+          if (result?.ok && input.kind === "browser") {
+            this.deps.nodeEvents.append(`browser:${input.id}`, "closed");
+          }
+          return result;
+        },
       },
       terminalId,
       body,
@@ -1505,8 +1515,8 @@ export class ApiServer {
     if (profile !== undefined && typeof profile !== "string") {
       throw Object.assign(new Error("profile must be a string"), { status: 400 });
     }
-    return this.workerAdmission.admit("browsers", terminalId, () =>
-      this.execRenderer(
+    return this.workerAdmission.admit("browsers", terminalId, async () => {
+      const result = await this.execRenderer(
         `window.__tcApi.spawnBrowser(${JSON.stringify({
           requesterTerminalId: terminalId,
           url,
@@ -1516,8 +1526,12 @@ export class ApiServer {
           // registry and this canvas's default both live — never defaulted here.
           profile,
         })})`,
-      ),
-    );
+      );
+      if (result?.ok && typeof result.id === "string") {
+        this.deps.nodeEvents.append(`browser:${result.id}`, "spawned");
+      }
+      return result;
+    });
   }
 
   /** Backs the list_browser_profiles MCP tool. */
