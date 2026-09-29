@@ -167,6 +167,56 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
+    "wait_for_nodes",
+    {
+      title: "Wait until a worker changes state (workspace manager only)",
+      description:
+        "Waits, without using any of your turns, until one of the named nodes (or any node, if you name none) changes state, then returns what happened: turn_completed (its turn ended; it may be waiting for its next instruction), waiting_for_human (blocked on a person approving something), errored, closed, or any other kinds you ask for. Returns at once if something already happened after the cursor you pass. Holds at most 30 seconds; on timed_out: true, call again with the returned cursor. Always pass back the cursor from your last call so nothing that happened in between is missed; expired: true means some events were lost. turn_completed means the agent stopped and is idle, not that every background task it started has finished. Works for Claude, Codex and OpenCode terminals; for other agents wait for closed, or ask them to report with emit_event. Only the workspace manager can call this.",
+      inputSchema: {
+        nodes: z
+          .array(z.string())
+          .optional()
+          .describe("Node ids to watch, from list_nodes or spawn_terminal. Leave out to watch every node."),
+        events: z
+          .array(
+            z.enum([
+              "spawned",
+              "turn_started",
+              "turn_completed",
+              "waiting_for_human",
+              "errored",
+              "closed",
+              "subagent_started",
+              "subagent_finished",
+            ]),
+          )
+          .optional()
+          .describe("Which changes to wait for. Default: turn_completed, waiting_for_human, errored, closed."),
+        after: z
+          .string()
+          .optional()
+          .describe("The cursor from your previous wait_for_nodes call. Leave out on the first call."),
+        timeout_s: z
+          .number()
+          .optional()
+          .describe("Seconds to wait before returning timed_out (at most 30, the default)."),
+      },
+    },
+    async ({ nodes, events, after, timeout_s }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/wait-nodes`,
+        { nodes, events, after, timeout_s },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
     "close_node",
     {
       title: "Close a terminal or browser (workspace manager only)",

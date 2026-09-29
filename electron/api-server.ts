@@ -33,6 +33,7 @@ import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { busyStateOf, closeNode } from "./node-close";
 import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
+import { waitForNodes } from "./node-wait";
 import type { CaptureEvent } from "../shared/capture";
 import type { WorkerCaps } from "../shared/worker-cap";
 
@@ -359,6 +360,20 @@ export class ApiServer {
       const query = url.searchParams.get("q") ?? "";
       const worktree = url.searchParams.get("worktree");
       return this.workspaceMemoryQuery(scope, query, worktree);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/wait-nodes$/)) {
+      const id = pathname.split("/")[2];
+      await this.requireWorkspaceManager(id);
+      return waitForNodes(
+        {
+          findNode: (nodeId) =>
+            this.execRenderer(
+              `window.__tcApi.findPromptTarget(${JSON.stringify(nodeId)})`,
+            ) as Promise<PromptTargetNode | null>,
+          log: this.deps.nodeEvents,
+        },
+        body,
+      );
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/close-node$/)) {
       const id = pathname.split("/")[2];
