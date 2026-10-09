@@ -209,6 +209,7 @@ export function createTerminalInScene({
       : "user",
     parent: parentTerminalId ? `terminal:${parentTerminalId}` : null,
     detail: initialPrompt ?? null,
+    node_type: created.type,
   });
 
   return created;

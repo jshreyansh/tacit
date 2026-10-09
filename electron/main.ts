@@ -1961,6 +1961,15 @@ function setupIpc() {
   // inside user interactions, and must never wait on a disk append — nor be
   // able to reject one. See CaptureService for why loss is preferred to noise.
   ipcMain.on("capture:record", (_event, entry: CaptureEvent) => {
+    // A spawn arrives before the terminal's process starts; it names the
+    // type, so this entry and the prompt right after it carry the harness.
+    if (entry?.kind === "spawn" && typeof entry.node_type === "string" && entry.node.startsWith("terminal:")) {
+      recordNodes.created(
+        entry.node.slice("terminal:".length),
+        entry.node_type,
+        entry.by === "user" || entry.by === "system" ? "user" : "agent",
+      );
+    }
     captureService.record(entry, captureCanvasId, new Date(), { method: "renderer" });
   });
 

@@ -84,6 +84,12 @@ export type CaptureEvent =
       by: CaptureActor;
       parent: CaptureNodeRef | null;
       detail?: string | null;
+      /**
+       * The terminal's type when spawned (`claude`, `shell`, ...). The spawn
+       * is recorded before its process starts, so this is how the writer
+       * knows the new node's harness for this entry and the ones right after.
+       */
+      node_type?: string;
     }
   | {
       kind: "wire";
