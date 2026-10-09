@@ -226,7 +226,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Close a terminal or browser (workspace manager only)",
       description:
-        "Closes one terminal or browser on the canvas: its process stops, its tile and its wires go, and the close is recorded as yours, with your reason. Use it to reap a worker that has finished, or a browser you no longer need. A terminal in the middle of a task, or one whose agent doesn't report its progress to Tacit, is not closed unless you pass force: true, since closing it would lose its work. You can't close yourself. Only the workspace manager can call this.",
+        "Closes one terminal or browser on the canvas: its process stops, its tile and its wires go, and the close is recorded as yours, with your reason. Use it to reap a worker that has finished, or a browser you no longer need. Only nodes an agent started can be closed (startedBy in list_nodes); terminals and browsers the user opened are refused, even with force. A terminal in the middle of a task, or one whose agent doesn't report its progress to Tacit, is not closed unless you pass force: true, since closing it would lose its work. You can't close yourself. Only the workspace manager can call this.",
       inputSchema: {
         kind: z.enum(["terminal", "browser"]).describe("What the id names"),
         id: z.string().describe("The node's id, from list_nodes"),

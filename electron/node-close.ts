@@ -83,6 +83,16 @@ export async function closeNode(
     fail(400, "wrong_kind", `"${id}" is a ${actual}, not a ${kind}.`);
   }
 
+  // What the person opened is theirs to close, whatever its state; force
+  // doesn't change that. A manager closes only what agents started.
+  if ((node.startedBy ?? "user") === "user") {
+    fail(
+      403,
+      "user_node",
+      `"${id}" was opened by the user, so a manager can't close it, even with force. Ask the user to close it if it should go.`,
+    );
+  }
+
   if (kind === "terminal" && force !== true) {
     const state = deps.busyState(node);
     if (state === "busy") {

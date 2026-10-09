@@ -20,8 +20,8 @@ function setup(nodes: PromptTargetNode[], busy: BusyState = "idle", closeOk = tr
   return { deps, closed };
 }
 
-const terminal = (id: string): PromptTargetNode => ({ kind: "terminal", id, ptyId: 1, terminalType: "claude", worktreePath: "/r" });
-const browser = (id: string): PromptTargetNode => ({ kind: "browser", id });
+const terminal = (id: string, startedBy = `terminal:${MANAGER}`): PromptTargetNode => ({ kind: "terminal", id, ptyId: 1, terminalType: "claude", worktreePath: "/r", startedBy });
+const browser = (id: string, startedBy = `terminal:${MANAGER}`): PromptTargetNode => ({ kind: "browser", id, startedBy });
 
 async function rejectsWith(promise: Promise<unknown>, status: number, code: string) {
   await assert.rejects(promise, (err: { status?: number; code?: string; message: string }) => {
@@ -91,4 +91,25 @@ test("busy state: agents by their turn, shells by a running command, the rest un
   assert.equal(busyStateOf("shell", { ...alive, task_status: "unknown" }), "idle");
   assert.equal(busyStateOf("claude", { pty_alive: false, task_status: "running" }), "idle");
   assert.equal(busyStateOf("claude", null), "unknown");
+});
+
+// Decided at the end-of-T3 review (9 Oct): a manager closes only what agents
+// started. The person's own terminals and browsers are off-limits, force or not.
+test("a terminal or browser the user opened is never closed by a manager, even with force", async () => {
+  const { deps, closed } = setup([terminal("mine", "user"), browser("page", "user"), terminal("legacy")]);
+  await rejectsWith(closeNode(deps, MANAGER, { kind: "terminal", id: "mine", force: true }), 403, "user_node");
+  await rejectsWith(closeNode(deps, MANAGER, { kind: "browser", id: "page" }), 403, "user_node");
+  assert.deepEqual(closed, []);
+});
+
+test("a node with no startedBy is treated as the user's", async () => {
+  const { deps, closed } = setup([{ kind: "terminal", id: "old", ptyId: 1, terminalType: "shell", worktreePath: "/r" }]);
+  await rejectsWith(closeNode(deps, MANAGER, { kind: "terminal", id: "old", force: true }), 403, "user_node");
+  assert.deepEqual(closed, []);
+});
+
+test("a worker another agent started can be closed", async () => {
+  const { deps, closed } = setup([terminal("w", "terminal:earlier-manager")]);
+  await closeNode(deps, MANAGER, { kind: "terminal", id: "w" });
+  assert.deepEqual(closed, [{ kind: "terminal", id: "w" }]);
 });

@@ -16,6 +16,11 @@ export interface PromptTargetNode {
   ptyId?: number | null;
   terminalType?: string | null;
   worktreePath?: string | null;
+  /**
+   * Terminal or browser: "user", or the agent that started it as a node ref
+   * (list_nodes' startedBy). Absent is treated as the user's.
+   */
+  startedBy?: string;
 }
 
 export interface PromptDelivery {

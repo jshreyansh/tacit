@@ -933,10 +933,12 @@ export function App() {
             ptyId: getLivePtyId(id),
             terminalType: found.terminal.type,
             worktreePath: found.worktree.path,
+            startedBy: terminalStartedBy(found.terminal),
           };
         }
-        if (useBrowserCardStore.getState().cards[id]) {
-          return { kind: "browser" as const, id };
+        const card = useBrowserCardStore.getState().cards[id];
+        if (card) {
+          return { kind: "browser" as const, id, startedBy: card.spawnedBy ?? "user" };
         }
         const isPin = Object.values(usePinStore.getState().pinsByProject)
           .flat()
