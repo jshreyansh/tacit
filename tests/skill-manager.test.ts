@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  codexCommandHookHash,
   ensureSkillLinks,
   installSkillLinks,
   parseCodexHooksFeatureFlag,
@@ -981,4 +982,22 @@ test("uninstallSkillLinks also removes TermCanvas-era Codex hooks", () => {
   uninstallSkillLinks({ home, sourceDir });
 
   assert.deepEqual(commandsFor(hooksFile, "Stop"), []);
+});
+
+// The hashes codex-cli 0.157.1 itself wrote into config.toml when the person
+// approved Tacit's hooks (10 Oct). Ours must match them exactly, or Codex
+// asks for a review again on every launch. If a Codex update changes how it
+// hashes, this is the test that says so.
+test("codex hook trust hashes match what Codex computes", () => {
+  const command = "node '/Users/openclaw/tacit/skills/scripts/tacit-hook.mjs'";
+  const fromCodex = {
+    PreToolUse: "sha256:5b591ed264b63bf300ec883e1d178798b41aeb5d2533819c6f1d264aba6cb881",
+    PostToolUse: "sha256:081f58802d1f549d546593205a0f15c82a26ee1620b29248186b0539c8432cf6",
+    SessionStart: "sha256:a0cc38fdebc539223c8db592250e3d400760ea3ef6989ca5e8e89773044743ba",
+    Stop: "sha256:9a986b8fed3d7298e142dd3e55fcb889033a41b931e7666e3591e7e7177cbb8f",
+    UserPromptSubmit: "sha256:d462d07df5b2f70aedd9ba71b9f0be5946847e358bb878016094d26157336a1a",
+  } as const;
+  for (const [event, hash] of Object.entries(fromCodex)) {
+    assert.equal(codexCommandHookHash(event as keyof typeof fromCodex, command), hash, event);
+  }
 });

@@ -721,7 +721,19 @@ function versionForCodexHookIdentity(value: unknown): string {
   return `sha256:${crypto.createHash("sha256").update(serialized).digest("hex")}`;
 }
 
-function codexCommandHookHash(eventName: (typeof CODEX_HOOK_EVENTS)[number], command: string): string {
+/**
+ * Events Codex runs without a matcher, so its hook identity has none. A
+ * matcher in our hash for these made it differ from Codex's, so Codex asked
+ * the person to review Tacit's Stop and UserPromptSubmit hooks again after
+ * every Tacit launch rewrote the trust records, and a new Codex worker sat on
+ * that review screen (seen 10 Oct, codex-cli 0.157.1).
+ */
+const CODEX_EVENTS_WITHOUT_MATCHER: ReadonlySet<(typeof CODEX_HOOK_EVENTS)[number]> = new Set([
+  "Stop",
+  "UserPromptSubmit",
+]);
+
+export function codexCommandHookHash(eventName: (typeof CODEX_HOOK_EVENTS)[number], command: string): string {
   return versionForCodexHookIdentity({
     event_name: CODEX_HOOK_EVENT_KEY_LABELS[eventName],
     hooks: [
@@ -732,7 +744,7 @@ function codexCommandHookHash(eventName: (typeof CODEX_HOOK_EVENTS)[number], com
         type: "command",
       },
     ],
-    matcher: "",
+    ...(CODEX_EVENTS_WITHOUT_MATCHER.has(eventName) ? {} : { matcher: "" }),
   });
 }
 
