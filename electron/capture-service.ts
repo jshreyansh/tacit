@@ -40,8 +40,11 @@ export class CaptureService {
   /** Names this launch, so `seq` (which restarts at 1) stays unambiguous. */
   private readonly launch = randomUUID().slice(0, 8);
   private seq = 0;
-  /** Each canvas's last topology written, to skip repeats of it. */
-  private readonly lastTopology = new Map<string | null, string>();
+  /**
+   * The last value written per key, to skip an entry that repeats it: a
+   * canvas's topology, and the URL a browser was last recorded on.
+   */
+  private readonly lastWritten = new Map<string, string>();
 
   constructor(
     dirPath: string,
@@ -74,13 +77,8 @@ export class CaptureService {
     context: CaptureRecordContext = {},
   ): boolean {
     try {
-      // Topology is a periodic checkpoint, and 86% of the first 34 days'
-      // were identical to the one before. A repeat says nothing.
-      let topologyKey: string | null = null;
-      if (event.kind === "topology") {
-        topologyKey = JSON.stringify([event.terminals, event.browsers, event.notes, event.wires]);
-        if (this.lastTopology.get(canvasId) === topologyKey) return true;
-      }
+      const repeat = repeatKey(event, canvasId);
+      if (repeat && this.lastWritten.get(repeat.key) === repeat.value) return true;
       const entry = this.buildEntry(event, canvasId, now, context);
       const fileName = captureFileNameFor(now);
       const filePath = path.join(this.dirPath, fileName);
@@ -108,7 +106,7 @@ export class CaptureService {
       }
 
       fs.appendFileSync(filePath, line, "utf-8");
-      if (topologyKey !== null) this.lastTopology.set(canvasId, topologyKey);
+      if (repeat) this.lastWritten.set(repeat.key, repeat.value);
       this.entriesWritten++;
       this.lastWriteAt = entry.at;
       return true;
@@ -162,6 +160,31 @@ export class CaptureService {
  * record a packaged build is accumulating. JSONL merges trivially if the two
  * ever need to become one history.
  */
+/**
+ * Entries that repeat the last one of their kind add nothing, and made up
+ * most of the first 34 days of the record (10 Oct):
+ *
+ * - topology, a periodic checkpoint: 86% identical to the canvas's last one.
+ * - a browser navigating to the URL it was already recorded on (a reload, or
+ *   the tile remounting after a restart): 81% of navigations nobody asked for.
+ *   A different URL, a new search included, is still written.
+ */
+function repeatKey(
+  event: CaptureEvent,
+  canvasId: string | null,
+): { key: string; value: string } | null {
+  if (event.kind === "topology") {
+    return {
+      key: `topology\0${canvasId ?? ""}`,
+      value: JSON.stringify([event.terminals, event.browsers, event.notes, event.wires]),
+    };
+  }
+  if (event.kind === "browser_action" && event.action === "navigate" && event.by === "system" && event.url) {
+    return { key: `navigate\0${event.node}`, value: event.url };
+  }
+  return null;
+}
+
 export function getCaptureDir(tacitDir: string): string {
   return path.join(tacitDir, "record");
 }

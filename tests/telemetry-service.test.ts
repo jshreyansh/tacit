@@ -1886,3 +1886,53 @@ test("a tool hook during a turn still marks it in progress", () => {
   assert.equal(service.getTerminalSnapshot("w")?.turn_state, "in_turn");
   service.dispose();
 });
+
+// 10 Oct: on every app restart each restored Claude worker was reported as
+// having just finished a turn, because reattaching replayed its history
+// through "running" and back. Only the state the history ends in counts.
+test("reattaching a session replays its history without reporting old turns as new", async () => {
+  const { NodeEventLog } = await import("../electron/node-events.ts");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-prime-"));
+  const sessionFile = path.join(dir, "s1.jsonl");
+  fs.writeFileSync(
+    sessionFile,
+    [
+      // The shape Claude writes for a turn with one tool call.
+      { type: "user", timestamp: "2026-10-09T09:00:00.000Z", message: { role: "user", content: "count to 3" } },
+      {
+        type: "assistant",
+        timestamp: "2026-10-09T09:00:01.000Z",
+        message: { role: "assistant", stop_reason: "tool_use", content: [{ type: "thinking", thinking: "" }, { type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+      },
+      { type: "user", timestamp: "2026-10-09T09:00:04.000Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "1 2 3" }] } },
+      {
+        type: "assistant",
+        timestamp: "2026-10-09T09:00:05.000Z",
+        message: { role: "assistant", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }] },
+      },
+      {
+        type: "assistant",
+        timestamp: "2026-10-09T09:00:05.100Z",
+        message: { role: "assistant", stop_reason: "end_turn", content: [{ type: "text", text: "1 2 3" }] },
+      },
+    ]
+      .map((line) => JSON.stringify(line))
+      .join("\n") + "\n",
+  );
+  const log = new NodeEventLog();
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    onSnapshotChanged: (terminalId, snapshot) => log.observeSnapshot(terminalId, snapshot),
+  });
+  try {
+    service.registerTerminal({ terminalId: "w", worktreePath: dir, provider: "claude" });
+    service.recordPtyCreated({ terminalId: "w", ptyId: 1 });
+    service.attachSessionSource({ terminalId: "w", provider: "claude", sessionId: "s1", confidence: "strong", sessionFile });
+
+    assert.equal(service.getTerminalSnapshot("w")?.turn_state, "turn_complete");
+    assert.deepEqual(log.since().events.map((e) => e.kind), []);
+  } finally {
+    service.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

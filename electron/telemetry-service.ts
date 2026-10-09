@@ -73,6 +73,8 @@ interface TerminalState {
   sessionWatcher: fs.FSWatcher | null;
   /** A watcher-triggered read waiting to run; see startSessionTracking. */
   sessionWatchTimer: ReturnType<typeof setTimeout> | null;
+  /** Replaying a newly attached session's history; see primeSessionFromTail. */
+  priming: boolean;
   sessionOffset: number;
   shellPid: number | null;
   snapshot: TerminalTelemetrySnapshot;
@@ -1592,6 +1594,7 @@ export class TelemetryService {
       sessionRemainder: "",
       sessionWatcher: null,
       sessionWatchTimer: null,
+      priming: false,
       sessionOffset: 0,
       shellPid: registration?.shellPid ?? null,
       snapshot: buildBaseSnapshot(
@@ -1764,6 +1767,7 @@ export class TelemetryService {
 
     if (
       this.onSnapshotChanged &&
+      !state.priming &&
       (options?.force ||
         state.snapshot.derived_status !== prev ||
         state.snapshot.turn_state !== prevTurn ||
@@ -1867,7 +1871,24 @@ export class TelemetryService {
     state.sessionRemainder = "";
   }
 
+  /**
+   * Reads a newly attached session's recent history to learn where it is
+   * now. Only the state it ends in is reported: replaying a finished turn
+   * passes through "running" and back to "idle", and reporting each step
+   * told the node event log (and the record) that every restored worker had
+   * just finished a turn, on every app restart (seen 10 Oct).
+   */
   private primeSessionFromTail(state: TerminalState): void {
+    state.priming = true;
+    try {
+      this.replaySessionTail(state);
+    } finally {
+      state.priming = false;
+      this.updateDerivedStatus(state, { force: true });
+    }
+  }
+
+  private replaySessionTail(state: TerminalState): void {
     if (!state.sessionFile) return;
     if (isOpenCodeProvider(state.snapshot.provider)) {
       this.readOpenCodeSessionDelta(state);

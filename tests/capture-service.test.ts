@@ -329,3 +329,26 @@ test("entries written before these columns existed read back without them", () =
   assert.equal(legacy.harness, undefined);
   assert.equal(legacy.seq, undefined);
 });
+
+test("a browser reloading the URL it was last recorded on is not written again", () => {
+  const dir = tempDir();
+  const service = new CaptureService(dir);
+  const nav = (node: string, url: string, by = "system") =>
+    service.record({ kind: "browser_action", node, action: "navigate", backend: "managed", by, ok: true, url }, "c");
+
+  nav("browser:a", "https://example.com/");
+  nav("browser:a", "https://example.com/"); // reload: skipped
+  nav("browser:b", "https://example.com/"); // another browser
+  nav("browser:a", "https://example.com/search?q=one");
+  nav("browser:a", "https://example.com/search?q=two"); // a new search counts
+  nav("browser:a", "https://example.com/search?q=two", "terminal:mgr"); // an agent's choice always counts
+
+  const urls = readEntries(dir).map((e) => (e.kind === "browser_action" ? `${e.node} ${e.url} ${e.by}` : ""));
+  assert.deepEqual(urls, [
+    "browser:a https://example.com/ system",
+    "browser:b https://example.com/ system",
+    "browser:a https://example.com/search?q=one system",
+    "browser:a https://example.com/search?q=two system",
+    "browser:a https://example.com/search?q=two terminal:mgr",
+  ]);
+});
