@@ -220,6 +220,12 @@ export class RecallService {
 }
 
 /** One line of prose describing an entry, for a reader rather than a parser. */
+const WORKER_STATE_WORDS = {
+  turn_completed: "finished its turn",
+  waiting_for_human: "is waiting for a person",
+  errored: "stopped with an error",
+} as const;
+
 function summarize(entry: CaptureEntry): string {
   switch (entry.kind) {
     case "prompt":
@@ -242,6 +248,8 @@ function summarize(entry: CaptureEntry): string {
       return `${entry.ok ? "used" : "failed"} ${entry.action} on ${entry.node} via ${entry.backend}${entry.url ? ` — ${entry.url}` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
     case "spawn_refused":
       return `refused another ${entry.node_kind} for ${entry.by}: ${entry.open} of ${entry.limit} already open`;
+    case "worker_state":
+      return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }
@@ -264,6 +272,8 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
       return entry.node ? [entry.node] : [];
     case "spawn_refused":
       return entry.by === "user" || entry.by === "system" ? [] : [entry.by];
+    case "worker_state":
+      return [entry.node];
     case "topology":
       return [];
   }

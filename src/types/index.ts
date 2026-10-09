@@ -582,6 +582,7 @@ export interface TacitAPI {
       args?: string[];
       terminalId?: string;
       terminalType?: string;
+      origin?: string;
       theme?: "dark" | "light";
     }) => Promise<number>;
     destroy: (ptyId: number) => Promise<void>;

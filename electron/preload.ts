@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("tacit", {
       args?: string[];
       terminalId?: string;
       terminalType?: string;
+      origin?: string;
       theme?: "dark" | "light";
     }) => ipcRenderer.invoke("terminal:create", options),
     destroy: (ptyId: number) => ipcRenderer.invoke("terminal:destroy", ptyId),

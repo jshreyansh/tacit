@@ -268,3 +268,64 @@ test("record dir sits beside the instance's other artifacts", () => {
     path.join("/Users/someone/.tacit", "record"),
   );
 });
+
+// Step 1 of T4 (10 Oct): the record read back had no harness on any entry,
+// 22 timestamp ties, and 86% repeated topology.
+test("entries say which agent their node and their actor run, as known when written", () => {
+  const dir = tempDir();
+  const types = new Map([["terminal:mgr", "opencode"], ["terminal:w", "claude"]]);
+  const service = new CaptureService(dir, undefined, { harnessOf: (ref) => types.get(ref) ?? null });
+
+  service.record({ kind: "spawn", node: "terminal:w", by: "terminal:mgr", parent: "terminal:mgr" }, "c");
+  // The worker is reclassified later; what was written stays as it was.
+  types.set("terminal:w", "codex");
+  service.record({ kind: "close", node: "browser:b", by: "user" }, "c");
+
+  const [spawn, close] = readEntries(dir);
+  assert.equal(spawn.harness, "claude");
+  assert.equal(spawn.actor_harness, "opencode");
+  assert.equal(close.harness, null);
+  assert.equal(close.actor_harness, null);
+});
+
+test("entries carry a sequence number that orders ties within a launch", () => {
+  const dir = tempDir();
+  const service = new CaptureService(dir);
+  const at = new Date("2026-10-10T10:00:00.000Z");
+  service.record({ kind: "close", node: "terminal:a", by: "user" }, "c", at);
+  service.record({ kind: "close", node: "terminal:b", by: "user" }, "c", at);
+
+  const [first, second] = readEntries(dir, at);
+  assert.equal(first.at, second.at);
+  assert.deepEqual([first.seq, second.seq], [1, 2]);
+  assert.equal(first.launch, second.launch);
+  assert.notEqual(new CaptureService(dir)["launch"], first.launch);
+});
+
+test("a topology identical to its canvas's last one is not written again", () => {
+  const dir = tempDir();
+  const service = new CaptureService(dir);
+  const shape = { kind: "topology" as const, terminals: 2, browsers: 1, notes: 0, wires: [] as Array<[string, string, string]> };
+
+  service.record(shape, "c1");
+  service.record(shape, "c1");
+  service.record(shape, "c2"); // another canvas's first
+  service.record({ ...shape, terminals: 3 }, "c1");
+  service.record(shape, "c1"); // changed back: that's a change too
+
+  const written = readEntries(dir).map((e) => [e.canvas, e.kind === "topology" ? e.terminals : null]);
+  assert.deepEqual(written, [["c1", 2], ["c2", 2], ["c1", 3], ["c1", 2]]);
+});
+
+test("entries written before these columns existed read back without them", () => {
+  const legacy = normalizeCaptureEntry({
+    schema_version: 1,
+    at: "2026-09-01T00:00:00.000Z",
+    canvas: null,
+    kind: "close",
+    node: "terminal:a",
+    by: "user",
+  } as LegacyCaptureEntry);
+  assert.equal(legacy.harness, undefined);
+  assert.equal(legacy.seq, undefined);
+});

@@ -214,6 +214,7 @@ import { isWorkspaceManagerBriefing } from "../shared/manager-role";
 import { findAntigravityConversation } from "./antigravity-session";
 import { workerCapsFor } from "../shared/worker-cap";
 import { NodeEventLog } from "./node-events";
+import { RecordNodes } from "./record-nodes";
 import { RecallService } from "./recall-service";
 import { getMemoryDirForWorkspace } from "./memory-service";
 import { isSafeExternalUrl, isEmbeddedAuthBlockedUrl } from "./external-url";
@@ -334,9 +335,14 @@ const fileTreeWatcher = new FileTreeWatcher(HIDDEN_DIRS, (dirPath) => {
 const sessionWatcher = new SessionWatcher();
 // Worker state changes a manager can wait on (T3.5); see node-events.ts.
 const nodeEvents = new NodeEventLog();
+// Which agent each terminal runs, and which an agent started, for the record.
+const recordNodes = new RecordNodes();
 const telemetryService = new TelemetryService({
   onSnapshotChanged: (terminalId, snapshot) => {
-    nodeEvents.observeSnapshot(terminalId, snapshot);
+    const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
+    for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
+      captureService.record(entry, captureCanvasId, new Date(), { method: "main" });
+    }
     sendToWindow(mainWindow, "telemetry:snapshot-changed", {
       terminalId,
       snapshot,
@@ -353,7 +359,9 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 );
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
-const captureService = new CaptureService(getCaptureDir(TACIT_DIR));
+const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
+  harnessOf: (ref) => recordNodes.harnessOf(ref),
+});
 const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TACIT_DIR));
 managerRoleLog.load();
 /**
@@ -978,6 +986,8 @@ function setupIpc() {
         args?: string[];
         terminalId?: string;
         terminalType?: string;
+        /** "agent" when an agent spawned it; see RecordNodes. */
+        origin?: string;
         theme?: "dark" | "light";
         workflowId?: string;
         assignmentId?: string;
@@ -1039,6 +1049,7 @@ function setupIpc() {
       const pid = ptyManager.getPid(ptyId);
       dbg(`terminal:create => ptyId=${ptyId} pid=${pid ?? "null"}`);
       const terminalId = options.terminalId ?? `pty-${ptyId}`;
+      recordNodes.created(terminalId, options.terminalType, options.origin);
       nodeEvents.append(`terminal:${terminalId}`, "spawned", {
         ...(options.terminalType ? { harness: options.terminalType } : {}),
       });
@@ -1859,6 +1870,7 @@ function setupIpc() {
         input.provider,
         input.cwd,
       );
+      recordNodes.detected(input.terminalId, input.provider);
       telemetryService.attachSessionSource({
         terminalId: input.terminalId,
         provider: input.provider,
@@ -1904,6 +1916,7 @@ function setupIpc() {
         shellPid?: number | null;
       },
     ) => {
+      recordNodes.detected(input.terminalId, input.provider);
       return telemetryService.updateTerminal(input);
     },
   );

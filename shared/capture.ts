@@ -166,6 +166,20 @@ export type CaptureEvent =
       limit: number;
     }
   | {
+      /**
+       * A worker an agent started finished a turn, stopped for a person, or
+       * hit an error (from the node event log, electron/node-events.ts).
+       * Activity, but the anchor for causality: a manager's next spawn,
+       * prompt or close usually follows from one of these, and without them
+       * the record can't say what it followed from. Workers the person opened
+       * are left out; their turns are visible in their own transcripts.
+       */
+      kind: "worker_state";
+      node: CaptureNodeRef;
+      state: "turn_completed" | "waiting_for_human" | "errored";
+      detail?: string;
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -217,6 +231,21 @@ export type CaptureEntry = CaptureEvent & {
     method: CaptureMethod;
     source_schema_version: 1 | 2;
   };
+  /**
+   * Which agent the entry's node runs (`claude`, `codex`, `opencode`,
+   * `shell`, ...), stamped when written, so a terminal reclassified later
+   * doesn't rewrite history. Null for a browser or note, or when unknown.
+   * Absent on entries written before 10 Oct 2026.
+   */
+  harness?: string | null;
+  /** The same for the agent that acted (`actor_identity.ref`), when one did. */
+  actor_harness?: string | null;
+  /**
+   * Write order within one app launch (`launch`). Timestamps alone tie:
+   * 22 pairs in the first 34 days shared a millisecond. Absent before 10 Oct.
+   */
+  seq?: number;
+  launch?: string;
 };
 
 export type LegacyCaptureEntry = CaptureEvent & {
@@ -232,7 +261,9 @@ function eventActor(event: CaptureEvent): CaptureEntry["actor_identity"] {
     if (event.source === "agent") return { kind: "agent", ref: event.by ?? "system" };
     return { kind: "user", ref: "user" };
   }
-  if (event.kind === "topology") return { kind: "system", ref: "system" };
+  if (event.kind === "topology" || event.kind === "worker_state") {
+    return { kind: "system", ref: "system" };
+  }
   const by = event.by;
   if (by === "user" || by === "system") return { kind: by, ref: by };
   return { kind: "agent", ref: by };
@@ -244,7 +275,8 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "spawn":
     case "close":
     case "rename":
-    case "browser_action": return event.node;
+    case "browser_action":
+    case "worker_state": return event.node;
     case "manager": return event.node;
     case "wire":
     case "retype_wire":
@@ -256,7 +288,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
 
 function inferredIntent(event: CaptureEvent): CaptureIntent {
   if (event.kind === "prompt") return event.source ? "observation" : "decision";
-  if (event.kind === "topology") return "observation";
+  if (event.kind === "topology" || event.kind === "worker_state") return "observation";
   return event.by === "user" ? "decision" : "observation";
 }
 

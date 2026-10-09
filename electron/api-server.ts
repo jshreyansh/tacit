@@ -29,6 +29,7 @@ import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
+import { findAgentAdapter } from "../shared/agent-adapters";
 import { busyStateOf, closeNode } from "./node-close";
 import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
@@ -1515,17 +1516,40 @@ export class ApiServer {
   /** Backs the spawn_terminal MCP tool. */
   private async spawnTerminal(terminalId: string, body: any) {
     await this.requireWorkspaceManager(terminalId);
-    return this.workerAdmission.admit("terminals", terminalId, () =>
+    const type = typeof body?.type === "string" ? body.type : "shell";
+    const prompt = typeof body?.prompt === "string" && body.prompt.trim() ? body.prompt : undefined;
+    // Only an agent is launched with its first message; a shell or lazygit
+    // opened and the prompt was silently dropped.
+    if (prompt && !findAgentAdapter(type)) {
+      throw Object.assign(
+        new Error(
+          `A ${type} terminal doesn't take an opening prompt. Spawn it without one, then use send_prompt_to_node to type a command into it.`,
+        ),
+        { status: 400, code: "prompt_not_supported" },
+      );
+    }
+    const result = (await this.workerAdmission.admit("terminals", terminalId, () =>
       this.execRenderer(
         `window.__tcApi.spawnTerminal(${JSON.stringify({
           requesterTerminalId: terminalId,
           type: body?.type,
-          prompt: body?.prompt,
+          prompt,
           position: body?.position,
           connectTo: body?.connectTo,
         })})`,
       ),
-    );
+    )) as { ok?: boolean; id?: unknown };
+    // The opening prompt is the manager speaking, as with send_prompt_to_node.
+    // Recorded here, attributed to it; the worker's prompt hook (Claude,
+    // Codex) then drops its echo instead of filing it as the user's.
+    if (prompt && result?.ok && typeof result.id === "string") {
+      this.deps.recordAgentPrompt({
+        targetTerminalId: result.id,
+        by: `terminal:${terminalId}`,
+        text: prompt,
+      });
+    }
+    return result;
   }
 
   /** Backs the spawn_browser MCP tool. */

@@ -35,10 +35,22 @@ export class CaptureService {
    * rather than a file worth growing. */
   private readonly maxFileBytes: number;
   private readonly cappedFiles = new Set<string>();
+  /** Which agent a node runs, for the entry's `harness` columns. */
+  private readonly harnessOf: (ref: string) => string | null;
+  /** Names this launch, so `seq` (which restarts at 1) stays unambiguous. */
+  private readonly launch = randomUUID().slice(0, 8);
+  private seq = 0;
+  /** Each canvas's last topology written, to skip repeats of it. */
+  private readonly lastTopology = new Map<string | null, string>();
 
-  constructor(dirPath: string, maxFileBytes = 8 * 1024 * 1024) {
+  constructor(
+    dirPath: string,
+    maxFileBytes = 8 * 1024 * 1024,
+    options: { harnessOf?: (ref: string) => string | null } = {},
+  ) {
     this.dirPath = dirPath;
     this.maxFileBytes = maxFileBytes;
+    this.harnessOf = options.harnessOf ?? (() => null);
   }
 
   getHealth(): CaptureHealth {
@@ -62,6 +74,13 @@ export class CaptureService {
     context: CaptureRecordContext = {},
   ): boolean {
     try {
+      // Topology is a periodic checkpoint, and 86% of the first 34 days'
+      // were identical to the one before. A repeat says nothing.
+      let topologyKey: string | null = null;
+      if (event.kind === "topology") {
+        topologyKey = JSON.stringify([event.terminals, event.browsers, event.notes, event.wires]);
+        if (this.lastTopology.get(canvasId) === topologyKey) return true;
+      }
       const entry = this.buildEntry(event, canvasId, now, context);
       const fileName = captureFileNameFor(now);
       const filePath = path.join(this.dirPath, fileName);
@@ -89,6 +108,7 @@ export class CaptureService {
       }
 
       fs.appendFileSync(filePath, line, "utf-8");
+      if (topologyKey !== null) this.lastTopology.set(canvasId, topologyKey);
       this.entriesWritten++;
       this.lastWriteAt = entry.at;
       return true;
@@ -117,13 +137,22 @@ export class CaptureService {
         ...(truncated ? { truncated: true as const } : {}),
       };
     }
-    return buildCaptureEnvelope(
+    const entry = buildCaptureEnvelope(
       normalizedEvent,
       canvasId,
       now.toISOString(),
       randomUUID(),
       context,
     );
+    const actor = entry.actor_identity.kind === "agent" ? entry.actor_identity.ref : null;
+    return {
+      ...entry,
+      harness: entry.node_ref ? this.harnessOf(entry.node_ref) : null,
+      actor_harness: actor ? this.harnessOf(actor) : null,
+      // A failed write leaves a gap in seq rather than reusing the number.
+      seq: ++this.seq,
+      launch: this.launch,
+    };
   }
 }
 

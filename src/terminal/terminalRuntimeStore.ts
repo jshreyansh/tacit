@@ -1695,11 +1695,13 @@ async function spawnPty(
     shell?: string;
     terminalId: string;
     terminalType: string;
+    origin: string;
     theme: "dark" | "light";
   } = {
     cwd: runtime.meta.worktreePath,
     terminalId: runtime.meta.terminal.id,
     terminalType: runtime.meta.terminal.type,
+    origin: runtime.meta.terminal.origin ?? "user",
     theme: useThemeStore.getState().theme,
   };
 

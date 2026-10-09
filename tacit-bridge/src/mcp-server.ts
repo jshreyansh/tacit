@@ -429,7 +429,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Spawn a new terminal (workspace manager only)",
       description:
-        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the terminal's first message. Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workspace manager can call this.",
+        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the agent's first message (agent types only: a shell or lazygit takes no opening prompt; spawn it, then use send_prompt_to_node). Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workspace manager can call this.",
       inputSchema: {
         type: z
           .enum(SPAWNABLE_TERMINAL_TYPES)
