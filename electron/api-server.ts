@@ -28,13 +28,12 @@ import type { RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
-import type { CaptureNodeRef } from "../shared/capture";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { busyStateOf, closeNode } from "./node-close";
 import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
 import { holdConnectionOpen, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "./node-wait";
-import type { CaptureEvent } from "../shared/capture";
+import type { CaptureEvent, CaptureNodeRef } from "../shared/capture";
 import type { WorkerCaps } from "../shared/worker-cap";
 
 interface ApiServerDeps {
@@ -85,10 +84,7 @@ export class ApiServer {
   private readonly authToken = createApiAuthToken();
 
   private readonly nodePrompts = new NodePromptSender({
-    findNode: (id) =>
-      this.execRenderer(
-        `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
-      ) as Promise<PromptTargetNode | null>,
+    findNode: (id) => this.findNode(id),
     deliver: async (delivery) => {
       const result = await this.submitToTerminal({
         terminalId: delivery.terminalId,
@@ -373,10 +369,7 @@ export class ApiServer {
       await this.requireWorkspaceManager(id);
       return waitForNodes(
         {
-          findNode: (nodeId) =>
-            this.execRenderer(
-              `window.__tcApi.findPromptTarget(${JSON.stringify(nodeId)})`,
-            ) as Promise<PromptTargetNode | null>,
+          findNode: (nodeId) => this.findNode(nodeId),
           log: this.deps.nodeEvents,
         },
         body,
@@ -1306,6 +1299,13 @@ export class ApiServer {
     return { ...state, busy: this.terminalBusyState(state.type, id) };
   }
 
+  /** A node on the open canvas by id alone, with what the manager tools need. */
+  private findNode(id: string) {
+    return this.execRenderer(
+      `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
+    ) as Promise<PromptTargetNode | null>;
+  }
+
   private terminalBusyState(terminalType: string | null | undefined, id: string) {
     return busyStateOf(terminalType, this.deps.telemetryService.getTerminalSnapshot(id));
   }
@@ -1490,10 +1490,7 @@ export class ApiServer {
     await this.requireWorkspaceManager(terminalId);
     return closeNode(
       {
-        findNode: (id) =>
-          this.execRenderer(
-            `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
-          ) as Promise<PromptTargetNode | null>,
+        findNode: (id) => this.findNode(id),
         busyState: (node) => this.terminalBusyState(node.terminalType, node.id),
         close: async (input) => {
           const result = await this.execRenderer(

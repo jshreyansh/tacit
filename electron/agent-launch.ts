@@ -59,12 +59,30 @@ function readFileIfPresent(file: string): string | null {
 /**
  * Written beside the target and renamed over it, so an agent (or the
  * person's other tools) reading a shared config never sees half a file.
+ *
+ * The replacement keeps the file's permissions. A shared config can hold
+ * other MCP servers' keys, and a new file gets the umask's default
+ * (readable by everyone), so a file the person had made private would
+ * otherwise become readable by other users. A file Tacit creates is private.
  */
-function writeFileAtomically(file: string, contents: string): void {
+export function writeFileAtomically(file: string, contents: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  let mode = 0o600;
+  try {
+    mode = fs.statSync(file).mode & 0o777;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const staging = `${file}.tacit-${process.pid}-${Date.now()}.tmp`;
-  fs.writeFileSync(staging, contents, "utf-8");
-  fs.renameSync(staging, file);
+  try {
+    fs.writeFileSync(staging, contents, { encoding: "utf-8", mode });
+    // The umask can narrow `mode` on creation; set it exactly.
+    fs.chmodSync(staging, mode);
+    fs.renameSync(staging, file);
+  } catch (error) {
+    fs.rmSync(staging, { force: true });
+    throw error;
+  }
 }
 
 /**

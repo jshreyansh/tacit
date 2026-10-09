@@ -882,7 +882,7 @@ export function App() {
       },
 
       // Backs the worker cap (shared/worker-cap.ts): open terminals and
-      // browsers a manager started. What the person opened never counts.
+      // browsers any agent started. What the person opened never counts.
       countManagerWorkers: () => {
         let terminals = 0;
         for (const project of useProjectStore.getState().projects) {
