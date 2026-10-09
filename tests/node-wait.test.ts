@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 
 import { NodeEventLog } from "../electron/node-events.ts";
-import { waitForNodes } from "../electron/node-wait.ts";
+import { holdConnectionOpen, MAX_WAIT_SECONDS, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "../electron/node-wait.ts";
 import type { PromptTargetNode } from "../electron/node-prompt.ts";
 
 const agent = (id: string, terminalType = "claude"): PromptTargetNode => ({ kind: "terminal", id, ptyId: 1, terminalType, worktreePath: "/r" });
@@ -80,11 +81,39 @@ test("waiting for turns on an agent Tacit can't track is refused, with what to d
   assert.equal(closed.timed_out, true);
 });
 
-test("timeout_s is capped at 30 seconds", async () => {
-  const { log, deps } = setup([agent("a")]);
-  const started = Date.now();
+test("timeout_s is capped at 30 seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { deps } = setup([agent("a")]);
   const waiting = waitForNodes(deps, { nodes: ["a"], timeout_s: 10_000 });
-  setTimeout(() => log.append("terminal:a", "turn_completed"), 10);
-  await waiting;
-  assert.ok(Date.now() - started < 5000);
+  await new Promise((resolve) => setImmediate(resolve)); // past the node checks
+  t.mock.timers.tick(MAX_WAIT_SECONDS * 1000);
+  const page = await waiting;
+  assert.equal(page.timed_out, true);
+});
+
+// A full 30 s wait used to hit the API server's 30 s idle timeout and come
+// back as "fetch failed" (9 Oct). Same shape, scaled down: a server that
+// drops quiet connections after 100 ms, and a request that answers at 300 ms.
+async function slowRequest(hold: boolean): Promise<string> {
+  const server = http.createServer((req, res) => {
+    if (hold) holdConnectionOpen(req.socket, res, 1000, 100);
+    setTimeout(() => res.end("done"), 300);
+  });
+  server.timeout = 100;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    return await res.text();
+  } catch {
+    return "connection dropped";
+  } finally {
+    server.close();
+  }
+}
+
+test("a wait's connection outlasts the server's idle timeout", async () => {
+  assert.equal(await slowRequest(false), "connection dropped");
+  assert.equal(await slowRequest(true), "done");
+  assert.ok(WAIT_IDLE_TIMEOUT_MS > MAX_WAIT_SECONDS * 1000);
 });

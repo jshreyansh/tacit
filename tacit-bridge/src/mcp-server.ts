@@ -291,7 +291,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "List every node on the canvas",
       description:
-        "Lists every terminal, browser, and note on the current workspace's canvas — id, kind, position, size, type, and status. Open to any terminal, not just the workspace manager. Use this to see what already exists before spawning something new or connecting nodes.",
+        "Lists every terminal, browser, and note on the current workspace's canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workspace manager. Use this to see what already exists before spawning something new or connecting nodes.",
       inputSchema: {},
     },
     async () => {
@@ -305,7 +305,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Get one node's live state",
       description:
-        "Reads live detail on one specific node by kind and id — a terminal's title/status/worktree, a browser's current url/title, or a note's body. Open to any terminal.",
+        "Reads live detail on one specific node by kind and id — a terminal's title/status/worktree/startedBy, a browser's current url/title, or a note's body. A terminal also has busy: \"busy\", \"idle\" or \"unknown\", the same check close_node makes. Use busy, not status, to tell whether a worker is mid-task: status follows screen output, so a command that prints nothing shows as waiting. Open to any terminal.",
       inputSchema: {
         kind: z.enum(["terminal", "browser", "pin"]).describe("Node kind"),
         id: z.string().describe("Node id, from list_nodes"),

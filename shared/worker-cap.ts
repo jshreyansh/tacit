@@ -42,5 +42,19 @@ export type WorkerKind = keyof WorkerCaps;
 /** The manager's message at the cap: what happened, and how to go on. */
 export function workerCapMessage(kind: WorkerKind, open: number, limit: number): string {
   const noun = kind === "terminals" ? "terminal" : "browser";
-  return `Not opened: ${open} ${noun} worker${open === 1 ? "" : "s"} you started are already open, and the limit on this machine is ${limit}. Close one you're finished with (close_node) and try again, or carry on with the ones you have. Terminals and browsers the user opened don't count.`;
+  // "Started by agents", not "you started": the count includes workers an
+  // earlier manager or another agent left open, and a manager told "yours"
+  // concluded the limit was per manager (9 Oct).
+  return `Not opened: ${open} ${noun} worker${open === 1 ? "" : "s"} started by agents ${open === 1 ? "is" : "are"} already open (yours, and any an earlier manager or another agent left), and the limit on this machine is ${limit}. list_nodes shows each node's startedBy. Close one that's finished (close_node) and try again, or carry on with the ones you have. Terminals and browsers the user opened don't count.`;
+}
+
+/**
+ * Who started a terminal, as list_nodes and get_node_state report it: "user",
+ * or the agent that did as a node ref ("agent" when that isn't known). The
+ * cap counts exactly the ones not started by the user, so a manager can tell
+ * which nodes take a worker slot. Browsers carry this as spawnedBy already.
+ */
+export function terminalStartedBy(terminal: { origin?: "user" | "agent"; parentTerminalId?: string }): string {
+  if (terminal.origin !== "agent") return "user";
+  return terminal.parentTerminalId ? `terminal:${terminal.parentTerminalId}` : "agent";
 }

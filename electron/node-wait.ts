@@ -11,6 +11,29 @@ import type { PromptTargetNode } from "./node-prompt";
 /** Longest a single wait holds; the manager calls again with its cursor. */
 export const MAX_WAIT_SECONDS = 30;
 
+/**
+ * How long a wait's connection may sit quiet. A wait sends nothing until it
+ * returns, and the API server drops connections idle for 30 s, so a
+ * full-length wait used to lose its connection just as it timed out: the
+ * manager saw "fetch failed" and retried without its cursor.
+ */
+export const WAIT_IDLE_TIMEOUT_MS = (MAX_WAIT_SECONDS + 15) * 1000;
+
+/**
+ * Lets one request's connection stay quiet for `ms`, then puts the server's
+ * usual idle timeout back once the response is sent, since a kept-alive
+ * connection carries later requests too.
+ */
+export function holdConnectionOpen(
+  socket: { setTimeout(ms: number): unknown },
+  response: { once(event: "finish", listener: () => void): unknown },
+  ms: number,
+  usualMs: number,
+): void {
+  socket.setTimeout(ms);
+  response.once("finish", () => socket.setTimeout(usualMs));
+}
+
 /** What a manager usually waits for: a worker done, stuck, or gone. */
 export const DEFAULT_WAIT_KINDS: readonly NodeEventKind[] = [
   "turn_completed",

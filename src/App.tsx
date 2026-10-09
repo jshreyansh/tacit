@@ -111,6 +111,7 @@ import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateSt
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
+import { terminalStartedBy } from "../shared/worker-cap";
 
 // The canvas opacity/blur preference (Settings > Appearance) needs the real
 // window to show through, which means every opaque layer stacked above it
@@ -782,6 +783,7 @@ export function App() {
           type: string | null;
           status: string | null;
           title: string | null;
+          startedBy: string | null;
         }> = [];
 
         const { projects } = useProjectStore.getState();
@@ -800,6 +802,7 @@ export function App() {
                 type: live.type,
                 status: live.status,
                 title: live.customTitle || live.title || null,
+                startedBy: terminalStartedBy(live),
               });
             }
           }
@@ -817,6 +820,7 @@ export function App() {
             type: null,
             status: null,
             title: card.title || card.url || null,
+            startedBy: card.spawnedBy ?? "user",
           });
         }
 
@@ -833,6 +837,7 @@ export function App() {
             type: null,
             status: pin.status,
             title: pin.title || null,
+            startedBy: null,
           });
         }
 
@@ -851,6 +856,7 @@ export function App() {
               type: live.type,
               status: live.status,
               title: live.customTitle || live.title || null,
+              startedBy: terminalStartedBy(live),
               x: live.x,
               y: live.y,
               w: live.width,
@@ -882,7 +888,7 @@ export function App() {
         for (const project of useProjectStore.getState().projects) {
           for (const worktree of project.worktrees) {
             for (const terminal of worktree.terminals) {
-              if (terminal.origin === "agent" && !terminal.stashed) terminals += 1;
+              if (terminalStartedBy(terminal) !== "user" && !terminal.stashed) terminals += 1;
             }
           }
         }

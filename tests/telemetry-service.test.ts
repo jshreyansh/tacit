@@ -1849,3 +1849,40 @@ test(
     service.dispose();
   },
 );
+
+// Test F (9 Oct): the session file showed the turn ended, then Claude's
+// PostToolUseFailure for the loop's `exit 1` arrived 6 s late, followed by
+// Stop. The late hook reopened the turn, so a manager waiting on the worker
+// was told it finished twice.
+test("a tool hook arriving after the turn ended doesn't reopen it", async () => {
+  const { NodeEventLog } = await import("../electron/node-events.ts");
+  const log = new NodeEventLog();
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    onSnapshotChanged: (terminalId, snapshot) => log.observeSnapshot(terminalId, snapshot),
+  });
+  service.registerTerminal({ terminalId: "w", worktreePath: "/repo", provider: "claude" });
+  service.recordPtyCreated({ terminalId: "w", ptyId: 1 });
+  service.recordHookEvent("w", { hook_event_name: "UserPromptSubmit", prompt: "count to 30" });
+  service.recordHookEvent("w", { hook_event_name: "PreToolUse", tool_name: "Bash" });
+  service.recordSessionTelemetry("w", [
+    { at: new Date().toISOString(), event_type: "turn_complete", turn_state: "turn_complete" },
+  ]);
+  service.recordHookEvent("w", { hook_event_name: "PostToolUseFailure", tool_name: "Bash", error: "Exit code 1" });
+  service.recordHookEvent("w", { hook_event_name: "Stop" });
+
+  const completed = log.since().events.filter((e) => e.kind === "turn_completed");
+  assert.equal(completed.length, 1);
+  assert.equal(service.getTerminalSnapshot("w")?.turn_state, "turn_complete");
+  service.dispose();
+});
+
+test("a tool hook during a turn still marks it in progress", () => {
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  service.registerTerminal({ terminalId: "w", worktreePath: "/repo", provider: "claude" });
+  service.recordHookEvent("w", { hook_event_name: "UserPromptSubmit", prompt: "go" });
+  service.recordHookEvent("w", { hook_event_name: "PreToolUse", tool_name: "Bash" });
+  service.recordHookEvent("w", { hook_event_name: "PostToolUseFailure", tool_name: "Bash", error: "Exit code 1" });
+  assert.equal(service.getTerminalSnapshot("w")?.turn_state, "in_turn");
+  service.dispose();
+});

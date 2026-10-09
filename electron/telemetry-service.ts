@@ -365,6 +365,16 @@ export function deriveTelemetryStatus(
   return "starting";
 }
 
+/**
+ * A tool's hook can arrive after the session file already shows the turn
+ * ended: Claude's PostToolUseFailure for a command that exited 1 came 6 s
+ * late (9 Oct). The tool belonged to the turn that ended, so the hook must
+ * not reopen it; a new turn starts only with a new prompt.
+ */
+function turnHasEnded(turnState: TerminalTelemetrySnapshot["turn_state"]): boolean {
+  return turnState === "turn_complete" || turnState === "turn_aborted";
+}
+
 export function deriveTelemetryTaskStatus(
   snapshot: TerminalTelemetrySnapshot,
   nowMs = Date.now(),
@@ -1445,7 +1455,7 @@ export class TelemetryService {
         state.pendingPreToolUse = false;
         state.snapshot.pending_tool_use_at = undefined;
         state.snapshot.active_tool_calls = 0;
-        state.snapshot.turn_state = "in_turn";
+        if (!turnHasEnded(state.snapshot.turn_state)) state.snapshot.turn_state = "in_turn";
         state.snapshot.last_meaningful_progress_at = at;
         state.snapshot.foreground_tool = undefined;
         state.lastHookToolAt = this.now();
@@ -1462,7 +1472,7 @@ export class TelemetryService {
         state.pendingPreToolUse = false;
         state.snapshot.pending_tool_use_at = undefined;
         state.snapshot.active_tool_calls = 0;
-        state.snapshot.turn_state = "in_turn";
+        if (!turnHasEnded(state.snapshot.turn_state)) state.snapshot.turn_state = "in_turn";
         state.snapshot.foreground_tool = undefined;
         this.appendEvent(state, at, "session", "hook_post_tool_failure", {
           tool_name: event.tool_name ?? null,

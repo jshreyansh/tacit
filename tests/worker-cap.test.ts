@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { workerCapMessage, workerCapsFor, type WorkerCaps } from "../shared/worker-cap.ts";
+import { terminalStartedBy, workerCapMessage, workerCapsFor, type WorkerCaps } from "../shared/worker-cap.ts";
 import { WorkerAdmission } from "../electron/worker-admission.ts";
 
 const GB = 1024 ** 3;
@@ -18,6 +18,9 @@ test("the refusal says what happened and how to go on", () => {
   assert.match(message, /8 terminal workers/);
   assert.match(message, /close_node/);
   assert.match(message, /the user opened don't count/);
+  // Not "you started": the count isn't per manager.
+  assert.match(message, /started by agents/);
+  assert.doesNotMatch(message, /you started/);
 });
 
 function admission(open: WorkerCaps, caps: WorkerCaps = { terminals: 2, browsers: 2 }) {
@@ -86,4 +89,11 @@ test("a failed spawn doesn't block the next one", async () => {
     throw new Error("renderer gone");
   }));
   assert.equal(await gate.admit("terminals", "mgr", async () => "ok"), "ok");
+});
+
+test("startedBy names the agent that started a terminal, or the user", () => {
+  assert.equal(terminalStartedBy({ origin: "user" }), "user");
+  assert.equal(terminalStartedBy({}), "user");
+  assert.equal(terminalStartedBy({ origin: "agent", parentTerminalId: "m1" }), "terminal:m1");
+  assert.equal(terminalStartedBy({ origin: "agent" }), "agent");
 });

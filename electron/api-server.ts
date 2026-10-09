@@ -33,7 +33,7 @@ import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { busyStateOf, closeNode } from "./node-close";
 import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
-import { waitForNodes } from "./node-wait";
+import { holdConnectionOpen, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "./node-wait";
 import type { CaptureEvent } from "../shared/capture";
 import type { WorkerCaps } from "../shared/worker-cap";
 
@@ -62,6 +62,10 @@ interface ApiServerDeps {
   /** Worker state changes (T3.5); terminals feed it from telemetry. */
   nodeEvents: NodeEventLog;
 }
+
+/** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
+const API_IDLE_TIMEOUT_MS = 30_000;
+const WAIT_NODES_ROUTE = /^\/terminal\/[^/]+\/wait-nodes$/;
 
 const BROWSER_CONNECTOR_ROUTES = new Set([
   "/browser-connect/complete",
@@ -131,7 +135,7 @@ export class ApiServer {
       this.server = http.createServer((req, res) =>
         this.handleRequest(req, res),
       );
-      this.server.timeout = 30_000;
+      this.server.timeout = API_IDLE_TIMEOUT_MS;
       this.server.listen(0, "127.0.0.1", () => {
         const addr = this.server!.address();
         const port = typeof addr === "object" && addr ? addr.port : 0;
@@ -161,6 +165,9 @@ export class ApiServer {
         res.writeHead(401);
         res.end(JSON.stringify({ error: "Unauthorized" }));
         return;
+      }
+      if (method === "POST" && WAIT_NODES_ROUTE.test(pathname)) {
+        holdConnectionOpen(req.socket, res, WAIT_IDLE_TIMEOUT_MS, API_IDLE_TIMEOUT_MS);
       }
       const body =
         method === "POST" || method === "PUT" || method === "DELETE"
@@ -361,7 +368,7 @@ export class ApiServer {
       const worktree = url.searchParams.get("worktree");
       return this.workspaceMemoryQuery(scope, query, worktree);
     }
-    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/wait-nodes$/)) {
+    if (method === "POST" && WAIT_NODES_ROUTE.test(pathname)) {
       const id = pathname.split("/")[2];
       await this.requireWorkspaceManager(id);
       return waitForNodes(
@@ -1289,9 +1296,18 @@ export class ApiServer {
         status: 400,
       });
     }
-    return this.execRenderer(
+    const state = (await this.execRenderer(
       `window.__tcApi.getNodeState(${JSON.stringify(kind)}, ${JSON.stringify(id)})`,
-    );
+    )) as { type?: string | null } | null;
+    if (kind !== "terminal" || !state) return state;
+    // `status` is the tile's display state, which follows screen output: a
+    // silent `sleep 60` shows "waiting". `busy` is what close_node decides
+    // by, so the two can't disagree (9 Oct).
+    return { ...state, busy: this.terminalBusyState(state.type, id) };
+  }
+
+  private terminalBusyState(terminalType: string | null | undefined, id: string) {
+    return busyStateOf(terminalType, this.deps.telemetryService.getTerminalSnapshot(id));
   }
 
   /**
@@ -1478,11 +1494,7 @@ export class ApiServer {
           this.execRenderer(
             `window.__tcApi.findPromptTarget(${JSON.stringify(id)})`,
           ) as Promise<PromptTargetNode | null>,
-        busyState: (node) =>
-          busyStateOf(
-            node.terminalType,
-            this.deps.telemetryService.getTerminalSnapshot(node.id),
-          ),
+        busyState: (node) => this.terminalBusyState(node.terminalType, node.id),
         close: async (input) => {
           const result = await this.execRenderer(
             `window.__tcApi.closeNode(${JSON.stringify({

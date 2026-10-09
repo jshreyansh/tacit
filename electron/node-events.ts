@@ -96,6 +96,7 @@ interface Waiter {
   afterSeq: number;
   match: (event: NodeEvent) => boolean;
   resolve: (events: NodeEvent[]) => void;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 export class NodeEventLog {
@@ -130,6 +131,7 @@ export class NodeEventLog {
     for (const waiter of this.waiters) {
       if (event.seq > waiter.afterSeq && waiter.match(event)) {
         this.waiters.delete(waiter);
+        clearTimeout(waiter.timer);
         waiter.resolve([event]);
       }
     }
@@ -192,7 +194,7 @@ export class NodeEventLog {
     const events = await new Promise<NodeEvent[]>((resolve) => {
       const waiter: Waiter = { afterSeq, match, resolve };
       this.waiters.add(waiter);
-      setTimeout(() => {
+      waiter.timer = setTimeout(() => {
         if (this.waiters.delete(waiter)) resolve([]);
       }, options.timeoutMs);
     });
