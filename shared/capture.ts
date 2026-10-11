@@ -186,6 +186,35 @@ export type CaptureEvent =
       detail?: string;
     }
   | {
+      /**
+       * A run began: one task, from the first instruction to the last thing
+       * done for it. Every entry until its `run_ended` carries `run_id` as
+       * its `task_id`, which is what lets a second run of a similar task be
+       * read against the first (T4.1).
+       *
+       * `started_by` is `user` (the canvas button), the manager that called
+       * start_run, or `auto`: no run was open when the user typed a prompt,
+       * so one was opened for them, without a goal.
+       */
+      kind: "run_started";
+      run_id: string;
+      goal: string | null;
+      started_by: "user" | "auto" | CaptureNodeRef;
+    }
+  | {
+      /**
+       * A run finished. `ended`: someone said so (`by`). `superseded`: a new
+       * run started while it was open. `idle`: nothing was recorded and no
+       * agent was working for 30 minutes; `idle_since` is the last activity,
+       * the real end of the work.
+       */
+      kind: "run_ended";
+      run_id: string;
+      reason: "ended" | "superseded" | "idle";
+      by: CaptureActor;
+      idle_since?: string;
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -270,7 +299,9 @@ function eventActor(event: CaptureEvent): CaptureEntry["actor_identity"] {
   if (event.kind === "topology" || event.kind === "worker_state") {
     return { kind: "system", ref: "system" };
   }
-  const by = event.by;
+  const by = event.kind === "run_started"
+    ? (event.started_by === "auto" ? "system" : event.started_by)
+    : event.by;
   if (by === "user" || by === "system") return { kind: by, ref: by };
   return { kind: "agent", ref: by };
 }
@@ -289,12 +320,15 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "unwire": return event.from;
     case "topology": return null;
     case "spawn_refused": return null;
+    case "run_started":
+    case "run_ended": return null;
   }
 }
 
 function inferredIntent(event: CaptureEvent): CaptureIntent {
   if (event.kind === "prompt") return event.source ? "observation" : "decision";
   if (event.kind === "topology" || event.kind === "worker_state") return "observation";
+  if (event.kind === "run_started") return event.started_by === "user" ? "decision" : "observation";
   return event.by === "user" ? "decision" : "observation";
 }
 
@@ -362,6 +396,17 @@ export function buildCaptureEnvelope(
  * Summarising in main keeps the union — and the twelve-case switch that
  * reads it — on one side of the IPC boundary.
  */
+/** The open run, as the canvas shows it (electron/run-tracker.ts). */
+export interface RunInfo {
+  run_id: string;
+  goal: string | null;
+  started_by: "user" | "auto" | CaptureNodeRef;
+  started_at: string;
+}
+
+/** Longest goal kept; a goal is a line, not a brief. */
+export const RUN_GOAL_MAX_LENGTH = 500;
+
 export interface CaptureEntryView {
   id: string;
   at: string;

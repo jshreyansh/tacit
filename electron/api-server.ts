@@ -31,6 +31,7 @@ import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { busyStateOf, closeNode } from "./node-close";
+import { managerEndRun, managerStartRun, type RunTracker } from "./run-tracker";
 import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
 import { holdConnectionOpen, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "./node-wait";
@@ -61,11 +62,15 @@ interface ApiServerDeps {
   workerCaps: WorkerCaps;
   /** Worker state changes (T3.5); terminals feed it from telemetry. */
   nodeEvents: NodeEventLog;
+  /** The open run (T4.1); see electron/run-tracker.ts. */
+  runs: Pick<RunTracker, "current" | "start" | "end">;
 }
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
 const API_IDLE_TIMEOUT_MS = 30_000;
 const WAIT_NODES_ROUTE = /^\/terminal\/[^/]+\/wait-nodes$/;
+const START_RUN_ROUTE = /^\/terminal\/[^/]+\/start-run$/;
+const END_RUN_ROUTE = /^\/terminal\/[^/]+\/end-run$/;
 
 const BROWSER_CONNECTOR_ROUTES = new Set([
   "/browser-connect/complete",
@@ -375,6 +380,12 @@ export class ApiServer {
         },
         body,
       );
+    }
+    if (method === "POST" && START_RUN_ROUTE.test(pathname)) {
+      return this.startRunFor(pathname.split("/")[2], body);
+    }
+    if (method === "POST" && END_RUN_ROUTE.test(pathname)) {
+      return this.endRunFor(pathname.split("/")[2]);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/close-node$/)) {
       const id = pathname.split("/")[2];
@@ -1484,6 +1495,18 @@ export class ApiServer {
   private async sendPromptToNode(terminalId: string, body: any) {
     await this.requireWorkspaceManager(terminalId);
     return this.nodePrompts.send(terminalId, body);
+  }
+
+  /** Backs the start_run MCP tool. */
+  private async startRunFor(terminalId: string, body: any) {
+    await this.requireWorkspaceManager(terminalId);
+    return managerStartRun(this.deps.runs, `terminal:${terminalId}`, body?.goal);
+  }
+
+  /** Backs the end_run MCP tool. */
+  private async endRunFor(terminalId: string) {
+    await this.requireWorkspaceManager(terminalId);
+    return managerEndRun(this.deps.runs, `terminal:${terminalId}`);
   }
 
   /** Backs the close_node MCP tool. */

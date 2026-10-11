@@ -45,15 +45,21 @@ export class CaptureService {
    * canvas's topology, and the URL a browser was last recorded on.
    */
   private readonly lastWritten = new Map<string, string>();
+  /** The open run's id for an entry, its `task_id` (electron/run-tracker.ts). */
+  private readonly taskIdFor: (event: CaptureEvent) => string | null;
 
   constructor(
     dirPath: string,
     maxFileBytes = 8 * 1024 * 1024,
-    options: { harnessOf?: (ref: string) => string | null } = {},
+    options: {
+      harnessOf?: (ref: string) => string | null;
+      taskIdFor?: (event: CaptureEvent) => string | null;
+    } = {},
   ) {
     this.dirPath = dirPath;
     this.maxFileBytes = maxFileBytes;
     this.harnessOf = options.harnessOf ?? (() => null);
+    this.taskIdFor = options.taskIdFor ?? (() => null);
   }
 
   getHealth(): CaptureHealth {
@@ -79,7 +85,10 @@ export class CaptureService {
     try {
       const repeat = repeatKey(event, canvasId);
       if (repeat && this.lastWritten.get(repeat.key) === repeat.value) return true;
-      const entry = this.buildEntry(event, canvasId, now, context);
+      // Asked before building: a prompt with no run open starts one, whose
+      // run_started is written first.
+      const taskId = context.taskId ?? this.taskIdFor(event);
+      const entry = this.buildEntry(event, canvasId, now, { ...context, taskId });
       const fileName = captureFileNameFor(now);
       const filePath = path.join(this.dirPath, fileName);
 

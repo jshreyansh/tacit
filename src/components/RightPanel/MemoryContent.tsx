@@ -609,6 +609,8 @@ const KIND_TOKEN: Record<string, string> = {
   manager: "var(--amber)",
   browser_action: "var(--cyan)",
   topology: "var(--text-faint)",
+  run_started: "var(--green)",
+  run_ended: "var(--green)",
 };
 
 function kindLabel(kind: string, t: ReturnType<typeof useT>): string {

@@ -203,6 +203,7 @@ import { createRenderDiagnosticsLogger } from "./render-diagnostics";
 import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
 import { CaptureService, getCaptureDir } from "./capture-service";
+import { RunTracker } from "./run-tracker";
 import {
   InjectedTextTracker,
   detectHarnessText,
@@ -359,8 +360,16 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 );
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
+// The open run (T4.1): its id goes on every entry as task_id.
+const runTracker = new RunTracker({
+  statePath: path.join(TACIT_DIR, "current-run.json"),
+  write: (event, now) => captureService.record(event, captureCanvasId, now, { method: "main" }),
+  isBusy: () => telemetryService.anyTerminalRunning(),
+  onChange: (run) => sendToWindow(mainWindow, "run:changed", run),
+});
 const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
   harnessOf: (ref) => recordNodes.harnessOf(ref),
+  taskIdFor: (event) => runTracker.taskIdFor(event),
 });
 const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TACIT_DIR));
 managerRoleLog.load();
@@ -507,6 +516,7 @@ const apiServer = new ApiServer({
     captureService.record(event, captureCanvasId, new Date(), { method: "main" }),
   workerCaps: workerCapsFor(os.totalmem()),
   nodeEvents,
+  runs: runTracker,
   recordAgentPrompt: ({ targetTerminalId, by, text }) => {
     agentSentText.note(targetTerminalId, text);
     captureService.record(
@@ -1961,6 +1971,9 @@ function setupIpc() {
   // inside user interactions, and must never wait on a disk append — nor be
   // able to reject one. See CaptureService for why loss is preferred to noise.
   ipcMain.on("capture:record", (_event, entry: CaptureEvent) => {
+    // Runs are written by the RunTracker alone, so a run's entries can't be
+    // forged from the page; the canvas changes runs through run:start/end.
+    if (entry?.kind === "run_started" || entry?.kind === "run_ended") return;
     // A spawn arrives before the terminal's process starts; it names the
     // type, so this entry and the prompt right after it carry the harness.
     if (entry?.kind === "spawn" && typeof entry.node_type === "string" && entry.node.startsWith("terminal:")) {
@@ -1978,6 +1991,23 @@ function setupIpc() {
   });
 
   ipcMain.handle("capture:get-health", () => captureService.getHealth());
+
+  // Only the app's own window may change the run, not a browser tile.
+  const isMainWindowSender = (event: Electron.IpcMainInvokeEvent) =>
+    !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
+
+  // The canvas's run control. The goal is free text from the person, kept
+  // in the record; anything else is refused.
+  ipcMain.handle("run:current", () => runTracker.current());
+  ipcMain.handle("run:start", (event, goal: unknown) => {
+    if (!isMainWindowSender(event)) return null;
+    if (goal !== null && typeof goal !== "string") return null;
+    return runTracker.start(goal, "user");
+  });
+  ipcMain.handle("run:end", (event) => {
+    if (!isMainWindowSender(event)) return false;
+    return runTracker.end("user");
+  });
 
   ipcMain.on(
     "manager-role:set",
@@ -3445,6 +3475,9 @@ app.whenReady().then(async () => {
     console.error("[shell-integration] could not write startup files:", error);
     dbg(`shell-integration write failed: ${String(error)}`);
   }
+
+  // A run left open by the last launch is resumed, or ended as idle.
+  runTracker.restore();
 
   renderDiagnostics.recordMainEvent("app_ready", {
     app_version: app.getVersion(),

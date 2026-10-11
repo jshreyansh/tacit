@@ -222,6 +222,52 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
+    "start_run",
+    {
+      title: "Start a run for the task you're about to do (workspace manager only)",
+      description:
+        "Marks the start of one task in Tacit's record, with a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the run, so this task can be compared with the next similar one. Call it when you begin a new task. If the user already started a run, the call is refused: your work is recorded inside theirs. A run with no goal that Tacit opened automatically is replaced by yours. Only the workspace manager can call this.",
+      inputSchema: {
+        goal: z.string().describe("What this run is for, in one line, e.g. 'compare three vendors' pricing pages'"),
+      },
+    },
+    async ({ goal }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/start-run`,
+        { goal },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "end_run",
+    {
+      title: "End the run you started (workspace manager only)",
+      description:
+        "Marks the end of the task you started with start_run, once it's done. Only a run you started can be ended this way; a run left open ends by itself after 30 idle minutes. Only the workspace manager can call this.",
+      inputSchema: {},
+    },
+    async () => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/end-run`,
+        {},
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
     "close_node",
     {
       title: "Close a terminal or browser (workspace manager only)",

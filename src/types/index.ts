@@ -14,6 +14,7 @@ import type {
   CaptureEntryView,
   CaptureEvent,
   CaptureHealth,
+  RunInfo,
 } from "../../shared/capture";
 import type { UpdaterSnapshot } from "../../electron/updater-state";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
@@ -730,6 +731,14 @@ export interface TacitAPI {
     record: (entry: CaptureEvent) => void;
     setCanvas: (canvasId: string | null) => void;
     getHealth: () => Promise<CaptureHealth>;
+  };
+  /** The open run (T4.1): one task's span in the record. */
+  run: {
+    current: () => Promise<RunInfo | null>;
+    /** Starts a run as the user; an open one ends as superseded. */
+    start: (goal: string | null) => Promise<RunInfo | null>;
+    end: () => Promise<boolean>;
+    onChanged: (callback: (run: RunInfo | null) => void) => () => void;
   };
   browserConnection: {
     beginPairing: () => Promise<{

@@ -77,6 +77,7 @@ const NO_ARGUMENT_TOOLS = new Set([
   "list_nodes",
   "get_workspace_summary",
   "list_browser_profiles",
+  "end_run",
 ]);
 
 const PROPERTY_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
@@ -204,7 +205,7 @@ test.before(async () => {
 });
 
 test("the bridge lists its tools in-process, as an agent receives them", () => {
-  assert.equal(bridgeTools.length, 20);
+  assert.equal(bridgeTools.length, 22);
   for (const tool of bridgeTools) {
     assert.ok(tool.inputSchema && typeof tool.inputSchema === "object", tool.name);
   }

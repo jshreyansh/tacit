@@ -7,6 +7,7 @@ import type {
   CaptureEntryView,
   CaptureEvent,
   CaptureHealth,
+  RunInfo,
 } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { AgentDetection } from "../shared/agent-adapters";
@@ -217,6 +218,17 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.send("capture:set-canvas", canvasId),
     getHealth: () =>
       ipcRenderer.invoke("capture:get-health") as Promise<CaptureHealth>,
+  },
+  run: {
+    current: () => ipcRenderer.invoke("run:current") as Promise<RunInfo | null>,
+    start: (goal: string | null) =>
+      ipcRenderer.invoke("run:start", goal) as Promise<RunInfo | null>,
+    end: () => ipcRenderer.invoke("run:end") as Promise<boolean>,
+    onChanged: (callback: (run: RunInfo | null) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, run: RunInfo | null) => callback(run);
+      ipcRenderer.on("run:changed", listener);
+      return () => ipcRenderer.removeListener("run:changed", listener);
+    },
   },
   browserConnection: {
     beginPairing: () => ipcRenderer.invoke("browser-connect:begin-pairing") as Promise<{

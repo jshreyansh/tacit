@@ -226,7 +226,13 @@ const WORKER_STATE_WORDS = {
   errored: "stopped with an error",
 } as const;
 
-function summarize(entry: CaptureEntry): string {
+const RUN_END_WORDS = {
+  ended: "ended",
+  superseded: "ended: a new run started",
+  idle: "ended after 30 idle minutes",
+} as const;
+
+export function summarize(entry: CaptureEntry): string {
   switch (entry.kind) {
     case "prompt":
       return entry.text ? entry.text.replace(/\s+/g, " ").slice(0, 220) : "(empty prompt)";
@@ -250,6 +256,10 @@ function summarize(entry: CaptureEntry): string {
       return `refused another ${entry.node_kind} for ${entry.by}: ${entry.open} of ${entry.limit} already open`;
     case "worker_state":
       return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
+    case "run_started":
+      return `run started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
+    case "run_ended":
+      return `run ${RUN_END_WORDS[entry.reason]}${entry.reason === "ended" && entry.by !== "user" ? ` by ${entry.by}` : ""}`;
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }
@@ -274,6 +284,8 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
       return entry.by === "user" || entry.by === "system" ? [] : [entry.by];
     case "worker_state":
       return [entry.node];
+    case "run_started":
+    case "run_ended":
     case "topology":
       return [];
   }

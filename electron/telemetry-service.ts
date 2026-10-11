@@ -1188,6 +1188,14 @@ export class TelemetryService {
     this.updateDerivedStatus(state);
   }
 
+  /** Whether any live terminal is mid-turn: a run doesn't go idle under one. */
+  anyTerminalRunning(): boolean {
+    for (const state of this.terminals.values()) {
+      if (state.snapshot.pty_alive && state.snapshot.task_status === "running") return true;
+    }
+    return false;
+  }
+
   getTerminalSnapshot(terminalId: string): TerminalTelemetrySnapshot | null {
     const state = this.terminals.get(terminalId);
     if (!state) return null;
