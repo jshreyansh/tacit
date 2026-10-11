@@ -65,6 +65,8 @@ export interface NormalizedSessionTelemetryEvent {
   turn_state?: TelemetryTurnState;
   meaningful_progress?: boolean;
   raw_ref?: string;
+  /** The turn ended because of this error (a rejected model, a usage limit). */
+  error?: string;
 }
 
 export interface TerminalTelemetrySnapshot {

@@ -1936,3 +1936,42 @@ test("reattaching a session replays its history without reporting old turns as n
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a Codex turn that ends on an error is reported as errored, and the next turn starts clean", async () => {
+  const { eventsForTransition } = await import("../electron/node-events.ts");
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  service.registerTerminal({ terminalId: "t-codex", worktreePath: "/repo", provider: "codex" });
+  service.recordPtyCreated({ terminalId: "t-codex", ptyId: 1 });
+  service.recordSessionAttached({ terminalId: "t-codex", provider: "codex", sessionId: "s-1", confidence: "strong" });
+
+  service.recordSessionTelemetry("t-codex", [
+    { at: "2026-10-11T10:34:13.318Z", event_type: "task_started", turn_state: "in_turn" },
+  ]);
+  const running = { ...service.getTerminalSnapshot("t-codex")!, pty_alive: true };
+  service.recordSessionTelemetry("t-codex", [
+    {
+      at: "2026-10-11T10:34:18.197Z",
+      event_type: "task_complete",
+      turn_state: "turn_complete",
+      meaningful_progress: true,
+      error: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.",
+    },
+  ]);
+  const failed = { ...service.getTerminalSnapshot("t-codex")!, pty_alive: true };
+  assert.equal(failed.derived_status, "error");
+  assert.deepEqual(eventsForTransition(running, failed), [
+    { kind: "errored", detail: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account." },
+  ]);
+
+  service.recordSessionTelemetry("t-codex", [
+    { at: "2026-10-11T10:35:01.964Z", event_type: "task_started", turn_state: "in_turn" },
+  ]);
+  const retrying = { ...service.getTerminalSnapshot("t-codex")!, pty_alive: true };
+  assert.equal(retrying.last_hook_error, undefined);
+  service.recordSessionTelemetry("t-codex", [
+    { at: "2026-10-11T10:35:07.967Z", event_type: "task_complete", turn_state: "turn_complete", meaningful_progress: true },
+  ]);
+  const done = { ...service.getTerminalSnapshot("t-codex")!, pty_alive: true };
+  assert.deepEqual(eventsForTransition(retrying, done), [{ kind: "turn_completed" }]);
+  service.dispose();
+});

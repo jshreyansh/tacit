@@ -525,3 +525,24 @@ test("kimi telemetry parser tracks tool lifecycle and assistant completion", () 
   assert.equal(toolEnd[0]?.call_id, "call-1");
   assert.equal(assistantReply[1]?.turn_state, "turn_complete");
 });
+
+// Real lines from Codex 0.157.1 sessions: a model the account can't use, and
+// a usage limit. Both end the turn with no reply and an `error`.
+const CODEX_REJECTED_MODEL = String.raw`{"timestamp":"2026-10-11T10:34:18.197Z","ordinal":8,"type":"event_msg","payload":{"type":"task_complete","turn_id":"01a12a87-016e-7931-a9cf-4e04a836808a","last_agent_message":null,"error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.\"}}","codex_error_info":"other"},"started_at":1791714853,"completed_at":1791714858,"duration_ms":4956}}`;
+const CODEX_USAGE_LIMIT = String.raw`{"timestamp":"2026-09-19T08:46:34.697Z","ordinal":7027,"type":"event_msg","payload":{"type":"task_complete","turn_id":"01a0b8d8-80db-7c73-b0ec-b8568a794bdb","last_agent_message":null,"error":{"message":"You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 2:16 PM.","codex_error_info":"usage_limit_exceeded"},"started_at":1789807591,"completed_at":1789807594,"duration_ms":2827}}`;
+
+test("codex telemetry parser carries why a turn ended on an error", () => {
+  const [rejected] = parseSessionTelemetryLine(CODEX_REJECTED_MODEL, "codex");
+  assert.equal(rejected.turn_state, "turn_complete");
+  assert.equal(rejected.error, "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.");
+
+  const [limited] = parseSessionTelemetryLine(CODEX_USAGE_LIMIT, "codex");
+  assert.match(limited.error ?? "", /^You’ve hit your usage limit\./);
+
+  const [clean] = parseSessionTelemetryLine(
+    JSON.stringify({ type: "event_msg", payload: { type: "task_complete", last_agent_message: "READY" } }),
+    "codex",
+  );
+  assert.equal(clean.turn_state, "turn_complete");
+  assert.equal(clean.error, undefined);
+});

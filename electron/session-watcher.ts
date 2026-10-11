@@ -151,6 +151,25 @@ function buildEvent(
   };
 }
 
+/**
+ * Why a Codex turn ended without a reply, from `task_complete.error`: a
+ * rejected model, a usage limit. Codex sometimes wraps the API's own error
+ * JSON in `message`; the inner message is the readable part.
+ */
+export function codexTurnError(payload: Record<string, unknown>): string | undefined {
+  const error = getObject(payload.error);
+  const message = getString(error?.message)?.trim();
+  if (!error) return undefined;
+  if (!message) return getString(error.codex_error_info) ?? "unknown";
+  try {
+    const inner = getString(getObject(getObject(JSON.parse(message))?.error)?.message);
+    if (inner) return inner;
+  } catch {
+    // Not JSON: the message is already readable.
+  }
+  return message;
+}
+
 function buildClaudeStopReasonState(
   stopReason: unknown,
 ): TelemetryTurnState | undefined {
@@ -732,12 +751,14 @@ export function parseSessionTelemetryLine(
       ];
     }
     if (payloadType === "task_complete" || payloadType === "turn_complete") {
+      const error = codexTurnError(payload);
       return [
         buildEvent({
           at,
           event_type: payloadType,
           turn_state: "turn_complete",
           meaningful_progress: true,
+          ...(error ? { error } : {}),
         }),
       ];
     }

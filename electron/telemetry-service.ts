@@ -961,6 +961,12 @@ export class TelemetryService {
           eventAtMs <= state.lastTerminalTurnAtMs;
         if (!preserveAwaitingInput && !preserveTerminalTurnState) {
           state.snapshot.turn_state = event.turn_state;
+          // A turn that ended on an error (Codex: a rejected model, a usage
+          // limit) is reported the way a StopFailure hook is, so the manager
+          // hears "errored" rather than "finished".
+          if (isTerminalTurnState(event.turn_state) && event.error) {
+            state.snapshot.last_hook_error = event.error;
+          }
           if (
             isTerminalTurnState(event.turn_state) &&
             Number.isFinite(eventAtMs)
@@ -1012,6 +1018,7 @@ export class TelemetryService {
         active_tool_calls: state.snapshot.active_tool_calls,
         token_total: event.token_total ?? null,
         raw_ref: event.raw_ref ?? null,
+        ...(event.error ? { error: event.error } : {}),
       });
 
       if (
@@ -1027,6 +1034,9 @@ export class TelemetryService {
           previousTurnState === "unknown";
         if (enteringTurn && wasTurnComplete) {
           state.snapshot.turn_started_at = timestamp;
+          // The last turn's error belonged to that turn.
+          state.snapshot.last_hook_error = undefined;
+          state.snapshot.last_hook_error_details = undefined;
         }
         if (
           event.turn_state === "turn_complete" ||
