@@ -110,7 +110,7 @@ test("starting a run while one is open ends the first as superseded", () => {
   assert.equal(t.runs.current()?.run_id, second.run_id);
 });
 
-test("a run ends as idle 30 minutes after the last thing recorded, not counting topology", () => {
+test("a run ends as idle 30 minutes after the last thing recorded, not counting topology or reloads", () => {
   const t = setup();
   const run = t.runs.start("x", "user");
   t.advance(20 * 60_000);
@@ -118,7 +118,9 @@ test("a run ends as idle 30 minutes after the last thing recorded, not counting 
   const lastActivity = t.entries().at(-1)!.at;
   t.advance(20 * 60_000);
   t.record({ kind: "topology", terminals: 1, browsers: 0, notes: 0, wires: [] });
-  assert.ok(t.runs.current(), "still open: topology isn't activity");
+  // A browser tile reloading its page on launch isn't anyone doing anything.
+  t.record({ kind: "browser_action", node: "browser:b", action: "navigate", backend: "managed", by: "system", ok: true, url: "https://example.com/" });
+  assert.ok(t.runs.current(), "still open: topology and reloads aren't activity");
   t.advance(10 * 60_000);
 
   assert.equal(t.runs.current(), null);

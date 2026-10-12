@@ -105,13 +105,16 @@ export class RunTracker {
   /**
    * Called for every entry about to be written; returns the run id to stamp
    * on it. A prompt the user typed with no run open starts one first, so the
-   * prompt is inside it. Anything but a topology checkpoint is activity.
+   * prompt is inside it. Activity is anything a person or an agent did:
+   * not a topology checkpoint, and not a browser tile reloading its page
+   * when the app starts (`by: "system"`).
    */
   taskIdFor(event: CaptureEvent): string | null {
     if (event.kind === "run_started" || event.kind === "run_ended") return event.run_id;
     if (!this.run && event.kind === "prompt" && !event.source) this.start(null, "auto");
     if (!this.run) return null;
-    if (event.kind !== "topology") {
+    const housekeeping = event.kind === "topology" || (event.kind === "browser_action" && event.by === "system");
+    if (!housekeeping) {
       this.run.last_activity_at = this.now().toISOString();
       this.save();
       this.schedule(RUN_IDLE_MS);
