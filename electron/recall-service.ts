@@ -189,6 +189,8 @@ export class RecallService {
           intent: entry.intent,
           canvas: entry.canvas,
           actorKind: entry.actor_identity?.kind ?? "system",
+          taskId: entry.task_id ?? null,
+          ...(runDetail(entry) ? { run: runDetail(entry)! } : {}),
         });
         if (out.length >= limit) return out;
       }
@@ -228,9 +230,23 @@ const WORKER_STATE_WORDS = {
 
 const RUN_END_WORDS = {
   ended: "ended",
-  superseded: "ended: a new run started",
-  idle: "ended after 30 idle minutes",
+  superseded: "ended: a new task started",
+  idle: "ended after 30 quiet minutes",
 } as const;
+
+/** What the Activity tab needs to head a task's group with. */
+function runDetail(entry: CaptureEntry): CaptureEntryView["run"] | null {
+  switch (entry.kind) {
+    case "run_started":
+      return { goal: entry.goal, by: entry.started_by };
+    case "run_named":
+      return { goal: entry.goal, by: entry.by };
+    case "run_ended":
+      return { by: entry.by, reason: entry.reason };
+    default:
+      return null;
+  }
+}
 
 export function summarize(entry: CaptureEntry): string {
   switch (entry.kind) {
@@ -257,11 +273,13 @@ export function summarize(entry: CaptureEntry): string {
     case "worker_state":
       return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_started":
-      return `run started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
+      return `task started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_named":
-      return `run given its goal by ${entry.by} — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}`;
+      return entry.goal_source === "agent_title"
+        ? `task named from the agent's session title — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}`
+        : `task ${entry.by === "user" ? "renamed" : `named by ${entry.by}`} — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}`;
     case "run_ended":
-      return `run ${RUN_END_WORDS[entry.reason]}${entry.reason === "ended" && entry.by !== "user" ? ` by ${entry.by}` : ""}`;
+      return `task ${RUN_END_WORDS[entry.reason]}${entry.reason === "ended" && entry.by !== "user" ? ` by ${entry.by}` : ""}`;
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }

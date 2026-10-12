@@ -571,6 +571,7 @@ export class TelemetryService {
     terminalId: string,
     snapshot: TerminalTelemetrySnapshot,
   ) => void;
+  private readonly onSessionTitle?: (terminalId: string, title: string) => void;
 
   constructor(options?: {
     eventLimit?: number;
@@ -584,6 +585,8 @@ export class TelemetryService {
       terminalId: string,
       snapshot: TerminalTelemetrySnapshot,
     ) => void;
+    /** The agent titled its session (Claude's ai-title), as it happens. */
+    onSessionTitle?: (terminalId: string, title: string) => void;
   }) {
     this.eventLimit = options?.eventLimit ?? DEFAULT_EVENT_LIMIT;
     this.now = options?.now ?? Date.now;
@@ -596,6 +599,7 @@ export class TelemetryService {
     this.sessionHeartbeatMs =
       options?.sessionHeartbeatMs ?? DEFAULT_SESSION_HEARTBEAT_MS;
     this.onSnapshotChanged = options?.onSnapshotChanged;
+    this.onSessionTitle = options?.onSessionTitle;
   }
 
   registerTerminal(input: RegisterTerminalInput): TerminalTelemetrySnapshot {
@@ -885,6 +889,12 @@ export class TelemetryService {
   ): void {
     const state = this.ensureState(terminalId);
     for (const event of events) {
+      // A title says nothing about the turn. One replayed from an old
+      // session on attach isn't news either.
+      if (event.event_type === "session_title") {
+        if (event.title && !state.priming) this.onSessionTitle?.(terminalId, event.title);
+        continue;
+      }
       const timestamp = event.at ?? isoNow(this.now);
       const eventAtMs = new Date(timestamp).getTime();
       const previousTurnState = state.snapshot.turn_state;

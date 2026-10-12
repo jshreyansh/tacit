@@ -339,6 +339,8 @@ const nodeEvents = new NodeEventLog();
 // Which agent each terminal runs, and which an agent started, for the record.
 const recordNodes = new RecordNodes();
 const telemetryService = new TelemetryService({
+  // Claude's title for its session can name the task its first prompt opened.
+  onSessionTitle: (terminalId, title) => runTracker.agentTitle(`terminal:${terminalId}`, title),
   onSnapshotChanged: (terminalId, snapshot) => {
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
     for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
@@ -365,7 +367,7 @@ const runTracker = new RunTracker({
   statePath: path.join(TACIT_DIR, "current-run.json"),
   write: (event, now) => captureService.record(event, captureCanvasId, now, { method: "main" }),
   isBusy: () => telemetryService.anyTerminalRunning(),
-  onChange: (run) => sendToWindow(mainWindow, "run:changed", run),
+  onChange: (run, change) => sendToWindow(mainWindow, "run:changed", { run, change }),
 });
 const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
   harnessOf: (ref) => recordNodes.harnessOf(ref),
@@ -2007,6 +2009,10 @@ function setupIpc() {
   ipcMain.handle("run:end", (event) => {
     if (!isMainWindowSender(event)) return false;
     return runTracker.end("user");
+  });
+  ipcMain.handle("run:rename", (event, goal: unknown) => {
+    if (!isMainWindowSender(event) || typeof goal !== "string") return null;
+    return runTracker.rename(goal, "user");
   });
 
   ipcMain.on(

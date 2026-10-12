@@ -67,6 +67,8 @@ export interface NormalizedSessionTelemetryEvent {
   raw_ref?: string;
   /** The turn ended because of this error (a rejected model, a usage limit). */
   error?: string;
+  /** For `session_title`: the agent's own name for the session. */
+  title?: string;
 }
 
 export interface TerminalTelemetrySnapshot {

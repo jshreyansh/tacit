@@ -77,7 +77,7 @@ const NO_ARGUMENT_TOOLS = new Set([
   "list_nodes",
   "get_workspace_summary",
   "list_browser_profiles",
-  "end_run",
+  "end_task",
 ]);
 
 const PROPERTY_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;

@@ -546,3 +546,14 @@ test("codex telemetry parser carries why a turn ended on an error", () => {
   assert.equal(clean.turn_state, "turn_complete");
   assert.equal(clean.error, undefined);
 });
+
+test("claude telemetry parser passes on the session's title", () => {
+  const [ai] = parseSessionTelemetryLine(
+    JSON.stringify({ type: "ai-title", aiTitle: "Tacit-wait-test temp folder cleanup", sessionId: "s" }),
+    "claude",
+  );
+  assert.equal(ai.event_type, "session_title");
+  assert.equal(ai.title, "Tacit-wait-test temp folder cleanup");
+  const [custom] = parseSessionTelemetryLine(JSON.stringify({ type: "custom-title", customTitle: "Codex limit exceeded" }), "claude");
+  assert.equal(custom.title, "Codex limit exceeded");
+});

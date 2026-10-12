@@ -193,24 +193,33 @@ export type CaptureEvent =
        * read against the first (T4.1).
        *
        * `started_by` is `user` (the canvas button), the manager that called
-       * start_run, or `auto`: no run was open when the user typed a prompt,
+       * start_task, or `auto`: no run was open when the user typed a prompt,
        * so one was opened for them, without a goal.
        */
       kind: "run_started";
       run_id: string;
       goal: string | null;
       started_by: "user" | "auto" | CaptureNodeRef;
+      /**
+       * Set when Tacit made the goal up rather than anyone giving it: an
+       * automatic run is named from the prompt that opened it. Absent means
+       * the goal is what the person or manager wrote.
+       */
+      goal_source?: RunGoalSource;
     }
   | {
       /**
-       * An automatic run was given its goal: the manager called start_run
-       * just after the prompt that opened it, so that prompt (the
-       * instruction) and the manager's work stay one run instead of two.
+       * A run was given a new goal: the manager called start_task just after
+       * the prompt that opened an automatic run (so the instruction and the
+       * work stay one run), the person renamed it, or Tacit replaced a name
+       * made from the prompt with the agent's own session title.
        */
       kind: "run_named";
       run_id: string;
       goal: string;
       by: CaptureActor;
+      /** As on run_started; `agent_title` is the agent's own session title. */
+      goal_source?: RunGoalSource;
     }
   | {
       /**
@@ -408,14 +417,62 @@ export function buildCaptureEnvelope(
  * Summarising in main keeps the union — and the twelve-case switch that
  * reads it — on one side of the IPC boundary.
  */
-/** The open run, as the canvas shows it (electron/run-tracker.ts). */
+export type RunGoalSource = "prompt" | "agent_title";
+
+/**
+ * The open run, as the canvas shows it (electron/run-tracker.ts). The person
+ * sees it as a "task"; the record keeps the word run.
+ */
 export interface RunInfo {
   run_id: string;
   goal: string | null;
+  /** Set when Tacit made the goal up; absent when someone gave it. */
+  goal_source?: RunGoalSource;
   started_by: "user" | "auto" | CaptureNodeRef;
   started_at: string;
-  /** Who gave an automatic run its goal (`run_named`). */
-  named_by?: CaptureNodeRef;
+  /** Who last named it, when that wasn't whoever started it. */
+  named_by?: CaptureActor;
+  /** The terminal whose prompt opened an automatic run. */
+  opened_by?: CaptureNodeRef;
+  /** Entries recorded in it so far, not counting housekeeping. */
+  entries: number;
+}
+
+/**
+ * Who a run belongs to: whoever last named it, else whoever started it.
+ * Null for an automatic run nobody has named. The person's runs can't be
+ * replaced or ended by a manager.
+ */
+export function runOwner(run: RunInfo): CaptureActor | null {
+  if (run.named_by) return run.named_by;
+  return run.started_by === "auto" ? null : run.started_by;
+}
+
+/** What just happened to the run, so the canvas can say so. */
+export type RunChange =
+  | { kind: "started"; by: RunInfo["started_by"] }
+  | { kind: "named"; by: CaptureActor }
+  | { kind: "ended"; by: CaptureActor; reason: "ended" | "superseded" | "idle"; goal: string | null }
+  | { kind: "refused"; by: CaptureNodeRef };
+
+const PASTED_BLOCK = /<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g;
+const RUN_NAME_LENGTH = 60;
+
+/**
+ * A short name for an automatic run, from the prompt that opened it: its
+ * first sentence or line, without pasted blocks, cut at a word. Null when
+ * nothing readable is left (the prompt was only a paste).
+ */
+export function runNameFromPrompt(text: string | null): string | null {
+  if (!text) return null;
+  const plain = text.replace(PASTED_BLOCK, " ").trim();
+  const first = plain.split(/\n|(?<=[.!?])\s/)[0]?.replace(/\s+/g, " ").trim() ?? "";
+  const clean = first.replace(/[.!?:;,]+$/, "");
+  if (!clean) return null;
+  if (clean.length <= RUN_NAME_LENGTH) return clean;
+  const cut = clean.slice(0, RUN_NAME_LENGTH);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 30 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
 /** Longest goal kept; a goal is a line, not a brief. */
@@ -430,6 +487,10 @@ export interface CaptureEntryView {
   intent: CaptureIntent;
   canvas: string | null;
   actorKind: CaptureActorKind;
+  /** The run (task) it was recorded in, or null. */
+  taskId: string | null;
+  /** For run_started / run_named / run_ended: what the task's heading shows. */
+  run?: { goal?: string | null; by: string; reason?: "ended" | "superseded" | "idle" };
 }
 
 export interface CaptureHealth {

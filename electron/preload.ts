@@ -7,6 +7,7 @@ import type {
   CaptureEntryView,
   CaptureEvent,
   CaptureHealth,
+  RunChange,
   RunInfo,
 } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
@@ -224,8 +225,13 @@ contextBridge.exposeInMainWorld("tacit", {
     start: (goal: string | null) =>
       ipcRenderer.invoke("run:start", goal) as Promise<RunInfo | null>,
     end: () => ipcRenderer.invoke("run:end") as Promise<boolean>,
-    onChanged: (callback: (run: RunInfo | null) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, run: RunInfo | null) => callback(run);
+    rename: (goal: string) =>
+      ipcRenderer.invoke("run:rename", goal) as Promise<RunInfo | null>,
+    onChanged: (callback: (update: { run: RunInfo | null; change: RunChange | null }) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        update: { run: RunInfo | null; change: RunChange | null },
+      ) => callback(update);
       ipcRenderer.on("run:changed", listener);
       return () => ipcRenderer.removeListener("run:changed", listener);
     },

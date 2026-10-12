@@ -222,13 +222,13 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
-    "start_run",
+    "start_task",
     {
-      title: "Start a run for the task you're about to do (workspace manager only)",
+      title: "Start recording the task you're about to do (workspace manager only)",
       description:
-        "Marks the start of one task in Tacit's record, with a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the run, so this task can be compared with the next similar one. Call it when you begin a new task. If the user already started a run, the call is refused: your work is recorded inside theirs. If Tacit opened a run automatically in the last 10 minutes (usually for the instruction you're acting on), your goal is given to that run; an older one is replaced by yours. Only the workspace manager can call this.",
+        "Starts recording one task in Tacit's record, under a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the task, so it can be compared with the next similar one; the user sees the goal in the title bar. Call it when you take on a new task. If the user is recording a task they started or named, the call is refused: your work is recorded inside theirs. If Tacit started recording automatically in the last 10 minutes (usually for the instruction you're acting on), your goal names that task; an older one is ended and yours starts. Only the workspace manager can call this.",
       inputSchema: {
-        goal: z.string().describe("What this run is for, in one line, e.g. 'compare three vendors' pricing pages'"),
+        goal: z.string().describe("What this task is, in one line, e.g. 'compare three vendors' pricing pages'"),
       },
     },
     async ({ goal }) => {
@@ -238,7 +238,7 @@ export function createTacitBridgeServer(): McpServer {
       }
       const result = await apiRequest(
         "POST",
-        `/terminal/${encodeURIComponent(terminalId)}/start-run`,
+        `/terminal/${encodeURIComponent(terminalId)}/start-task`,
         { goal },
       );
       return textResult(JSON.stringify(result, null, 2));
@@ -246,11 +246,11 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
-    "end_run",
+    "end_task",
     {
-      title: "End the run you started (workspace manager only)",
+      title: "End recording the task you started (workspace manager only)",
       description:
-        "Marks the end of the task you started with start_run, once it's done. Only a run you started can be ended this way; a run left open ends by itself after 30 idle minutes. Only the workspace manager can call this.",
+        "Ends recording the task you started or named with start_task, once it's done. A task the user is recording is theirs to end; one left open ends by itself after 30 idle minutes. Only the workspace manager can call this.",
       inputSchema: {},
     },
     async () => {
@@ -260,7 +260,7 @@ export function createTacitBridgeServer(): McpServer {
       }
       const result = await apiRequest(
         "POST",
-        `/terminal/${encodeURIComponent(terminalId)}/end-run`,
+        `/terminal/${encodeURIComponent(terminalId)}/end-task`,
         {},
       );
       return textResult(JSON.stringify(result, null, 2));

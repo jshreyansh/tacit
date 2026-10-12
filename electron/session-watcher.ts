@@ -413,6 +413,10 @@ export function parseSessionTelemetryLine(
   const at = getString(parsed.timestamp) ?? getString(parsed.at);
 
   if (type === "claude") {
+    // Claude names the session a few seconds after its first prompt
+    // (`ai-title`), or the person does with /rename (`custom-title`).
+    const title = parsed.type === "ai-title" ? getString(parsed.aiTitle) : parsed.type === "custom-title" ? getString(parsed.customTitle) : undefined;
+    if (title?.trim()) return [buildEvent({ at, event_type: "session_title", title: title.trim() })];
     const events: NormalizedSessionTelemetryEvent[] = [];
     if (parsed.type === "assistant") {
       const message = getObject(parsed.message);

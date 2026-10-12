@@ -3,6 +3,8 @@ import type { CaptureEntryView } from "../../../shared/capture";
 import { useMemoryStore, positionKey } from "../../stores/memoryStore";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useT } from "../../i18n/useT";
+import { useActivityFocusStore } from "../../stores/activityFocusStore";
+import { taskActorName } from "../../utils/taskActor";
 
 const themeCache = { theme: "", vars: {} as Record<string, string> };
 
@@ -648,13 +650,101 @@ function timeLabel(iso: string): string {
   });
 }
 
-function ActivityList({ entries }: { entries: CaptureEntryView[] }) {
+interface TaskGroup {
+  taskId: string | null;
+  entries: CaptureEntryView[];
+}
+
+/** Consecutive entries of one task, newest first, as the list shows them. */
+function groupByTask(entries: CaptureEntryView[]): TaskGroup[] {
+  const groups: TaskGroup[] = [];
+  for (const entry of entries) {
+    const last = groups.at(-1);
+    if (last && last.taskId === entry.taskId) last.entries.push(entry);
+    else groups.push({ taskId: entry.taskId, entries: [entry] });
+  }
+  return groups;
+}
+
+/**
+ * A task's heading: its latest name, who started it, when, and how it
+ * ended, read off the task's own run entries. Entries are newest first, so
+ * the first name met is the current one.
+ */
+function TaskHeading({ group, openTaskId }: { group: TaskGroup; openTaskId: string | null }) {
   const t = useT();
-  let lastDay = "";
+  if (!group.taskId) {
+    return (
+      <div className="px-1 pt-3 pb-1 text-[10px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+        {t.task_group_none}
+      </div>
+    );
+  }
+  const name = group.entries.find((e) => e.run?.goal)?.run?.goal ?? t.task_untitled;
+  const started = group.entries.find((e) => e.kind === "run_started");
+  const ended = group.entries.find((e) => e.kind === "run_ended");
+  const first = group.entries.at(-1)!;
+  const last = group.entries[0];
+  const minutes = Math.max(0, Math.round((Date.parse(last.at) - Date.parse(first.at)) / 60_000));
+  const by = started?.run?.by;
+  const startedText = !by
+    ? null
+    : by === "user"
+      ? t.task_started_by_you
+      : by === "auto"
+        ? t.task_started_auto
+        : t.task_started_by(taskActorName(by, t.task_manager));
+  let endText: string;
+  if (group.taskId === openTaskId && !ended) endText = t.task_group_recording;
+  else if (!ended?.run) endText = "";
+  else if (ended.run.reason === "idle") endText = t.task_group_idle;
+  else if (ended.run.reason === "superseded") endText = t.task_group_superseded;
+  else endText = ended.run.by === "user" ? t.task_group_ended_by_you : t.task_group_ended_by(taskActorName(ended.run.by, t.task_manager));
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
-      {entries.map((entry) => {
+    <div
+      className="mx-1 mt-3 mb-1 rounded-md px-2 py-1.5"
+      style={{ background: "color-mix(in srgb, var(--green) 8%, transparent)", borderLeft: "2px solid var(--green)" }}
+    >
+      <div className="truncate text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
+        {name}
+      </div>
+      <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+        {[startedText, `${timeLabel(first.at)}–${timeLabel(last.at)} (${minutes}m)`, endText].filter(Boolean).join(" · ")}
+      </div>
+    </div>
+  );
+}
+
+/** Run entries the heading already says; a rename stays, as it's news. */
+const SAID_BY_HEADING = new Set(["run_started", "run_ended"]);
+
+function ActivityList({
+  entries,
+  openTaskId,
+  focus,
+}: {
+  entries: CaptureEntryView[];
+  openTaskId: string | null;
+  focus: { taskId: string | null; nonce: number };
+}) {
+  const t = useT();
+  const listRef = useRef<HTMLDivElement>(null);
+  let lastDay = "";
+
+  useEffect(() => {
+    if (!focus.taskId || !listRef.current) return;
+    const target = listRef.current.querySelector(`[data-task="${CSS.escape(focus.taskId)}"]`);
+    target?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [focus.taskId, focus.nonce, entries.length]);
+
+  return (
+    <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
+      {groupByTask(entries).map((group) => (
+        <div key={`${group.taskId ?? "none"}:${group.entries[0].id}`} data-task={group.taskId ?? undefined}>
+          <TaskHeading group={group} openTaskId={openTaskId} />
+          <div className={group.taskId ? "ml-2" : undefined}>
+      {group.entries.filter((entry) => !SAID_BY_HEADING.has(entry.kind)).map((entry) => {
         const day = dayLabel(entry.at);
         const newDay = day !== lastDay;
         lastDay = day;
@@ -664,12 +754,8 @@ function ActivityList({ entries }: { entries: CaptureEntryView[] }) {
           <div key={entry.id}>
             {newDay && (
               <div
-                className="tc-label sticky top-0 z-[1] px-1 pt-3 pb-1 text-[10px] uppercase tracking-wide"
-                style={{
-                  background:
-                    "color-mix(in srgb, var(--surface) 92%, transparent)",
-                  color: "var(--text-faint)",
-                }}
+                className="tc-label px-1 pt-2 pb-1 text-[10px] uppercase tracking-wide"
+                style={{ color: "var(--text-faint)" }}
               >
                 {day}
               </div>
@@ -707,6 +793,9 @@ function ActivityList({ entries }: { entries: CaptureEntryView[] }) {
           </div>
         );
       })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -717,6 +806,19 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
     useMemoryStore();
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const [scope, setScope] = useState<MemoryScope>("worktree");
+  // The title bar's "Show in Activity": switch here and scroll to the task.
+  const focusTaskId = useActivityFocusStore((st) => st.taskId);
+  const focusNonce = useActivityFocusStore((st) => st.nonce);
+  useEffect(() => {
+    if (focusTaskId) setScope("activity");
+  }, [focusTaskId, focusNonce]);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const api = window.tacit?.run;
+    if (!api) return;
+    void api.current().then((run) => setOpenTaskId(run?.run_id ?? null));
+    return api.onChanged(({ run }) => setOpenTaskId(run?.run_id ?? null));
+  }, []);
   const [entries, setEntries] = useState<CaptureEntryView[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   // Bumped by the refresh button to re-run whichever loader the active tab
@@ -860,7 +962,11 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
             <span>{t.activity_empty_hint}</span>
           </div>
         ) : (
-          <ActivityList entries={entries} />
+          <ActivityList
+            entries={entries}
+            openTaskId={openTaskId}
+            focus={{ taskId: focusTaskId, nonce: focusNonce }}
+          />
         )}
       </div>
     );

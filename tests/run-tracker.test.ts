@@ -7,7 +7,7 @@ import path from "node:path";
 import { CaptureService } from "../electron/capture-service";
 import { RUN_IDLE_MS, RunTracker, managerEndRun, managerStartRun } from "../electron/run-tracker";
 import { summarize } from "../electron/recall-service";
-import { captureFileNameFor, type CaptureEntry, type RunInfo } from "../shared/capture";
+import { captureFileNameFor, runNameFromPrompt, type CaptureEntry, type RunChange, type RunInfo } from "../shared/capture";
 
 /** A RunTracker writing into a real record, on a clock and timers the test moves. */
 function setup(options: { busy?: () => boolean; statePath?: string; start?: number } = {}) {
@@ -16,12 +16,16 @@ function setup(options: { busy?: () => boolean; statePath?: string; start?: numb
   let now = options.start ?? Date.parse("2026-10-11T10:00:00.000Z");
   let timer: { fn: () => void; at: number } | null = null;
   const changes: Array<RunInfo | null> = [];
+  const notices: RunChange[] = [];
   let capture: CaptureService;
   const runs = new RunTracker({
     statePath,
     write: (event, at) => capture.record(event, "c", at),
     isBusy: options.busy ?? (() => false),
-    onChange: (run) => changes.push(run),
+    onChange: (run, change) => {
+      changes.push(run);
+      if (change) notices.push(change);
+    },
     now: () => new Date(now),
     setTimer: (fn, ms) => (timer = { fn, at: now + ms }),
     clearTimer: () => (timer = null),
@@ -32,6 +36,7 @@ function setup(options: { busy?: () => boolean; statePath?: string; start?: numb
     capture,
     statePath,
     changes,
+    notices,
     record: (event: Parameters<CaptureService["record"]>[0]) => capture.record(event, "c", new Date(now)),
     /** Moves the clock, firing the idle timer if it falls due. */
     advance(ms: number) {
@@ -81,7 +86,7 @@ test("every entry inside a run carries its id; entries outside one carry none", 
   assert.match(run.run_id, /^run-\d{8}-\d{4}-[0-9a-f]{4}$/);
 });
 
-test("a prompt you type with no run open starts one first, without a goal", () => {
+test("a prompt you type with no run open starts one first, named from the prompt", () => {
   const t = setup();
   // Prompts that aren't the user's don't start a run.
   t.record({ ...userPrompt, source: "app" });
@@ -91,7 +96,10 @@ test("a prompt you type with no run open starts one first, without a goal", () =
   assert.equal(app.task_id, null);
   assert.equal(started.kind, "run_started");
   assert.equal((started as Extract<CaptureEntry, { kind: "run_started" }>).started_by, "auto");
-  assert.equal((started as Extract<CaptureEntry, { kind: "run_started" }>).goal, null);
+  assert.equal((started as Extract<CaptureEntry, { kind: "run_started" }>).goal, "do the thing");
+  assert.equal((started as Extract<CaptureEntry, { kind: "run_started" }>).goal_source, "prompt");
+  assert.equal(t.runs.current()?.opened_by, "terminal:a");
+  assert.equal(t.runs.current()?.entries, 1);
   assert.equal(started.actor_identity.kind, "system");
   assert.equal(prompt.task_id, started.task_id);
   assert.ok((started.seq ?? 0) < (prompt.seq ?? 0));
@@ -171,8 +179,8 @@ test("the manager works inside the user's run, and ends only its own", () => {
   assert.throws(() => managerStartRun(t.runs, "terminal:m", "  "), { code: "invalid_goal" });
 
   t.runs.start("the user's task", "user");
-  assert.throws(() => managerStartRun(t.runs, "terminal:m", "mine"), { code: "run_open_by_user", status: 409 });
-  assert.throws(() => managerEndRun(t.runs, "terminal:m"), { code: "not_your_run", status: 403 });
+  assert.throws(() => managerStartRun(t.runs, "terminal:m", "mine"), { code: "task_owned_by_user", status: 409 });
+  assert.throws(() => managerEndRun(t.runs, "terminal:m"), { code: "not_your_task", status: 403 });
   t.runs.end("user");
 
   // An automatic run older than 10 minutes holds other work: replaced.
@@ -180,8 +188,8 @@ test("the manager works inside the user's run, and ends only its own", () => {
   t.advance(11 * 60_000);
   const started = managerStartRun(t.runs, "terminal:m", "research pricing");
   assert.equal(started.replaced, old.run_id);
-  assert.throws(() => managerEndRun(t.runs, "terminal:other"), { code: "not_your_run" });
-  assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: started.run.run_id });
+  assert.throws(() => managerEndRun(t.runs, "terminal:other"), { code: "not_your_task" });
+  assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: started.task.run_id });
   assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: null });
 });
 
@@ -194,17 +202,17 @@ test("a manager starting a run just after your instruction gives that run its go
   t.advance(2_000);
   const result = managerStartRun(t.runs, "terminal:m", "manager test");
   t.record({ kind: "spawn", node: "terminal:w", by: "terminal:m", parent: "terminal:m" });
-  assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: result.run.run_id });
+  assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: result.task.run_id });
 
   const entries = t.entries();
   assert.deepEqual(entries.map((e) => e.kind), ["run_started", "prompt", "run_named", "spawn", "run_ended"]);
   assert.equal(new Set(entries.map((e) => e.task_id)).size, 1, "one run from instruction to end");
   assert.equal(result.replaced, null);
-  assert.equal(result.run.goal, "manager test");
-  assert.equal(result.run.named_by, "terminal:m");
+  assert.equal(result.task.goal, "manager test");
+  assert.equal(result.task.named_by, "terminal:m");
   const named = entries[2] as Extract<CaptureEntry, { kind: "run_named" }>;
   assert.deepEqual(named.actor_identity, { kind: "agent", ref: "terminal:m" });
-  assert.equal(summarize(named), "run given its goal by terminal:m — manager test");
+  assert.equal(summarize(named), "task named by terminal:m — manager test");
   assert.deepEqual(t.changes.at(-2)?.goal, "manager test");
 });
 
@@ -217,10 +225,81 @@ test("run entries read as prose in the Activity list", () => {
   assert.deepEqual(
     t.entries().filter((e) => e.kind.startsWith("run_")).map(summarize),
     [
-      "run started — compare vendors",
-      "run ended: a new run started",
-      "run started by terminal:m",
-      "run ended after 30 idle minutes",
+      "task started — compare vendors",
+      "task ended: a new task started",
+      "task started by terminal:m",
+      "task ended after 30 quiet minutes",
     ],
   );
+});
+
+test("a task you name is yours: the manager can't take it over or end it", () => {
+  const t = setup();
+  t.record(userPrompt);
+  t.runs.rename("vendor research", "user");
+  assert.equal(t.runs.current()?.goal, "vendor research");
+  assert.equal(t.runs.current()?.goal_source, undefined);
+  assert.throws(() => managerStartRun(t.runs, "terminal:m", "other"), { code: "task_owned_by_user" });
+  assert.throws(() => managerEndRun(t.runs, "terminal:m"), { code: "not_your_task" });
+  assert.deepEqual(t.notices.at(-1), { kind: "refused", by: "terminal:m" });
+  const renamed = t.entries().find((e) => e.kind === "run_named")!;
+  assert.equal(summarize(renamed), "task renamed — vendor research");
+});
+
+test("Claude's session title replaces a name made from the prompt, and nothing else", () => {
+  const t = setup();
+  t.record({ ...userPrompt, text: "can you look at why the build is slow" });
+  // Another terminal's title isn't this task's.
+  t.runs.agentTitle("terminal:other", "Unrelated session");
+  assert.equal(t.runs.current()?.goal, "can you look at why the build is slow");
+  t.runs.agentTitle("terminal:a", "Investigate slow build");
+  assert.equal(t.runs.current()?.goal, "Investigate slow build");
+  assert.equal(t.runs.current()?.goal_source, "agent_title");
+  const named = t.entries().at(-1) as Extract<CaptureEntry, { kind: "run_named" }>;
+  assert.equal(named.goal_source, "agent_title");
+  assert.equal(named.by, "system");
+  assert.equal(summarize(named), "task named from the agent's session title — Investigate slow build");
+
+  // A later title doesn't override it, and the manager can still name it.
+  t.runs.agentTitle("terminal:a", "Something else");
+  assert.equal(t.runs.current()?.goal, "Investigate slow build");
+  managerStartRun(t.runs, "terminal:m", "speed up the build");
+  assert.equal(t.runs.current()?.goal, "speed up the build");
+  // Once someone has named it, a title doesn't change it.
+  t.runs.agentTitle("terminal:a", "Late title");
+  assert.equal(t.runs.current()?.goal, "speed up the build");
+});
+
+test("a title that arrives after the task is 10 minutes old is ignored", () => {
+  const t = setup();
+  t.record(userPrompt);
+  t.advance(11 * 60_000);
+  t.runs.agentTitle("terminal:a", "Too late");
+  assert.equal(t.runs.current()?.goal, "do the thing");
+});
+
+test("an automatic task's name is the prompt's first sentence, without pastes", () => {
+  assert.equal(runNameFromPrompt("Compare the three vendors. Then write it up."), "Compare the three vendors");
+  assert.equal(runNameFromPrompt("fix the login bug\nmore detail here"), "fix the login bug");
+  assert.equal(
+    runNameFromPrompt('<pasted_content id="a1">long brief</pasted_content id="a1">\n\nCall start_run with goal "x".'),
+    'Call start_run with goal "x"',
+  );
+  assert.equal(runNameFromPrompt('<pasted_content id="a1">only a paste</pasted_content id="a1">'), null);
+  assert.equal(runNameFromPrompt(null), null);
+  const long = runNameFromPrompt("please go through every one of the open pull requests and tell me which ones are ready");
+  assert.ok(long!.endsWith("…") && long!.length <= 61, long!);
+});
+
+test("the canvas is told what changed and by whom", () => {
+  const t = setup();
+  t.runs.start("a", "user");
+  t.runs.start("b", "terminal:m");
+  t.runs.end("terminal:m");
+  assert.deepEqual(t.notices, [
+    { kind: "started", by: "user" },
+    { kind: "ended", by: "terminal:m", reason: "superseded", goal: "a" },
+    { kind: "started", by: "terminal:m" },
+    { kind: "ended", by: "terminal:m", reason: "ended", goal: "b" },
+  ]);
 });

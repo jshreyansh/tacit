@@ -1975,3 +1975,14 @@ test("a Codex turn that ends on an error is reported as errored, and the next tu
   assert.deepEqual(eventsForTransition(retrying, done), [{ kind: "turn_completed" }]);
   service.dispose();
 });
+
+test("a session title is passed on as it arrives, and doesn't touch the turn", () => {
+  const titles: string[] = [];
+  const service = new TelemetryService({ processPollIntervalMs: 0, onSessionTitle: (id, title) => titles.push(`${id}:${title}`) });
+  service.registerTerminal({ terminalId: "t-claude", worktreePath: "/repo", provider: "claude" });
+  service.recordSessionTelemetry("t-claude", [{ event_type: "task_started", turn_state: "in_turn" }]);
+  service.recordSessionTelemetry("t-claude", [{ event_type: "session_title", title: "Investigate slow build" }]);
+  assert.deepEqual(titles, ["t-claude:Investigate slow build"]);
+  assert.equal(service.getTerminalSnapshot("t-claude")!.turn_state, "in_turn");
+  service.dispose();
+});
