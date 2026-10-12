@@ -226,7 +226,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Start a run for the task you're about to do (workspace manager only)",
       description:
-        "Marks the start of one task in Tacit's record, with a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the run, so this task can be compared with the next similar one. Call it when you begin a new task. If the user already started a run, the call is refused: your work is recorded inside theirs. A run with no goal that Tacit opened automatically is replaced by yours. Only the workspace manager can call this.",
+        "Marks the start of one task in Tacit's record, with a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the run, so this task can be compared with the next similar one. Call it when you begin a new task. If the user already started a run, the call is refused: your work is recorded inside theirs. If Tacit opened a run automatically in the last 10 minutes (usually for the instruction you're acting on), your goal is given to that run; an older one is replaced by yours. Only the workspace manager can call this.",
       inputSchema: {
         goal: z.string().describe("What this run is for, in one line, e.g. 'compare three vendors' pricing pages'"),
       },

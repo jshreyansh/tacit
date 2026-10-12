@@ -175,13 +175,37 @@ test("the manager works inside the user's run, and ends only its own", () => {
   assert.throws(() => managerEndRun(t.runs, "terminal:m"), { code: "not_your_run", status: 403 });
   t.runs.end("user");
 
-  // An automatic run is replaced; then the manager can end its own.
-  const auto = t.runs.start(null, "auto");
+  // An automatic run older than 10 minutes holds other work: replaced.
+  const old = t.runs.start(null, "auto");
+  t.advance(11 * 60_000);
   const started = managerStartRun(t.runs, "terminal:m", "research pricing");
-  assert.equal(started.replaced, auto.run_id);
+  assert.equal(started.replaced, old.run_id);
   assert.throws(() => managerEndRun(t.runs, "terminal:other"), { code: "not_your_run" });
   assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: started.run.run_id });
   assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: null });
+});
+
+// Hand test, 12 Oct: the instruction opened an automatic run, and the
+// manager's start_run two seconds later replaced it, leaving the instruction
+// in a run of its own.
+test("a manager starting a run just after your instruction gives that run its goal", () => {
+  const t = setup();
+  t.record({ ...userPrompt, text: 'Call start_run with goal "manager test"...' });
+  t.advance(2_000);
+  const result = managerStartRun(t.runs, "terminal:m", "manager test");
+  t.record({ kind: "spawn", node: "terminal:w", by: "terminal:m", parent: "terminal:m" });
+  assert.deepEqual(managerEndRun(t.runs, "terminal:m"), { ok: true, ended: result.run.run_id });
+
+  const entries = t.entries();
+  assert.deepEqual(entries.map((e) => e.kind), ["run_started", "prompt", "run_named", "spawn", "run_ended"]);
+  assert.equal(new Set(entries.map((e) => e.task_id)).size, 1, "one run from instruction to end");
+  assert.equal(result.replaced, null);
+  assert.equal(result.run.goal, "manager test");
+  assert.equal(result.run.named_by, "terminal:m");
+  const named = entries[2] as Extract<CaptureEntry, { kind: "run_named" }>;
+  assert.deepEqual(named.actor_identity, { kind: "agent", ref: "terminal:m" });
+  assert.equal(summarize(named), "run given its goal by terminal:m — manager test");
+  assert.deepEqual(t.changes.at(-2)?.goal, "manager test");
 });
 
 test("run entries read as prose in the Activity list", () => {

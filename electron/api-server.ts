@@ -63,7 +63,7 @@ interface ApiServerDeps {
   /** Worker state changes (T3.5); terminals feed it from telemetry. */
   nodeEvents: NodeEventLog;
   /** The open run (T4.1); see electron/run-tracker.ts. */
-  runs: Pick<RunTracker, "current" | "start" | "end">;
+  runs: Pick<RunTracker, "current" | "start" | "end" | "adoptRecentAuto">;
 }
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */

@@ -1973,7 +1973,7 @@ function setupIpc() {
   ipcMain.on("capture:record", (_event, entry: CaptureEvent) => {
     // Runs are written by the RunTracker alone, so a run's entries can't be
     // forged from the page; the canvas changes runs through run:start/end.
-    if (entry?.kind === "run_started" || entry?.kind === "run_ended") return;
+    if (entry?.kind === "run_started" || entry?.kind === "run_named" || entry?.kind === "run_ended") return;
     // A spawn arrives before the terminal's process starts; it names the
     // type, so this entry and the prompt right after it carry the harness.
     if (entry?.kind === "spawn" && typeof entry.node_type === "string" && entry.node.startsWith("terminal:")) {

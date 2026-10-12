@@ -203,6 +203,17 @@ export type CaptureEvent =
     }
   | {
       /**
+       * An automatic run was given its goal: the manager called start_run
+       * just after the prompt that opened it, so that prompt (the
+       * instruction) and the manager's work stay one run instead of two.
+       */
+      kind: "run_named";
+      run_id: string;
+      goal: string;
+      by: CaptureActor;
+    }
+  | {
+      /**
        * A run finished. `ended`: someone said so (`by`). `superseded`: a new
        * run started while it was open. `idle`: nothing was recorded and no
        * agent was working for 30 minutes; `idle_since` is the last activity,
@@ -321,6 +332,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "topology": return null;
     case "spawn_refused": return null;
     case "run_started":
+    case "run_named":
     case "run_ended": return null;
   }
 }
@@ -402,6 +414,8 @@ export interface RunInfo {
   goal: string | null;
   started_by: "user" | "auto" | CaptureNodeRef;
   started_at: string;
+  /** Who gave an automatic run its goal (`run_named`). */
+  named_by?: CaptureNodeRef;
 }
 
 /** Longest goal kept; a goal is a line, not a brief. */

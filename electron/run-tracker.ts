@@ -17,6 +17,12 @@ import { writeFileAtomically } from "./agent-launch";
  */
 
 export const RUN_IDLE_MS = 30 * 60_000;
+/**
+ * An automatic run younger than this is the manager's task when it calls
+ * start_run: the prompt that opened it is the instruction being acted on.
+ * An older one holds other work too, and is replaced instead.
+ */
+export const RUN_ADOPT_MS = 10 * 60_000;
 
 interface OpenRun extends RunInfo {
   last_activity_at: string;
@@ -73,8 +79,24 @@ export class RunTracker {
 
   current(): RunInfo | null {
     if (!this.run) return null;
-    const { run_id, goal, started_by, started_at } = this.run;
-    return { run_id, goal, started_by, started_at };
+    const { run_id, goal, started_by, started_at, named_by } = this.run;
+    return { run_id, goal, started_by, started_at, ...(named_by ? { named_by } : {}) };
+  }
+
+  /**
+   * Gives the open run a goal if it started automatically less than
+   * RUN_ADOPT_MS ago and has none yet. Null when it doesn't qualify.
+   */
+  adoptRecentAuto(goal: string, by: CaptureNodeRef): RunInfo | null {
+    const run = this.run;
+    if (!run || run.started_by !== "auto" || run.goal !== null) return null;
+    if (!(this.now().getTime() - Date.parse(run.started_at) < RUN_ADOPT_MS)) return null;
+    run.goal = goal.trim().slice(0, RUN_GOAL_MAX_LENGTH);
+    run.named_by = by;
+    this.options.write({ kind: "run_named", run_id: run.run_id, goal: run.goal, by }, this.now());
+    this.save();
+    this.options.onChange?.(this.current());
+    return this.current();
   }
 
   start(goal: string | null, startedBy: RunInfo["started_by"]): RunInfo {
@@ -110,7 +132,7 @@ export class RunTracker {
    * when the app starts (`by: "system"`).
    */
   taskIdFor(event: CaptureEvent): string | null {
-    if (event.kind === "run_started" || event.kind === "run_ended") return event.run_id;
+    if (event.kind === "run_started" || event.kind === "run_named" || event.kind === "run_ended") return event.run_id;
     if (!this.run && event.kind === "prompt" && !event.source) this.start(null, "auto");
     if (!this.run) return null;
     const housekeeping = event.kind === "topology" || (event.kind === "browser_action" && event.by === "system");
@@ -170,7 +192,7 @@ export class RunTracker {
   }
 }
 
-type ManagerRuns = Pick<RunTracker, "current" | "start" | "end">;
+type ManagerRuns = Pick<RunTracker, "current" | "start" | "end" | "adoptRecentAuto">;
 
 function fail(status: number, code: string, message: string): never {
   throw Object.assign(new Error(message), { status, code });
@@ -179,7 +201,9 @@ function fail(status: number, code: string, message: string): never {
 /**
  * The manager's start_run. A run the user started is theirs: the manager
  * works inside it rather than cutting it short with its own. An automatic
- * run, which has no goal, or one an agent started, is replaced.
+ * run opened in the last RUN_ADOPT_MS was opened by the instruction the
+ * manager is acting on, so it is given the goal; an older one, or one an
+ * agent started, is replaced.
  */
 export function managerStartRun(runs: ManagerRuns, manager: CaptureNodeRef, goal: unknown) {
   const text = typeof goal === "string" ? goal.trim() : "";
@@ -192,6 +216,8 @@ export function managerStartRun(runs: ManagerRuns, manager: CaptureNodeRef, goal
       `The user's run is open${open.goal ? ` ("${open.goal}")` : ""}; your work is recorded inside it. Don't start another.`,
     );
   }
+  const adopted = runs.adoptRecentAuto(text, manager);
+  if (adopted) return { ok: true, run: adopted, replaced: null };
   return { ok: true, run: runs.start(text, manager), replaced: open?.run_id ?? null };
 }
 
@@ -199,7 +225,7 @@ export function managerStartRun(runs: ManagerRuns, manager: CaptureNodeRef, goal
 export function managerEndRun(runs: ManagerRuns, manager: CaptureNodeRef) {
   const open = runs.current();
   if (!open) return { ok: true, ended: null };
-  if (open.started_by !== manager) {
+  if (open.started_by !== manager && open.named_by !== manager) {
     fail(
       403,
       "not_your_run",

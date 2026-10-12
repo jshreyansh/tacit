@@ -610,6 +610,7 @@ const KIND_TOKEN: Record<string, string> = {
   browser_action: "var(--cyan)",
   topology: "var(--text-faint)",
   run_started: "var(--green)",
+  run_named: "var(--green)",
   run_ended: "var(--green)",
 };
 

@@ -141,6 +141,7 @@ export const en = {
   run_end_title: "End this run",
   run_auto: "Run · started automatically",
   activity_kind_run_started: "run",
+  activity_kind_run_named: "run",
   activity_kind_run_ended: "run",
   activity_kind_worker_state: "worker",
   activity_kind_spawn_refused: "refused",

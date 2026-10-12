@@ -258,6 +258,8 @@ export function summarize(entry: CaptureEntry): string {
       return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_started":
       return `run started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
+    case "run_named":
+      return `run given its goal by ${entry.by} — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}`;
     case "run_ended":
       return `run ${RUN_END_WORDS[entry.reason]}${entry.reason === "ended" && entry.by !== "user" ? ` by ${entry.by}` : ""}`;
     case "topology":
@@ -285,6 +287,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "worker_state":
       return [entry.node];
     case "run_started":
+    case "run_named":
     case "run_ended":
     case "topology":
       return [];

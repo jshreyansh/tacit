@@ -139,6 +139,7 @@ export const zh = {
   run_end_title: "结束这个任务",
   run_auto: "任务 · 自动开始",
   activity_kind_run_started: "任务",
+  activity_kind_run_named: "任务",
   activity_kind_run_ended: "任务",
   activity_kind_worker_state: "工作者",
   activity_kind_spawn_refused: "拒绝",
