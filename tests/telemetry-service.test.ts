@@ -1986,3 +1986,15 @@ test("a session title is passed on as it arrives, and doesn't touch the turn", (
   assert.equal(service.getTerminalSnapshot("t-claude")!.turn_state, "in_turn");
   service.dispose();
 });
+
+test("a session title is passed on once, not each time Claude repeats it", () => {
+  const titles: string[] = [];
+  const service = new TelemetryService({ processPollIntervalMs: 0, onSessionTitle: (_id, title) => titles.push(title) });
+  service.registerTerminal({ terminalId: "t-claude", worktreePath: "/repo", provider: "claude" });
+  // Claude writes ai-title after every turn, unchanged; /rename writes a new one.
+  service.recordSessionTelemetry("t-claude", [{ event_type: "session_title", title: "Tacit workspace manager role" }]);
+  service.recordSessionTelemetry("t-claude", [{ event_type: "session_title", title: "Tacit workspace manager role" }]);
+  service.recordSessionTelemetry("t-claude", [{ event_type: "session_title", title: "Audit chip strings" }]);
+  assert.deepEqual(titles, ["Tacit workspace manager role", "Audit chip strings"]);
+  service.dispose();
+});

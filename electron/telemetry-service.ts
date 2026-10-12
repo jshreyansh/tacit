@@ -75,6 +75,8 @@ interface TerminalState {
   sessionWatchTimer: ReturnType<typeof setTimeout> | null;
   /** Replaying a newly attached session's history; see primeSessionFromTail. */
   priming: boolean;
+  /** The attached session's title as last seen; Claude repeats it every turn. */
+  sessionTitle: string | null;
   sessionOffset: number;
   shellPid: number | null;
   snapshot: TerminalTelemetrySnapshot;
@@ -778,6 +780,7 @@ export class TelemetryService {
     const state = this.ensureState(input.terminalId);
     const timestamp = input.at ?? isoNow(this.now);
     const firstAttach = !state.snapshot.session_attached;
+    if (state.snapshot.session_id !== input.sessionId) state.sessionTitle = null;
     state.snapshot.provider = input.provider;
     state.snapshot.session_attached = true;
     state.snapshot.session_attach_confidence = input.confidence;
@@ -859,6 +862,7 @@ export class TelemetryService {
     state.sessionFile = null;
     state.sessionOffset = 0;
     state.sessionRemainder = "";
+    state.sessionTitle = null;
     state.openCodeEventKeys.clear();
     state.activeToolCalls.clear();
     state.pendingPreToolUse = false;
@@ -889,10 +893,13 @@ export class TelemetryService {
   ): void {
     const state = this.ensureState(terminalId);
     for (const event of events) {
-      // A title says nothing about the turn. One replayed from an old
-      // session on attach isn't news either.
+      // A title says nothing about the turn. Only a new one is news: Claude
+      // writes the same title again after every turn, and one replayed from
+      // an old session on attach was already there.
       if (event.event_type === "session_title") {
-        if (event.title && !state.priming) this.onSessionTitle?.(terminalId, event.title);
+        if (!event.title || event.title === state.sessionTitle) continue;
+        state.sessionTitle = event.title;
+        if (!state.priming) this.onSessionTitle?.(terminalId, event.title);
         continue;
       }
       const timestamp = event.at ?? isoNow(this.now);
@@ -1623,6 +1630,7 @@ export class TelemetryService {
       sessionWatcher: null,
       sessionWatchTimer: null,
       priming: false,
+      sessionTitle: null,
       sessionOffset: 0,
       shellPid: registration?.shellPid ?? null,
       snapshot: buildBaseSnapshot(
