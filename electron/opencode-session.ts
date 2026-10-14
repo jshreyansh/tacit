@@ -555,3 +555,25 @@ export function checkOpenCodeTurnComplete(
   }
   return false;
 }
+
+/**
+ * One OpenCode session as JSON lines, oldest first: its messages and their
+ * parts, each with its row data parsed. OpenCode keeps sessions in its
+ * database rather than a file, so this is what a transcript copy holds.
+ * Null when the database can't be read.
+ */
+export function exportOpenCodeSession(dbPath: string, sessionId: string): string[] | null {
+  return withOpenCodeDb(dbPath, (db) => {
+    const messages = db
+      .prepare("SELECT id, time_created, time_updated, data FROM message WHERE session_id = ?")
+      .all(sessionId) as Array<{ id: string; time_created: number; time_updated: number; data: string }>;
+    const parts = db
+      .prepare("SELECT id, message_id, time_created, time_updated, data FROM part WHERE session_id = ?")
+      .all(sessionId) as Array<{ id: string; message_id: string; time_created: number; time_updated: number; data: string }>;
+    const rows = [
+      ...messages.map((row) => ({ type: "message", ...row })),
+      ...parts.map((row) => ({ type: "part", ...row })),
+    ].sort((a, b) => a.time_created - b.time_created || (a.type === b.type ? a.id.localeCompare(b.id) : a.type === "message" ? -1 : 1));
+    return rows.map(({ data, ...row }) => JSON.stringify({ ...row, data: safeParseObject(data) ?? data }));
+  });
+}

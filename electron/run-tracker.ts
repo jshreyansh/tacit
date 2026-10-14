@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { randomBytes } from "node:crypto";
-import type { CaptureActor, CaptureEvent, CaptureNodeRef, RunChange, RunGoalSource, RunInfo } from "../shared/capture";
-import { RUN_GOAL_MAX_LENGTH, runNameFromPrompt, runOwner } from "../shared/capture";
+import type { CaptureActor, CaptureEvent, CaptureNodeRef, RunChange, RunGoalSource, RunInfo, RunTranscript } from "../shared/capture";
+import { RUN_GOAL_MAX_LENGTH, runNameFromPrompt, runOwner, transcriptPath } from "../shared/capture";
 import { maskSecrets } from "../shared/secret-mask";
 import { writeFileAtomically } from "./agent-launch";
 
@@ -28,8 +28,19 @@ const BUSY_RECHECK_MS = 60_000;
  */
 export const RUN_ADOPT_MS = 10 * 60_000;
 
+/** An agent session a terminal ran while it worked in the run. */
+export interface RunSession {
+  node: CaptureNodeRef;
+  provider: string;
+  session_id: string;
+  /** Where the agent keeps it, when known; resolved again at the end if not. */
+  file: string | null;
+}
+
 interface OpenRun extends RunInfo {
   last_activity_at: string;
+  /** Kept with the run on disk, so a restart mid-run doesn't lose them. */
+  sessions?: RunSession[];
 }
 
 export interface RunTrackerOptions {
@@ -41,6 +52,10 @@ export interface RunTrackerOptions {
   isBusy: () => boolean;
   /** Told whenever the open run changes, and what changed, for the canvas. */
   onChange?: (run: RunInfo | null, change: RunChange | null) => void;
+  /** The agent session a terminal is running now, if Tacit knows it. */
+  sessionOf?: (node: CaptureNodeRef) => Omit<RunSession, "node"> | null;
+  /** Copies the transcripts of the sessions a run used, when it ends. */
+  keepTranscripts?: (sessions: RunSession[]) => void;
   now?: () => Date;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -83,7 +98,7 @@ export class RunTracker {
 
   current(): RunInfo | null {
     if (!this.run) return null;
-    const { last_activity_at: _last, ...info } = this.run;
+    const { last_activity_at: _last, sessions: _sessions, ...info } = this.run;
     return { ...info };
   }
 
@@ -173,10 +188,19 @@ export class RunTracker {
       this.start(runNameFromPrompt(event.text), "auto", { goalSource: "prompt", openedBy: event.actor });
     }
     if (!this.run) return null;
+    // A terminal already working in the run moved to another session
+    // (/clear, a resume): that one is the run's too.
+    if (event.kind === "session" && this.run.sessions?.some((s) => s.node === event.node)) {
+      this.addSession({ node: event.node, provider: event.provider, session_id: event.session_id, file: null });
+    }
     // A session link is written again for every terminal on each launch.
     const housekeeping =
       event.kind === "topology" || event.kind === "session" || (event.kind === "browser_action" && event.by === "system");
     if (!housekeeping) {
+      for (const node of terminalsIn(event)) {
+        const session = this.options.sessionOf?.(node);
+        if (session) this.addSession({ node, ...session });
+      }
       this.run.entries += 1;
       this.run.last_activity_at = this.now().toISOString();
       this.save();
@@ -189,6 +213,17 @@ export class RunTracker {
   dispose(): void {
     if (this.timer !== null) this.clearTimer(this.timer);
     this.timer = null;
+  }
+
+  private addSession(session: RunSession): void {
+    const run = this.run!;
+    const sessions = (run.sessions ??= []);
+    const known = sessions.find((s) => s.provider === session.provider && s.session_id === session.session_id);
+    if (known) {
+      if (!known.file && session.file) known.file = session.file;
+      return;
+    }
+    sessions.push(session);
   }
 
   private unnamedRecentAuto(): boolean {
@@ -239,11 +274,24 @@ export class RunTracker {
     if (!run) return;
     this.dispose();
     this.run = null;
+    const sessions = run.sessions ?? [];
+    const transcripts: RunTranscript[] = sessions.flatMap((s) => {
+      const where = transcriptPath(s.provider, s.session_id);
+      return where ? [{ node: s.node, provider: s.provider, session_id: s.session_id, path: where }] : [];
+    });
     this.options.write(
-      { kind: "run_ended", run_id: run.run_id, reason, by, ...(idleSince ? { idle_since: idleSince } : {}) },
+      {
+        kind: "run_ended",
+        run_id: run.run_id,
+        reason,
+        by,
+        ...(idleSince ? { idle_since: idleSince } : {}),
+        ...(transcripts.length ? { transcripts } : {}),
+      },
       this.now(),
     );
     this.save();
+    if (sessions.length) this.options.keepTranscripts?.(sessions);
     this.options.onChange?.(null, { kind: "ended", by, reason, goal: run.goal });
   }
 
@@ -261,6 +309,17 @@ export class RunTracker {
       console.warn("[RunTracker] couldn't save the open run:", error instanceof Error ? error.message : error);
     }
   }
+}
+
+/** The terminals an entry is about: who acted, on what, and from where. */
+function terminalsIn(event: CaptureEvent): CaptureNodeRef[] {
+  const refs = new Set<CaptureNodeRef>();
+  const fields = event as unknown as Record<string, unknown>;
+  for (const key of ["actor", "node", "by", "parent", "from", "to"]) {
+    const value = fields[key];
+    if (typeof value === "string" && value.startsWith("terminal:")) refs.add(value as CaptureNodeRef);
+  }
+  return [...refs];
 }
 
 type ManagerRuns = Pick<RunTracker, "current" | "start" | "end" | "adoptRecentAuto" | "refused">;

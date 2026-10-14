@@ -203,6 +203,7 @@ import { createRenderDiagnosticsLogger } from "./render-diagnostics";
 import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
 import { CaptureService, getCaptureDir } from "./capture-service";
+import { TranscriptKeeper } from "./transcript-keeper";
 import { RunTracker } from "./run-tracker";
 import {
   InjectedTextTracker,
@@ -394,7 +395,23 @@ const runTracker = new RunTracker({
   write: (event, now) => captureService.record(event, captureCanvasId, now, { method: "main" }),
   isBusy: () => telemetryService.anyTerminalRunning(),
   onChange: (run, change) => sendToWindow(mainWindow, "run:changed", { run, change }),
+  sessionOf: (node) => {
+    const snapshot = node.startsWith("terminal:") ? telemetryService.getTerminalSnapshot(node.slice("terminal:".length)) : null;
+    if (!snapshot?.session_id) return null;
+    return { provider: snapshot.provider, session_id: snapshot.session_id, file: snapshot.session_file ?? null };
+  },
+  keepTranscripts: (sessions) => {
+    void transcriptKeeper.keep(
+      sessions.map((s) => {
+        // A session found before its file was: the terminal may know it now.
+        const live = s.file ? null : telemetryService.getTerminalSnapshot(s.node.slice("terminal:".length));
+        const file = s.file ?? (live?.session_id === s.session_id ? live.session_file ?? null : null);
+        return { provider: s.provider, sessionId: s.session_id, sessionFile: file };
+      }),
+    );
+  },
 });
+const transcriptKeeper = new TranscriptKeeper(getCaptureDir(TACIT_DIR));
 const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
   harnessOf: (ref) => recordNodes.harnessOf(ref),
   taskIdFor: (event) => runTracker.taskIdFor(event),

@@ -233,6 +233,13 @@ export type CaptureEvent =
       reason: "ended" | "superseded" | "idle";
       by: CaptureActor;
       idle_since?: string;
+      /**
+       * The agent sessions that worked in the run, and where under the
+       * record their transcript copy is kept (SHR-115). The copy is
+       * refreshed each time a run that used the session ends, so it holds
+       * at least this run's part.
+       */
+      transcripts?: RunTranscript[];
     }
   | {
       /**
@@ -258,6 +265,28 @@ export type CaptureEvent =
     };
 
 export type CaptureKind = CaptureEvent["kind"];
+
+/** An agent session a run used, and its transcript copy. */
+export interface RunTranscript {
+  node: CaptureNodeRef;
+  provider: string;
+  session_id: string;
+  /** Relative to the record directory: `transcripts/<provider>/<session_id>.jsonl`. */
+  path: string;
+}
+
+/** Agents whose transcripts are copied: a text file, or OpenCode's database. */
+export const TRANSCRIPT_PROVIDERS: ReadonlySet<string> = new Set(["claude", "codex", "opencode"]);
+
+/**
+ * Where a session's transcript copy goes, relative to the record directory,
+ * or null when it can't be kept: an agent Tacit can't copy (Antigravity's
+ * are binary), or an id that isn't a plain name and so can't be a file name.
+ */
+export function transcriptPath(provider: string, sessionId: string): string | null {
+  if (!TRANSCRIPT_PROVIDERS.has(provider) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return null;
+  return `transcripts/${provider}/${sessionId}.jsonl`;
+}
 
 export type CaptureActorKind = "user" | "agent" | "app" | "harness" | "system";
 export type CaptureIntent = "observation" | "decision" | "correction";

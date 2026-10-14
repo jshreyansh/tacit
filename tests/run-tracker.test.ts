@@ -5,12 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { CaptureService } from "../electron/capture-service";
-import { RUN_IDLE_MS, RunTracker, managerEndRun, managerStartRun } from "../electron/run-tracker";
+import { RUN_IDLE_MS, RunTracker, managerEndRun, managerStartRun, type RunSession } from "../electron/run-tracker";
 import { summarize } from "../electron/recall-service";
 import { captureFileNameFor, runNameFromPrompt, type CaptureEntry, type RunChange, type RunInfo } from "../shared/capture";
 
 /** A RunTracker writing into a real record, on a clock and timers the test moves. */
-function setup(options: { busy?: () => boolean; statePath?: string; start?: number } = {}) {
+function setup(
+  options: { busy?: () => boolean; statePath?: string; start?: number; sessions?: Record<string, string>; kept?: RunSession[][] } = {},
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-run-"));
   const statePath = options.statePath ?? path.join(dir, "current-run.json");
   let now = options.start ?? Date.parse("2026-10-11T10:00:00.000Z");
@@ -26,6 +28,9 @@ function setup(options: { busy?: () => boolean; statePath?: string; start?: numb
       changes.push(run);
       if (change) notices.push(change);
     },
+    // `sessions` maps a terminal to the Claude session it runs.
+    sessionOf: (node) => (options.sessions?.[node] ? { provider: "claude", session_id: options.sessions[node], file: `/s/${options.sessions[node]}.jsonl` } : null),
+    keepTranscripts: (sessions) => options.kept?.push(sessions),
     now: () => new Date(now),
     setTimer: (fn, ms) => (timer = { fn, at: now + ms }),
     clearTimer: () => (timer = null),
@@ -346,4 +351,37 @@ test("a session link doesn't keep a run open", () => {
   assert.equal(t.entries().at(-1)?.task_id, run.run_id, "inside the run all the same");
   t.advance(60_000);
   assert.equal(t.runs.current(), null);
+});
+
+test("a run lists the sessions that worked in it, and has their transcripts kept when it ends", () => {
+  const kept: RunSession[][] = [];
+  const sessions: Record<string, string> = { "terminal:a": "s-a", "terminal:w": "s-w", "terminal:idle": "s-idle" };
+  const t = setup({ sessions, kept });
+  t.record(userPrompt); // terminal:a
+  t.record({ kind: "spawn", node: "terminal:w", by: "terminal:a", parent: "terminal:a" });
+  // A terminal that only had its session linked didn't work in the run.
+  t.record({ kind: "session", node: "terminal:idle", session_id: "s-idle", provider: "claude" });
+  // terminal:a ran /clear: its new session is the run's too.
+  t.record({ kind: "session", node: "terminal:a", session_id: "s-a2", provider: "claude" });
+  t.runs.end("user");
+
+  const ended = t.entries().at(-1) as Extract<CaptureEntry, { kind: "run_ended" }>;
+  assert.deepEqual(ended.transcripts, [
+    { node: "terminal:a", provider: "claude", session_id: "s-a", path: "transcripts/claude/s-a.jsonl" },
+    { node: "terminal:w", provider: "claude", session_id: "s-w", path: "transcripts/claude/s-w.jsonl" },
+    { node: "terminal:a", provider: "claude", session_id: "s-a2", path: "transcripts/claude/s-a2.jsonl" },
+  ]);
+  assert.deepEqual(kept[0].map((s) => `${s.session_id}:${s.file}`), ["s-a:/s/s-a.jsonl", "s-w:/s/s-w.jsonl", "s-a2:null"]);
+  assert.equal(t.runs.current(), null);
+});
+
+test("a run's sessions survive a restart", () => {
+  const kept: RunSession[][] = [];
+  const first = setup({ sessions: { "terminal:a": "s-a" } });
+  first.record(userPrompt);
+  first.runs.dispose();
+  const resumed = setup({ statePath: first.statePath, start: Date.parse("2026-10-11T10:02:00.000Z"), kept });
+  resumed.runs.restore();
+  resumed.runs.end("user");
+  assert.deepEqual(kept[0].map((s) => s.session_id), ["s-a"]);
 });
