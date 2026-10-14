@@ -319,6 +319,128 @@ function eventFromOpenCodePart(
   return [];
 }
 
+/**
+ * OpenCode 2.0 keeps a session as one ordered list of entries
+ * (`session_message`: user, assistant, idle, system) under `session_v2`, and
+ * copied older sessions there; the 1.x `message`/`part` tables stop
+ * changing. A database with the new tables is read from them.
+ */
+function isOpenCodeV2(db: SqliteDatabase): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'session_message'").get(),
+  );
+}
+
+function sessionTable(db: SqliteDatabase): string {
+  return isOpenCodeV2(db) ? "session_v2" : "session";
+}
+
+interface OpenCodeEntryRow {
+  id?: string;
+  type?: string;
+  seq?: number;
+  time_created?: number;
+  time_updated?: number;
+  data?: string;
+}
+
+/** One 2.0 entry's events, each with the key that marks it seen. */
+function eventsFromOpenCodeEntry(
+  row: OpenCodeEntryRow,
+  entry: Record<string, unknown>,
+): Array<{ key: string; events: NormalizedSessionTelemetryEvent[] }> {
+  const at = toIso(row.time_updated ?? row.time_created);
+  const id = row.id ?? "";
+  if (row.type === "user") {
+    const text = getString(entry.text) ?? "";
+    if (!text.trim()) return [];
+    // OpenCode has no prompt hook, so this is how the record gets the words.
+    // Attached files are kept apart from the typed text in 2.0.
+    return [{
+      key: `entry:${id}:user`,
+      events: [buildEvent({ at, event_type: "user_message", role: "user", turn_state: "in_turn", prompt_text: text })],
+    }];
+  }
+  if (row.type !== "assistant") return [];
+
+  const out: Array<{ key: string; events: NormalizedSessionTelemetryEvent[] }> = [];
+  const content = Array.isArray(entry.content) ? entry.content : [];
+  content.forEach((value, index) => {
+    const item = getObject(value);
+    if (!item) return;
+    const type = getString(item.type);
+    if (type === "reasoning") {
+      out.push({
+        key: `entry:${id}:${index}:reasoning`,
+        events: [buildEvent({ at, event_type: "reasoning", role: "assistant", turn_state: "thinking", meaningful_progress: true })],
+      });
+    } else if (type === "text" && textFromOpenCodePart(item).trim()) {
+      out.push({
+        key: `entry:${id}:${index}:text`,
+        events: [buildEvent({ at, event_type: "assistant_message", role: "assistant", turn_state: "in_turn", meaningful_progress: true })],
+      });
+    } else if (type === "tool") {
+      const status = getString(getObject(item.state)?.status);
+      const toolName = getString(item.name) ?? getString(item.tool) ?? "tool";
+      const callId = getString(item.id);
+      const key = `entry:${id}:${index}:tool:${status ?? ""}`;
+      if (status === "pending" || status === "running") {
+        out.push({
+          key,
+          events: [buildEvent({
+            at, event_type: "tool_use", event_subtype: status, role: "assistant", tool_name: toolName,
+            call_id: callId, lifecycle: "start", turn_state: "tool_running", meaningful_progress: true,
+          })],
+        });
+      } else if (status === "completed" || status === "error") {
+        out.push({
+          key,
+          events: [buildEvent({
+            at, event_type: "tool_result", event_subtype: status, role: "tool", tool_name: toolName,
+            call_id: callId, lifecycle: "end", turn_state: status === "error" ? "turn_aborted" : "in_turn",
+            meaningful_progress: true,
+          })],
+        });
+      }
+    }
+  });
+  // How the step ended, worked out as in 1.x from the error and finish.
+  const ending = eventFromOpenCodeMessage(row, { ...entry, role: "assistant" });
+  if (ending.length > 0) out.push({ key: `entry:${id}:end:${ending[0]?.event_type}`, events: ending });
+  return out;
+}
+
+function readOpenCodeEntries(
+  db: SqliteDatabase,
+  dbPath: string,
+  sessionId: string,
+  seenEventKeys: ReadonlySet<string>,
+): OpenCodeTelemetryRead {
+  const rows = (db
+    .prepare(
+      `
+      SELECT id, type, seq, time_created, time_updated, data
+      FROM session_message
+      WHERE session_id = ?
+      ORDER BY seq DESC
+      LIMIT ?
+    `,
+    )
+    .all(sessionId, OPEN_CODE_EVENT_LIMIT) as OpenCodeEntryRow[]).reverse();
+  const events: NormalizedSessionTelemetryEvent[] = [];
+  const eventKeys: string[] = [];
+  for (const row of rows) {
+    const entry = safeParseObject(row.data);
+    if (!row.id || !entry) continue;
+    for (const item of eventsFromOpenCodeEntry(row, entry)) {
+      if (seenEventKeys.has(item.key)) continue;
+      eventKeys.push(item.key);
+      events.push(...item.events);
+    }
+  }
+  return { events, eventKeys, firstUserPrompt: extractOpenCodeFirstUserPrompt(dbPath, sessionId) };
+}
+
 export function resolveOpenCodeSessionFile(
   sessionId: string,
   cwd: string,
@@ -330,7 +452,7 @@ export function resolveOpenCodeSessionFile(
       .prepare(
         `
         SELECT id, directory
-        FROM session
+        FROM ${sessionTable(db)}
         WHERE id = ?
         LIMIT 1
       `,
@@ -355,7 +477,7 @@ export function findBestOpenCodeSession(
       .prepare(
         `
         SELECT id, directory, time_created, time_updated
-        FROM session
+        FROM ${sessionTable(db)}
         WHERE directory = ?
         ORDER BY time_updated DESC
         LIMIT 32
@@ -417,6 +539,13 @@ export function extractOpenCodeFirstUserPrompt(
 ): string | undefined {
   return (
     withOpenCodeDb(dbPath, (db) => {
+      if (isOpenCodeV2(db)) {
+        const entry = db
+          .prepare("SELECT data FROM session_message WHERE session_id = ? AND type = 'user' ORDER BY seq ASC LIMIT 1")
+          .get(sessionId) as { data?: string } | undefined;
+        const text = getString(safeParseObject(entry?.data)?.text) ?? "";
+        return text.trim() ? collapseAndTruncate(text, FIRST_PROMPT_MAX_LENGTH) : undefined;
+      }
       const row = db
         .prepare(
           `
@@ -447,6 +576,7 @@ export function readOpenCodeSessionTelemetry(
 ): OpenCodeTelemetryRead {
   return (
     withOpenCodeDb(input.dbPath, (db) => {
+      if (isOpenCodeV2(db)) return readOpenCodeEntries(db, input.dbPath, input.sessionId, input.seenEventKeys);
       const messages = db
         .prepare(
           `
@@ -564,6 +694,12 @@ export function checkOpenCodeTurnComplete(
  */
 export function exportOpenCodeSession(dbPath: string, sessionId: string): string[] | null {
   return withOpenCodeDb(dbPath, (db) => {
+    if (isOpenCodeV2(db)) {
+      const entries = db
+        .prepare("SELECT id, type, seq, time_created, time_updated, data FROM session_message WHERE session_id = ? ORDER BY seq ASC")
+        .all(sessionId) as Array<{ id: string; type: string; seq: number; time_created: number; time_updated: number; data: string }>;
+      return entries.map(({ data, ...row }) => JSON.stringify({ ...row, data: safeParseObject(data) ?? data }));
+    }
     const messages = db
       .prepare("SELECT id, time_created, time_updated, data FROM message WHERE session_id = ?")
       .all(sessionId) as Array<{ id: string; time_created: number; time_updated: number; data: string }>;
