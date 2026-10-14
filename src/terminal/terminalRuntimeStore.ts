@@ -558,6 +558,23 @@ async function pollSessionId(
     }
   }
 
+  // OpenCode creates its session at the first message, however long after
+  // launch that is, so it is never given up on: once the quick checks are
+  // over, it looks again each time OpenCode writes to its database.
+  if (cliType === "opencode") {
+    while (!shouldCancel()) {
+      await window.tacit.session.waitForOpenCodeWrite();
+      if (shouldCancel()) return;
+      const candidate = await window.tacit.session.findOpenCode(worktreePath, startedAt);
+      if (shouldCancel()) return;
+      if (candidate?.sessionId) {
+        onFound({ sessionId: candidate.sessionId, confidence: candidate.confidence });
+        return;
+      }
+    }
+    return;
+  }
+
   return "timeout";
 }
 

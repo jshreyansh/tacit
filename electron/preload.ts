@@ -138,6 +138,8 @@ contextBridge.exposeInMainWorld("tacit", {
         filePath: string;
         confidence: "medium" | "weak";
       } | null>,
+    waitForOpenCodeWrite: () =>
+      ipcRenderer.invoke("session:wait-opencode-write") as Promise<void>,
     watch: (type: string, sessionId: string, cwd: string) =>
       ipcRenderer.invoke("session:watch", type, sessionId, cwd) as Promise<{
         ok: boolean;

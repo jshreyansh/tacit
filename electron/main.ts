@@ -232,6 +232,8 @@ import {
   readLatestCodexSessionId,
 } from "./session-discovery";
 import { AgentService, type AgentConfig } from "./agent-service";
+import { OpenCodeActivity } from "./opencode-activity";
+import { getOpenCodeDbPath } from "./opencode-session";
 import { SessionScanner } from "./session-scanner.ts";
 import { mergeAndDedupeSessions } from "./session-list.ts";
 import { buildPinRenderHtml } from "./pin-render-utils";
@@ -1270,6 +1272,14 @@ function setupIpc() {
       return findBestOpenCodeSession(cwd, startedAt);
     },
   );
+
+  // A terminal still looking for its OpenCode session waits for OpenCode's
+  // next database write; see electron/opencode-activity.ts.
+  const openCodeActivity = new OpenCodeActivity(getOpenCodeDbPath());
+  ipcMain.handle("session:wait-opencode-write", async (event) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+    await openCodeActivity.next();
+  });
 
   ipcMain.handle(
     "session:get-permission-mode",

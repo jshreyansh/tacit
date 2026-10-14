@@ -669,6 +669,12 @@ export interface TacitAPI {
       filePath: string;
       confidence: "medium" | "weak";
     } | null>;
+    /**
+     * Resolves at OpenCode's next database write, or after 30s. OpenCode has
+     * no hook and creates its session at the first message, so a terminal
+     * not yet linked to one waits on this before looking again.
+     */
+    waitForOpenCodeWrite: () => Promise<void>;
     watch: (
       type: string,
       sessionId: string,
