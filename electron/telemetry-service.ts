@@ -71,10 +71,14 @@ interface TerminalState {
   sessionReadInFlight: boolean;
   sessionRemainder: string;
   sessionWatcher: fs.FSWatcher | null;
+  /** OpenCode's -wal file, watched directly; see startSessionTracking. */
+  sessionWalWatcher: fs.FSWatcher | null;
   /** A watcher-triggered read waiting to run; see startSessionTracking. */
   sessionWatchTimer: ReturnType<typeof setTimeout> | null;
   /** Replaying a newly attached session's history; see primeSessionFromTail. */
   priming: boolean;
+  /** When Tacit started watching this terminal (ms). */
+  watchingSince: number;
   /** The attached session's title as last seen; Claude repeats it every turn. */
   sessionTitle: string | null;
   sessionOffset: number;
@@ -214,6 +218,11 @@ function shouldMarkClaudeNotificationAwaitingInput(
     message.includes("needs your permission") ||
     message.includes("requires your permission")
   );
+}
+
+function sentWhileWatching(at: string | undefined, watchingSince: number): boolean {
+  const ms = at ? new Date(at).getTime() : Number.NaN;
+  return Number.isFinite(ms) && ms >= watchingSince;
 }
 
 /** How long OpenCode database events are gathered before one read. */
@@ -954,8 +963,10 @@ export class TelemetryService {
         if (!state.priming) this.onSessionTitle?.(terminalId, event.title);
         continue;
       }
-      // One replayed on attach was typed before Tacit was looking.
-      if (event.prompt_text && !state.priming) {
+      // One replayed on attach was typed before Tacit was looking, unless
+      // it is newer than the terminal: OpenCode only creates a session when
+      // its first prompt is sent, so that prompt arrives in the replay.
+      if (event.prompt_text && (!state.priming || sentWhileWatching(event.at, state.watchingSince))) {
         this.onUserPrompt?.(terminalId, { text: event.prompt_text, sessionId: state.snapshot.session_id ?? null });
       }
       const timestamp = event.at ?? isoNow(this.now);
@@ -1692,8 +1703,10 @@ export class TelemetryService {
       sessionReadInFlight: false,
       sessionRemainder: "",
       sessionWatcher: null,
+      sessionWalWatcher: null,
       sessionWatchTimer: null,
       priming: false,
+      watchingSince: this.now(),
       sessionTitle: null,
       sessionOffset: 0,
       shellPid: registration?.shellPid ?? null,
@@ -1918,8 +1931,39 @@ export class TelemetryService {
     const read = () => {
       void this.readSessionDelta(state);
     };
+    // A database write arrives as a burst of events; one read covers it,
+    // and none can pile up faster than this.
+    const coalescedRead = () => {
+      if (state.sessionWatchTimer) return;
+      state.sessionWatchTimer = setTimeout(() => {
+        state.sessionWatchTimer = null;
+        read();
+      }, OPENCODE_WATCH_COALESCE_MS);
+    };
+    // OpenCode writes into the -wal file while it runs. On macOS a watch on
+    // the directory misses those writes (seen 14 Oct: about 30 writes during
+    // one reply, the directory watch fired only when OpenCode exited), so a
+    // prompt waited for the poll. A watch on the file itself sees each one.
+    // SQLite replaces the file now and then, which ends that watch; it is set
+    // up again then, and when the directory shows the file reappearing.
+    const walFile = `${state.sessionFile}-wal`;
+    const watchWal = () => {
+      state.sessionWalWatcher?.close();
+      state.sessionWalWatcher = null;
+      if (!state.sessionPollTimer) return; // Tracking stopped.
+      try {
+        state.sessionWalWatcher = fs.watch(walFile, (event) => {
+          if (event === "rename") watchWal();
+          coalescedRead();
+        });
+      } catch {
+        // No -wal file yet; the directory watch sets this up when it appears.
+      }
+    };
 
     state.sessionPollTimer = setInterval(read, this.sessionPollIntervalMs);
+    const openCodeAtStart = isOpenCodeProvider(state.snapshot.provider);
+    if (openCodeAtStart) watchWal();
     try {
       const directory = path.dirname(state.sessionFile);
       const basename = path.basename(state.sessionFile);
@@ -1934,6 +1978,7 @@ export class TelemetryService {
             // which touched -shm again: a loop that held Tacit's main process
             // at 100% CPU for as long as an OpenCode terminal was open.
             if (changed.endsWith("-shm")) return;
+            if (changed === path.basename(walFile) && !state.sessionWalWatcher) watchWal();
           } else if (changed !== basename) {
             return;
           }
@@ -1942,13 +1987,7 @@ export class TelemetryService {
           read();
           return;
         }
-        // A database write arrives as a burst of events; one read covers it,
-        // and none can pile up faster than this.
-        if (state.sessionWatchTimer) return;
-        state.sessionWatchTimer = setTimeout(() => {
-          state.sessionWatchTimer = null;
-          read();
-        }, OPENCODE_WATCH_COALESCE_MS);
+        coalescedRead();
       });
     } catch {
       state.sessionWatcher = null;
@@ -1962,6 +2001,8 @@ export class TelemetryService {
     }
     state.sessionWatcher?.close();
     state.sessionWatcher = null;
+    state.sessionWalWatcher?.close();
+    state.sessionWalWatcher = null;
     if (state.sessionWatchTimer) {
       clearTimeout(state.sessionWatchTimer);
       state.sessionWatchTimer = null;

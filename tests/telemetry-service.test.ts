@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import {
   SUBAGENT_ACTIVE_MS,
@@ -2049,6 +2049,75 @@ test("an OpenCode prompt typed after attach is passed on for the record; old and
     assert.deepEqual(prompts, ["terminal-1:ses_p:now fix the title"]);
   } finally {
     service.dispose();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("an OpenCode session's first prompt is passed on although it arrives with the attach", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-telemetry-opencode-first-"));
+  const sessionFile = path.join(tmpDir, "opencode.db");
+  writeOpenCodeSessionDb(sessionFile, { sessionId: "ses_old", prompt: "an older session" });
+  const prompts: string[] = [];
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    onUserPrompt: (id, { text, sessionId }) => prompts.push(`${id}:${sessionId}:${text}`),
+  });
+  try {
+    service.registerTerminal({ terminalId: "terminal-1", worktreePath: "/tmp/project", provider: "opencode" });
+    // OpenCode creates the session only when its first prompt is sent, so
+    // Tacit finds the session with that prompt already in it.
+    const db = new DatabaseSync(sessionFile);
+    const now = Date.now();
+    db.prepare("INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)")
+      .run("msg_first", "ses_new", now, now, JSON.stringify({ role: "user" }));
+    db.prepare("INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("prt_first", "msg_first", "ses_new", now, now, JSON.stringify({ type: "text", text: "the first prompt" }));
+    db.close();
+
+    service.attachSessionSource({ terminalId: "terminal-1", provider: "opencode", sessionId: "ses_new", confidence: "medium", sessionFile });
+    assert.deepEqual(prompts, ["terminal-1:ses_new:the first prompt"]);
+  } finally {
+    service.dispose();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("an OpenCode prompt is read as soon as OpenCode writes it, not at the next poll", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-telemetry-opencode-wal-"));
+  const sessionFile = path.join(tmpDir, "opencode.db");
+  writeOpenCodeSessionDb(sessionFile, { sessionId: "ses_w", prompt: "typed before Tacit looked" });
+  const prompts: string[] = [];
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    sessionPollIntervalMs: 60_000,
+    onUserPrompt: (_id, { text }) => prompts.push(text),
+  });
+  // OpenCode is another process holding the database open in WAL mode. On
+  // macOS a directory watch misses its writes into opencode.db-wal.
+  const writer = spawn(process.execPath, ["-e", `
+    const { DatabaseSync } = require("node:sqlite");
+    const db = new DatabaseSync(process.argv[1]);
+    // A running OpenCode has written already, so the -wal file exists.
+    db.exec("PRAGMA journal_mode=WAL; CREATE TABLE warmup (x); INSERT INTO warmup VALUES (1)");
+    setTimeout(() => {
+      const now = Date.now();
+      db.prepare("INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)")
+        .run("msg_user2", "ses_w", now, now, JSON.stringify({ role: "user" }));
+      db.prepare("INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("prt_user2", "msg_user2", "ses_w", now, now, JSON.stringify({ type: "text", text: "a new prompt" }));
+    }, 1500);
+    setTimeout(() => {}, 10000);
+  `, sessionFile], { stdio: "ignore" });
+  try {
+    service.registerTerminal({ terminalId: "terminal-1", worktreePath: "/tmp/project", provider: "opencode" });
+    service.attachSessionSource({ terminalId: "terminal-1", provider: "opencode", sessionId: "ses_w", confidence: "medium", sessionFile });
+
+    const deadline = Date.now() + 5_000;
+    while (prompts.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(prompts, ["a new prompt"]);
+  } finally {
+    service.dispose();
+    writer.kill();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
