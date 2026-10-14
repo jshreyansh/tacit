@@ -337,3 +337,13 @@ test("a secret in a prompt is masked in the record and in the context it names",
   assert.equal(prompt.kind === "prompt" && prompt.text, "Log in with password: [masked:password] and the OTP [masked:otp]");
   assert.ok(!fs.readFileSync(t.statePath, "utf-8").includes("hunter2"));
 });
+
+test("a session link doesn't keep a run open", () => {
+  const t = setup();
+  const run = t.runs.start("x", "user");
+  t.advance(4 * 60_000);
+  t.record({ kind: "session", node: "terminal:a", session_id: "s-1", provider: "claude" });
+  assert.equal(t.entries().at(-1)?.task_id, run.run_id, "inside the run all the same");
+  t.advance(60_000);
+  assert.equal(t.runs.current(), null);
+});

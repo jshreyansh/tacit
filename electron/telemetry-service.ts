@@ -424,6 +424,14 @@ export function deriveTelemetryTaskStatus(
   return { status: "unknown", source: "none" };
 }
 
+/** The agent session a terminal runs, and where the agent keeps it. */
+export interface SessionLink {
+  provider: TelemetryProvider;
+  sessionId: string;
+  /** Claude's and Codex's transcript file; OpenCode's database. */
+  sessionFile: string | null;
+}
+
 /** A background subagent that wrote within this long is still working. */
 export const SUBAGENT_ACTIVE_MS = 90_000;
 
@@ -603,6 +611,7 @@ export class TelemetryService {
   ) => void;
   private readonly onSessionTitle?: (terminalId: string, title: string) => void;
   private readonly onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
+  private readonly onSessionLinked?: (terminalId: string, session: SessionLink) => void;
 
   constructor(options?: {
     eventLimit?: number;
@@ -620,6 +629,8 @@ export class TelemetryService {
     onSessionTitle?: (terminalId: string, title: string) => void;
     /** A prompt read from the session store, for harnesses with no prompt hook. */
     onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
+    /** A terminal's agent session was found or changed, for the record. */
+    onSessionLinked?: (terminalId: string, session: SessionLink) => void;
   }) {
     this.eventLimit = options?.eventLimit ?? DEFAULT_EVENT_LIMIT;
     this.now = options?.now ?? Date.now;
@@ -634,6 +645,7 @@ export class TelemetryService {
     this.onSnapshotChanged = options?.onSnapshotChanged;
     this.onSessionTitle = options?.onSessionTitle;
     this.onUserPrompt = options?.onUserPrompt;
+    this.onSessionLinked = options?.onSessionLinked;
   }
 
   registerTerminal(input: RegisterTerminalInput): TerminalTelemetrySnapshot {
@@ -812,7 +824,8 @@ export class TelemetryService {
     const state = this.ensureState(input.terminalId);
     const timestamp = input.at ?? isoNow(this.now);
     const firstAttach = !state.snapshot.session_attached;
-    if (state.snapshot.session_id !== input.sessionId) state.sessionTitle = null;
+    const newSession = state.snapshot.session_id !== input.sessionId;
+    if (newSession) state.sessionTitle = null;
     state.snapshot.provider = input.provider;
     state.snapshot.session_attached = true;
     state.snapshot.session_attach_confidence = input.confidence;
@@ -839,6 +852,13 @@ export class TelemetryService {
       session_file: input.sessionFile ?? null,
     });
     this.updateDerivedStatus(state);
+    if (newSession && input.sessionId) {
+      this.onSessionLinked?.(input.terminalId, {
+        provider: input.provider,
+        sessionId: input.sessionId,
+        sessionFile: input.sessionFile ?? null,
+      });
+    }
   }
 
   attachSessionSource(input: SessionAttachInput): void {

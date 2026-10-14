@@ -225,7 +225,7 @@ export type CaptureEvent =
       /**
        * A run finished. `ended`: someone said so (`by`). `superseded`: a new
        * run started while it was open. `idle`: nothing was recorded and no
-       * agent was working for 30 minutes; `idle_since` is the last activity,
+       * agent was working for 5 minutes; `idle_since` is the last activity,
        * the real end of the work.
        */
       kind: "run_ended";
@@ -233,6 +233,21 @@ export type CaptureEvent =
       reason: "ended" | "superseded" | "idle";
       by: CaptureActor;
       idle_since?: string;
+    }
+  | {
+      /**
+       * Which agent session a terminal is running: written when Tacit finds
+       * it, when it changes (/clear, a resumed session), and once per launch
+       * for each terminal still open. The join from the record to the
+       * agent's own transcript, where its inner work (subagents included)
+       * is kept (SHR-115).
+       */
+      kind: "session";
+      node: CaptureNodeRef;
+      /** The agent's id for the session: Claude's and Codex's file name, OpenCode's ses_…. */
+      session_id: string;
+      /** The agent running it: claude, codex, opencode, antigravity. */
+      provider: string;
     }
   | {
       kind: "topology";
@@ -317,7 +332,7 @@ function eventActor(event: CaptureEvent): CaptureEntry["actor_identity"] {
     if (event.source === "agent") return { kind: "agent", ref: event.by ?? "system" };
     return { kind: "user", ref: "user" };
   }
-  if (event.kind === "topology" || event.kind === "worker_state") {
+  if (event.kind === "topology" || event.kind === "worker_state" || event.kind === "session") {
     return { kind: "system", ref: "system" };
   }
   const by = event.kind === "run_started"
@@ -334,7 +349,8 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "close":
     case "rename":
     case "browser_action":
-    case "worker_state": return event.node;
+    case "worker_state":
+    case "session": return event.node;
     case "manager": return event.node;
     case "wire":
     case "retype_wire":
@@ -349,7 +365,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
 
 function inferredIntent(event: CaptureEvent): CaptureIntent {
   if (event.kind === "prompt") return event.source ? "observation" : "decision";
-  if (event.kind === "topology" || event.kind === "worker_state") return "observation";
+  if (event.kind === "topology" || event.kind === "worker_state" || event.kind === "session") return "observation";
   if (event.kind === "run_started") return event.started_by === "user" ? "decision" : "observation";
   return event.by === "user" ? "decision" : "observation";
 }

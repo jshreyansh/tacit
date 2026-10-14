@@ -716,8 +716,11 @@ function TaskHeading({ group, openTaskId }: { group: TaskGroup; openTaskId: stri
   );
 }
 
-/** Run entries the heading already says; a rename stays, as it's news. */
-const SAID_BY_HEADING = new Set(["run_started", "run_ended"]);
+/**
+ * Run entries the heading already says (a rename stays, as it's news), and
+ * session links, which are for joining the record to transcripts.
+ */
+const SAID_BY_HEADING = new Set(["run_started", "run_ended", "session"]);
 
 function ActivityList({
   entries,

@@ -164,8 +164,8 @@ export class RunTracker {
    * Called for every entry about to be written; returns the run id to stamp
    * on it. A prompt the user typed with no run open starts one first, named
    * from the prompt, so the prompt is inside it. Activity is anything a
-   * person or an agent did: not a topology checkpoint, and not a browser
-   * tile reloading its page when the app starts (`by: "system"`).
+   * person or an agent did: not a topology checkpoint or a session link, and
+   * not a browser tile reloading its page when the app starts (`by: "system"`).
    */
   taskIdFor(event: CaptureEvent): string | null {
     if (event.kind === "run_started" || event.kind === "run_named" || event.kind === "run_ended") return event.run_id;
@@ -173,7 +173,9 @@ export class RunTracker {
       this.start(runNameFromPrompt(event.text), "auto", { goalSource: "prompt", openedBy: event.actor });
     }
     if (!this.run) return null;
-    const housekeeping = event.kind === "topology" || (event.kind === "browser_action" && event.by === "system");
+    // A session link is written again for every terminal on each launch.
+    const housekeeping =
+      event.kind === "topology" || event.kind === "session" || (event.kind === "browser_action" && event.by === "system");
     if (!housekeeping) {
       this.run.entries += 1;
       this.run.last_activity_at = this.now().toISOString();

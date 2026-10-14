@@ -2052,3 +2052,18 @@ test("an OpenCode prompt typed after attach is passed on for the record; old and
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("a terminal's session is reported when found and when it changes, not on every attach", () => {
+  const links: string[] = [];
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    onSessionLinked: (id, link) => links.push(`${id}:${link.provider}:${link.sessionId}`),
+  });
+  service.registerTerminal({ terminalId: "t1", worktreePath: "/repo", provider: "claude" });
+  service.recordSessionAttached({ terminalId: "t1", provider: "claude", sessionId: "s-1", confidence: "strong" });
+  service.recordSessionAttached({ terminalId: "t1", provider: "claude", sessionId: "s-1", confidence: "strong" });
+  // /clear starts a new session in the same terminal.
+  service.recordSessionAttached({ terminalId: "t1", provider: "claude", sessionId: "s-2", confidence: "strong" });
+  assert.deepEqual(links, ["t1:claude:s-1", "t1:claude:s-2"]);
+  service.dispose();
+});

@@ -272,6 +272,8 @@ export function summarize(entry: CaptureEntry): string {
       return `refused another ${entry.node_kind} for ${entry.by}: ${entry.open} of ${entry.limit} already open`;
     case "worker_state":
       return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
+    case "session":
+      return `${entry.node} is running ${entry.provider} session ${entry.session_id}`;
     case "run_started":
       return `task started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_named":
@@ -303,6 +305,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "spawn_refused":
       return entry.by === "user" || entry.by === "system" ? [] : [entry.by];
     case "worker_state":
+    case "session":
       return [entry.node];
     case "run_started":
     case "run_named":

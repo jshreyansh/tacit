@@ -341,6 +341,15 @@ const recordNodes = new RecordNodes();
 const telemetryService = new TelemetryService({
   // Claude's title for its session can name the task its first prompt opened.
   onSessionTitle: (terminalId, title) => runTracker.agentTitle(`terminal:${terminalId}`, title),
+  // Which agent session each terminal runs: the join to its transcript.
+  onSessionLinked: (terminalId, link) => {
+    captureService.record(
+      { kind: "session", node: `terminal:${terminalId}`, session_id: link.sessionId, provider: link.provider },
+      captureCanvasId,
+      new Date(),
+      { method: "main", sessionId: link.sessionId },
+    );
+  },
   // OpenCode has no prompt hook; its prompts are read from its database.
   onUserPrompt: (terminalId, { text, sessionId }) => {
     const source = typedPromptSource(terminalId, text);
