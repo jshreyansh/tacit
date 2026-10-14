@@ -69,6 +69,11 @@ export interface NormalizedSessionTelemetryEvent {
   error?: string;
   /** For `session_title`: the agent's own name for the session. */
   title?: string;
+  /**
+   * For `user_message`, where no hook reports the prompt (OpenCode): the
+   * words typed, for the record.
+   */
+  prompt_text?: string;
 }
 
 export interface TerminalTelemetrySnapshot {

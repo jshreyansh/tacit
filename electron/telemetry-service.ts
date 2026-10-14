@@ -602,6 +602,7 @@ export class TelemetryService {
     snapshot: TerminalTelemetrySnapshot,
   ) => void;
   private readonly onSessionTitle?: (terminalId: string, title: string) => void;
+  private readonly onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
 
   constructor(options?: {
     eventLimit?: number;
@@ -617,6 +618,8 @@ export class TelemetryService {
     ) => void;
     /** The agent titled its session (Claude's ai-title), as it happens. */
     onSessionTitle?: (terminalId: string, title: string) => void;
+    /** A prompt read from the session store, for harnesses with no prompt hook. */
+    onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
   }) {
     this.eventLimit = options?.eventLimit ?? DEFAULT_EVENT_LIMIT;
     this.now = options?.now ?? Date.now;
@@ -630,6 +633,7 @@ export class TelemetryService {
       options?.sessionHeartbeatMs ?? DEFAULT_SESSION_HEARTBEAT_MS;
     this.onSnapshotChanged = options?.onSnapshotChanged;
     this.onSessionTitle = options?.onSessionTitle;
+    this.onUserPrompt = options?.onUserPrompt;
   }
 
   registerTerminal(input: RegisterTerminalInput): TerminalTelemetrySnapshot {
@@ -929,6 +933,10 @@ export class TelemetryService {
         state.sessionTitle = event.title;
         if (!state.priming) this.onSessionTitle?.(terminalId, event.title);
         continue;
+      }
+      // One replayed on attach was typed before Tacit was looking.
+      if (event.prompt_text && !state.priming) {
+        this.onUserPrompt?.(terminalId, { text: event.prompt_text, sessionId: state.snapshot.session_id ?? null });
       }
       const timestamp = event.at ?? isoNow(this.now);
       const eventAtMs = new Date(timestamp).getTime();

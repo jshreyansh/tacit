@@ -247,7 +247,8 @@ export type CaptureKind = CaptureEvent["kind"];
 export type CaptureActorKind = "user" | "agent" | "app" | "harness" | "system";
 export type CaptureIntent = "observation" | "decision" | "correction";
 export type CapturePrivacyScope = "workspace" | "private" | "redacted";
-export type CaptureMethod = "hook" | "renderer" | "main" | "migration";
+/** `session`: read from the agent's own session store (OpenCode's database). */
+export type CaptureMethod = "hook" | "renderer" | "main" | "migration" | "session";
 
 export interface CaptureReference {
   /** Stable URI or local identifier; content is referenced, not copied. */

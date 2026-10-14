@@ -2020,3 +2020,35 @@ test("a Claude background subagent that wrote recently counts as working", () =>
   assert.equal(claudeSubagentActive(sessionFile, now), false, "finished a while ago");
   assert.equal(claudeSubagentActive(undefined, now), false);
 });
+
+test("an OpenCode prompt typed after attach is passed on for the record; old and synthetic ones aren't", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-telemetry-opencode-prompt-"));
+  const sessionFile = path.join(tmpDir, "opencode.db");
+  writeOpenCodeSessionDb(sessionFile, { sessionId: "ses_p", prompt: "typed before Tacit looked" });
+  const prompts: string[] = [];
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    sessionPollIntervalMs: 10,
+    onUserPrompt: (id, { text, sessionId }) => prompts.push(`${id}:${sessionId}:${text}`),
+  });
+  try {
+    service.registerTerminal({ terminalId: "terminal-1", worktreePath: "/tmp/project", provider: "opencode" });
+    service.attachSessionSource({ terminalId: "terminal-1", provider: "opencode", sessionId: "ses_p", confidence: "medium", sessionFile });
+    assert.deepEqual(prompts, [], "replayed on attach: typed before Tacit was looking");
+
+    const db = new DatabaseSync(sessionFile);
+    const now = Date.now();
+    const insertMessage = db.prepare("INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)");
+    const insertPart = db.prepare("INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)");
+    insertMessage.run("msg_user2", "ses_p", now, now, JSON.stringify({ role: "user" }));
+    insertPart.run("prt_user2", "msg_user2", "ses_p", now + 1, now + 1, JSON.stringify({ type: "text", text: "now fix the title" }));
+    insertPart.run("prt_file", "msg_user2", "ses_p", now + 2, now + 2, JSON.stringify({ type: "text", text: "<file contents>", synthetic: true }));
+    db.close();
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.deepEqual(prompts, ["terminal-1:ses_p:now fix the title"]);
+  } finally {
+    service.dispose();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

@@ -220,6 +220,10 @@ function eventFromOpenCodePart(
         event_type: "user_message",
         role: "user",
         turn_state: "in_turn",
+        // OpenCode has no prompt hook, so this is how the record gets the
+        // words. A synthetic part is OpenCode's own (a file it attached), not
+        // something typed.
+        ...(part.synthetic === true ? {} : { prompt_text: textFromOpenCodePart(part) }),
       }),
     ];
   }

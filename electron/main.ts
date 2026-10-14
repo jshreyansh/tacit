@@ -341,6 +341,23 @@ const recordNodes = new RecordNodes();
 const telemetryService = new TelemetryService({
   // Claude's title for its session can name the task its first prompt opened.
   onSessionTitle: (terminalId, title) => runTracker.agentTitle(`terminal:${terminalId}`, title),
+  // OpenCode has no prompt hook; its prompts are read from its database.
+  onUserPrompt: (terminalId, { text, sessionId }) => {
+    const source = typedPromptSource(terminalId, text);
+    if (!source) return;
+    captureService.record(
+      {
+        kind: "prompt",
+        actor: `terminal:${terminalId}`,
+        session: sessionId,
+        text,
+        ...(source === "user" ? {} : { source }),
+      },
+      captureCanvasId,
+      new Date(),
+      { method: "session", sessionId },
+    );
+  },
   onSnapshotChanged: (terminalId, snapshot) => {
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
     for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
@@ -409,6 +426,22 @@ let desktopApiPort: number | null = null;
  */
 let captureCanvasId: string | null = null;
 
+/**
+ * Who wrote a prompt that reached a terminal, or null when an agent sent it
+ * through the bridge and it was recorded then. Three possible authors, only
+ * one of which is evidence of judgement. App injections are matched exactly
+ * against what we just wrote; harness wrappers on their machine-only shape.
+ */
+function typedPromptSource(terminalId: string, text: string): CaptureTextSource | null {
+  if (agentSentText.claim(terminalId, text)) return null;
+  if (injectedText.claim(terminalId, text)) return "app";
+  // A new manager gets the briefing as its launch prompt, not typed in, so
+  // nothing noted it; it is still the app speaking.
+  if (isWorkspaceManagerBriefing(text)) return "app";
+  if (detectHarnessText(text)) return "harness";
+  return "user";
+}
+
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
 
@@ -429,18 +462,8 @@ const hookReceiver = new HookReceiver((event) => {
   if (event.hook_event_name === "UserPromptSubmit") {
     const prompt = (event as { prompt?: unknown }).prompt;
     const hasText = typeof prompt === "string";
-    if (hasText && agentSentText.claim(event.terminal_id, prompt)) return;
-    // Three possible authors, only one of which is evidence of judgement.
-    // App injections are matched exactly against what we just wrote; harness
-    // wrappers are matched on their machine-only shape.
-    let source: CaptureTextSource = "user";
-    if (hasText) {
-      if (injectedText.claim(event.terminal_id, prompt)) source = "app";
-      // A new manager gets the briefing as its launch prompt, not typed in,
-      // so nothing noted it; it is still the app speaking.
-      else if (isWorkspaceManagerBriefing(prompt)) source = "app";
-      else if (detectHarnessText(prompt)) source = "harness";
-    }
+    const source: CaptureTextSource | null = hasText ? typedPromptSource(event.terminal_id, prompt) : "user";
+    if (!source) return;
     captureService.record(
       {
         kind: "prompt",
