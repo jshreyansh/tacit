@@ -12,12 +12,14 @@ import { writeFileAtomically } from "./agent-launch";
  * The person sees a run as a "task" being recorded. Runs start explicitly
  * (the title-bar control, the manager's start_task) or, if nobody did, on
  * the user's first prompt with no run open, named from that prompt. They end on
- * command, when a new one starts, or after IDLE_MS with nothing recorded and
- * no agent working. The open run is kept on disk so a restart mid-task, which
+ * command, when a new one starts, or after RUN_IDLE_MS with nothing recorded
+ * and no agent working: the person shouldn't have to remember to end one. The open run is kept on disk so a restart mid-task, which
  * happens often, doesn't split it in two.
  */
 
-export const RUN_IDLE_MS = 30 * 60_000;
+export const RUN_IDLE_MS = 10 * 60_000;
+/** How often a run with an agent mid-turn looks again for the turn's end. */
+const BUSY_RECHECK_MS = 60_000;
 /**
  * An automatic run younger than this is the manager's task when it calls
  * start_task, and can take the agent's session title: the prompt that opened it is the instruction being acted on.
@@ -213,11 +215,17 @@ export class RunTracker {
     this.timer = null;
     if (!this.run) return;
     // An agent working without writing anything (a long turn) is still the
-    // run going on; look again later rather than end it under the agent.
+    // run going on. The quiet time counts from when the turn ends, so look
+    // again soon rather than a whole RUN_IDLE_MS later.
     if (this.options.isBusy()) {
       this.run.last_activity_at = this.now().toISOString();
       this.save();
-      this.schedule(RUN_IDLE_MS);
+      this.schedule(BUSY_RECHECK_MS);
+      return;
+    }
+    const quietMs = this.now().getTime() - Date.parse(this.run.last_activity_at);
+    if (quietMs < RUN_IDLE_MS) {
+      this.schedule(RUN_IDLE_MS - quietMs);
       return;
     }
     this.finish("idle", "system", this.run.last_activity_at);
@@ -293,7 +301,7 @@ export function managerEndRun(runs: ManagerRuns, manager: CaptureNodeRef) {
       "not_your_task",
       owner === "user"
         ? "The user is recording this task; only they can end it."
-        : "You didn't start this task. It ends by itself after 30 idle minutes.",
+        : "You didn't start this task. It ends by itself after 10 quiet minutes.",
     );
   }
   runs.end(manager);
