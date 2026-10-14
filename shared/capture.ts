@@ -257,6 +257,30 @@ export type CaptureEvent =
       provider: string;
     }
   | {
+      /**
+       * An agent wrote to shared memory: the workspace journal
+       * (`log_activity`, the manager's notes for whoever holds the role next)
+       * or a project's memory (`remember`). Who wrote it and whether web
+       * content could have shaped it, kept because it can't be worked out
+       * later (SHR-63). The note's text stays in its file.
+       */
+      kind: "journal_write";
+      by: CaptureNodeRef;
+      tool: "log_activity" | "remember";
+      scope: "workspace" | "project";
+      /** The note's title: log_activity's `event`, remember's `name`. */
+      title: string;
+      /** The note's file name in its memory directory. */
+      file: string;
+      /** The agent session the writer was running, when known. */
+      session: string | null;
+      /** A web read in the writer's current turn, before this write. */
+      tainted: boolean;
+      taint_sources: WebRead[];
+      /** The writer's latest web read in any turn. */
+      last_web_read_at: string | null;
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -286,6 +310,18 @@ export const TRANSCRIPT_PROVIDERS: ReadonlySet<string> = new Set(["claude", "cod
 export function transcriptPath(provider: string, sessionId: string): string | null {
   if (!TRANSCRIPT_PROVIDERS.has(provider) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return null;
   return `transcripts/${provider}/${sessionId}.jsonl`;
+}
+
+/** Web content reaching an agent, for a journal write's taint (SHR-63). */
+export interface WebRead {
+  /** A Tacit browser tile the agent drove, or one of the agent's own tools. */
+  kind: "browser" | "tool";
+  /** The browser node, or the tool's name (WebFetch, mcp__…). */
+  source: string;
+  /** For a browser tile: read, eval or navigate. */
+  action?: string;
+  url?: string;
+  at: string;
 }
 
 export type CaptureActorKind = "user" | "agent" | "app" | "harness" | "system";
@@ -380,6 +416,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "browser_action":
     case "worker_state":
     case "session": return event.node;
+    case "journal_write": return event.by;
     case "manager": return event.node;
     case "wire":
     case "retype_wire":
@@ -413,7 +450,7 @@ export function normalizeCaptureEntry(
     at,
     canvas,
     task_id: null,
-    session_id: captureEvent.kind === "prompt" ? captureEvent.session : null,
+    session_id: captureEvent.kind === "prompt" || captureEvent.kind === "journal_write" ? captureEvent.session : null,
     actor_identity: eventActor(captureEvent),
     node_ref: eventNode(captureEvent),
     input_refs: [],
@@ -440,7 +477,7 @@ export function buildCaptureEnvelope(
     canvas,
     task_id: context.taskId ?? null,
     session_id:
-      context.sessionId ?? (event.kind === "prompt" ? event.session : null),
+      context.sessionId ?? (event.kind === "prompt" || event.kind === "journal_write" ? event.session : null),
     actor_identity: eventActor(event),
     node_ref: eventNode(event),
     input_refs: context.inputRefs ?? [],

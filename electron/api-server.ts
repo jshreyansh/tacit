@@ -36,6 +36,8 @@ import { WorkerAdmission } from "./worker-admission";
 import type { NodeEventLog } from "./node-events";
 import { holdConnectionOpen, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "./node-wait";
 import type { CaptureEvent, CaptureNodeRef } from "../shared/capture";
+import type { WebReadTracker } from "./web-read-tracker";
+import { journalWriteEvent, writeJournalEntry, writeProjectNote, type JournalProvenance } from "./memory-notes";
 import type { WorkerCaps } from "../shared/worker-cap";
 
 interface ApiServerDeps {
@@ -64,6 +66,10 @@ interface ApiServerDeps {
   nodeEvents: NodeEventLog;
   /** The open run (T4.1); see electron/run-tracker.ts. */
   runs: Pick<RunTracker, "current" | "start" | "end" | "adoptRecentAuto" | "refused">;
+  /** Which terminals read web content, for journal writes (SHR-63). */
+  webReads: Pick<WebReadTracker, "provenance">;
+  /** Which agent a node runs; the record's `harness`. */
+  harnessOf: (ref: string) => string | null;
 }
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
@@ -1278,13 +1284,15 @@ export class ApiServer {
     const memoryDir = getMemoryDirForWorktree(worktreePath);
     fs.mkdirSync(memoryDir, { recursive: true });
 
-    const slug = slugify(name);
-    const fileName = `${noteType}_${slug}.md`;
-    const filePath = path.join(memoryDir, fileName);
-    const content = `---\nname: ${slug}\ndescription: ${description}\ntype: ${noteType}\n---\n\n${noteBody}\n`;
-    fs.writeFileSync(filePath, content, "utf-8");
-
-    updateMemoryIndex(memoryDir, fileName, description);
+    const provenance = this.journalProvenance(terminalId);
+    const { filePath, fileName } = writeProjectNote(
+      memoryDir,
+      { name, description, type: noteType, body: noteBody },
+      provenance,
+    );
+    this.deps.recordDecision(
+      journalWriteEvent(provenance, { tool: "remember", scope: "project", title: name, file: fileName }),
+    );
 
     return { ok: true, filePath };
   }
@@ -1669,49 +1677,31 @@ export class ApiServer {
     const memoryDir = getMemoryDirForWorkspace(canvasId);
     fs.mkdirSync(memoryDir, { recursive: true });
 
-    const timestamp = new Date();
-    const fileName = `activity_${timestamp.toISOString().replace(/[:.]/g, "-")}_${randomUUID().slice(0, 8)}.md`;
-    const filePath = path.join(memoryDir, fileName);
-    const slug = slugify(event);
-    const content = `---\nname: ${slug}\ndescription: ${event}\ntype: project\n---\n\n${detail}\n`;
-    fs.writeFileSync(filePath, content, "utf-8");
-
-    updateMemoryIndex(memoryDir, fileName, event);
+    const provenance = this.journalProvenance(terminalId);
+    const { filePath, fileName } = writeJournalEntry(memoryDir, { event, detail }, provenance);
+    this.deps.recordDecision(
+      journalWriteEvent(provenance, { tool: "log_activity", scope: "workspace", title: event, file: fileName }),
+    );
 
     return { ok: true, filePath };
   }
-}
 
-/** Lowercase, filesystem-safe slug — `name` is LLM-supplied and becomes a
- * filename, so this also closes off path traversal. */
-function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug || "note";
-}
-
-/** Appends (or, if already present, replaces in place) the index line for
- * `fileName` in this memory directory's MEMORY.md, so re-calling remember
- * with the same name updates the index instead of duplicating it. */
-function updateMemoryIndex(memoryDir: string, fileName: string, description: string): void {
-  const indexPath = path.join(memoryDir, "MEMORY.md");
-  const line = `- [${description}](${fileName})`;
-  let existing = "";
-  try {
-    existing = fs.readFileSync(indexPath, "utf-8");
-  } catch {
-    existing = "# Memory Index\n";
+  /**
+   * Who is writing a shared note, and whether web content reached them first
+   * (SHR-63): stamped on the note and recorded, as it can't be worked out
+   * later. Nothing acts on `tainted` yet; T7 will.
+   */
+  private journalProvenance(terminalId: string): JournalProvenance {
+    const node = `terminal:${terminalId}` as const;
+    const snapshot = this.deps.telemetryService.getTerminalSnapshot(terminalId);
+    return {
+      node,
+      harness: this.deps.harnessOf(node) ?? snapshot?.provider ?? null,
+      session: snapshot?.session_id ?? null,
+      context: this.deps.runs.current()?.run_id ?? null,
+      ...this.deps.webReads.provenance(terminalId),
+    };
   }
-
-  const linkPattern = new RegExp(`^-\\s*\\[.*\\]\\(${fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\).*$`, "m");
-  const next = linkPattern.test(existing)
-    ? existing.replace(linkPattern, line)
-    : `${existing.trimEnd()}\n${line}\n`;
-
-  fs.writeFileSync(indexPath, next, "utf-8");
 }
 
 function requireRepoQuery(url: URL): string {

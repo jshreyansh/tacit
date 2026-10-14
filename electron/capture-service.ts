@@ -48,6 +48,8 @@ export class CaptureService {
   private readonly lastWritten = new Map<string, string>();
   /** The open run's id for an entry, its `task_id` (electron/run-tracker.ts). */
   private readonly taskIdFor: (event: CaptureEvent) => string | null;
+  /** Sees each entry as it's built, whether or not the write lands. */
+  private readonly onRecorded: (entry: CaptureEntry) => void;
 
   constructor(
     dirPath: string,
@@ -55,12 +57,14 @@ export class CaptureService {
     options: {
       harnessOf?: (ref: string) => string | null;
       taskIdFor?: (event: CaptureEvent) => string | null;
+      onRecorded?: (entry: CaptureEntry) => void;
     } = {},
   ) {
     this.dirPath = dirPath;
     this.maxFileBytes = maxFileBytes;
     this.harnessOf = options.harnessOf ?? (() => null);
     this.taskIdFor = options.taskIdFor ?? (() => null);
+    this.onRecorded = options.onRecorded ?? (() => {});
   }
 
   getHealth(): CaptureHealth {
@@ -92,6 +96,7 @@ export class CaptureService {
       // run_started is written first.
       const taskId = context.taskId ?? this.taskIdFor(event);
       const entry = this.buildEntry(event, canvasId, now, { ...context, taskId });
+      this.onRecorded(entry);
       const fileName = captureFileNameFor(now);
       const filePath = path.join(this.dirPath, fileName);
 
@@ -210,6 +215,14 @@ function maskEventSecrets(event: CaptureEvent): CaptureEvent {
   if ((event.kind === "run_started" || event.kind === "run_named") && typeof event.goal === "string") {
     const goal = maskSecrets(event.goal);
     return goal === event.goal ? event : { ...event, goal };
+  }
+  if (event.kind === "journal_write") {
+    // A URL can carry a token in its query string.
+    return {
+      ...event,
+      title: maskSecrets(event.title),
+      taint_sources: event.taint_sources.map((read) => (read.url ? { ...read, url: maskSecrets(read.url) } : read)),
+    };
   }
   return event;
 }

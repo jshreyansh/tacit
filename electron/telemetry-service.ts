@@ -620,6 +620,7 @@ export class TelemetryService {
   ) => void;
   private readonly onSessionTitle?: (terminalId: string, title: string) => void;
   private readonly onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
+  private readonly onToolUse?: (terminalId: string, tool: string, at: string) => void;
   private readonly onSessionLinked?: (terminalId: string, session: SessionLink) => void;
 
   constructor(options?: {
@@ -638,6 +639,8 @@ export class TelemetryService {
     onSessionTitle?: (terminalId: string, title: string) => void;
     /** A prompt read from the session store, for harnesses with no prompt hook. */
     onUserPrompt?: (terminalId: string, prompt: { text: string; sessionId: string | null }) => void;
+    /** An agent started (or, seen only afterwards, ran) a tool; not called while priming. */
+    onToolUse?: (terminalId: string, tool: string, at: string) => void;
     /** A terminal's agent session was found or changed, for the record. */
     onSessionLinked?: (terminalId: string, session: SessionLink) => void;
   }) {
@@ -654,6 +657,7 @@ export class TelemetryService {
     this.onSnapshotChanged = options?.onSnapshotChanged;
     this.onSessionTitle = options?.onSessionTitle;
     this.onUserPrompt = options?.onUserPrompt;
+    this.onToolUse = options?.onToolUse;
     this.onSessionLinked = options?.onSessionLinked;
   }
 
@@ -975,6 +979,11 @@ export class TelemetryService {
       state.snapshot.last_session_event_at = timestamp;
       state.snapshot.last_session_event_kind = event.event_type;
 
+      // Any event naming a tool: one that ran between two reads of the
+      // session shows only its end, and Codex's web search has no start.
+      if (event.tool_name && !state.priming) {
+        this.onToolUse?.(terminalId, event.tool_name, timestamp);
+      }
       if (event.call_id && event.lifecycle) {
         state.snapshot.last_tool_event_at = timestamp;
         if (event.lifecycle === "start") {
@@ -1499,6 +1508,7 @@ export class TelemetryService {
         state.snapshot.last_meaningful_progress_at = at;
         state.snapshot.foreground_tool = event.tool_name as string | undefined;
         state.lastHookToolAt = this.now();
+        if (typeof event.tool_name === "string" && event.tool_name) this.onToolUse?.(terminalId, event.tool_name, at);
         // Provider-specific fallback timer. For Claude Code the primary
         // signal is the Notification hook (see below); for Codex there is
         // no approval hook, so the timer is the heuristic we rely on.
@@ -1673,6 +1683,10 @@ export class TelemetryService {
     for (const state of this.terminals.values()) {
       this.stopProcessPolling(state);
       this.stopSessionTracking(state);
+      if (state.awaitingInputTimer) {
+        clearTimeout(state.awaitingInputTimer);
+        state.awaitingInputTimer = null;
+      }
     }
   }
 

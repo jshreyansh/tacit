@@ -208,6 +208,7 @@ import { RunTracker } from "./run-tracker";
 import {
   InjectedTextTracker,
   detectHarnessText,
+  type CaptureEntry,
   type CaptureEvent,
   type CaptureTextSource,
 } from "../shared/capture";
@@ -233,6 +234,7 @@ import {
 } from "./session-discovery";
 import { AgentService, type AgentConfig } from "./agent-service";
 import { OpenCodeActivity } from "./opencode-activity";
+import { WebReadTracker } from "./web-read-tracker";
 import { getOpenCodeDbPath } from "./opencode-session";
 import { SessionScanner } from "./session-scanner.ts";
 import { mergeAndDedupeSessions } from "./session-list.ts";
@@ -341,7 +343,11 @@ const sessionWatcher = new SessionWatcher();
 const nodeEvents = new NodeEventLog();
 // Which agent each terminal runs, and which an agent started, for the record.
 const recordNodes = new RecordNodes();
+// Which terminals read web content, and when, for journal writes (SHR-63).
+const webReads = new WebReadTracker();
 const telemetryService = new TelemetryService({
+  // An agent's own web tools (WebFetch, web_search, a browser MCP server).
+  onToolUse: (terminalId, tool, at) => webReads.noteToolUse(terminalId, tool, at),
   // Claude's title for its session can name the task its first prompt opened.
   onSessionTitle: (terminalId, title) => runTracker.agentTitle(`terminal:${terminalId}`, title),
   // Which agent session each terminal runs: the join to its transcript.
@@ -417,7 +423,23 @@ const transcriptKeeper = new TranscriptKeeper(getCaptureDir(TACIT_DIR));
 const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
   harnessOf: (ref) => recordNodes.harnessOf(ref),
   taskIdFor: (event) => runTracker.taskIdFor(event),
+  onRecorded: (entry) => noteWebReads(entry),
 });
+
+/** A prompt starts a terminal's turn; a Tacit browser tile it drove hands it page text. */
+function noteWebReads(entry: CaptureEntry): void {
+  const terminalOf = (ref: string) => (ref.startsWith("terminal:") ? ref.slice("terminal:".length) : null);
+  if (entry.kind === "prompt") {
+    const terminalId = terminalOf(entry.actor);
+    if (terminalId) webReads.noteTurnStart(terminalId, entry.at);
+  } else if (entry.kind === "browser_action" && entry.ok) {
+    const terminalId = terminalOf(entry.by);
+    if (terminalId) webReads.noteBrowserAction(terminalId, { browser: entry.node, action: entry.action, url: entry.url, at: entry.at });
+  } else if (entry.kind === "close") {
+    const terminalId = terminalOf(entry.node);
+    if (terminalId) webReads.forget(terminalId);
+  }
+}
 const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TACIT_DIR));
 managerRoleLog.load();
 /**
@@ -570,6 +592,8 @@ const apiServer = new ApiServer({
   workerCaps: workerCapsFor(os.totalmem()),
   nodeEvents,
   runs: runTracker,
+  webReads,
+  harnessOf: (ref) => recordNodes.harnessOf(ref),
   recordAgentPrompt: ({ targetTerminalId, by, text }) => {
     agentSentText.note(targetTerminalId, text);
     captureService.record(

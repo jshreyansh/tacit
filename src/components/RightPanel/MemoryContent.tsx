@@ -610,6 +610,7 @@ const KIND_TOKEN: Record<string, string> = {
   rename: "var(--text-muted)",
   manager: "var(--amber)",
   browser_action: "var(--cyan)",
+  journal_write: "var(--purple)",
   topology: "var(--text-faint)",
   run_started: "var(--green)",
   run_named: "var(--green)",

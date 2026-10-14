@@ -274,6 +274,8 @@ export function summarize(entry: CaptureEntry): string {
       return `${entry.node} ${WORKER_STATE_WORDS[entry.state]}${entry.detail ? ` — ${entry.detail.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "session":
       return `${entry.node} is running ${entry.provider} session ${entry.session_id}`;
+    case "journal_write":
+      return `${entry.by} wrote to the ${entry.scope === "workspace" ? "workspace journal" : "project memory"} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
     case "run_started":
       return `task started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_named":
@@ -307,6 +309,8 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "worker_state":
     case "session":
       return [entry.node];
+    case "journal_write":
+      return [entry.by];
     case "run_started":
     case "run_named":
     case "run_ended":
