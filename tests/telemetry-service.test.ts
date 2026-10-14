@@ -450,6 +450,68 @@ test("telemetry service preserves completed turn after Stop when stale session e
   assert.equal(snapshot?.foreground_tool, undefined);
 });
 
+test("a tool call Claude's after-turn helper starts doesn't leave a finished terminal busy", () => {
+  // Seen live: Stop, then PreToolUse(mcp__tacit__end_task) with no
+  // PostToolUse, then SubagentStop. The pill pulsed until the next prompt.
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  try {
+    service.registerTerminal({ terminalId: "t1", worktreePath: "/tmp/project", provider: "claude" });
+    service.recordHookEvent("t1", { hook_event_name: "UserPromptSubmit", prompt: "hi" });
+    service.recordHookEvent("t1", { hook_event_name: "Stop" });
+    service.recordHookEvent("t1", { hook_event_name: "PreToolUse", tool_name: "mcp__tacit__end_task" });
+    assert.equal(service.getTerminalSnapshot("t1")?.turn_state, "tool_running", "the hook didn't say whose it was");
+    service.recordHookEvent("t1", { hook_event_name: "SubagentStop", agent_id: "a1" });
+    const snapshot = service.getTerminalSnapshot("t1");
+    assert.equal(snapshot?.turn_state, "turn_complete");
+    assert.equal(snapshot?.active_tool_calls, 0);
+    assert.equal(snapshot?.foreground_tool, undefined);
+    assert.equal(snapshot?.task_status, "idle");
+  } finally {
+    service.dispose();
+  }
+});
+
+test("a subagent's own tool calls neither start nor end the terminal's", () => {
+  const tools: string[] = [];
+  const service = new TelemetryService({ processPollIntervalMs: 0, onToolUse: (_id, tool) => tools.push(tool) });
+  try {
+    service.registerTerminal({ terminalId: "t1", worktreePath: "/tmp/project", provider: "claude" });
+    service.recordHookEvent("t1", { hook_event_name: "UserPromptSubmit", prompt: "hi" });
+    service.recordHookEvent("t1", { hook_event_name: "PreToolUse", tool_name: "Agent" });
+    service.recordHookEvent("t1", { hook_event_name: "PreToolUse", tool_name: "WebFetch", agent_id: "a1" });
+    service.recordHookEvent("t1", { hook_event_name: "PostToolUse", tool_name: "WebFetch", agent_id: "a1" });
+    let snapshot = service.getTerminalSnapshot("t1");
+    assert.equal(snapshot?.foreground_tool, "Agent", "the Agent call is still running");
+    assert.equal(snapshot?.turn_state, "tool_running");
+    assert.deepEqual(tools, ["Agent", "WebFetch"], "what the subagent read still counts");
+
+    // After the turn: a helper's call that never finishes changes nothing.
+    service.recordHookEvent("t1", { hook_event_name: "PostToolUse", tool_name: "Agent" });
+    service.recordHookEvent("t1", { hook_event_name: "Stop" });
+    service.recordHookEvent("t1", { hook_event_name: "PreToolUse", tool_name: "mcp__tacit__end_task", agent_id: "a2" });
+    snapshot = service.getTerminalSnapshot("t1");
+    assert.equal(snapshot?.turn_state, "turn_complete");
+    assert.equal(snapshot?.active_tool_calls, 0);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("SubagentStop doesn't end a tool call the turn itself started", () => {
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  try {
+    service.registerTerminal({ terminalId: "t1", worktreePath: "/tmp/project", provider: "claude" });
+    service.recordHookEvent("t1", { hook_event_name: "UserPromptSubmit", prompt: "hi" });
+    service.recordHookEvent("t1", { hook_event_name: "PreToolUse", tool_name: "Agent" });
+    service.recordHookEvent("t1", { hook_event_name: "SubagentStop", agent_id: "a1" });
+    const snapshot = service.getTerminalSnapshot("t1");
+    assert.equal(snapshot?.turn_state, "tool_running");
+    assert.equal(snapshot?.foreground_tool, "Agent");
+  } finally {
+    service.dispose();
+  }
+});
+
 test("telemetry service updates meaningful progress from token growth and process changes", () => {
   let nowMs = Date.parse("2026-03-26T00:00:00.000Z");
   const service = new TelemetryService({

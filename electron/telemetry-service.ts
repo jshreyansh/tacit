@@ -61,6 +61,8 @@ interface TerminalState {
   lastProcessKey: string | null;
   pendingPreToolUse: boolean;
   pendingPreToolUseAt: number;
+  /** The pending PreToolUse came after the turn had ended: no prompt started it. */
+  pendingPreToolUseAfterTurn: boolean;
   awaitingInputTimer: NodeJS.Timeout | null;
   lastTokenTotal: number | null;
   openCodeEventKeys: Set<string>;
@@ -1413,6 +1415,26 @@ export class TelemetryService {
     const state = this.ensureState(terminalId);
     const at = isoNow(this.now);
 
+    // A subagent's tool calls (Claude marks them with agent_id) aren't the
+    // terminal's: its own call (Agent) stays open while they run, and a
+    // background helper Claude runs after a turn can start one it never
+    // finishes, which would leave a finished terminal shown as busy.
+    if (
+      typeof event.agent_id === "string" && event.agent_id &&
+      (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolUseFailure")
+    ) {
+      if (event.hook_event_name === "PreToolUse" && typeof event.tool_name === "string" && event.tool_name) {
+        // What a subagent reads still reaches the agent that asked for it.
+        this.onToolUse?.(terminalId, event.tool_name, at);
+      }
+      this.appendEvent(state, at, "session", "hook_subagent_tool", {
+        hook: event.hook_event_name,
+        agent_id: event.agent_id,
+        tool_name: event.tool_name ?? null,
+      });
+      return;
+    }
+
     switch (event.hook_event_name) {
       case "SessionStart":
         if (event.session_id) {
@@ -1500,6 +1522,7 @@ export class TelemetryService {
         if (state.awaitingInputTimer) {
           clearTimeout(state.awaitingInputTimer);
         }
+        state.pendingPreToolUseAfterTurn = !state.pendingPreToolUse && turnHasEnded(state.snapshot.turn_state);
         state.pendingPreToolUse = true;
         state.pendingPreToolUseAt = this.now();
         state.snapshot.pending_tool_use_at = at;
@@ -1646,6 +1669,21 @@ export class TelemetryService {
         break;
 
       case "SubagentStop":
+        // A tool call that began after the turn ended, with no prompt, was
+        // the subagent's (Claude's after-turn helper), even when the hook
+        // didn't say so; it won't report finishing, and the turn is over.
+        if (state.pendingPreToolUse && state.pendingPreToolUseAfterTurn) {
+          if (state.awaitingInputTimer) {
+            clearTimeout(state.awaitingInputTimer);
+            state.awaitingInputTimer = null;
+          }
+          state.pendingPreToolUse = false;
+          state.pendingPreToolUseAfterTurn = false;
+          state.snapshot.pending_tool_use_at = undefined;
+          state.snapshot.active_tool_calls = state.activeToolCalls.size;
+          state.snapshot.foreground_tool = undefined;
+          state.snapshot.turn_state = "turn_complete";
+        }
         this.appendEvent(state, at, "session", "hook_subagent_stop", {
           agent_id: event.agent_id ?? null,
           agent_type: event.agent_type ?? null,
@@ -1707,6 +1745,7 @@ export class TelemetryService {
       lastProcessKey: null,
       pendingPreToolUse: false,
       pendingPreToolUseAt: 0,
+      pendingPreToolUseAfterTurn: false,
       awaitingInputTimer: null,
       lastTokenTotal: null,
       openCodeEventKeys: new Set<string>(),

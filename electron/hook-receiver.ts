@@ -99,6 +99,7 @@ export class HookReceiver {
             `[HookReceiver] ${parsed.hook_event_name} terminal=${parsed.terminal_id}` +
             (parsed.tool_name ? ` tool=${parsed.tool_name}` : "") +
             (parsed.session_id ? ` session=${parsed.session_id}` : "") +
+            (parsed.agent_id ? ` agent=${parsed.agent_id}` : "") +
             (parsed.error ? ` error=${parsed.error}` : ""),
           );
           this.onEvent(parsed as HookEvent);
