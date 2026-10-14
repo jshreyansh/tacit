@@ -6,7 +6,9 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import {
+  SUBAGENT_ACTIVE_MS,
   TelemetryService,
+  claudeSubagentActive,
   deriveTelemetryStatus,
   deriveTelemetryTaskStatus,
 } from "../electron/telemetry-service.ts";
@@ -1997,4 +1999,24 @@ test("a session title is passed on once, not each time Claude repeats it", () =>
   service.recordSessionTelemetry("t-claude", [{ event_type: "session_title", title: "Audit chip strings" }]);
   assert.deepEqual(titles, ["Tacit workspace manager role", "Audit chip strings"]);
   service.dispose();
+});
+
+test("a Claude background subagent that wrote recently counts as working", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-subagent-"));
+  const sessionFile = path.join(dir, "abc.jsonl");
+  fs.writeFileSync(sessionFile, "");
+  const now = Date.now();
+  assert.equal(claudeSubagentActive(sessionFile, now), false, "no subagents folder");
+
+  // Claude's layout: <session>/subagents/agent-<id>.jsonl beside <session>.jsonl.
+  fs.mkdirSync(path.join(dir, "abc", "subagents"), { recursive: true });
+  const transcript = path.join(dir, "abc", "subagents", "agent-a1.jsonl");
+  fs.writeFileSync(transcript, "{}\n");
+  fs.writeFileSync(path.join(dir, "abc", "subagents", "agent-a1.meta.json"), "{}");
+  assert.equal(claudeSubagentActive(sessionFile, now), true);
+
+  const stale = new Date(now - SUBAGENT_ACTIVE_MS - 1_000);
+  fs.utimesSync(transcript, stale, stale);
+  assert.equal(claudeSubagentActive(sessionFile, now), false, "finished a while ago");
+  assert.equal(claudeSubagentActive(undefined, now), false);
 });

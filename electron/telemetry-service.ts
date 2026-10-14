@@ -424,6 +424,34 @@ export function deriveTelemetryTaskStatus(
   return { status: "unknown", source: "none" };
 }
 
+/** A background subagent that wrote within this long is still working. */
+export const SUBAGENT_ACTIVE_MS = 90_000;
+
+/**
+ * Claude keeps a subagent's transcript in `<session>/subagents/agent-*.jsonl`,
+ * next to the session file, and writes to it as the subagent works. One run
+ * in the background goes on after the parent's turn has ended.
+ */
+export function claudeSubagentActive(sessionFile: string | undefined, nowMs: number): boolean {
+  if (!sessionFile?.endsWith(".jsonl")) return false;
+  const dir = path.join(sessionFile.slice(0, -".jsonl".length), "subagents");
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return false; // No subagents in this session.
+  }
+  for (const name of names) {
+    if (!name.endsWith(".jsonl")) continue;
+    try {
+      if (nowMs - fs.statSync(path.join(dir, name)).mtimeMs < SUBAGENT_ACTIVE_MS) return true;
+    } catch {
+      // Removed while we looked: not working.
+    }
+  }
+  return false;
+}
+
 const HEAD_LINES_FOR_FIRST_PROMPT = 40;
 const FIRST_PROMPT_MAX_LENGTH = 100;
 
@@ -1206,9 +1234,17 @@ export class TelemetryService {
   }
 
   /** Whether any live terminal is mid-turn: a run doesn't go idle under one. */
+  /**
+   * Whether any agent is working: mid-turn (a subagent it waits on included,
+   * as a pending tool call), waiting on a permission prompt, or running a
+   * Claude background subagent after its own turn ended.
+   */
   anyTerminalRunning(): boolean {
+    const nowMs = this.now();
     for (const state of this.terminals.values()) {
-      if (state.snapshot.pty_alive && state.snapshot.task_status === "running") return true;
+      if (!state.snapshot.pty_alive) continue;
+      if (state.snapshot.task_status === "running") return true;
+      if (state.snapshot.provider === "claude" && claudeSubagentActive(state.snapshot.session_file, nowMs)) return true;
     }
     return false;
   }

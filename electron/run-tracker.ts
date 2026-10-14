@@ -17,7 +17,7 @@ import { writeFileAtomically } from "./agent-launch";
  * happens often, doesn't split it in two.
  */
 
-export const RUN_IDLE_MS = 10 * 60_000;
+export const RUN_IDLE_MS = 5 * 60_000;
 /** How often a run with an agent mid-turn looks again for the turn's end. */
 const BUSY_RECHECK_MS = 60_000;
 /**
@@ -301,7 +301,7 @@ export function managerEndRun(runs: ManagerRuns, manager: CaptureNodeRef) {
       "not_your_task",
       owner === "user"
         ? "The user is recording this task; only they can end it."
-        : "You didn't start this task. It ends by itself after 10 quiet minutes.",
+        : "You didn't start this task. It ends by itself after 5 quiet minutes.",
     );
   }
   runs.end(manager);

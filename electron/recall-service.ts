@@ -231,7 +231,7 @@ const WORKER_STATE_WORDS = {
 const RUN_END_WORDS = {
   ended: "ended",
   superseded: "ended: a new task started",
-  idle: "ended after 10 quiet minutes",
+  idle: "ended after 5 quiet minutes",
 } as const;
 
 /** What the Activity tab needs to head a task's group with. */

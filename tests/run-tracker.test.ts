@@ -118,18 +118,18 @@ test("starting a run while one is open ends the first as superseded", () => {
   assert.equal(t.runs.current()?.run_id, second.run_id);
 });
 
-test("a run ends as idle 10 minutes after the last thing recorded, not counting topology or reloads", () => {
+test("a run ends as idle 5 minutes after the last thing recorded, not counting topology or reloads", () => {
   const t = setup();
   const run = t.runs.start("x", "user");
-  t.advance(6 * 60_000);
-  t.record(userPrompt); // activity: the 10 minutes start again
+  t.advance(3 * 60_000);
+  t.record(userPrompt); // activity: the 5 minutes start again
   const lastActivity = t.entries().at(-1)!.at;
-  t.advance(6 * 60_000);
+  t.advance(3 * 60_000);
   t.record({ kind: "topology", terminals: 1, browsers: 0, notes: 0, wires: [] });
   // A browser tile reloading its page on launch isn't anyone doing anything.
   t.record({ kind: "browser_action", node: "browser:b", action: "navigate", backend: "managed", by: "system", ok: true, url: "https://example.com/" });
   assert.ok(t.runs.current(), "still open: topology and reloads aren't activity");
-  t.advance(4 * 60_000);
+  t.advance(2 * 60_000);
 
   assert.equal(t.runs.current(), null);
   const ended = t.entries().at(-1) as Extract<CaptureEntry, { kind: "run_ended" }>;
@@ -155,7 +155,7 @@ test("the quiet time counts from when the agent's turn ends, not from the prompt
   let busy = true;
   const t = setup({ busy: () => busy });
   t.record(userPrompt);
-  // A 25-minute turn writes nothing the run counts.
+  // A 20-minute turn writes nothing the run counts.
   t.advance(RUN_IDLE_MS);
   for (let minute = 0; minute < 15; minute += 1) t.advance(60_000);
   assert.ok(t.runs.current());
@@ -172,8 +172,8 @@ test("an open run survives a restart, and one left quiet too long is ended as id
   const run = first.runs.start("across restarts", "user");
   first.runs.dispose();
 
-  // Back five minutes later: resumed, and entries keep its id.
-  const resumed = setup({ statePath: first.statePath, start: Date.parse("2026-10-11T10:05:00.000Z") });
+  // Back three minutes later: resumed, and entries keep its id.
+  const resumed = setup({ statePath: first.statePath, start: Date.parse("2026-10-11T10:03:00.000Z") });
   resumed.runs.restore();
   assert.equal(resumed.runs.current()?.run_id, run.run_id);
   resumed.record({ kind: "close", node: "terminal:x", by: "user" });
@@ -186,7 +186,7 @@ test("an open run survives a restart, and one left quiet too long is ended as id
   assert.equal(late.runs.current(), null);
   const ended = late.entries().at(-1) as Extract<CaptureEntry, { kind: "run_ended" }>;
   assert.equal(ended.reason, "idle");
-  assert.equal(ended.idle_since, "2026-10-11T10:05:00.000Z");
+  assert.equal(ended.idle_since, "2026-10-11T10:03:00.000Z");
   assert.equal(fs.existsSync(first.statePath), false);
 });
 
@@ -201,9 +201,11 @@ test("the manager works inside the user's run, and ends only its own", () => {
 
   // An automatic run older than 10 minutes holds other work: replaced.
   const old = t.runs.start(null, "auto");
-  t.advance(6 * 60_000);
+  t.advance(4 * 60_000);
   t.record(userPrompt);
-  t.advance(5 * 60_000);
+  t.advance(4 * 60_000);
+  t.record(userPrompt);
+  t.advance(3 * 60_000);
   const started = managerStartRun(t.runs, "terminal:m", "research pricing");
   assert.equal(started.replaced, old.run_id);
   assert.throws(() => managerEndRun(t.runs, "terminal:other"), { code: "not_your_task" });
@@ -246,7 +248,7 @@ test("run entries read as prose in the Activity list", () => {
       "task started — compare vendors",
       "task ended: a new task started",
       "task started by terminal:m",
-      "task ended after 10 quiet minutes",
+      "task ended after 5 quiet minutes",
     ],
   );
 });
@@ -291,9 +293,11 @@ test("Claude's session title replaces a name made from the prompt, and nothing e
 test("a title that arrives after the task is 10 minutes old is ignored", () => {
   const t = setup();
   t.record(userPrompt);
-  t.advance(6 * 60_000);
+  t.advance(4 * 60_000);
   t.record({ ...userPrompt, text: "and the next step" });
-  t.advance(5 * 60_000);
+  t.advance(4 * 60_000);
+  t.record({ ...userPrompt, text: "and the one after" });
+  t.advance(3 * 60_000);
   t.runs.agentTitle("terminal:a", "Too late");
   assert.equal(t.runs.current()?.goal, "do the thing");
 });
