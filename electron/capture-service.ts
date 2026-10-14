@@ -10,6 +10,7 @@ import {
   type CaptureHealth,
   type CaptureRecordContext,
 } from "../shared/capture";
+import { maskSecrets } from "../shared/secret-mask";
 
 /**
  * Writes the decision record. See shared/capture.ts for what belongs in it.
@@ -83,6 +84,8 @@ export class CaptureService {
     context: CaptureRecordContext = {},
   ): boolean {
     try {
+      // Before anything reads it: an automatic run is named from the prompt.
+      event = maskEventSecrets(event);
       const repeat = repeatKey(event, canvasId);
       if (repeat && this.lastWritten.get(repeat.key) === repeat.value) return true;
       // Asked before building: a prompt with no run open starts one, whose
@@ -196,4 +199,17 @@ function repeatKey(
 
 export function getCaptureDir(tacitDir: string): string {
   return path.join(tacitDir, "record");
+}
+
+/** The event with secrets masked in the text a person or agent wrote. */
+function maskEventSecrets(event: CaptureEvent): CaptureEvent {
+  if (event.kind === "prompt" && typeof event.text === "string") {
+    const text = maskSecrets(event.text);
+    return text === event.text ? event : { ...event, text };
+  }
+  if ((event.kind === "run_started" || event.kind === "run_named") && typeof event.goal === "string") {
+    const goal = maskSecrets(event.goal);
+    return goal === event.goal ? event : { ...event, goal };
+  }
+  return event;
 }

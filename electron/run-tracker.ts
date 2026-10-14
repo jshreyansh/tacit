@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { randomBytes } from "node:crypto";
 import type { CaptureActor, CaptureEvent, CaptureNodeRef, RunChange, RunGoalSource, RunInfo } from "../shared/capture";
 import { RUN_GOAL_MAX_LENGTH, runNameFromPrompt, runOwner } from "../shared/capture";
+import { maskSecrets } from "../shared/secret-mask";
 import { writeFileAtomically } from "./agent-launch";
 
 /**
@@ -89,7 +90,7 @@ export class RunTracker {
   start(goal: string | null, startedBy: RunInfo["started_by"], auto?: { goalSource: RunGoalSource; openedBy: CaptureNodeRef }): RunInfo {
     if (this.run) this.finish("superseded", startedBy === "auto" ? "system" : startedBy);
     const now = this.now();
-    const trimmed = goal?.trim() ? goal.trim().slice(0, RUN_GOAL_MAX_LENGTH) : null;
+    const trimmed = goal?.trim() ? maskSecrets(goal.trim()).slice(0, RUN_GOAL_MAX_LENGTH) : null;
     this.run = {
       run_id: newRunId(now),
       goal: trimmed,
@@ -196,7 +197,7 @@ export class RunTracker {
 
   private name(goal: string, by: CaptureActor, source?: RunGoalSource): void {
     const run = this.run!;
-    run.goal = goal.slice(0, RUN_GOAL_MAX_LENGTH);
+    run.goal = maskSecrets(goal).slice(0, RUN_GOAL_MAX_LENGTH);
     if (source) {
       run.goal_source = source;
     } else {

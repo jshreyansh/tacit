@@ -327,3 +327,13 @@ test("the canvas is told what changed and by whom", () => {
     { kind: "ended", by: "terminal:m", reason: "ended", goal: "b" },
   ]);
 });
+
+test("a secret in a prompt is masked in the record and in the context it names", () => {
+  const t = setup();
+  t.record({ ...userPrompt, text: "Log in with password: hunter2 and the OTP 482913" });
+  const [started, prompt] = t.entries();
+  // The name is cut at 60 characters; what matters is that no secret is in it.
+  assert.ok(started.kind === "run_started" && started.goal?.startsWith("Log in with password: [masked:password]"));
+  assert.equal(prompt.kind === "prompt" && prompt.text, "Log in with password: [masked:password] and the OTP [masked:otp]");
+  assert.ok(!fs.readFileSync(t.statePath, "utf-8").includes("hunter2"));
+});
