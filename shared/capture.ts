@@ -281,6 +281,44 @@ export type CaptureEvent =
       last_web_read_at: string | null;
     }
   | {
+      /**
+       * Text or files the person moved into an agent terminal by hand: a
+       * paste, or a pin or files dropped on it (SHR-62). Messages agents send
+       * each other are prompts with `source: agent`; this is the person
+       * carrying something across, which no transcript can say.
+       *
+       * Nothing pasted is kept. `fingerprint` is a keyed hash
+       * (electron/handoff-tracker.ts), so it joins a paste to the copy it came
+       * from on this Mac and can't be reversed or matched anywhere else. A
+       * paste that was sent is in the prompt entry, which points back here
+       * through its `input_refs`.
+       */
+      kind: "handoff";
+      /**
+       * A canvas node, `external` (another app: the copy happened while Tacit
+       * was in the background, or matched nothing), or `app` (Tacit's own
+       * panels, outside any node).
+       */
+      from: CaptureNodeRef | "external" | "app";
+      to: CaptureNodeRef;
+      via: "paste" | "drop";
+      /**
+       * `observed`: Tacit saw it happen (a copy command in the source node, a
+       * drop). `inferred`: the clipboard changed while the source had focus,
+       * which a clipboard manager or quick app switch can fake. `unmatched`:
+       * no copy matched, so `from` is `external`.
+       */
+      attribution: "observed" | "inferred" | "unmatched";
+      by: "user";
+      /** For a paste: the keyed hash of the text, and its length. */
+      fingerprint?: string;
+      length?: number;
+      /** When the copy was seen, for a matched paste. */
+      copied_at?: string;
+      /** For a file drop: which files. */
+      files?: HandoffFile[];
+    }
+  | {
       kind: "topology";
       terminals: number;
       browsers: number;
@@ -312,6 +350,15 @@ export function transcriptPath(provider: string, sessionId: string): string | nu
   return `transcripts/${provider}/${sessionId}.jsonl`;
 }
 
+/** A file dropped on a terminal: enough to know it again, nothing of its contents. */
+export interface HandoffFile {
+  /** Relative to the terminal's project, or `~/…`, or absolute elsewhere. */
+  path: string;
+  size: number | null;
+  /** Keyed hash of the contents; null when too large to read or unreadable. */
+  fingerprint: string | null;
+}
+
 /** Web content reaching an agent, for a journal write's taint (SHR-63). */
 export interface WebRead {
   /** A Tacit browser tile the agent drove, or one of the agent's own tools. */
@@ -333,12 +380,14 @@ export type CaptureMethod = "hook" | "renderer" | "main" | "migration" | "sessio
 export interface CaptureReference {
   /** Stable URI or local identifier; content is referenced, not copied. */
   ref: string;
-  kind: "transcript" | "file" | "url" | "artifact" | "screenshot" | "event";
+  kind: "transcript" | "file" | "url" | "artifact" | "screenshot" | "event" | "node";
   label?: string;
   sha256?: string;
 }
 
 export interface CaptureRecordContext {
+  /** Set by a writer that refers to the entry before it's written. */
+  eventId?: string;
   taskId?: string | null;
   sessionId?: string | null;
   inputRefs?: CaptureReference[];
@@ -417,6 +466,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "worker_state":
     case "session": return event.node;
     case "journal_write": return event.by;
+    case "handoff": return event.to;
     case "manager": return event.node;
     case "wire":
     case "retype_wire":

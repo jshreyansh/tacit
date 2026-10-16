@@ -31,7 +31,7 @@ export function CanvasCardLayer() {
         }}
       >
         {browserCards.map((card) => (
-          <div key={card.id} style={{ pointerEvents: "auto" }}>
+          <div key={card.id} style={{ pointerEvents: "auto" }} data-record-node={`browser:${card.id}`}>
             <BrowserCard card={card} />
           </div>
         ))}

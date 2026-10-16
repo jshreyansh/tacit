@@ -156,7 +156,7 @@ export class CaptureService {
       normalizedEvent,
       canvasId,
       now.toISOString(),
-      randomUUID(),
+      context.eventId ?? randomUUID(),
       context,
     );
     const actor = entry.actor_identity.kind === "agent" ? entry.actor_identity.ref : null;
@@ -223,6 +223,9 @@ function maskEventSecrets(event: CaptureEvent): CaptureEvent {
       title: maskSecrets(event.title),
       taint_sources: event.taint_sources.map((read) => (read.url ? { ...read, url: maskSecrets(read.url) } : read)),
     };
+  }
+  if (event.kind === "handoff" && event.files) {
+    return { ...event, files: event.files.map((file) => ({ ...file, path: maskSecrets(file.path) })) };
   }
   return event;
 }

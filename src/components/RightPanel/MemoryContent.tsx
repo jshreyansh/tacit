@@ -611,6 +611,7 @@ const KIND_TOKEN: Record<string, string> = {
   manager: "var(--amber)",
   browser_action: "var(--cyan)",
   journal_write: "var(--purple)",
+  handoff: "var(--accent)",
   topology: "var(--text-faint)",
   run_started: "var(--green)",
   run_named: "var(--green)",

@@ -50,6 +50,7 @@ import {
   removeBrowserCardFromScene,
 } from "./actions/sceneCardActions";
 import { findBrowserCardByWebContentsId } from "./canvas/browserWebviewRegistry";
+import { installHandoffFocusTracking } from "./canvas/handoffFocus";
 import {
   openBrowserNodeFind,
   resetBrowserNodeZoom,
@@ -466,6 +467,9 @@ export function App() {
   // typed into the chat page at the other end and submitted, and that is the
   // whole interaction — nothing reads the response back.
   useEffect(() => installReplyDelivery(), []);
+  // Where pasted text came from (SHR-62): which node has focus, and copies
+  // made inside browser tiles.
+  useEffect(() => installHandoffFocusTracking(), []);
   useEffect(() => {
     if (!window.tacit?.browser?.onDownloadEvent) return;
     return window.tacit.browser.onDownloadEvent((event) => {

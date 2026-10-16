@@ -751,6 +751,20 @@ export interface TacitAPI {
       callback: (update: { run: RunInfo | null; change: RunChange | null }) => void,
     ) => () => void;
   };
+  /**
+   * Handoffs (SHR-62): where focus is, and when a node copied or an agent
+   * terminal was pasted into or had files dropped on it. Main reads the
+   * clipboard itself and keeps only a keyed fingerprint.
+   */
+  handoff: {
+    /** A node ref (`terminal:…`, `browser:…`, `note:…`), or null for Tacit's panels. */
+    focus: (node: string | null) => Promise<void>;
+    copied: (node: string) => Promise<void>;
+    pasted: (terminalId: string) => Promise<void>;
+    droppedFiles: (terminalId: string, paths: string[], fromFilesPanel: boolean) => Promise<void>;
+    /** A copy in a browser tile's page, which only main can see. */
+    onGuestCopied: (callback: (payload: { sourceWebContentsId: number }) => void) => () => void;
+  };
   browserConnection: {
     beginPairing: () => Promise<{
       endpoint: string;

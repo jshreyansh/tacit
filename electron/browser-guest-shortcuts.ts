@@ -66,3 +66,15 @@ export function resolveGuestShortcut(
       return null;
   }
 }
+
+/**
+ * ⌘C (Ctrl+C elsewhere) pressed in a page. Not a shortcut Tacit answers: the
+ * page copies as usual, and main only notes that a copy happened there, for
+ * handoffs (electron/handoff-tracker.ts).
+ */
+export function isGuestCopyChord(input: GuestKeyInput, platform: NodeJS.Platform | string): boolean {
+  if (input.type !== "keyDown" || input.alt || input.shift) return false;
+  const primary = platform === "darwin" ? input.meta : input.control;
+  const secondary = platform === "darwin" ? input.control : input.meta;
+  return primary && !secondary && (input.key === "c" || input.key === "C");
+}

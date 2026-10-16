@@ -1047,7 +1047,11 @@ function wireSelectionBindings(
     runtime.selectionAutoCopy = markTerminalSelectionCopied(
       runtime.selectionAutoCopy,
     );
-    void navigator.clipboard.writeText(text).catch(() => {});
+    const copiedFrom = runtime.meta.terminal.id;
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => window.tacit.handoff?.copied(`terminal:${copiedFrom}`))
+      .catch(() => {});
     bumpCopiedNonce(runtime.meta.terminal.id);
     runtime.attachOptions?.onCopy?.();
   };

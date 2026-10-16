@@ -238,6 +238,18 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("run:changed", listener);
     },
   },
+  handoff: {
+    focus: (node: string | null) => ipcRenderer.invoke("handoff:focus", node) as Promise<void>,
+    copied: (node: string) => ipcRenderer.invoke("handoff:copied", node) as Promise<void>,
+    pasted: (terminalId: string) => ipcRenderer.invoke("handoff:pasted", terminalId) as Promise<void>,
+    droppedFiles: (terminalId: string, paths: string[], fromFilesPanel: boolean) =>
+      ipcRenderer.invoke("handoff:dropped-files", terminalId, paths, fromFilesPanel) as Promise<void>,
+    onGuestCopied: (callback: (payload: { sourceWebContentsId: number }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { sourceWebContentsId: number }) => callback(payload);
+      ipcRenderer.on("handoff:guest-copied", listener);
+      return () => ipcRenderer.removeListener("handoff:guest-copied", listener);
+    },
+  },
   browserConnection: {
     beginPairing: () => ipcRenderer.invoke("browser-connect:begin-pairing") as Promise<{
       endpoint: string;

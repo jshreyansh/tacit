@@ -81,6 +81,7 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
 
   return (
     <div
+      data-record-node={`note:${pin.id}`}
       className="h-full w-full flex flex-col rounded-lg border overflow-hidden"
       style={{
         background: "color-mix(in srgb, var(--amber) 10%, var(--surface))",

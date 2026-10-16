@@ -61,7 +61,7 @@ import {
   buildBrowserContextMenu,
   type BrowserContextMenuAction,
 } from "./browser-context-menu";
-import { resolveGuestShortcut } from "./browser-guest-shortcuts";
+import { isGuestCopyChord, resolveGuestShortcut } from "./browser-guest-shortcuts";
 import { resolveDownloadSavePath } from "./browser-downloads";
 import { BROWSER_OBSERVATION_CHANNEL } from "../shared/browser-observation";
 import {
@@ -210,6 +210,7 @@ import {
   detectHarnessText,
   type CaptureEntry,
   type CaptureEvent,
+  type CaptureReference,
   type CaptureTextSource,
 } from "../shared/capture";
 import { ManagerRoleLog, getManagerRoleLogPath } from "./manager-role-log";
@@ -235,6 +236,15 @@ import {
 import { AgentService, type AgentConfig } from "./agent-service";
 import { OpenCodeActivity } from "./opencode-activity";
 import { WebReadTracker } from "./web-read-tracker";
+import {
+  HandoffTracker,
+  MAX_DROPPED_FILES,
+  describeDroppedFile,
+  fileDropEvent,
+  isAgentHarness,
+  loadHandoffKey,
+  pinDropEvent,
+} from "./handoff-tracker";
 import { getOpenCodeDbPath } from "./opencode-session";
 import { SessionScanner } from "./session-scanner.ts";
 import { mergeAndDedupeSessions } from "./session-list.ts";
@@ -345,6 +355,31 @@ const nodeEvents = new NodeEventLog();
 const recordNodes = new RecordNodes();
 // Which terminals read web content, and when, for journal writes (SHR-63).
 const webReads = new WebReadTracker();
+// Where text pasted into an agent terminal came from (SHR-62). Without a key
+// nothing could be fingerprinted, so handoffs go unrecorded, and say so.
+let handoffKey: Buffer | null = null;
+try {
+  handoffKey = loadHandoffKey(TACIT_DIR);
+} catch (error) {
+  console.warn("[Handoff] no fingerprint key; handoffs won't be recorded:", error);
+}
+const handoffs = handoffKey ? new HandoffTracker(handoffKey) : null;
+/** The clipboard's text, read only at a checkpoint, a copy or a paste. */
+function clipboardText(): string | null {
+  try {
+    return clipboard.readText() || null;
+  } catch {
+    return null;
+  }
+}
+/** The handoffs a prompt contains, as the prompt entry's input_refs. */
+function promptHandoffRefs(terminalId: string, text: string | null): CaptureReference[] {
+  return (handoffs?.promptRefs(`terminal:${terminalId}`, text) ?? []).map((id) => ({
+    ref: `event:${id}`,
+    kind: "event" as const,
+    label: "handoff",
+  }));
+}
 const telemetryService = new TelemetryService({
   // An agent's own web tools (WebFetch, web_search, a browser MCP server).
   onToolUse: (terminalId, tool, at) => webReads.noteToolUse(terminalId, tool, at),
@@ -363,6 +398,7 @@ const telemetryService = new TelemetryService({
   onUserPrompt: (terminalId, { text, sessionId }) => {
     const source = typedPromptSource(terminalId, text);
     if (!source) return;
+    const inputRefs = promptHandoffRefs(terminalId, text);
     captureService.record(
       {
         kind: "prompt",
@@ -373,7 +409,7 @@ const telemetryService = new TelemetryService({
       },
       captureCanvasId,
       new Date(),
-      { method: "session", sessionId },
+      { method: "session", sessionId, ...(inputRefs.length && source === "user" ? { inputRefs } : {}) },
     );
   },
   onSnapshotChanged: (terminalId, snapshot) => {
@@ -438,6 +474,7 @@ function noteWebReads(entry: CaptureEntry): void {
   } else if (entry.kind === "close") {
     const terminalId = terminalOf(entry.node);
     if (terminalId) webReads.forget(terminalId);
+    handoffs?.forget(entry.node);
   }
 }
 const managerRoleLog = new ManagerRoleLog(getManagerRoleLogPath(TACIT_DIR));
@@ -514,6 +551,7 @@ const hookReceiver = new HookReceiver((event) => {
     const hasText = typeof prompt === "string";
     const source: CaptureTextSource | null = hasText ? typedPromptSource(event.terminal_id, prompt) : "user";
     if (!source) return;
+    const inputRefs = promptHandoffRefs(event.terminal_id, hasText ? prompt : null);
     captureService.record(
       {
         kind: "prompt",
@@ -533,7 +571,11 @@ const hookReceiver = new HookReceiver((event) => {
       },
       captureCanvasId,
       new Date(),
-      { method: "hook", sessionId: event.session_id ?? null },
+      {
+        method: "hook",
+        sessionId: event.session_id ?? null,
+        ...(inputRefs.length && source === "user" ? { inputRefs } : {}),
+      },
     );
   }
 
@@ -944,6 +986,7 @@ const TITLE_STRIP_HEIGHT = 28;
     rendererReady = false;
   });
   mainWindow.on("focus", () => {
+    handoffs?.windowFocusChanged(true, clipboardText());
     renderDiagnostics.recordMainEvent("browser_window_focus", {
       window_id: windowId,
       visible: mainWindow?.isVisible() ?? null,
@@ -966,6 +1009,7 @@ const TITLE_STRIP_HEIGHT = 28;
     });
   });
   mainWindow.on("blur", () => {
+    handoffs?.windowFocusChanged(false, clipboardText());
     renderDiagnostics.recordMainEvent("browser_window_blur", {
       window_id: windowId,
       visible: mainWindow?.isVisible() ?? null,
@@ -2096,6 +2140,54 @@ function setupIpc() {
   ipcMain.handle("run:rename", (event, goal: unknown) => {
     if (!isMainWindowSender(event) || typeof goal !== "string") return null;
     return runTracker.rename(goal, "user");
+  });
+
+  // Handoffs (SHR-62): the canvas says where focus is and when a node
+  // copied or a terminal was pasted into; main reads the clipboard itself,
+  // so the renderer never hands over text, and only a fingerprint is kept.
+  const NODE_REF = /^(terminal|browser|note):[A-Za-z0-9._-]{1,128}$/;
+  const TERMINAL_ID = /^[A-Za-z0-9._-]{1,128}$/;
+  const agentTerminal = (terminalId: unknown): terminalId is string =>
+    typeof terminalId === "string" && TERMINAL_ID.test(terminalId) && isAgentHarness(recordNodes.harnessOf(`terminal:${terminalId}`));
+  const recordHandoff = (event: CaptureEvent, eventId: string, inputRefs: CaptureReference[]) => {
+    if (event.kind !== "handoff") return;
+    captureService.record(event, captureCanvasId, new Date(), {
+      method: "renderer",
+      eventId,
+      inputRefs,
+      outputRefs: [{ ref: event.to, kind: "node" }],
+    });
+  };
+  const sourceRefs = (from: string): CaptureReference[] =>
+    NODE_REF.test(from) ? [{ ref: from, kind: "node" }] : [];
+  ipcMain.handle("handoff:focus", (event, node: unknown) => {
+    if (!handoffs || !isMainWindowSender(event)) return;
+    if (node !== null && (typeof node !== "string" || !NODE_REF.test(node))) return;
+    handoffs.nodeFocusChanged(node, clipboardText());
+  });
+  ipcMain.handle("handoff:copied", (event, node: unknown) => {
+    if (!handoffs || !isMainWindowSender(event)) return;
+    if (typeof node !== "string" || !NODE_REF.test(node)) return;
+    handoffs.copied(node, clipboardText());
+  });
+  ipcMain.handle("handoff:pasted", (event, terminalId: unknown) => {
+    if (!handoffs || !isMainWindowSender(event) || !agentTerminal(terminalId)) return;
+    const handoff = handoffs.pasted(`terminal:${terminalId}`, clipboardText());
+    if (handoff?.event.kind === "handoff") recordHandoff(handoff.event, handoff.eventId, sourceRefs(handoff.event.from));
+  });
+  ipcMain.handle("handoff:dropped-files", async (event, terminalId: unknown, paths: unknown, fromFilesPanel: unknown) => {
+    if (!handoffKey || !isMainWindowSender(event) || !agentTerminal(terminalId)) return;
+    if (!Array.isArray(paths) || paths.length === 0) return;
+    const files = paths
+      .filter((entry): entry is string => typeof entry === "string" && entry.length < 4096 && path.isAbsolute(entry))
+      .slice(0, MAX_DROPPED_FILES);
+    if (files.length === 0) return;
+    const projectRoot = telemetryService.getTerminalSnapshot(terminalId)?.worktree_path ?? null;
+    const described = await Promise.all(
+      files.map((file) => describeDroppedFile(file, { key: handoffKey!, projectRoot, home: os.homedir() })),
+    );
+    const handoffEvent = fileDropEvent(described, `terminal:${terminalId}`, fromFilesPanel === true);
+    recordHandoff(handoffEvent, randomUUID(), described.map((file) => ({ ref: file.path, kind: "file" as const })));
   });
 
   ipcMain.on(
@@ -3352,6 +3444,13 @@ function setupIpc() {
           ),
         );
 
+        if (result.ok && handoffs && agentTerminal(target.terminalId)) {
+          const handoffEvent = pinDropEvent(pinId, `terminal:${target.terminalId}`);
+          const eventId = randomUUID();
+          recordHandoff(handoffEvent, eventId, [{ ref: `note:${pinId}`, kind: "node" }]);
+          handoffs.awaitPrompt(`terminal:${target.terminalId}`, eventId, text);
+        }
+
         if (!result.ok) {
           console.error("[Pin] Dispatch failed:", {
             pinId,
@@ -3654,6 +3753,12 @@ app.whenReady().then(async () => {
       //
       // Shared with the context menu below, so "Open Link in New Node" and a
       // target="_blank" click cannot disagree about where a link belongs.
+      const reportGuestCopy = (): void => {
+        setTimeout(() => {
+          if (contents.isDestroyed()) return;
+          sendToWindow(mainWindow, "handoff:guest-copied", { sourceWebContentsId: contents.id });
+        }, 150);
+      };
       const routeOpenedUrl = (url: string): void => {
         const disposition = resolvePopupDisposition({
           url,
@@ -3703,9 +3808,13 @@ app.whenReady().then(async () => {
             case "back": return contents.navigationHistory.goBack();
             case "forward": return contents.navigationHistory.goForward();
             case "reload": return contents.reload();
-            case "copy": return contents.copy();
+            case "copy":
+              contents.copy();
+              return reportGuestCopy();
             case "paste": return contents.paste();
-            case "copy-link": return clipboard.writeText(params.linkURL);
+            case "copy-link":
+              clipboard.writeText(params.linkURL);
+              return reportGuestCopy();
             case "open-link-in-node": return routeOpenedUrl(params.linkURL);
             case "inspect": return contents.inspectElement(params.x, params.y);
           }
@@ -3732,6 +3841,9 @@ app.whenReady().then(async () => {
       // tight. The renderer matches the webContents id back to a tile the same
       // way it does for popups.
       contents.on("before-input-event", (inputEvent, input) => {
+        // A copy in the page, for handoffs: only that it happened crosses,
+        // after the page has had time to write the clipboard.
+        if (isGuestCopyChord(input, process.platform)) reportGuestCopy();
         const shortcut = resolveGuestShortcut(input, process.platform);
         if (!shortcut) return;
         inputEvent.preventDefault();

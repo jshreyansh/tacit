@@ -60,6 +60,12 @@ import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
 import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
 
+/** Files dropped on a terminal, for the record: main names them and decides if it counts. */
+function recordFileDrop(terminalId: string, paths: string[], dataTransfer: DataTransfer | null): void {
+  const fromFilesPanel = !!dataTransfer && Array.from(dataTransfer.types).includes("application/x-tacit-file");
+  void window.tacit.handoff?.droppedFiles(terminalId, paths, fromFilesPanel);
+}
+
 interface Props {
   lodMode: TerminalMountMode;
   projectId: string;
@@ -795,8 +801,10 @@ export function TerminalTile({
       const ptyId = getTerminalPtyId(terminal.id);
       if (ptyId === null) return;
 
-      const escaped = rawPath.split("\n").filter(Boolean).map(shellEscapePath).join(" ");
+      const paths = rawPath.split("\n").filter(Boolean);
+      const escaped = paths.map(shellEscapePath).join(" ");
       window.tacit.terminal.input(ptyId, " " + escaped);
+      recordFileDrop(terminal.id, paths, e.dataTransfer);
       activateTerminalInScene(projectId, worktreeId, terminal.id);
     };
 
@@ -818,6 +826,24 @@ export function TerminalTile({
     acceptsTaskDrop,
     handleTaskDropPayload,
   ]);
+
+  // Handoffs (SHR-62): a paste into the terminal itself, not its find box;
+  // main reads the clipboard and records it only for an agent terminal.
+  const handleTerminalPaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest(".tc-xterm-host, .tc-wterm-host")) return;
+      void window.tacit.handoff?.pasted(terminal.id);
+    },
+    [terminal.id],
+  );
+  const handleTerminalCopy = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest(".tc-xterm-host, .tc-wterm-host")) return;
+      // The terminal writes the clipboard while this event is handled.
+      setTimeout(() => void window.tacit.handoff?.copied(`terminal:${terminal.id}`), 50);
+    },
+    [terminal.id],
+  );
 
   const handleClose = useCallback(() => {
     closeTerminalInScene(projectId, worktreeId, terminal.id);
@@ -875,8 +901,10 @@ export function TerminalTile({
       const ptyId = getTerminalPtyId(terminal.id);
       if (ptyId === null) return;
 
-      const escaped = rawPath.split("\n").filter(Boolean).map(shellEscapePath).join(" ");
+      const paths = rawPath.split("\n").filter(Boolean);
+      const escaped = paths.map(shellEscapePath).join(" ");
       window.tacit.terminal.input(ptyId, " " + escaped);
+      recordFileDrop(terminal.id, paths, e.dataTransfer);
       activateTerminalInScene(projectId, worktreeId, terminal.id);
     },
     [
@@ -903,6 +931,9 @@ export function TerminalTile({
       data-handoff-terminal-id={terminal.id}
       data-handoff-source={isHandoffSource ? "true" : undefined}
       data-handoff-target={isHandoffTarget ? "true" : undefined}
+      data-record-node={`terminal:${terminal.id}`}
+      onPasteCapture={handleTerminalPaste}
+      onCopyCapture={handleTerminalCopy}
       onDragOver={handleTileDragOver}
       onDragLeave={handleTileDragLeave}
       onDrop={handleTileDrop}

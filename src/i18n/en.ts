@@ -175,6 +175,7 @@ export const en = {
   activity_kind_worker_state: "worker",
   activity_kind_spawn_refused: "refused",
   activity_kind_journal_write: "memory",
+  activity_kind_handoff: "handoff",
   activity_decision: "decision",
   no_file_selected: "No file selected",
   preview_source: "View source",

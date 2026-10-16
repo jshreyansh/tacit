@@ -173,6 +173,7 @@ export const zh = {
   activity_kind_worker_state: "工作者",
   activity_kind_spawn_refused: "拒绝",
   activity_kind_journal_write: "记忆",
+  activity_kind_handoff: "交接",
   activity_decision: "决策",
   memory_empty_hint: "Claude Code 将记忆存储在 ~/.claude/projects/",
   no_file_selected: "未选择文件",

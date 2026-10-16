@@ -276,6 +276,8 @@ export function summarize(entry: CaptureEntry): string {
       return `${entry.node} is running ${entry.provider} session ${entry.session_id}`;
     case "journal_write":
       return `${entry.by} wrote to the ${entry.scope === "workspace" ? "workspace journal" : "project memory"} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
+    case "handoff":
+      return `${entry.via === "paste" ? "pasted" : "dropped"} ${handoffWhat(entry)} into ${entry.to} from ${entry.from === "external" ? "outside Tacit" : entry.from === "app" ? "Tacit's panels" : entry.from}${entry.attribution === "inferred" ? " (inferred)" : ""}`;
     case "run_started":
       return `task started${entry.started_by === "auto" ? " automatically" : entry.started_by === "user" ? "" : ` by ${entry.started_by}`}${entry.goal ? ` — ${entry.goal.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "run_named":
@@ -287,6 +289,12 @@ export function summarize(entry: CaptureEntry): string {
     case "topology":
       return `canvas: ${entry.terminals} terminals, ${entry.browsers} browsers, ${entry.notes} notes, ${entry.wires.length} wires`;
   }
+}
+
+function handoffWhat(entry: Extract<CaptureEntry, { kind: "handoff" }>): string {
+  if (entry.files) return entry.files.length === 1 ? entry.files[0].path : `${entry.files.length} files`;
+  if (entry.from.startsWith("note:") && entry.via === "drop") return "a pin";
+  return entry.length !== undefined ? `${entry.length} characters` : "text";
 }
 
 function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
@@ -311,6 +319,8 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
       return [entry.node];
     case "journal_write":
       return [entry.by];
+    case "handoff":
+      return entry.from === "external" || entry.from === "app" ? [entry.to] : [entry.from, entry.to];
     case "run_started":
     case "run_named":
     case "run_ended":
