@@ -66,3 +66,20 @@ export function serializeAllTerminals(): Record<string, string> {
   }
   return result;
 }
+
+/**
+ * The text of the last rows a terminal has written, oldest first, up to
+ * its cursor: what a card in the workdesk grid shows. Null when no live
+ * renderer is registered for that id.
+ */
+export function readTerminalTail(id: string, rows: number): string[] | null {
+  const entry = registry.get(id);
+  if (!entry) return null;
+  const buffer = entry.xterm.buffer.active;
+  const end = buffer.baseY + buffer.cursorY;
+  const lines: string[] = [];
+  for (let y = Math.max(0, end - rows + 1); y <= end; y += 1) {
+    lines.push(buffer.getLine(y)?.translateToString(true) ?? "");
+  }
+  return lines;
+}

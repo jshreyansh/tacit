@@ -1,3 +1,4 @@
+import { WorkdeskView } from "./workdesk/WorkdeskView";
 import { useEffect } from "react";
 import { CanvasRoot } from "./canvas/CanvasRoot";
 import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
@@ -1215,6 +1216,7 @@ export function App() {
       <SettingsModalHost />
       <LeftRail />
       <ViewControls />
+      <WorkdeskView />
       <NodeTray />
       <LeftPanel />
       <RightPanel />

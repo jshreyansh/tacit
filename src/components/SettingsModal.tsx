@@ -114,6 +114,7 @@ const SHORTCUT_GROUPS: Array<{
       },
       { key: "toggleHub", labelKey: "shortcut_toggle_hub" },
       { key: "toggleManagerChat", labelKey: "shortcut_toggle_manager_chat" },
+      { key: "toggleWorkdeskView", labelKey: "shortcut_toggle_workdesk_view" },
     ],
   },
   {

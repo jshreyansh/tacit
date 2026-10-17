@@ -23,6 +23,7 @@ export interface ShortcutMap {
   toggleSnapshotHistory: string;
   toggleHub: string;
   toggleManagerChat: string;
+  toggleWorkdeskView: string;
   nextCanvas: string;
   prevCanvas: string;
   openCanvasManager: string;
@@ -50,6 +51,7 @@ const LEGACY_DEFAULT_SHORTCUTS: ShortcutMap = {
   toggleSnapshotHistory: "mod+shift+t",
   toggleHub: "mod+shift+j",
   toggleManagerChat: "mod+j",
+  toggleWorkdeskView: "mod+shift+g",
   nextCanvas: "mod+shift+]",
   prevCanvas: "mod+shift+[",
   openCanvasManager: "mod+shift+n",
@@ -77,6 +79,7 @@ const ALT_DEFAULT_SHORTCUTS: ShortcutMap = {
   toggleSnapshotHistory: "alt+shift+t",
   toggleHub: "alt+shift+j",
   toggleManagerChat: "alt+j",
+  toggleWorkdeskView: "alt+shift+g",
   nextCanvas: "alt+shift+]",
   prevCanvas: "alt+shift+[",
   openCanvasManager: "alt+shift+n",

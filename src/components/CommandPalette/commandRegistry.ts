@@ -1,3 +1,4 @@
+import { useWorkdeskViewStore } from "../../stores/workdeskViewStore";
 import { useChatDockStore } from "../../stores/chatDockStore";
 /**
  * Command palette action registry.
@@ -136,6 +137,14 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       keywords: ["manager", "workdesk", "chat", "dock"],
       hint: shortcutHint("toggleManagerChat", isMac),
       perform: () => useChatDockStore.getState().toggle(),
+    },
+    {
+      id: "toggle-workdesk-view",
+      section: "action",
+      title: t.shortcut_toggle_workdesk_view,
+      keywords: ["grid", "canvas", "workdesk", "view", "cards", "tabs"],
+      hint: shortcutHint("toggleWorkdeskView", isMac),
+      perform: () => useWorkdeskViewStore.getState().toggleMode(),
     },
     {
       id: "open-settings",

@@ -12,6 +12,9 @@ import {
   usePopoverKeyboardNav,
 } from "./pillChrome";
 import { useT } from "../i18n/useT";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { CanvasViewIcon, GridViewIcon } from "../workdesk/viewIcons";
+import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 
 const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
@@ -66,6 +69,9 @@ function FocusIcon() {
 
 export function ViewControls() {
   const t = useT();
+  const mode = useWorkdeskViewStore((s) => s.mode);
+  const setMode = useWorkdeskViewStore((s) => s.setMode);
+  const gridShortcut = useShortcutStore((s) => s.shortcuts.toggleWorkdeskView);
   const viewport = useCanvasStore((s) => s.viewport);
   const focusModeActive = useCanvasStore((s) => s.focusMode.active);
   const zoomPercent = `${Math.round(viewport.scale * 100)}%`;
@@ -87,6 +93,9 @@ export function ViewControls() {
     state.setViewport({ ...state.viewport, scale: clampScale(scale) });
   }, []);
 
+
+  // The grid has its own Canvas | Grid switch, and nothing here to zoom.
+  if (mode === "grid") return null;
 
   return (
     <div
@@ -214,6 +223,29 @@ export function ViewControls() {
           </button>
         </div>
 
+        {/* Canvas or Grid: the same nodes, laid out freely or as cards. */}
+        <div className="my-1.5 h-px w-6 bg-[var(--border)]" aria-hidden="true" />
+        <div className="flex flex-col gap-0.5" role="group" aria-label={t.workdesk_view_switch}>
+          <button
+            className={buttonCls}
+            onClick={() => setMode("canvas")}
+            title={t.workdesk_view_canvas}
+            aria-label={t.workdesk_view_canvas}
+            aria-pressed={true}
+            data-on=""
+          >
+            <CanvasViewIcon />
+          </button>
+          <button
+            className={buttonCls}
+            onClick={() => setMode("grid")}
+            title={`${t.workdesk_view_grid} (${formatShortcut(gridShortcut, isMac)})`}
+            aria-label={t.workdesk_view_grid}
+            aria-pressed={false}
+          >
+            <GridViewIcon />
+          </button>
+        </div>
     </div>
   );
 }
