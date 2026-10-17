@@ -316,6 +316,10 @@ test("an automatic task's name is the prompt's first sentence, without pastes", 
   );
   assert.equal(runNameFromPrompt('<pasted_content id="a1">only a paste</pasted_content id="a1">'), null);
   assert.equal(runNameFromPrompt(null), null);
+  // Copied off a terminal agent's screen, or quoted in Markdown.
+  assert.equal(runNameFromPrompt("▎\n▎ check the deploy logs\n▎ for errors"), "check the deploy logs");
+  assert.equal(runNameFromPrompt("> > rename the button"), "rename the button");
+  assert.equal(runNameFromPrompt("▎"), null);
   const long = runNameFromPrompt("please go through every one of the open pull requests and tell me which ones are ready");
   assert.ok(long!.endsWith("…") && long!.length <= 61, long!);
 });

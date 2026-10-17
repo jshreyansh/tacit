@@ -590,15 +590,23 @@ export type RunChange =
 
 const PASTED_BLOCK = /<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g;
 const RUN_NAME_LENGTH = 60;
+const QUOTE_MARKERS = /^\s*(?:[>▎▍▌▏│┃]\s*)+/;
 
 /**
  * A short name for an automatic run, from the prompt that opened it: its
- * first sentence or line, without pasted blocks, cut at a word. Null when
+ * first sentence or line, without pasted blocks or quote markers, cut at a word. Null when
  * nothing readable is left (the prompt was only a paste).
  */
 export function runNameFromPrompt(text: string | null): string | null {
   if (!text) return null;
-  const plain = text.replace(PASTED_BLOCK, " ").trim();
+  // A line copied off an agent's screen keeps its quote bar (Claude Code
+  // draws "▎"); neither it nor a Markdown ">" is part of the name.
+  const plain = text
+    .replace(PASTED_BLOCK, " ")
+    .split("\n")
+    .map((line) => line.replace(QUOTE_MARKERS, "").trim())
+    .filter(Boolean)
+    .join("\n");
   const first = plain.split(/\n|(?<=[.!?])\s/)[0]?.replace(/\s+/g, " ").trim() ?? "";
   const clean = first.replace(/[.!?:;,]+$/, "");
   if (!clean) return null;
