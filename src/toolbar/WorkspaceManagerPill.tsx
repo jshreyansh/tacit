@@ -394,7 +394,7 @@ export function WorkspaceManagerPill() {
           .getState()
           .notify(
             "warn",
-            "Couldn't brief the new workspace manager — its shell process isn't ready yet. It still has the role; just ask it to call get_workspace_summary directly.",
+            "Couldn't brief the new workdesk manager — its shell process isn't ready yet. It still has the role; just ask it to call get_workspace_summary directly.",
           );
         return;
       }

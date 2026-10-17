@@ -1477,7 +1477,7 @@ export class ApiServer {
     if (!isManager) {
       throw Object.assign(
         new Error(
-          "This terminal is not the workspace manager of the canvas on screen. Either the role belongs to another terminal (ask the user to assign it from the Project chat pill), or your canvas isn't the active one; manager tools only reach the canvas that is currently open.",
+          "This terminal is not the workdesk manager of the canvas on screen. Either the role belongs to another terminal (ask the user to assign it from the Project chat pill), or your canvas isn't the active one; manager tools only reach the canvas that is currently open.",
         ),
         { status: 403, code: "not_workspace_manager" },
       );

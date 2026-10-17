@@ -56,7 +56,7 @@ export const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
  * command (zsh: "bad pattern: [From").
  */
 export function managerPromptText(prompt: string, terminalType: string): string {
-  return findAgentAdapter(terminalType) ? `[From the workspace manager] ${prompt}` : prompt;
+  return findAgentAdapter(terminalType) ? `[From the workdesk manager] ${prompt}` : prompt;
 }
 
 function fail(status: number, code: string, message: string): never {

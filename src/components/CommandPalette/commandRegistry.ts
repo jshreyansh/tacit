@@ -479,7 +479,7 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     id: "canvas:new",
     section: "canvas",
     title: ctx.t["canvas.command.new"],
-    keywords: ["canvas", "workspace", "create", "add", "new"],
+    keywords: ["canvas", "workdesk", "workspace", "create", "add", "new"],
     hint: shortcutHint("openCanvasManager", isMac),
     perform: () => {
       useCanvasRegistryStore.getState().createCanvas();
@@ -490,7 +490,7 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     id: "canvas:manage",
     section: "canvas",
     title: ctx.t["canvas.command.manage"],
-    keywords: ["canvas", "workspace", "rename", "delete", "manage"],
+    keywords: ["canvas", "workdesk", "workspace", "rename", "delete", "manage"],
     hint: shortcutHint("openCanvasManager", isMac),
     perform: () => {
       useCanvasManagerStore.getState().openManager();
@@ -544,7 +544,7 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
         id: "canvas:next",
         section: "canvas",
         title: ctx.t["canvas.command.next"],
-        keywords: ["canvas", "workspace", "switch", "next"],
+        keywords: ["canvas", "workdesk", "workspace", "switch", "next"],
         hint: shortcutHint("nextCanvas", isMac),
         perform: () => useCanvasRegistryStore.getState().cycleCanvas(1),
       },
@@ -552,7 +552,7 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
         id: "canvas:prev",
         section: "canvas",
         title: ctx.t["canvas.command.prev"],
-        keywords: ["canvas", "workspace", "switch", "previous"],
+        keywords: ["canvas", "workdesk", "workspace", "switch", "previous"],
         hint: shortcutHint("prevCanvas", isMac),
         perform: () => useCanvasRegistryStore.getState().cycleCanvas(-1),
       },

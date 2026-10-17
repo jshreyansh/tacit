@@ -265,7 +265,7 @@ export function summarize(entry: CaptureEntry): string {
     case "rename":
       return `renamed ${entry.node} to "${entry.title}"`;
     case "manager":
-      return entry.node ? `${entry.node} became the workspace manager` : "workspace manager unassigned";
+      return entry.node ? `${entry.node} became the workdesk manager` : "workdesk manager unassigned";
     case "browser_action":
       return `${entry.ok ? "used" : "failed"} ${entry.action} on ${entry.node} via ${entry.backend}${entry.url ? ` — ${entry.url}` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
     case "spawn_refused":
@@ -275,7 +275,7 @@ export function summarize(entry: CaptureEntry): string {
     case "session":
       return `${entry.node} is running ${entry.provider} session ${entry.session_id}`;
     case "journal_write":
-      return `${entry.by} wrote to the ${entry.scope === "workspace" ? "workspace journal" : "project memory"} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
+      return `${entry.by} wrote to the ${entry.scope === "workspace" ? "workdesk journal" : "project memory"} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
     case "handoff":
       return `${entry.via === "paste" ? "pasted" : "dropped"} ${handoffWhat(entry)} into ${entry.to} from ${entry.from === "external" ? "outside Tacit" : entry.from === "app" ? "Tacit's panels" : entry.from}${entry.attribution === "inferred" ? " (inferred)" : ""}`;
     case "run_started":

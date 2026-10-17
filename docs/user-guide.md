@@ -281,7 +281,7 @@ Sometimes you want a terminal out of the way without killing it. Enter stash:
   - **Destroy** — closes the PTY and removes the entry.
 - **Clear All** — in the stash box header, closes every stashed terminal.
 
-Stash state **persists** across workspace saves, so stashed terminals survive restarts.
+Stash state **persists** across workdesk saves, so stashed terminals survive restarts.
 
 ---
 
@@ -383,7 +383,7 @@ These are aimed at heavier users; skip until you're comfortable with the basics.
 - **Pan-to-recent-activity (`⌥` + `` ` ``)** — fly the camera to whichever terminal had PTY output most recently. Repeat the chord to LRU-cycle through the recently-active set, Alt-Tab style.
 - **Telemetry** — every terminal emits lifecycle events (awaiting-input, tool-running, stall, completion). These drive the pet, status dots, attention queue, Hub, and `⌘K` session search. Disable from Settings → General if you want the app dead-quiet.
 - **Headless mode** — `tacit headless` runs the whole stack as an HTTP/SSE service, no Electron window. Useful for CI or for driving Tacit from another app. See [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md).
-- **Workspace files** — `⌘S` / `⌘⇧S` save the canvas to a `.tacit` JSON file. Re-opening restores every project, worktree, terminal, drawing, stashed tile, and viewport. (For automatic state-history with rollback, see Snapshot History above.)
+- **Workdesk files** — `⌘S` / `⌘⇧S` save the canvas to a `.tacit` JSON file. Re-opening restores every project, worktree, terminal, drawing, stashed tile, and viewport. (For automatic state-history with rollback, see Snapshot History above.)
 
 ---
 
@@ -438,12 +438,12 @@ All shortcuts use **`⌘` on macOS** and **`Ctrl` on Linux / Windows**. Every on
 | `⌘⇧A`     | Activity heatmap                                  |
 | `Esc`     | Dismiss topmost overlay                           |
 
-### Workspace
+### Workdesk
 
 | Key     | Action                          |
 | ------- | ------------------------------- |
 | `⌘O`    | Add project                     |
-| `⌘S` · `⌘⇧S` | Save / save-as workspace   |
+| `⌘S` · `⌘⇧S` | Save / save-as workdesk    |
 | `⌘,`    | Settings                        |
 
 ### Menu-bar (macOS-style, cross-platform)

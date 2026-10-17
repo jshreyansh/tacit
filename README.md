@@ -55,7 +55,7 @@ Registration also installs Tacit's skills and lifecycle hooks for Claude and Cod
 
 ### Canvas
 
-Infinite canvas — pan, zoom, arrange freely. Double-click a title bar to zoom-to-fit. Drag to reorder, box-select many at once, and annotate the canvas itself with the Free Canvas tool so sketches and grouping lines live beside the work. Save the whole layout to a workspace file.
+Infinite canvas — pan, zoom, arrange freely. Double-click a title bar to zoom-to-fit. Drag to reorder, box-select many at once, and annotate the canvas itself with the Free Canvas tool so sketches and grouping lines live beside the work. Save the whole layout to a workdesk file.
 
 ### Coding agents
 
@@ -326,12 +326,12 @@ A map of where each feature lives. Every shortcut is rebindable in **Settings �
 | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd> | Snapshot history |
 | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd> | Activity heatmap |
 
-**Workspace**
+**Workdesk**
 
 | Shortcut | Action |
 |---|---|
 | <kbd>⌘</kbd><kbd>O</kbd> | Add project |
-| <kbd>⌘</kbd><kbd>S</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> | Save / save-as a workspace file |
+| <kbd>⌘</kbd><kbd>S</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> | Save / save-as a workdesk file |
 | <kbd>⌘</kbd><kbd>,</kbd> | Settings |
 
 ---

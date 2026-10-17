@@ -55,7 +55,7 @@ test("delivers to the named terminal only, marked as from the manager", async ()
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].terminalId, "b");
   assert.equal(delivered[0].text, managerPromptText("run the tests", "claude"));
-  assert.match(delivered[0].text, /^\[From the workspace manager\] run the tests$/);
+  assert.match(delivered[0].text, /^\[From the workdesk manager\] run the tests$/);
 });
 
 test("a shell gets the prompt as-is, since it would run the prefix as a command", async () => {

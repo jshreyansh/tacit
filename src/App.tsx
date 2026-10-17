@@ -408,7 +408,7 @@ export function App() {
         .getState()
         .notify(
           "warn",
-          `This ${terminalType ?? "agent"} terminal has no Tacit workspace tools: ${reason}`,
+          `This ${terminalType ?? "agent"} terminal has no Tacit workdesk tools: ${reason}`,
         );
     });
   }, []);

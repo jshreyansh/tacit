@@ -179,7 +179,7 @@ export const en = {
   memory_empty: "No memory files found.",
   memory_empty_hint: "Claude Code stores memories in ~/.claude/projects/",
   memory_scope_worktree: "Worktree",
-  memory_scope_workspace: "Workspace",
+  memory_scope_workspace: "Workdesk",
   memory_scope_activity: "Activity",
   memory_refresh: "Refresh",
   activity_loading: "Loading activity\u2026",
@@ -415,7 +415,7 @@ export const en = {
   layout_vertical: "Vertical layout",
 
   tutorial: "Tutorial",
-  toolbar_untitled_workspace: "Untitled Workspace",
+  toolbar_untitled_workspace: "Untitled Workdesk",
   zoom_out: "Zoom out",
   zoom_in: "Zoom in",
   canvas_tool_select: "Move",
@@ -493,7 +493,7 @@ export const en = {
   settings_features_group_workflow: "Workflow",
   settings_features_group_ambient: "Ambient",
   settings_features_group_input: "Input",
-  settings_shortcut_group_workspace: "Workspace",
+  settings_shortcut_group_workspace: "Workdesk",
   settings_shortcut_group_navigation: "Navigation",
   settings_shortcut_group_terminal: "Terminal",
   settings_shortcut_group_panels: "Panels & overlays",
@@ -552,7 +552,7 @@ export const en = {
   browser_profiles_manage: "Manage profiles",
   browser_activity_label: "Recorded browsing",
   browser_activity_desc:
-    "Pages visited in a browser node are written to this Mac so agents can be asked about them later. Nothing is ever sent anywhere, and it is never included in a workspace snapshot.",
+    "Pages visited in a browser node are written to this Mac so agents can be asked about them later. Nothing is ever sent anywhere, and it is never included in a workdesk snapshot.",
   browser_activity_none: "Nothing recorded",
   browser_activity_summary: (entries: string, size: string) =>
     `${entries} entries · ${size}`,
@@ -885,7 +885,7 @@ export const en = {
     "The agent will lose access to this browser until you connect them again.",
   connection_remove_effect_spawn:
     "This link records that one agent spawned the other, so it will be drawn again the next time this canvas loads.",
-  connection_endpoint_workspace_manager: "the workspace manager",
+  connection_endpoint_workspace_manager: "the workdesk manager",
   connection_endpoint_unknown_terminal: "a terminal that no longer exists",
   connection_endpoint_unknown_browser: "a browser that no longer exists",
   connection_endpoint_unknown_note: "a note that no longer exists",
@@ -920,7 +920,7 @@ export const en = {
   onboarding_agents_title: "Which agents do you use?",
   onboarding_agents_body: "Pick as many as you like. Each opens in your first folder \u2014 you can move them to others afterwards.",
   onboarding_agent_open_source: "Open source",
-  onboarding_open: "Open my workspace",
+  onboarding_open: "Open my workdesk",
   rail_settings: "Settings",
   onboarding_space_create: "New folder",
   onboarding_space_create_desc: "Name it and choose where it lives.",
@@ -1277,11 +1277,11 @@ export const en = {
   "canvas.manager.deleteLastDisabled":
     "At least one canvas must remain",
   "canvas.manager.newCanvas": "New canvas",
-  "canvas.manager.newCanvasHint": "blank workspace",
+  "canvas.manager.newCanvasHint": "blank workdesk",
   "canvas.manager.cycleHint": "⌘⇧[  ⌘⇧]  to cycle",
   "canvas.delete.title": "Delete canvas?",
   "canvas.delete.body": (name: string) =>
-    `"${name}" and its terminals will be removed from this workspace. Files on disk are untouched. This cannot be undone.`,
+    `"${name}" and its terminals will be removed from this workdesk. Files on disk are untouched. This cannot be undone.`,
   "canvas.delete.confirm": "Delete canvas",
   "canvas.command.new": "New canvas",
   "canvas.command.manage": "Manage canvases…",
@@ -1315,7 +1315,7 @@ export const en = {
     `"${name}" is signed out and its data erased. Its folder goes the next time Tacit starts, because the browser still has it open.`,
   "identity.orphans.title": "Browser data with no profile",
   "identity.orphans.body": (n: number) =>
-    `${n} folder${n === 1 ? "" : "s"} of saved browser data on this Mac ${n === 1 ? "belongs" : "belong"} to no profile in this workspace. ${n === 1 ? "It" : "They"} may hold real sign-ins. Restore it as a profile to use it again, or erase it for good.`,
+    `${n} folder${n === 1 ? "" : "s"} of saved browser data on this Mac ${n === 1 ? "belongs" : "belong"} to no profile in this workdesk. ${n === 1 ? "It" : "They"} may hold real sign-ins. Restore it as a profile to use it again, or erase it for good.`,
   "identity.orphans.entry": (created: string, size: string) =>
     `Made ${created} · ${size}`,
   "identity.orphans.restore": "Restore as profile",

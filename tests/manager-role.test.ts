@@ -16,6 +16,9 @@ import {
 
 test("the briefing is recognised from a transcript line", () => {
   assert.equal(isWorkspaceManagerBriefing(WORKSPACE_MANAGER_BRIEFING), true);
+  // Sessions written before the workdesk rename open with the old wording.
+  assert.equal(isWorkspaceManagerBriefing("You've been assigned the workspace manager role for this canvas."), true);
+  assert.ok(WORKSPACE_MANAGER_BRIEFING.startsWith("You've been assigned the workdesk manager role"));
 });
 
 test("a truncated preview of the briefing is still recognised", () => {

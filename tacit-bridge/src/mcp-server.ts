@@ -143,9 +143,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "send_prompt_to_node",
     {
-      title: "Send a prompt to one terminal (workspace manager only)",
+      title: "Send a prompt to one terminal (workdesk manager only)",
       description:
-        "Types a prompt into one terminal on the canvas and submits it, as a new message from you. An agent terminal sees it prefixed '[From the workspace manager]'; a shell terminal gets the text as-is and runs it as a command. Unlike emit_event, which goes to every node wired to you, this reaches only the terminal you name, and needs no wire. Use it to give a worker its next step, correct it, or pass it something it asked for (an OTP, an approval). A worker that is mid-turn receives it after its current turn. Terminals only; get ids from list_nodes or spawn_terminal. Only the workspace manager can call this.",
+        "Types a prompt into one terminal on the canvas and submits it, as a new message from you. An agent terminal sees it prefixed '[From the workdesk manager]'; a shell terminal gets the text as-is and runs it as a command. Unlike emit_event, which goes to every node wired to you, this reaches only the terminal you name, and needs no wire. Use it to give a worker its next step, correct it, or pass it something it asked for (an OTP, an approval). A worker that is mid-turn receives it after its current turn. Terminals only; get ids from list_nodes or spawn_terminal. Only the workdesk manager can call this.",
       inputSchema: {
         id: z.string().describe("The terminal's id, from list_nodes or spawn_terminal"),
         prompt: z.string().describe("What to tell it"),
@@ -174,9 +174,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "wait_for_nodes",
     {
-      title: "Wait until a worker changes state (workspace manager only)",
+      title: "Wait until a worker changes state (workdesk manager only)",
       description:
-        "Waits, without using any of your turns, until one of the named nodes (or any node, if you name none) changes state, then returns what happened: turn_completed (its turn ended; it may be waiting for its next instruction), waiting_for_human (blocked on a person approving something), errored, closed, or any other kinds you ask for. Returns at once if something already happened after the cursor you pass. Holds at most 30 seconds; on timed_out: true, call again with the returned cursor. Always pass back the cursor from your last call so nothing that happened in between is missed; expired: true means some events were lost. turn_completed means the agent stopped and is idle, not that every background task it started has finished. Works for Claude, Codex and OpenCode terminals; for other agents wait for closed, or ask them to report with emit_event. Only the workspace manager can call this.",
+        "Waits, without using any of your turns, until one of the named nodes (or any node, if you name none) changes state, then returns what happened: turn_completed (its turn ended; it may be waiting for its next instruction), waiting_for_human (blocked on a person approving something), errored, closed, or any other kinds you ask for. Returns at once if something already happened after the cursor you pass. Holds at most 30 seconds; on timed_out: true, call again with the returned cursor. Always pass back the cursor from your last call so nothing that happened in between is missed; expired: true means some events were lost. turn_completed means the agent stopped and is idle, not that every background task it started has finished. Works for Claude, Codex and OpenCode terminals; for other agents wait for closed, or ask them to report with emit_event. Only the workdesk manager can call this.",
       inputSchema: {
         nodes: z
           .array(z.string())
@@ -224,9 +224,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "start_task",
     {
-      title: "Start recording the task you're about to do (workspace manager only)",
+      title: "Start recording the task you're about to do (workdesk manager only)",
       description:
-        "Starts recording one task in Tacit's record, under a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the task, so it can be compared with the next similar one; the user sees the goal in the title bar. Call it when you take on a new task. If the user is recording a task they started or named, the call is refused: your work is recorded inside theirs. If Tacit started recording automatically in the last 10 minutes (usually for the instruction you're acting on), your goal names that task; an older one is ended and yours starts. Only the workspace manager can call this.",
+        "Starts recording one task in Tacit's record, under a one-line goal. Everything recorded until it ends (prompts, spawns, closes, worker turns) is grouped under the task, so it can be compared with the next similar one; the user sees the goal in the title bar. Call it when you take on a new task. If the user is recording a task they started or named, the call is refused: your work is recorded inside theirs. If Tacit started recording automatically in the last 10 minutes (usually for the instruction you're acting on), your goal names that task; an older one is ended and yours starts. Only the workdesk manager can call this.",
       inputSchema: {
         goal: z.string().describe("What this task is, in one line, e.g. 'compare three vendors' pricing pages'"),
       },
@@ -248,9 +248,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "end_task",
     {
-      title: "End recording the task you started (workspace manager only)",
+      title: "End recording the task you started (workdesk manager only)",
       description:
-        "Ends recording the task you started or named with start_task, once it's done. A task the user is recording is theirs to end; one left open ends by itself after 30 idle minutes. Only the workspace manager can call this.",
+        "Ends recording the task you started or named with start_task, once it's done. A task the user is recording is theirs to end; one left open ends by itself after 30 idle minutes. Only the workdesk manager can call this.",
       inputSchema: {},
     },
     async () => {
@@ -270,9 +270,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "close_node",
     {
-      title: "Close a terminal or browser (workspace manager only)",
+      title: "Close a terminal or browser (workdesk manager only)",
       description:
-        "Closes one terminal or browser on the canvas: its process stops, its tile and its wires go, and the close is recorded as yours, with your reason. Use it to reap a worker that has finished, or a browser you no longer need. Only nodes an agent started can be closed (startedBy in list_nodes); terminals and browsers the user opened are refused, even with force. A terminal in the middle of a task, or one whose agent doesn't report its progress to Tacit, is not closed unless you pass force: true, since closing it would lose its work. You can't close yourself. Only the workspace manager can call this.",
+        "Closes one terminal or browser on the canvas: its process stops, its tile and its wires go, and the close is recorded as yours, with your reason. Use it to reap a worker that has finished, or a browser you no longer need. Only nodes an agent started can be closed (startedBy in list_nodes); terminals and browsers the user opened are refused, even with force. A terminal in the middle of a task, or one whose agent doesn't report its progress to Tacit, is not closed unless you pass force: true, since closing it would lose its work. You can't close yourself. Only the workdesk manager can call this.",
       inputSchema: {
         kind: z.enum(["terminal", "browser"]).describe("What the id names"),
         id: z.string().describe("The node's id, from list_nodes"),
@@ -342,7 +342,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "List every node on the canvas",
       description:
-        "Lists every terminal, browser, and note on the current workspace's canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workspace manager. Use this to see what already exists before spawning something new or connecting nodes.",
+        "Lists every terminal, browser, and note on the current canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workdesk manager. Use this to see what already exists before spawning something new or connecting nodes.",
       inputSchema: {},
     },
     async () => {
@@ -376,7 +376,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Search what has already been decided on this canvas",
       description:
-        "Searches the decision record and the workspace journal together — what the user asked for, what got spawned and wired, what was tried and abandoned, and the notes past holders of the manager role wrote. Use it before starting something that might have been done already, and when the user refers to earlier work without saying which. Filters are exact and narrow the search rather than merely ranking it: pass `node` to see everything that ever happened to one terminal or browser, `kinds` to restrict to particular events, `since` to bound the time. Text that the app or the CLI injected is excluded unless asked for, so results are what a person actually said and did. Open to any terminal.",
+        "Searches the decision record and the workdesk journal together — what the user asked for, what got spawned and wired, what was tried and abandoned, and the notes past holders of the manager role wrote. Use it before starting something that might have been done already, and when the user refers to earlier work without saying which. Filters are exact and narrow the search rather than merely ranking it: pass `node` to see everything that ever happened to one terminal or browser, `kinds` to restrict to particular events, `since` to bound the time. Text that the app or the CLI injected is excluded unless asked for, so results are what a person actually said and did. Open to any terminal.",
       inputSchema: {
         query: z
           .string()
@@ -417,7 +417,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Search durable memory",
       description:
-        "Searches durable memory notes by keyword. Defaults to the workspace-wide memory scope (the workspace manager's own continuity journal, shared across every agent that ever holds the role) — pass scope='worktree' with a worktree path to search a specific project's per-worktree memory instead (the scope the plain `remember` tool writes to). Open to any terminal.",
+        "Searches durable memory notes by keyword. Defaults to the workdesk-wide memory scope (the workdesk manager's own continuity journal, shared across every agent that ever holds the role) — pass scope='worktree' with a worktree path to search a specific project's per-worktree memory instead (the scope the plain `remember` tool writes to). Open to any terminal.",
       inputSchema: {
         query: z.string().describe("Keyword to search for; empty string lists everything in scope"),
         scope: z
@@ -445,9 +445,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "get_workspace_summary",
     {
-      title: "Get a workspace orientation summary",
+      title: "Get a workdesk orientation summary",
       description:
-        "The first call to make when picking up the workspace-manager role — whether freshly assigned or resuming after being reassigned back. Returns node counts by kind and status, the number of active connections, and the most recent entries from the workspace's continuity journal. Open to any terminal, but most useful to whichever one holds the role.",
+        "The first call to make when picking up the workdesk-manager role — whether freshly assigned or resuming after being reassigned back. Returns node counts by kind and status, the number of active connections, and the most recent entries from the workdesk's continuity journal. Open to any terminal, but most useful to whichever one holds the role.",
       inputSchema: {},
     },
     async () => {
@@ -473,9 +473,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "spawn_terminal",
     {
-      title: "Spawn a new terminal (workspace manager only)",
+      title: "Spawn a new terminal (workdesk manager only)",
       description:
-        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the agent's first message (agent types only: a shell or lazygit takes no opening prompt; spawn it, then use send_prompt_to_node). Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workspace manager can call this.",
+        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the agent's first message (agent types only: a shell or lazygit takes no opening prompt; spawn it, then use send_prompt_to_node). Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workdesk manager can call this.",
       inputSchema: {
         type: z
           .enum(SPAWNABLE_TERMINAL_TYPES)
@@ -503,9 +503,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "spawn_browser",
     {
-      title: "Spawn a new browser tile (workspace manager only)",
+      title: "Spawn a new browser tile (workdesk manager only)",
       description:
-        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Pass profile to choose which browser profile (signed-in identity) it opens as — call list_browser_profiles first if the task needs the user's real session, because the wrong choice means a signed-out page. The result always states which profile was used and why. There is a limit on how many browsers agents can have open at once, counting any an earlier manager or another agent left; at the limit the call is refused, and closing one with close_node frees a slot. Only the workspace manager can call this.",
+        "Creates a new browser tile on the canvas pointed at a URL, wired to you and ready to drive with the browser_* tools immediately — no connect_nodes call needed. Spawning another browser moves that control to the new one. Pass connectTo to give the browser to a different node instead of taking it yourself. Pass profile to choose which browser profile (signed-in identity) it opens as — call list_browser_profiles first if the task needs the user's real session, because the wrong choice means a signed-out page. The result always states which profile was used and why. There is a limit on how many browsers agents can have open at once, counting any an earlier manager or another agent left; at the limit the call is refused, and closing one with close_node frees a slot. Only the workdesk manager can call this.",
       inputSchema: {
         url: z.string().describe("URL to open"),
         position: positionSchema,
@@ -550,9 +550,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "list_browser_profiles",
     {
-      title: "List browser profiles you may use (workspace manager only)",
+      title: "List browser profiles you may use (workdesk manager only)",
       description:
-        "Lists the browser profiles (signed-in identities) you are permitted to open a browser tile as, with the id and name to pass to spawn_browser's profile parameter, which one is this canvas's default, and whether it came from the user's Chrome — a Chrome-imported profile is where their real logged-in sessions are. Profiles the user has withheld from agents are not listed and cannot be used; if a task needs one of those, ask the user. Call this before spawn_browser whenever the work depends on being signed in. Only the workspace manager can call this.",
+        "Lists the browser profiles (signed-in identities) you are permitted to open a browser tile as, with the id and name to pass to spawn_browser's profile parameter, which one is this canvas's default, and whether it came from the user's Chrome — a Chrome-imported profile is where their real logged-in sessions are. Profiles the user has withheld from agents are not listed and cannot be used; if a task needs one of those, ask the user. Call this before spawn_browser whenever the work depends on being signed in. Only the workdesk manager can call this.",
       inputSchema: {},
     },
     async () => {
@@ -571,9 +571,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "spawn_note",
     {
-      title: "Spawn a new note (workspace manager only)",
+      title: "Spawn a new note (workdesk manager only)",
       description:
-        "Creates a new note on the canvas with the given body, linked back to you so it's visible which work it came out of. A note is a record for the human to read — it receives no events and can't be driven. Only the workspace manager can call this.",
+        "Creates a new note on the canvas with the given body, linked back to you so it's visible which work it came out of. A note is a record for the human to read — it receives no events and can't be driven. Only the workdesk manager can call this.",
       inputSchema: {
         body: z.string().describe("Note content (markdown)"),
         position: positionSchema,
@@ -596,9 +596,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "connect_nodes",
     {
-      title: "Wire two nodes together (workspace manager only)",
+      title: "Wire two nodes together (workdesk manager only)",
       description:
-        "Connects two existing nodes on the canvas. A wire grants capability, it isn't just a drawn line: wiring a terminal to a browser lets that terminal drive the page with the browser_* tools, and emit_event only reaches nodes a wire connects. Wiring a note just records that it belongs to that work. Only the workspace manager can call this.",
+        "Connects two existing nodes on the canvas. A wire grants capability, it isn't just a drawn line: wiring a terminal to a browser lets that terminal drive the page with the browser_* tools, and emit_event only reaches nodes a wire connects. Wiring a note just records that it belongs to that work. Only the workdesk manager can call this.",
       inputSchema: {
         source: z.object({
           kind: z.enum(["terminal", "browser", "note"]),
@@ -627,9 +627,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "log_activity",
     {
-      title: "Journal an action (workspace manager only)",
+      title: "Journal an action (workdesk manager only)",
       description:
-        "Appends an entry to the workspace manager's continuity journal — call this after spawning/wiring nodes or making a decision, so a freshly-assigned or reassigned agent can pick up real context via get_workspace_summary or query_memory instead of starting cold. Distinct from the `remember` tool: this is append-only (no name to dedupe against) and scoped to the whole workspace, not one project. Only the workspace manager can call this.",
+        "Appends an entry to the workdesk manager's continuity journal — call this after spawning/wiring nodes or making a decision, so a freshly-assigned or reassigned agent can pick up real context via get_workspace_summary or query_memory instead of starting cold. Distinct from the `remember` tool: this is append-only (no name to dedupe against) and scoped to the whole workspace, not one project. Only the workdesk manager can call this.",
       inputSchema: {
         event: z.string().describe("Short label, e.g. 'spawned browser for docs research'"),
         detail: z.string().optional().describe("Longer context, markdown"),

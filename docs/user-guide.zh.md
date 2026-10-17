@@ -281,7 +281,7 @@ Composer 功能:
   - **Destroy** — 关 PTY 同时删条目。
 - **Clear All** — stash box 头部,一键把所有 stashed terminal 关完。
 
-stash 状态**跨 workspace 保存持久化**,重启后 stashed terminal 还在。
+stash 状态**跨 workdesk 保存持久化**,重启后 stashed terminal 还在。
 
 ---
 
@@ -383,7 +383,7 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 - **飞向最近活动(`⌥` + `` ` ``)** — 把镜头飞到最近有 PTY 输出的终端。重复按等于在最近活跃集合里 LRU 循环,Alt-Tab 风格。
 - **Telemetry** — 每个 terminal 都发生命周期事件(awaiting-input / tool-running / stall / completion)。这些驱动 pet、状态点、注意力队列、Hub、`⌘K` 会话搜索。设置 → 通用 里可以整体关掉。
 - **Headless 模式** — `tacit headless` 把整个栈跑成 HTTP/SSE 服务,不开 Electron 窗口。CI 或者别的 app 驱动 Tacit 时用。详见 [`docs/headless-cloud-deployment.md`](./headless-cloud-deployment.md)。
-- **Workspace 文件** — `⌘S` / `⌘⇧S` 把画布存成一个 `.tacit` JSON 文件。重开它会恢复所有项目、worktree、terminal、涂鸦、stashed tile、视口。(自动状态历史 + 回滚见上面的「快照历史」。)
+- **Workdesk 文件** — `⌘S` / `⌘⇧S` 把画布存成一个 `.tacit` JSON 文件。重开它会恢复所有项目、worktree、terminal、涂鸦、stashed tile、视口。(自动状态历史 + 回滚见上面的「快照历史」。)
 
 ---
 
@@ -438,12 +438,12 @@ App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么�
 | `⌘⇧A`     | 活动热力图                                        |
 | `Esc`     | 关最上面的浮层                                    |
 
-### Workspace
+### Workdesk
 
 | 键        | 动作                       |
 | --------- | -------------------------- |
 | `⌘O`      | 加项目                      |
-| `⌘S` · `⌘⇧S` | 保存 / 另存为 workspace |
+| `⌘S` · `⌘⇧S` | 保存 / 另存为 workdesk |
 | `⌘,`      | 设置                        |
 
 ### 菜单栏(macOS 风格,跨平台)

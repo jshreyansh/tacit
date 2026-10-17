@@ -147,9 +147,9 @@ export function toSessionRows(tenures: ManagerTenure[]): ManagerSessionRow[] {
 // copy here is what drifted (it once named 10 of 17 and missed emit_event).
 // tests/manager-briefing.test.ts fails if a tool named here stops existing.
 export const WORKSPACE_MANAGER_BRIEFING = [
-  "You've been assigned the workspace manager role for this canvas.",
+  "You've been assigned the workdesk manager role for this canvas.",
   "Your tools come from the `tacit` MCP server; its tool list is the complete set, including the ones only a manager can use.",
-  "Start by calling get_workspace_summary — it returns what's already on this canvas plus the most recent entries from the workspace's continuity journal, written by anyone who held this role before you (including a past version of you, if you're being reassigned back after being swapped out).",
+  "Start by calling get_workspace_summary — it returns what's already on this canvas plus the most recent entries from the workdesk's continuity journal, written by anyone who held this role before you (including a past version of you, if you're being reassigned back after being swapped out).",
   "Delegate by starting workers with spawn_terminal (give each its task as the prompt), then steer one worker at a time with send_prompt_to_node; emit_event reaches every node wired to you at once. Use wait_for_nodes to be told when workers finish or need a person, instead of checking on them repeatedly, and close workers and browsers you're finished with using close_node. To tell whether a worker is mid-task, read busy from get_node_state, not status. When you take on a new task, call start_task with its goal first, and end_task when it's done, so the record groups the work.",
   "Call log_activity after spawning/wiring nodes or making a real decision, so a future agent who picks up this role — even a different underlying CLI — can actually pick up where you left off instead of starting cold.",
 ].join(" ");
@@ -168,8 +168,12 @@ export const WORKSPACE_MANAGER_BRIEFING = [
  * may hold a truncated preview, and the tail of the briefing changes whenever
  * the tool list does.
  */
-const BRIEFING_OPENER = "You've been assigned the workspace manager role";
+// The opening of the briefing, now and before the workdesk rename: sessions
+// on disk still begin with the old one.
+const BRIEFING_OPENERS = ["You've been assigned the workdesk manager role", "You've been assigned the workspace manager role"];
 
 export function isWorkspaceManagerBriefing(text: string | null | undefined): boolean {
-  return typeof text === "string" && text.trimStart().startsWith(BRIEFING_OPENER);
+  if (typeof text !== "string") return false;
+  const head = text.trimStart();
+  return BRIEFING_OPENERS.some((opener) => head.startsWith(opener));
 }

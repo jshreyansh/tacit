@@ -2337,8 +2337,8 @@ function setupIpc() {
           ok: false,
           code: "target-not-running" as const,
           stage: "target" as const,
-          error: "The workspace manager's terminal is not running.",
-          detail: "The workspace manager's terminal is not running.",
+          error: "The workdesk manager's terminal is not running.",
+          detail: "The workdesk manager's terminal is not running.",
         };
       }
 
@@ -2547,9 +2547,9 @@ function setupIpc() {
 
   ipcMain.handle("workspace:save", async (_event, data: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, {
-      title: "Save Workspace",
-      defaultPath: "workspace.tacit",
-      filters: [{ name: "Tacit Workspace", extensions: ["tacit"] }],
+      title: "Save Workdesk",
+      defaultPath: "workdesk.tacit",
+      filters: [{ name: "Tacit Workdesk", extensions: ["tacit"] }],
     });
     if (result.canceled || !result.filePath) return null;
     const filePath = workspaceSavePaths.register(result.filePath);
@@ -2572,8 +2572,8 @@ function setupIpc() {
 
   ipcMain.handle("workspace:open", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "Open Workspace",
-      filters: [{ name: "Tacit Workspace", extensions: ["tacit"] }],
+      title: "Open Workdesk",
+      filters: [{ name: "Tacit Workdesk", extensions: ["tacit"] }],
       properties: ["openFile"],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
