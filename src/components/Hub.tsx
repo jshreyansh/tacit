@@ -1,3 +1,4 @@
+import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
 import {
   useCallback,
   useEffect,
@@ -594,6 +595,8 @@ export function Hub() {
     ? formatRelativeTime(t, wallTick, summary.lastActivityAt)
     : null;
 
+  const chatOffset = useChatDockStore((st) => chatDockOffset(st, CHROME_GAP));
+
   return (
     <div
       ref={containerRef}
@@ -607,7 +610,7 @@ export function Hub() {
       className="tc-float fixed z-[60] overflow-hidden"
       style={{
         top: CHROME_TOP,
-        left: HUB_LEFT,
+        left: HUB_LEFT + chatOffset,
         height: CHROME_HEIGHT,
         width: open ? HUB_WIDTH : 0,
         opacity: open ? 1 : 0,

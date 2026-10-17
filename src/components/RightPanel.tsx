@@ -1,3 +1,4 @@
+import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import {
   useCanvasStore,
@@ -340,6 +341,8 @@ export function RightPanel() {
   const displayedWidth = collapsed ? 0 : width;
   const widthTransition = dragging ? undefined : PANEL_REVEAL_TRANSITION;
 
+  const chatOffset = useChatDockStore((st) => chatDockOffset(st, CHROME_GAP));
+
   return (
     <>
     <div
@@ -347,7 +350,8 @@ export function RightPanel() {
       style={{
         top: TITLE_STRIP_HEIGHT + CHROME_INSET,
         // Opens beside the LEFT rail, which now owns every panel button.
-        left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
+        // Opens to the right of the docked chat, never under it.
+        left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatOffset,
         bottom: CHROME_INSET,
         width: displayedWidth,
         opacity: collapsed ? 0 : 1,

@@ -1,3 +1,4 @@
+import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
 import { useCallback, useState, useRef, useMemo, useEffect } from "react";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import {
@@ -245,6 +246,8 @@ export function LeftPanel() {
     [t, seenTerminalIds],
   );
 
+  const chatOffset = useChatDockStore((s) => chatDockOffset(s, CHROME_GAP));
+
   return (
     <>
       <PinDrawer />
@@ -254,7 +257,8 @@ export function LeftPanel() {
         className="tc-float fixed z-40 overflow-hidden"
           style={{
           top: TITLE_STRIP_HEIGHT + CHROME_INSET,
-          left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
+          // Opens to the right of the docked chat, never under it.
+          left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatOffset,
           bottom: CHROME_INSET,
           width: displayedWidth,
         opacity: collapsed ? 0 : 1,

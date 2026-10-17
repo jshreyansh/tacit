@@ -21,7 +21,12 @@ import { PILL_GLASS, useCloseOnOutsideClick } from "./pillChrome";
 /** How long a just-started automatic task says where it came from. */
 const AUTO_HINT_MS = 6_000;
 
-export function TaskControl() {
+/**
+ * `pill`: the chip beside the manager's pill, its card opening upward.
+ * `strip`: the context line under the docked chat's header, its card
+ * opening downward over the conversation. One control in either place.
+ */
+export function TaskControl({ variant = "pill", trailing }: { variant?: "pill" | "strip"; trailing?: React.ReactNode } = {}) {
   const t = useT();
   const [run, setRun] = useState<RunInfo | null>(null);
   const [open, setOpen] = useState(false);
@@ -65,6 +70,37 @@ export function TaskControl() {
 
   const name = run?.goal ?? t.task_untitled;
 
+  if (variant === "strip") {
+    return (
+      <div ref={rootRef} className="relative shrink-0 border-b border-[var(--border)]">
+        <button
+          className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[11.5px] text-[var(--text-muted)] transition-colors duration-quick hover:bg-[color-mix(in_srgb,var(--text-primary)_5%,transparent)]"
+          style={open ? { background: "color-mix(in srgb, var(--text-primary) 6%, transparent)" } : undefined}
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+        >
+          <span
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${run ? "animate-pulse" : ""}`}
+            style={run ? { background: "var(--red)" } : { border: "1.5px solid var(--text-muted)" }}
+          />
+          {run ? (
+            <>
+              <span className="min-w-0 truncate text-[var(--text-secondary)]">
+                {t.task_recording_short} · {name}
+              </span>
+              <span className="tc-mono shrink-0 tabular-nums">{autoHint ? t.task_auto_hint : elapsed(run.started_at)}</span>
+            </>
+          ) : (
+            <span>{t.task_record}</span>
+          )}
+          {trailing && <span className="ml-auto flex shrink-0 items-center gap-1.5">{trailing}</span>}
+        </button>
+        {open && <TaskPanel run={run} onDone={close} placement="below" />}
+      </div>
+    );
+  }
+
   return (
     <div ref={rootRef} className="pointer-events-auto relative shrink-0">
       <button
@@ -98,7 +134,7 @@ export function TaskControl() {
   );
 }
 
-function TaskPanel({ run, onDone }: { run: RunInfo | null; onDone: () => void }) {
+function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "below" }) {
   const t = useT();
   // "new" is a goal for a task to start; "rename" edits the open one's name.
   const [editing, setEditing] = useState<"new" | "rename" | null>(run ? null : "new");
@@ -158,8 +194,13 @@ function TaskPanel({ run, onDone }: { run: RunInfo | null; onDone: () => void })
     <div
       role="dialog"
       aria-label={t.task_recording}
-      // Opens upward from the chip, over the canvas, like the pill above it.
-      className="tc-float tc-enter-fade-up absolute bottom-full left-0 mb-2 w-[22rem] p-3.5 text-[11px]"
+      // Upward from the chip beside the pill; downward from the docked chat's
+      // context line, over the conversation.
+      className={
+        placement === "above"
+          ? "tc-float tc-enter-fade-up absolute bottom-full left-0 z-10 mb-2 w-[22rem] p-3.5 text-[11px]"
+          : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
+      }
       style={{ borderRadius: 18 }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onDone();

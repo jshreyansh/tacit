@@ -1,3 +1,4 @@
+import { useChatDockStore } from "../stores/chatDockStore";
 import { useEffect } from "react";
 import { zoomToFitAllTerminals } from "../canvas/zoomActions";
 import { usePinStore } from "../stores/pinStore";
@@ -353,6 +354,14 @@ export function useKeyboardShortcuts() {
       if (matchesShortcut(e, shortcuts.toggleHub)) {
         consumeShortcut();
         useHubStore.getState().toggleHub();
+        return;
+      }
+
+      // The workdesk manager's chat, docked on the left. Works from
+      // terminal focus like the Hub, so you can reach the manager mid-flow.
+      if (matchesShortcut(e, shortcuts.toggleManagerChat)) {
+        consumeShortcut();
+        useChatDockStore.getState().toggle();
         return;
       }
 

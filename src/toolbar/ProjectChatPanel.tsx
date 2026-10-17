@@ -148,8 +148,11 @@ export function useManagerConversation(
  */
 export function PeekLine({
   conversation,
+  bare = false,
 }: {
   conversation: ManagerConversation;
+  /** Without its own rule and padding, for a host that draws the frame. */
+  bare?: boolean;
 }) {
   const t = useT();
   const { telemetry, lastReply, now } = conversation;
@@ -161,8 +164,8 @@ export function PeekLine({
     const elapsed = formatElapsed(telemetry?.turn_started_at, now);
     return (
       <div
-        className="flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] px-3 py-1.5"
-        style={{ background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
+        className={bare ? "flex min-w-0 items-center gap-1.5" : "flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] px-3 py-1.5"}
+        style={bare ? undefined : { background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
       >
         <span
           aria-hidden
@@ -190,7 +193,7 @@ export function PeekLine({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] px-3 py-1.5">
+    <div className={bare ? "flex min-w-0 items-center gap-1.5" : "flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] px-3 py-1.5"}>
       <span
         className="truncate"
         style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}

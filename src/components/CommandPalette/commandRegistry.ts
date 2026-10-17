@@ -1,3 +1,4 @@
+import { useChatDockStore } from "../../stores/chatDockStore";
 /**
  * Command palette action registry.
  *
@@ -127,6 +128,14 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       keywords: ["hub", "dashboard", "summary", "feed", "overview"],
       hint: shortcutHint("toggleHub", isMac),
       perform: () => useHubStore.getState().toggleHub(),
+    },
+    {
+      id: "toggle-manager-chat",
+      section: "action",
+      title: t.shortcut_toggle_manager_chat,
+      keywords: ["manager", "workdesk", "chat", "dock"],
+      hint: shortcutHint("toggleManagerChat", isMac),
+      perform: () => useChatDockStore.getState().toggle(),
     },
     {
       id: "open-settings",

@@ -113,6 +113,7 @@ const SHORTCUT_GROUPS: Array<{
         labelKey: "shortcut_toggle_snapshot_history",
       },
       { key: "toggleHub", labelKey: "shortcut_toggle_hub" },
+      { key: "toggleManagerChat", labelKey: "shortcut_toggle_manager_chat" },
     ],
   },
   {

@@ -1,4 +1,5 @@
 import type { Viewport } from "../types";
+import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import {
   CHROME_GAP,
@@ -75,6 +76,8 @@ export function getLeftPanelInset(
     CHROME_INSET +
     LEFT_RAIL_WIDTH +
     CHROME_GAP +
+    // The docked manager chat comes first, then whichever panel opens after it.
+    chatDockOffset(useChatDockStore.getState(), CHROME_GAP) +
     (panelWidth > 0 ? panelWidth + CHROME_GAP : 0)
   );
 }

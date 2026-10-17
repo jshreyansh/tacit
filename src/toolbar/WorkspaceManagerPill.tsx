@@ -19,6 +19,11 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
+import { ManagerMark } from "./ManagerMark";
+import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
+import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
+import { useChatDockStore } from "../stores/chatDockStore";
+import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
 import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
@@ -48,12 +53,6 @@ function formatWhen(iso: string): string {
     : d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-// Sized larger than BottomToolbar's own buttonBase/iconButton (h-8) —
-// deliberately local, not shared, since this pill is the one prominent
-// "where do I talk to my workspace manager" affordance and reads better
-// bigger, while the zoom/Fit/Focus pill stays compact utility chrome.
-const labelButtonCls =
-  "inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium text-[var(--text-secondary)] transition-[color,background-color,transform] duration-quick hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] active:scale-[0.98] focus-visible:outline-none motion-reduce:transition-none disabled:opacity-60 disabled:pointer-events-none";
 
 // Any agent Tacit launches with its bridge tools can hold the role: the role
 // is those tools plus the briefing, and every adapter in
@@ -139,14 +138,6 @@ export function WorkspaceManagerPill() {
   }, [projects, workspaceManagerTerminalId]);
 
   /**
-   * The pill sits directly above the dock, in the path the pointer takes all
-   * day, so opening on a bare hover would flicker constantly. The delay is what
-   * makes hover usable at all. Closing is immediate — a control that lingers
-   * after you've left is worse than one that is slow to arrive.
-   */
-  const HOVER_OPEN_DELAY_MS = 220;
-
-  /**
    * Which face the seat is showing.
    *
    * Roster and history used to be popovers anchored inside the panel, which
@@ -157,14 +148,19 @@ export function WorkspaceManagerPill() {
    * positioned at all.
    */
   const [view, setView] = useState<"chat" | "roster" | "history">("chat");
-  const [height, setHeight] = useState<"rest" | "composer" | "full">("rest");
+  /**
+   * Resting, it is the pill at the bottom; opened, it docks full height on
+   * the left beside the bar (SHR-127). The old in-between heights grew a
+   * box over the middle of the canvas, which is where your work is.
+   */
+  const dockOpen = useChatDockStore((s) => s.open);
+  const dockWidth = useChatDockStore((s) => s.width);
+  const setDockOpen = useChatDockStore((s) => s.setOpen);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [inputFocused, setInputFocused] = useState(false);
   const [history, setHistory] = useState<ManagerSessionRow[]>([]);
 
   const [viewing, setViewing] = useState<ManagerSessionRow | null>(null);
-  const hoverTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Read from telemetry rather than the terminal record: the transcript path is
@@ -249,45 +245,24 @@ export function WorkspaceManagerPill() {
 
   const managerLabel = managerTerminal ? labelFor(managerTerminal.id) : "";
 
-  const openOnHover = useCallback(() => {
-    if (!managerTerminal) return;
-    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    hoverTimer.current = window.setTimeout(() => {
-      setHeight((h) => (h === "rest" ? "composer" : h));
-    }, HOVER_OPEN_DELAY_MS);
-  }, [managerTerminal]);
+  // A seat that empties while the chat is open shows who could take it.
+  useEffect(() => {
+    if (!managerTerminal && dockOpen) setView("roster");
+  }, [managerTerminal, dockOpen]);
 
-  const closeOnLeave = useCallback(() => {
-    if (hoverTimer.current !== null) {
-      window.clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
+  // Closing the chat leaves it on the conversation, live, for next time.
+  useEffect(() => {
+    if (!dockOpen) {
+      setView("chat");
+      setViewing(null);
     }
-    // Never collapse out from under work in progress: a half-typed message, a
-    // focused input, an open menu, or the deliberately-opened full height all
-    // mean the control is still in use.
-    setHeight((h) => {
-      if (h !== "composer") return h;
-      if (draft.trim() || inputFocused || view !== "chat") return h;
-      return "rest";
-    });
-  }, [draft, inputFocused, view]);
+  }, [dockOpen]);
 
-  useEffect(() => {
-    return () => {
-      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    };
-  }, []);
-
-  // A role that no longer exists shouldn't leave a conversation on screen.
-  useEffect(() => {
-    if (!managerTerminal) setHeight("rest");
-  }, [managerTerminal]);
-
-  // Focus the input as soon as the control opens, so hovering and typing works
+  // Focus the input as soon as the chat opens, so ⌘J and typing works
   // without an extra click.
   useEffect(() => {
-    if (height !== "rest") inputRef.current?.focus();
-  }, [height]);
+    if (dockOpen && view === "chat") requestAnimationFrame(() => inputRef.current?.focus());
+  }, [dockOpen, view]);
 
   /**
    * Report whoever currently holds the role, not just changes to it.
@@ -382,9 +357,9 @@ export function WorkspaceManagerPill() {
    * is currently filled or empty.
    */
   const openRoster = useCallback(() => {
-    setHeight((h) => (h === "rest" ? "full" : h));
-    setView((v) => (v === "roster" ? "chat" : "roster"));
-  }, []);
+    setDockOpen(true);
+    setView((v) => (v === "roster" && managerTerminal ? "chat" : "roster"));
+  }, [setDockOpen, managerTerminal]);
 
   /** Terminal record by id, across every project — used for the handover notice. */
   const findTerminalById = useCallback(
@@ -524,290 +499,418 @@ export function WorkspaceManagerPill() {
       managerTerminal.height,
     );
   }, [managerTerminal]);
-  /**
-   * One control, three heights — see docs and the redesign proposal.
-   *
-   * Before this, the conversation was a detached box floating above a separate
-   * pill: two objects for one thing, with two identical-looking chevrons where
-   * one reassigned the agent and the other opened the conversation. Now the
-   * pill IS the control and only ever grows upward from the same spot, so it
-   * reads as the thing you were already looking at, opening.
-   */
-  /**
-   * A face fills the seat at panel size regardless of the chat ladder, so the
-   * roster is reachable from the collapsed pill and from an empty seat.
-   */
+  const toggleShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
+  const isMac = (window.tacit?.app.platform ?? "darwin") === "darwin";
+  const shortcutLabel = formatShortcut(toggleShortcut, isMac);
+  const [dragging, setDragging] = useState(false);
+
+  /** Drag the chat's right edge; the width is kept when you let go. */
+  const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const target = e.currentTarget;
+    const startX = e.clientX;
+    const startWidth = useChatDockStore.getState().width;
+    target.setPointerCapture(e.pointerId);
+    setDragging(true);
+    const move = (ev: PointerEvent) => useChatDockStore.getState().setWidth(startWidth + ev.clientX - startX);
+    const up = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      target.removeEventListener("pointercancel", up);
+      useChatDockStore.getState().commitWidth();
+      setDragging(false);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+    target.addEventListener("pointercancel", up);
+  }, []);
+
+  /** Esc to the manager's terminal: how Claude and Codex stop a turn. */
+  const stopTurn = useCallback(() => {
+    if (!managerTerminal) return;
+    const ptyId = getLivePtyId(managerTerminal.id);
+    if (ptyId != null) window.tacit.terminal.input(ptyId, "\x1b");
+  }, [managerTerminal]);
+
   const faceOpen = view !== "chat";
-  const chatOpen = managerTerminal !== null && height !== "rest";
-  const expanded = faceOpen || chatOpen;
-  const showChat = chatOpen && !faceOpen;
-  const isFull = faceOpen || (chatOpen && height === "full");
+  const running = conversation?.telemetry?.turn_state === "in_turn";
+  const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
 
-  return (
-    <div
-      // The context chip and the pill share one row, centred together, so
-      // what is being recorded sits beside who you are talking to (SHR-127).
-      className="fixed left-1/2 -translate-x-1/2 z-[95] pointer-events-none flex items-end gap-2"
-      // Sits directly above the composer. It used to clear the node dock as
-      // well, which moved to the left rail — leaving that offset behind would
-      // have parked the pill over a gap.
-      style={{ bottom: bottomOffset }}
-    >
-      <TaskControl />
+  const iconButton =
+    "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
+
+  // ── Resting: the pill at the bottom, the recording chip beside it ──────
+  if (!dockOpen) {
+    return (
       <div
-        // overflow-hidden, now that nothing escapes the shell. It used to be
-        // omitted because the assign and history menus were absolutely
-        // positioned children that clipping would have erased — they are faces
-        // inside the shell now, so clipping is what keeps content inside the
-        // rounded corner while the box is mid-deform.
-        className={`tc-seat tc-pill pointer-events-auto relative mx-auto flex flex-col overflow-hidden ${PILL_GLASS}`}
-        // Collapsed it is glass, so the canvas belongs behind it. Expanded it
-        // is a reading surface and goes black — see `.tc-seat[data-open]`.
-        // Opening is therefore not merely the box growing: the surface changes
-        // state on the same curve, which is the moment worth having.
-        data-open={expanded ? "" : undefined}
-        style={
-          {
-            width: expanded ? "min(34rem, calc(100vw - 2rem))" : undefined,
-            maxHeight: isFull ? "min(30rem, 55vh)" : undefined,
-            // Reading a predecessor shows their colour. The room belongs to
-            // whoever is speaking in it, which answers "live or archive?"
-            // before you have read the banner.
-            "--seat-hue": speakingHue,
-          } as React.CSSProperties
-        }
-        onMouseEnter={openOnHover}
-        onMouseLeave={closeOnLeave}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && height !== "rest") {
-            e.stopPropagation();
-            setHeight("rest");
-          }
-          // ⌘↑ / ⌘↓ walk the ladder, so one shortcut covers the whole range.
-          if (e.metaKey && e.key === "ArrowUp") {
-            e.preventDefault();
-            setHeight(height === "full" ? "full" : "full");
-          }
-          if (e.metaKey && e.key === "ArrowDown") {
-            e.preventDefault();
-            setHeight(height === "full" ? "composer" : "rest");
-          }
-        }}
+        // The context chip and the pill share one row, centred together, so
+        // what is being recorded sits beside who you are talking to.
+        className="pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
+        style={{ bottom: bottomOffset }}
       >
-        {/* Config row — only at full height. The agent picker lives here now
-            rather than as a second chevron beside the label, where it was
-            indistinguishable from the one that opened the conversation. */}
-        {isFull && (
-          <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-2.5 py-2">
-            {faceOpen ? (
-              /* A face is showing, so the header's job is to get you back. */
-              <button
-                className="flex shrink-0 items-center gap-1.5 rounded-md py-1 pl-1 pr-2 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]"
-                style={{ fontSize: "var(--text-xs)" }}
-                onClick={() => {
-                  setView("chat");
-                  // Nothing to go back to when the seat is empty.
-                  if (!managerTerminal) setHeight("rest");
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 12L6 8l4-4" />
-                </svg>
-                {t.back}
-              </button>
-            ) : (
-              <>
-                {/* Same control as the collapsed pill: the occupant, clickable. */}
-                <button
-                  className="tc-seat-avatar"
-                  onClick={openRoster}
-                  aria-haspopup="true"
-                  aria-expanded={false}
-                  title={t.project_chat_assign}
-                  aria-label={t.project_chat_assign}
-                >
-                  {managerWorking && <span className="tc-seat-pulse" aria-hidden="true" />}
-                  {managerTerminal && (
-                    <img
-                      src={agentIcon(managerTerminal.type)}
-                      alt=""
-                    />
-                  )}
-                </button>
-                <button
-                  className="tc-mono truncate text-left text-[var(--text-primary)] hover:underline"
-                  style={{ fontSize: "var(--text-xs)" }}
-                  onClick={flyToManager}
-                  title={t.project_chat_go_to}
-                >
-                  {managerLabel}
-                </button>
-              </>
-            )}
-            <span className="tc-mono flex-1 truncate text-[var(--text-faint)]" style={{ fontSize: "var(--text-xs)" }}>
-              {view === "roster"
-                ? t.project_chat_assign
-                : view === "history"
-                  ? t.project_chat_history
-                  : ""}
-            </span>
-            {!faceOpen && history.length > 0 && (
-              <button
-                className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]"
-                style={{ fontSize: "var(--text-xs)" }}
-                onClick={() => setView("history")}
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 3a5 5 0 1 1-4.2 2.3" />
-                  <path d="M3.2 3.5v2.2h2.2" />
-                  <path d="M8 5.5V8l1.8 1.2" />
-                </svg>
-                {t.project_chat_history}
-              </button>
-            )}
-            <button
-              className="shrink-0 rounded-md p-1 text-[var(--text-faint)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]"
-              onClick={() => {
-                setView("chat");
-                setViewing(null);
-                setHeight("rest");
-              }}
-              aria-label={t.close}
-            >
-              {/* Points UP — collapsing shrinks the seat back down to a pill. */}
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {/* You are reading someone else's tenure. Said before the transcript
-            rather than after it, because the first line you read should not be
-            mistaken for something the current manager told you. */}
-        {showChat && viewing && (
-          <div className="tc-seat-archive tc-seat-face">
-            {speakingIcon && <img src={speakingIcon} alt="" />}
-            <span className="min-w-0 flex-1 truncate">
-              {t.project_chat_reading_past}
-              <b className="tc-mono"> {viewing.cli ?? "agent"}</b>
-              <span className="tc-mono"> · {formatWhen(viewing.startedAt)}</span>
-            </span>
-            <button type="button" onClick={() => setViewing(null)}>
-              {t.project_chat_back_to_live}
-            </button>
-          </div>
-        )}
-
-        {showChat && height === "full" && conversation && (
-          <div className="tc-seat-face flex min-h-0 flex-1 flex-col">
-            <ConversationBody
-              conversation={conversation}
-              isLive={viewing === null}
-              handover={
-                handoverRow
-                  ? {
-                      cli: handoverRow.cli,
-                      at: handoverRow.startedAt,
-                      icon:
-                        agentIcon(handoverRow.cli) ?? null,
-                    }
-                  : null
-              }
-            />
-          </div>
-        )}
-
-        {/* Peek — the one line that makes the composer height usable alone.
-            Hidden at full height, where the conversation says the same thing
-            with more room. */}
-        {showChat && height !== "full" && conversation && (
-          <div className="tc-seat-face">
-            <PeekLine conversation={conversation} />
-          </div>
-        )}
-
-        {/* The resting pill. Its own row so the label keeps its position as the
-            control grows — nothing jumps when a height changes. */}
-        {!expanded && (
-          <div className="tc-seat-face flex items-center gap-1.5 py-1.5 pl-2 pr-2">
-            {/* The occupant is the control: clicking who holds the seat is how
-                you change who holds it. That retires both the separate "+" and
-                the "change ▾" trigger, and leaves one affordance that matches
-                the mental model exactly. Vacant, the same button is a dashed
-                chair rather than a settings sentence. */}
-            <button
-              className="tc-seat-avatar"
-              data-empty={managerTerminal ? undefined : ""}
-              onClick={openRoster}
-              aria-haspopup="true"
-              aria-expanded={false}
-              title={t.project_chat_assign}
-              aria-label={t.project_chat_assign}
-            >
-              {managerWorking && <span className="tc-seat-pulse" aria-hidden="true" />}
-              {managerTerminal && (
-                <img
-                  src={agentIcon(managerTerminal.type)}
-                  alt=""
-                />
-              )}
-            </button>
-            <button
-              className={labelButtonCls}
-              onClick={() => (managerTerminal ? setHeight("composer") : openRoster())}
-              title={managerTerminal ? t.project_chat_show : t.project_chat_unassigned}
-            >
-              <span className={managerTerminal ? "tc-mono" : undefined}>
-                {managerTerminal ? managerLabel : t.project_chat_unassigned}
-              </span>
-            </button>
-          </div>
-        )}
-
-        {/* A past holder cannot be messaged, so the composer is replaced rather
-            than disabled. A greyed-out input still invites a click, and this
-            one used to be fully live: typing here while reading an archive sent
-            the message to whoever holds the seat *now* — an agent that has
-            never seen the conversation on screen — and put the reply in a
-            thread you were not looking at, so it read as vanishing. */}
-        {showChat && viewing && (
-          <div className="tc-seat-face flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border)] px-3 py-2.5">
-            <span
-              className="tc-mono truncate text-[var(--text-faint)]"
+        <TaskControl />
+        <div className="pointer-events-auto flex flex-col items-center gap-2">
+          {/* One line above the pill: what the manager is doing, or the last
+              thing it said. */}
+          {managerTerminal && conversation && (running || conversation.lastReply) && (
+            <div
+              className={`tc-pill max-w-[34rem] px-3 py-1.5 ${PILL_GLASS}`}
               style={{ fontSize: "var(--text-xs)" }}
             >
-              {t.project_chat_archive_readonly}
-            </span>
+              <PeekLine conversation={conversation} bare />
+            </div>
+          )}
+          {managerTerminal ? (
             <button
               type="button"
-              className="shrink-0 rounded-md px-2 py-1 text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)] hover:text-[var(--text-primary)]"
-              style={{ fontSize: "var(--text-xs)" }}
-              onClick={() => setViewing(null)}
+              className={`tc-pill flex h-12 items-center gap-2.5 pl-2.5 pr-2 text-left transition-colors duration-quick ${PILL_GLASS}`}
+              style={{
+                width: "min(30rem, calc(100vw - 26rem))",
+                borderColor: running ? "color-mix(in srgb, var(--cyan) 40%, transparent)" : undefined,
+              }}
+              onClick={() => setDockOpen(true)}
+              title={`${t.project_chat_show} (${shortcutLabel})`}
             >
-              {t.project_chat_back_to_live}
+              <ManagerMark agent={managerTerminal.type} size={24} working={managerWorking} />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-muted)]">
+                {t.project_chat_placeholder}
+              </span>
+              <kbd className="tc-mono shrink-0 rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)]">
+                {shortcutLabel}
+              </kbd>
             </button>
-          </div>
-        )}
-
-        {/* Input — rendered in the same slot at both heights so switching
-            between them never unmounts it and loses a half-typed message. */}
-        {showChat && !viewing && (
-          <div className="tc-seat-face flex shrink-0 items-end gap-2 border-t border-[var(--border)] px-3 py-2">
-            <span
-              className="tc-mono shrink-0 pb-1"
-              style={{ fontSize: "var(--text-xs)", color: "var(--cyan)" }}
+          ) : (
+            <button
+              type="button"
+              className={`tc-pill flex h-12 items-center gap-2.5 px-4 text-left text-[13px] text-[var(--text-secondary)] ${PILL_GLASS}`}
+              style={{ width: "min(30rem, calc(100vw - 26rem))", borderStyle: "dashed" }}
+              onClick={openRoster}
             >
-              ›
-            </span>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+              {t.project_chat_choose}
+              <span className="ml-auto text-[11.5px] text-[var(--text-muted)]">{t.project_chat_choose_hint}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Open: docked full height on the left, beside the bar ───────────────
+  return (
+    <aside
+      className="tc-float fixed z-[44] flex flex-col overflow-hidden"
+      aria-label={t.project_chat_title}
+      style={
+        {
+          top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+          bottom: CHROME_INSET,
+          left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
+          width: dockWidth,
+          borderRadius: 20,
+          // Reading a predecessor shows their colour on the lit top edge.
+          "--seat-hue": speakingHue,
+        } as React.CSSProperties
+      }
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && faceOpen && managerTerminal) {
+          e.stopPropagation();
+          setView("chat");
+        }
+      }}
+    >
+      {/* The lit edge, in the colour of whoever holds the seat. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+        style={{ background: `linear-gradient(90deg, transparent, ${speakingHue ?? "var(--accent)"}, transparent)`, opacity: 0.7 }}
+      />
+
+      {/* Header: the mark, who runs this workdesk, and the controls. */}
+      <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-[var(--border)] pl-3 pr-2">
+        <ManagerMark agent={speakingCli} size={28} working={managerWorking && isLive} />
+        <button
+          type="button"
+          className="tc-rail-btn flex min-w-0 flex-col items-start px-1.5 py-1 text-left"
+          onClick={openRoster}
+          title={t.project_chat_assign}
+          aria-haspopup="true"
+        >
+          <span className="text-[13px] font-semibold text-[var(--text-primary)]">{t.project_chat_title}</span>
+          <span className="flex max-w-full items-center gap-1 truncate text-[11px] text-[var(--text-muted)]">
+            <span className="truncate">{agentLabel ? `${agentLabel} · ${managerLabel}` : t.project_chat_empty_seat}</span>
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </span>
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className={iconButton}
+          data-on={view === "history" ? "" : undefined}
+          aria-pressed={view === "history"}
+          onClick={() => setView(view === "history" ? "chat" : "history")}
+          title={t.project_chat_history}
+          aria-label={t.project_chat_history}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 3a5 5 0 1 1-4.2 2.3" />
+            <path d="M3.2 3.5v2.2h2.2" />
+            <path d="M8 5.5V8l1.8 1.2" />
+          </svg>
+        </button>
+        {managerTerminal && (
+          <button type="button" className={iconButton} onClick={flyToManager} title={t.project_chat_go_to} aria-label={t.project_chat_go_to}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="2.5" y="3.5" width="11" height="9" rx="1.6" />
+              <path d="M5 7l1.6 1.2L5 9.4M8 9.5h2.5" />
+            </svg>
+          </button>
+        )}
+        <button
+          type="button"
+          className={iconButton}
+          onClick={() => setDockOpen(false)}
+          title={`${t.project_chat_collapse_dock} (${shortcutLabel})`}
+          aria-label={t.project_chat_collapse_dock}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 4L6 8l4 4" />
+          </svg>
+        </button>
+      </div>
+
+      {/* What is being recorded, under the header: the same control as the
+          chip beside the pill, so there is only ever one. */}
+      <TaskControl variant="strip" />
+
+      {/* A face (choosing a manager, or past chats) gets a way back. */}
+      {faceOpen && managerTerminal && (
+        <div className="flex shrink-0 items-center gap-2 px-2 pt-2">
+          <button
+            type="button"
+            className="tc-rail-btn flex items-center gap-1.5 py-1 pl-1.5 pr-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            onClick={() => setView("chat")}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 12L6 8l4-4" />
+            </svg>
+            {t.back}
+          </button>
+          <span className="text-[12px] text-[var(--text-faint)]">
+            {view === "roster" ? t.project_chat_assign : t.project_chat_history}
+          </span>
+        </div>
+      )}
+
+      {/* You are reading someone else's tenure. Said before the transcript,
+          because the first line you read should not be mistaken for something
+          the current manager told you. */}
+      {view === "chat" && viewing && (
+        <div className="tc-seat-archive tc-seat-face">
+          {speakingIcon && <img src={speakingIcon} alt="" />}
+          <span className="min-w-0 flex-1 truncate">
+            {t.project_chat_reading_past}
+            <b className="tc-mono"> {viewing.cli ?? "agent"}</b>
+            <span className="tc-mono"> · {formatWhen(viewing.startedAt)}</span>
+          </span>
+          <button type="button" onClick={() => setViewing(null)}>
+            {t.project_chat_back_to_live}
+          </button>
+        </div>
+      )}
+
+      {view === "chat" && conversation && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ConversationBody
+            conversation={conversation}
+            isLive={viewing === null}
+            handover={
+              handoverRow
+                ? { cli: handoverRow.cli, at: handoverRow.startedAt, icon: agentIcon(handoverRow.cli) ?? null }
+                : null
+            }
+          />
+        </div>
+      )}
+
+      {/* Past chats, newest first, each with the agent's own mark and how
+          long it held the seat. */}
+      {view === "history" && (
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {history.map((row) => {
+            const cli = row.cli ?? "agent";
+            const icon = agentIcon(cli) ?? null;
+            return (
+              <button
+                key={row.sessionId}
+                type="button"
+                disabled={!row.sessionFile}
+                onClick={() => {
+                  setViewing(row.isCurrent ? null : row);
+                  setView("chat");
+                }}
+                className="tc-seat-session"
+              >
+                <span className="mark">{icon && <img src={icon} alt="" />}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="tc-mono truncate text-[var(--text-primary)]" style={{ fontSize: "var(--text-xs)" }}>
+                      {cli}
+                    </span>
+                    {row.isCurrent && (
+                      <span className="tc-mono shrink-0 uppercase tracking-wider" style={{ fontSize: "10px", color: "var(--green)" }}>
+                        {t.project_chat_now}
+                      </span>
+                    )}
+                  </span>
+                  <span className="tc-mono mt-0.5 block text-[var(--text-faint)]" style={{ fontSize: "10.5px" }}>
+                    {formatHeld(row.startedAt, row.endedAt)}
+                  </span>
+                </span>
+                <span className="tc-mono shrink-0 tabular-nums text-[var(--text-faint)]" style={{ fontSize: "10.5px" }}>
+                  {formatWhen(row.startedAt)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "roster" && (
+        <div role="menu" aria-label={t.project_chat_assign} className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {!managerTerminal && (
+            <div className="px-2 pb-2 pt-3">
+              <div className="text-[16px] font-semibold text-[var(--text-primary)]">{t.project_chat_choose_title}</div>
+              <div className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-muted)]">{t.project_chat_choose_body}</div>
+            </div>
+          )}
+          {(managerTerminal || eligibleManagerTerminals.length > 0) && (
+            <div className="tc-seat-group">{t.project_chat_running_now}</div>
+          )}
+          {managerTerminal && (
+            <div className="tc-seat-option pointer-events-none justify-between text-[var(--text-primary)]">
+              <img src={agentIcon(managerTerminal.type)} alt="" />
+              <span className="min-w-0 flex-1 truncate">{managerLabel}</span>
+              <span className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                {t.project_chat_holding}
+              </span>
+            </div>
+          )}
+          {eligibleManagerTerminals.map((term) => (
+            <button
+              key={term.id}
+              data-popover-item
+              role="menuitem"
+              tabIndex={-1}
+              className="tc-seat-option"
+              onClick={() => assignWorkspaceManager(term.id)}
+            >
+              <img src={agentIcon(term.type)} alt="" />
+              <span className="min-w-0 flex-1 truncate">{labelFor(term.id) || term.label}</span>
+              <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{agentName(term.type)}</span>
+            </button>
+          ))}
+          <div className="tc-seat-group">{t.project_chat_start_new}</div>
+          {MANAGER_AGENTS.map(({ id: type, displayName }) => {
+            // An agent whose CLI isn't installed stays listed, dimmed, with
+            // the reason, rather than spawning a manager that fails at launch.
+            const detection = agentDetections[type];
+            const missing = detection !== undefined && !detection.installed;
+            return (
+              <button
+                key={type}
+                data-popover-item
+                role="menuitem"
+                tabIndex={-1}
+                className={`tc-seat-option${missing ? " opacity-50" : ""}`}
+                aria-disabled={missing || undefined}
+                title={missing ? (detection.reason ?? undefined) : undefined}
+                onClick={() => {
+                  if (missing) return;
+                  spawnAndAssignManager(type as TerminalType);
+                }}
+              >
+                <img src={agentIcon(type)} alt="" />
+                <span className="min-w-0 flex-1 truncate">{displayName}</span>
+                {missing && <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{t.agent_not_installed}</span>}
+              </button>
+            );
+          })}
+          {managerTerminal && (
+            <>
+              <div className="mx-2 my-1.5 h-px bg-[var(--border)] opacity-60" />
+              <button
+                data-popover-item
+                role="menuitem"
+                tabIndex={-1}
+                className="tc-seat-option"
+                data-danger=""
+                onClick={() => assignWorkspaceManager(null)}
+              >
+                {t.project_chat_remove}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* A past holder cannot be messaged, so the composer is replaced rather
+          than disabled: typing here used to send to whoever holds the seat
+          now, an agent that has never seen the conversation on screen. */}
+      {view === "chat" && viewing && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border)] px-3 py-2.5">
+          <span className="tc-mono truncate text-[var(--text-faint)]" style={{ fontSize: "var(--text-xs)" }}>
+            {t.project_chat_archive_readonly}
+          </span>
+          <button
+            type="button"
+            className="tc-rail-btn shrink-0 px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            style={{ fontSize: "var(--text-xs)" }}
+            onClick={() => setViewing(null)}
+          >
+            {t.project_chat_back_to_live}
+          </button>
+        </div>
+      )}
+
+      {/* The status line and the composer. */}
+      {view === "chat" && !viewing && managerTerminal && (
+        <div className="shrink-0 px-3 pb-3">
+          {running && conversation && (
+            <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
+              <PeekLine conversation={conversation} bare />
+              <button
+                type="button"
+                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                onClick={stopTurn}
+                title={t.project_chat_stop_hint}
+              >
+                <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
+                  <rect width="10" height="10" rx="2" fill="currentColor" />
+                </svg>
+                {t.project_chat_stop}
+              </button>
+            </div>
+          )}
+          <div
+            className="flex flex-col gap-2 border px-3 pb-2 pt-2.5"
+            style={{
+              borderRadius: 14,
+              cornerShape: "squircle",
+              borderColor: "var(--border-hover)",
+              background: "color-mix(in srgb, var(--bg) 70%, transparent)",
+            } as React.CSSProperties}
+          >
             <textarea
               ref={inputRef}
-              rows={1}
+              rows={2}
               value={draft}
               disabled={sending}
               onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -816,181 +919,66 @@ export function WorkspaceManagerPill() {
                 // The canvas listens globally for single-key shortcuts.
                 e.stopPropagation();
               }}
-              placeholder={t.project_chat_placeholder}
-              className="max-h-24 min-h-[1.5rem] flex-1 resize-none bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
-              style={{ fontSize: "var(--text-sm)" }}
+              placeholder={running ? t.project_chat_placeholder_running : t.project_chat_placeholder}
+              className="max-h-40 min-h-[2.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
             />
-            <button
-              className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              style={{ fontSize: "var(--text-xs)" }}
-              onClick={() => setHeight(isFull ? "composer" : "full")}
-              title={isFull ? t.project_chat_collapse : t.project_chat_expand}
-              aria-label={isFull ? t.project_chat_collapse : t.project_chat_expand}
-            >
-              {isFull ? "⌘↓" : "⌘↑"}
-            </button>
-          </div>
-        )}
-
-        {/* History — only conversations that held the role, which is what the
-            tenure log exists to make knowable. */}
-        {/* Past sessions, newest first. Tiles rather than the timestamp list it
-            used to be: you scan history asking "which one was that", and a row
-            carrying the agent's own mark and how long it ran answers that,
-            where a bare clock time does not. It spans the panel rather than
-            hanging off one corner, so it reads as a sheet over the
-            conversation instead of a dropdown clipped to an edge. */}
-        {view === "history" && (
-          <div className="tc-seat-face min-h-0 flex-1 overflow-y-auto p-1.5">
-            {history.map((row) => {
-              const cli = row.cli ?? "agent";
-              const icon = agentIcon(cli) ?? null;
-              return (
-                <button
-                  key={row.sessionId}
-                  type="button"
-                  disabled={!row.sessionFile}
-                  onClick={() => {
-                    setViewing(row.isCurrent ? null : row);
-                    setView("chat");
-                  }}
-                  className="tc-seat-session"
-                >
-                  <span className="mark">
-                    {icon && <img src={icon} alt="" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-2">
-                      <span
-                        className="tc-mono truncate text-[var(--text-primary)]"
-                        style={{ fontSize: "var(--text-xs)" }}
-                      >
-                        {cli}
-                      </span>
-                      {row.isCurrent && (
-                        <span
-                          className="tc-mono shrink-0 uppercase tracking-wider"
-                          style={{ fontSize: "10px", color: "var(--green)" }}
-                        >
-                          {t.project_chat_now}
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className="tc-mono mt-0.5 block text-[var(--text-faint)]"
-                      style={{ fontSize: "10.5px" }}
-                    >
-                      {formatHeld(row.startedAt, row.endedAt)}
-                    </span>
-                  </span>
-                  <span
-                    className="tc-mono shrink-0 tabular-nums text-[var(--text-faint)]"
-                    style={{ fontSize: "10.5px" }}
-                  >
-                    {formatWhen(row.startedAt)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {view === "roster" && (
-          <div
-            role="menu"
-            aria-label={t.project_chat_assign}
-            className="tc-seat-face min-h-0 flex-1 overflow-y-auto p-1.5"
-          >
-            {(managerTerminal || eligibleManagerTerminals.length > 0) && (
-              <div className="tc-seat-group">{t.project_chat_running_now}</div>
-            )}
-            {/* The current holder, listed but not selectable — picking it would
-                be a no-op, and leaving it out of the list made the menu read as
-                if it were offering the only options that exist. */}
-            {managerTerminal && (
-              <div className="tc-seat-option pointer-events-none justify-between text-[var(--text-primary)]">
-                <img
-                  src={agentIcon(managerTerminal.type)}
-                  alt=""
-                />
-                <span className="min-w-0 flex-1 truncate">{managerLabel}</span>
-                <span className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                  {t.project_chat_holding}
-                </span>
-              </div>
-            )}
-            {eligibleManagerTerminals.map((term) => (
+            <div className="flex items-center gap-1">
               <button
-                key={term.id}
-                data-popover-item
-                role="menuitem"
-                tabIndex={-1}
-                className="tc-seat-option"
-                onClick={() => assignWorkspaceManager(term.id)}
+                type="button"
+                className="tc-rail-btn flex h-7 items-center gap-1 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                onClick={() => {
+                  // Claude and Codex both read "@path" in a prompt as a file
+                  // to attach; this starts one where the cursor is.
+                  const el = inputRef.current;
+                  const at = el?.selectionStart ?? draft.length;
+                  const next = `${draft.slice(0, at)}@${draft.slice(at)}`;
+                  setDraft(next);
+                  requestAnimationFrame(() => {
+                    el?.focus();
+                    el?.setSelectionRange(at + 1, at + 1);
+                  });
+                }}
+                title={t.project_chat_mention_file_hint}
               >
-                <img src={agentIcon(term.type)} alt="" />
-                <span className="min-w-0 flex-1 truncate">
-                  {labelFor(term.id) || term.label}
-                </span>
-                <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
-                  {agentName(term.type)}
-                </span>
+                {t.project_chat_mention_file}
               </button>
-            ))}
-            <div className="tc-seat-group">{t.project_chat_start_new}</div>
-            {MANAGER_AGENTS.map(({ id: type, displayName }) => {
-              // An agent whose CLI isn't installed stays listed, dimmed, with
-              // the reason, rather than spawning a manager that fails at
-              // launch. Unknown (detection still running) counts as available.
-              const detection = agentDetections[type];
-              const missing = detection !== undefined && !detection.installed;
-              return (
-                <button
-                  key={type}
-                  data-popover-item
-                  role="menuitem"
-                  tabIndex={-1}
-                  className={`tc-seat-option${missing ? " opacity-50" : ""}`}
-                  aria-disabled={missing || undefined}
-                  title={missing ? (detection.reason ?? undefined) : undefined}
-                  onClick={() => {
-                    if (missing) return;
-                    // Adapter ids are terminal types by construction.
-                    spawnAndAssignManager(type as TerminalType);
-                  }}
-                >
-                  <img src={agentIcon(type)} alt="" />
-                  <span className="min-w-0 flex-1 truncate">{displayName}</span>
-                  {missing && (
-                    <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
-                      {t.agent_not_installed}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-            {/* Emptying the seat. It was the last item of a menu that ran off
-                the bottom of the window, so the one option you open this to
-                find was the one you could not reach. In a face it is simply
-                the last row, and the face scrolls. */}
-            {managerTerminal && (
-              <>
-                <div className="mx-2 my-1.5 h-px bg-[var(--border)] opacity-60" />
-                <button
-                  data-popover-item
-                  role="menuitem"
-                  tabIndex={-1}
-                  className="tc-seat-option"
-                  data-danger=""
-                  onClick={() => assignWorkspaceManager(null)}
-                >
-                  {t.project_chat_remove}
-                </button>
-              </>
-            )}
+              <div className="flex-1" />
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-[9px] transition-opacity duration-quick disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+                disabled={!draft.trim() || sending}
+                onClick={() => void send()}
+                aria-label={t.project_chat_send}
+                title={t.project_chat_send}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 13V3M4 7l4-4 4 4" />
+                </svg>
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* The right edge: drag to resize; double-click for the default width. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t.project_chat_resize}
+        title={t.project_chat_resize}
+        className="group absolute bottom-0 right-0 top-0 z-10 flex w-2 cursor-col-resize items-center justify-center"
+        onPointerDown={startResize}
+        onDoubleClick={() => {
+          useChatDockStore.getState().setWidth(440);
+          useChatDockStore.getState().commitWidth();
+        }}
+      >
+        <span
+          className="h-11 w-[3px] rounded-full transition-colors duration-quick"
+          style={{ background: dragging ? "var(--cyan)" : "color-mix(in srgb, var(--text-muted) 55%, transparent)" }}
+        />
       </div>
-    </div>
+    </aside>
   );
 }
