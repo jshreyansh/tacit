@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
+import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
@@ -14,6 +15,21 @@ import {
   type CanvasTerminalItem,
 } from "../components/sessionPanelModel";
 import { filterLiveTerminals, treeTerminals } from "./liveSessionsModel";
+import { findTerminal } from "../actions/terminalLookup";
+import { useCanvasStore } from "../stores/canvasStore";
+
+/**
+ * A session continued in chat (not the manager) opens its chat beside the
+ * manager's, in the reader; anything else shows on the canvas.
+ */
+function openChatSession(terminalId: string): (() => void) | undefined {
+  const terminal = findTerminal(terminalId)?.terminal;
+  if (!terminal?.chatMode) return undefined;
+  return () => {
+    useSessionStore.getState().openLiveChat(terminalId);
+    useCanvasStore.getState().openSessionsOverlay();
+  };
+}
 
 /**
  * What is on this workdesk now, at the top of the docked chat's Sessions
@@ -65,6 +81,9 @@ function Heading({ children, tone = "muted" }: { children: React.ReactNode; tone
 export function LiveSessions({ query }: { query: string }) {
   const t = useT();
   const { attention, tree, stashed, seenTerminalIds } = useLiveTree();
+  const managerId = useCanvasRegistryStore(
+    (s) => (s.canvases.find((c) => c.id === s.activeCanvasId) ?? s.canvases[0])?.workspaceManagerTerminalId ?? null,
+  );
   const [addingProject, setAddingProject] = useState(false);
 
   const addProject = useCallback(async () => {
@@ -84,6 +103,7 @@ export function LiveSessions({ query }: { query: string }) {
       t={t}
       hideLocation={hideLocation}
       unseenDone={item.state === "done" && !seenTerminalIds.has(item.terminalId)}
+      onOpen={managerId === item.terminalId ? undefined : openChatSession(item.terminalId)}
     />
   );
 

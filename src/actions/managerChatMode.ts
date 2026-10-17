@@ -17,8 +17,11 @@ export function hasChatMode(type: string | null | undefined): type is "claude" |
   return type === "claude" || type === "codex";
 }
 
-/** Starts the manager's chat agent, resuming the terminal's session. */
-async function startChat(terminalId: string): Promise<boolean> {
+/**
+ * Starts a terminal's chat agent, resuming the terminal's session: the
+ * manager's, or a past session continued in chat.
+ */
+export async function startTerminalChat(terminalId: string): Promise<boolean> {
   const found = findTerminal(terminalId);
   if (!found || !hasChatMode(found.terminal.type)) return false;
   const result = await window.tacit.chat.start({
@@ -28,7 +31,7 @@ async function startChat(terminalId: string): Promise<boolean> {
     sessionId: found.terminal.sessionId ?? null,
   });
   if (!result.ok) {
-    useNotificationStore.getState().notify("warn", result.error ?? "The chat couldn't start the manager.");
+    useNotificationStore.getState().notify("warn", result.error ?? "The chat couldn't start the agent.");
     return false;
   }
   // Starting read the session's history from the agent's record: the chat
@@ -44,7 +47,7 @@ export async function moveManagerToChat(terminalId: string): Promise<void> {
   if (!found || !hasChatMode(found.terminal.type)) return;
   // Stopping the tile's process first, so one owner holds the session.
   useProjectStore.getState().setTerminalChatMode(found.project.id, found.worktree.id, terminalId, true);
-  const ok = await startChat(terminalId);
+  const ok = await startTerminalChat(terminalId);
   if (!ok) useProjectStore.getState().setTerminalChatMode(found.project.id, found.worktree.id, terminalId, false);
 }
 
@@ -91,7 +94,7 @@ export function cancelManagerMove(terminalId: string): void {
 export async function ensureManagerChat(terminalId: string): Promise<void> {
   const snapshot = await window.tacit.chat.snapshot(terminalId);
   useManagerChatStore.getState().hydrate(terminalId, snapshot.events);
-  if (!snapshot.running) await startChat(terminalId);
+  if (!snapshot.running) await startTerminalChat(terminalId);
 }
 
 export function sendToManagerChat(terminalId: string, text: string): Promise<boolean> {

@@ -12,6 +12,12 @@ interface SessionStore {
   replayIsPlaying: boolean;
   replaySpeed: number;
   replayError: string | null;
+  /**
+   * A past session continued in chat: the reader shows that terminal's
+   * live chat in place of the transcript.
+   */
+  liveChatTerminalId: string | null;
+  openLiveChat: (terminalId: string) => void;
   setSessions: (sessions: SessionInfo[]) => void;
   loadReplay: (filePath: string) => Promise<void>;
   forkSession: (
@@ -39,6 +45,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   replayIsPlaying: false,
   replaySpeed: 1,
   replayError: null,
+  liveChatTerminalId: null,
+
+  openLiveChat: (terminalId) => set({ liveChatTerminalId: terminalId, replayTimeline: null, replayError: null }),
 
   setSessions: (sessions) => {
     const live = sessions.filter((s) => s.isLive);
@@ -48,7 +57,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   loadReplay: async (filePath) => {
     const seq = ++replaySeq;
-    set({ panelView: "replay", replayTimeline: null, replayCurrentIndex: 0, replayIsPlaying: false, replayError: null });
+    set({ panelView: "replay", replayTimeline: null, replayCurrentIndex: 0, replayIsPlaying: false, replayError: null, liveChatTerminalId: null });
     try {
       const timeline = await window.tacit.sessions.loadReplay(filePath);
       if (seq !== replaySeq) return; // stale response — a newer load superseded this one
@@ -66,7 +75,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       targetProvider,
     ),
 
-  exitReplay: () => set({ panelView: "list", replayTimeline: null, replayCurrentIndex: 0, replayIsPlaying: false, replayError: null }),
+  exitReplay: () =>
+    set({ panelView: "list", replayTimeline: null, replayCurrentIndex: 0, replayIsPlaying: false, replayError: null, liveChatTerminalId: null }),
 
   seekTo: (index) => {
     const timeline = get().replayTimeline;

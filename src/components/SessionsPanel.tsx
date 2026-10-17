@@ -10,7 +10,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useSessionStore } from "../stores/sessionStore";
-import { SessionReplayView } from "./SessionReplayView";
 import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
@@ -162,12 +161,16 @@ export function TerminalCard({
   t,
   hideLocation = false,
   unseenDone = false,
+  onOpen,
 }: {
   item: CanvasTerminalItem;
   t: ReturnType<typeof useT>;
   hideLocation?: boolean;
   unseenDone?: boolean;
+  /** What a click does; showing the terminal on the canvas unless given. */
+  onOpen?: () => void;
 }) {
+  const open = onOpen ?? (() => panToTerminal(item.terminalId));
   const subtitleParts = [
     !hideLocation && item.locationLabel && item.locationLabel !== item.title
       ? item.locationLabel
@@ -185,11 +188,11 @@ export function TerminalCard({
           ? "bg-[var(--surface-hover)] ring-1 ring-[var(--accent)]/35"
           : "bg-[var(--surface)] hover:bg-[var(--sidebar-hover)]"
       }`}
-      onClick={() => panToTerminal(item.terminalId)}
+      onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          panToTerminal(item.terminalId);
+          open();
         }
       }}
     >
@@ -1519,9 +1522,6 @@ export function SessionsPanel({
     }
   }, [addingProject, t]);
 
-  if (panelView === "replay" && !stayInListMode) {
-    return <SessionReplayView />;
-  }
 
   const renderTerminal = useCallback(
     (item: CanvasTerminalItem) => (

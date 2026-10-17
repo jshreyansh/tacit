@@ -9,13 +9,12 @@ import {
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
-import { useSessionStore } from "../stores/sessionStore";
 import {
   PANEL_TRANSITION_DURATION_MS,
   PANEL_TRANSITION_EASING_CSS,
 } from "../utils/panelAnimation";
 import { useT } from "../i18n/useT";
-import { SessionReplayView } from "./SessionReplayView";
+import { SessionReader } from "../toolbar/SessionReader";
 
 /*
  * Session replay drawer — left-anchored.
@@ -50,16 +49,11 @@ export function SessionsOverlay() {
   const open = useCanvasStore((s) => s.sessionsOverlayOpen);
   const expanded = useCanvasStore((s) => s.sessionsOverlayExpanded);
   const close = useCanvasStore((s) => s.closeSessionsOverlay);
-  const toggleExpanded = useCanvasStore(
-    (s) => s.toggleSessionsOverlayExpanded,
-  );
   const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
   const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
-  const replayTimeline = useSessionStore((s) => s.replayTimeline);
-  const replayError = useSessionStore((s) => s.replayError);
   const t = useT();
 
   // Only animate width/left during the brief window after the user
@@ -126,8 +120,6 @@ export function SessionsOverlay() {
   const gapMax = `calc(100vw - ${leftInset}px - ${rightInset}px)`;
   const widthStyle = expanded ? gapMax : `min(60vw, ${gapMax})`;
 
-  const hasReplay = replayTimeline !== null || replayError !== null;
-
   return (
     <div
       className="tc-float fixed z-[55] flex flex-col overflow-hidden usage-overlay-enter"
@@ -144,90 +136,10 @@ export function SessionsOverlay() {
       aria-modal="false"
       aria-label={t.sessions_tab}
     >
-      {/* Header */}
-      <div className="tc-row-divider shrink-0 flex items-center gap-2 px-3 py-2 bg-[var(--surface)]">
-        <span className="tc-eyebrow tc-mono tc-color-primary">
-          {t.sessions_tab}
-        </span>
-        <div className="flex-1" />
-        <span className="tc-caption tc-mono">Esc</span>
-        <button
-          className="tc-row-icon flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-          onClick={toggleExpanded}
-          title={
-            expanded
-              ? t.file_editor_restore ?? "Restore"
-              : t.file_editor_maximize ?? "Maximize"
-          }
-        >
-          {expanded ? (
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect
-                x="3.5"
-                y="1.5"
-                width="6"
-                height="6"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
-              <rect
-                x="1.5"
-                y="4.5"
-                width="6"
-                height="6"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-                fill="var(--surface)"
-              />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect
-                x="1.5"
-                y="1.5"
-                width="9"
-                height="9"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
-            </svg>
-          )}
-        </button>
-        <button
-          className="tc-row-icon flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-          onClick={close}
-          aria-label={t.right_panel_collapse}
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path
-              d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-
-      {/* Body */}
+      {/* The reader draws its own header: the session's name and what you
+          can do with it, then widen and close. */}
       <div className="flex-1 min-h-0">
-        {hasReplay ? (
-          <SessionReplayView />
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center gap-2 px-8 text-center">
-            <div className="tc-body-sm" style={{ color: "var(--text-muted)" }}>
-              {(t.sessions_overlay_empty_title as unknown as string) ??
-                "Pick a session on the left"}
-            </div>
-            <div className="tc-label max-w-sm leading-relaxed">
-              {(t.sessions_overlay_empty_hint as unknown as string) ??
-                "Browse past conversations in the left panel's History section. Click any row to open the full transcript here."}
-            </div>
-          </div>
-        )}
+        <SessionReader />
       </div>
     </div>
   );

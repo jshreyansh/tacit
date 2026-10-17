@@ -55,6 +55,13 @@ interface ChatDockStore {
   setFace: (face: ChatFace) => void;
   /** Opens the chat on a face. */
   showFace: (face: ChatFace) => void;
+  /**
+   * Text for the manager's message box from elsewhere (a pin handed over,
+   * a past session to ask about), taken once by the chat.
+   */
+  draftInsert: string | null;
+  insertIntoDraft: (text: string) => void;
+  takeDraftInsert: () => string | null;
   toggle: () => void;
   /** While dragging: moves the edge without saving on every frame. */
   setWidth: (width: number) => void;
@@ -69,6 +76,13 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   setOpen: (open) => set({ open }),
   setFace: (face) => set({ face }),
   showFace: (face) => set({ open: true, face }),
+  draftInsert: null,
+  insertIntoDraft: (text) => set({ open: true, face: "chat", draftInsert: text }),
+  takeDraftInsert: () => {
+    const text = get().draftInsert;
+    if (text !== null) set({ draftInsert: null });
+    return text;
+  },
   toggle: () => set({ open: !get().open }),
   setWidth: (width) => set({ width: clampChatWidth(width) }),
   commitWidth: () => {

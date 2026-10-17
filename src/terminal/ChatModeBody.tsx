@@ -3,13 +3,27 @@ import { useChatDockStore } from "../stores/chatDockStore";
 import { ManagerMark } from "../toolbar/ManagerMark";
 import { requestManagerMove } from "../actions/managerChatMode";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
+import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
+import { SessionChatBody } from "../toolbar/chat/SessionChat";
 
 /**
- * What a manager's tile shows while the manager runs in the docked chat
- * (T6). The tile stays, since Tacit knows the manager by this terminal; it
- * says where the conversation is and offers to bring it back here.
+ * A tile whose agent runs in chat mode (T6). The manager's says where its
+ * conversation is (the docked chat) and offers to bring it back here; any
+ * other, a past session continued in chat, holds the conversation itself.
  */
 export function ChatModeBody({ terminalId, agent }: { terminalId: string; agent: string }) {
+  const isManager = useCanvasRegistryStore((s) => s.canvases.some((c) => c.workspaceManagerTerminalId === terminalId));
+  if (!isManager) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col nopan nodrag nowheel">
+        <SessionChatBody terminalId={terminalId} agent={agent} compact />
+      </div>
+    );
+  }
+  return <ManagerChatModeBody terminalId={terminalId} agent={agent} />;
+}
+
+function ManagerChatModeBody({ terminalId, agent }: { terminalId: string; agent: string }) {
   const t = useT();
   const openChat = useChatDockStore((s) => s.setOpen);
   const transcript = useManagerTranscript(terminalId);

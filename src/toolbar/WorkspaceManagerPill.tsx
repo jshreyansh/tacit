@@ -165,6 +165,15 @@ export function WorkspaceManagerPill() {
   const dockWidth = useChatDockStore((s) => s.width);
   const setDockOpen = useChatDockStore((s) => s.setOpen);
   const [draft, setDraft] = useState("");
+  // Text sent here from elsewhere (a past session to ask about) joins the draft.
+  const draftInsert = useChatDockStore((s) => s.draftInsert);
+  useEffect(() => {
+    if (draftInsert === null) return;
+    const text = useChatDockStore.getState().takeDraftInsert();
+    if (!text) return;
+    setDraft((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text));
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [draftInsert]);
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<ManagerSessionRow[]>([]);
 

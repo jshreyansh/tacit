@@ -16,6 +16,8 @@ import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
 import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "./threadMessages";
+import { findTerminal } from "../../actions/terminalLookup";
+import { linkNodeIds, NODE_CHIP_HREF, type NodeDescription } from "../sessionReaderModel";
 
 /**
  * The docked chat's conversation with a manager in chat mode (T6), drawn by
@@ -36,13 +38,35 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-const TextPart: FC<{ text: string }> = ({ text }) => (
-  <div
-    className={markdownClassName}
-    style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.6 }}
-    dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
-  />
-);
+/** A terminal named in the text, by its name, and whether it's still on the canvas. */
+function describeTerminal(id: string, closedLabel: string): NodeDescription {
+  const found = findTerminal(id);
+  if (!found) return { label: closedLabel, open: false };
+  return { label: found.terminal.customTitle?.trim() || found.terminal.title, open: true };
+}
+
+/**
+ * Markdown, with terminal ids drawn as chips that read as the terminal's
+ * name; clicking one shows it on the canvas.
+ */
+const TextPart: FC<{ text: string }> = ({ text }) => {
+  const t = useT();
+  const html = useMemo(() => renderMarkdown(linkNodeIds(text, (id) => describeTerminal(id, t.chat_node_closed))), [text, t]);
+  return (
+    <div
+      className={`${markdownClassName} tc-node-chips`}
+      style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.6 }}
+      onClick={(e) => {
+        const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(`a[href^="${NODE_CHIP_HREF}"]`);
+        if (!link) return;
+        e.preventDefault();
+        const id = link.getAttribute("href")!.slice(NODE_CHIP_HREF.length);
+        if (findTerminal(id)) panToTerminal(id);
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+};
 
 const ReasoningPart: FC<{ text: string; status?: { type: string } }> = ({ text, status }) => {
   const t = useT();
@@ -233,15 +257,25 @@ function prettyJson(text: string): string {
   }
 }
 
+/** Each message carries its id, so a reader can jump to it. */
+function MessageAnchor({ children, className }: PropsWithChildren<{ className: string }>) {
+  const id = useAuiState((s) => s.message.id);
+  return (
+    <MessagePrimitive.Root className={className} data-msg-id={id}>
+      {children}
+    </MessagePrimitive.Root>
+  );
+}
+
 const UserMessage: FC = () => (
-  <MessagePrimitive.Root className="mb-3 flex justify-end">
+  <MessageAnchor className="mb-3 flex justify-end">
     <div
       className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
       style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
     >
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <>{text}</> }} />
     </div>
-  </MessagePrimitive.Root>
+  </MessageAnchor>
 );
 
 /** Three dots that pulse in turn: the reply is on its way. */
@@ -293,7 +327,7 @@ function PendingReply({ agent, label }: { agent: string; label: string }) {
 function makeAssistantMessage(agent: string, label: string): FC {
   return function AssistantMessage() {
     return (
-      <MessagePrimitive.Root className="mb-4 flex flex-col gap-1">
+      <MessageAnchor className="mb-4 flex flex-col gap-1">
         <ReplyHeader agent={agent} label={label} />
         <MessagePrimitive.Parts
           components={{
@@ -307,7 +341,7 @@ function makeAssistantMessage(agent: string, label: string): FC {
         <MessagePrimitive.If hasContent={false}>
           <EmptyRunningReply />
         </MessagePrimitive.If>
-      </MessagePrimitive.Root>
+      </MessageAnchor>
     );
   };
 }
@@ -395,11 +429,14 @@ export function ChatThread({
   agent,
   onSend,
   onCancel,
+  replyLabel: replyLabelOverride,
 }: {
   transcript: ChatTranscript;
   agent: string;
   onSend: (text: string) => Promise<void>;
   onCancel: () => Promise<void>;
+  /** Who the replies are from; the manager's chat says "· workdesk manager". */
+  replyLabel?: string;
 }) {
   const t = useT();
   const messages = useMemo(() => toThreadMessages(transcript.messages), [transcript.messages]);
@@ -417,7 +454,7 @@ export function ChatThread({
     onCancel,
   });
   const agentName = findAgentAdapter(agent)?.displayName ?? agent;
-  const replyLabel = t.chat_from_manager(agentName.split(" ")[0]);
+  const replyLabel = replyLabelOverride ?? t.chat_from_manager(agentName.split(" ")[0]);
   const AssistantMessage = useMemo(() => makeAssistantMessage(agent, replyLabel), [agent, replyLabel]);
   // Sent, and nothing back yet: the agent's first event makes the reply.
   const last = transcript.messages[transcript.messages.length - 1];

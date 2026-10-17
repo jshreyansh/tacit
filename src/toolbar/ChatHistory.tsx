@@ -254,6 +254,13 @@ export function ChatHistory({
     requestAnimationFrame(() => searchRef.current?.focus());
   }, []);
 
+  // A session hidden from the reader's menu leaves this list too.
+  useEffect(() => {
+    const reload = () => setHidden(loadHiddenSessions());
+    window.addEventListener("tacit:history-hidden", reload);
+    return () => window.removeEventListener("tacit:history-hidden", reload);
+  }, []);
+
   const togglePin = useCallback((sessionId: string) => {
     setPinned((prev) => {
       const next = new Set(prev);
