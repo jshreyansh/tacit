@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { focusInitialDialogTarget, trapDialogTabKey } from "../components/ui/ConfirmDialog";
+import { useManagerTranscript } from "../stores/managerChatStore";
 import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -26,6 +29,8 @@ import {
   turnsOf,
 } from "./sessionReaderModel";
 import {
+  closeChatSession,
+  continueChatSessionInTerminal,
   continueSessionInChat,
   forkSessionAt,
   resumeSessionInTerminal,
@@ -58,20 +63,64 @@ function AgentTile({ agent }: { agent: string }) {
   );
 }
 
-function HeaderEnd({ expanded, onToggleExpanded, onClose, t }: { expanded: boolean; onToggleExpanded: () => void; onClose: () => void; t: Dict }) {
+function CloseButton({ onClose, t }: { onClose: () => void; t: Dict }) {
   return (
-    <>
-      <button type="button" className={iconButton} onClick={onToggleExpanded} title={expanded ? t.reader_narrow : t.reader_widen} aria-label={expanded ? t.reader_narrow : t.reader_widen}>
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          {expanded ? <path d="M6 2.5v3.5H2.5M10 13.5V10h3.5M6 6L2 2M10 10l4 4" /> : <path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9" />}
-        </svg>
-      </button>
-      <button type="button" className={iconButton} onClick={onClose} title={`${t.reader_close} (Esc)`} aria-label={t.reader_close}>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-          <path d="M4 4l8 8M12 4l-8 8" />
-        </svg>
-      </button>
-    </>
+    <button type="button" className={iconButton} onClick={onClose} title={`${t.reader_close} (Esc)`} aria-label={t.reader_close}>
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        <path d="M4 4l8 8M12 4l-8 8" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Closing a session continued in chat asks what you mean: go on in its
+ * terminal (the chat view closes, the session keeps going there), or end
+ * it (the node closes; it joins the past sessions).
+ */
+function CloseSessionDialog({ running, onTerminal, onEnd, onCancel, t }: { running: boolean; onTerminal: () => void; onEnd: () => void; onCancel: () => void; t: Dict }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    const id = window.setTimeout(() => focusInitialDialogTarget(dialog, null), 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+        return;
+      }
+      trapDialogTabKey(dialog, e);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [onCancel]);
+  const choice = "tc-rail-btn flex w-full flex-col items-start gap-0.5 border border-[var(--border)] px-3 py-2.5 text-left hover:border-[var(--border-hover)]";
+  return createPortal(
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={t.reader_close_title} className="fixed inset-0 z-[1000] flex items-center justify-center bg-[var(--scrim)]" onClick={onCancel}>
+      <div className="tc-float flex w-[400px] max-w-[90vw] flex-col gap-3 p-4" style={{ borderRadius: 14 }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-[14px] font-semibold text-[var(--text-primary)]">{t.reader_close_title}</div>
+        {running && <div className="text-[12px] text-[var(--amber)]">{t.reader_close_running}</div>}
+        <button type="button" className={choice} onClick={onTerminal} autoFocus>
+          <span className="text-[13px] text-[var(--text-primary)]">{t.reader_continue_terminal}</span>
+          <span className="text-[11.5px] text-[var(--text-muted)]">{t.reader_continue_terminal_hint}</span>
+        </button>
+        <button type="button" className={`${choice} hover:border-[color-mix(in_srgb,var(--red)_45%,transparent)]`} onClick={onEnd}>
+          <span className="text-[13px] text-[var(--red)]">{t.reader_close_fully}</span>
+          <span className="text-[11.5px] text-[var(--text-muted)]">{t.reader_close_fully_hint}</span>
+        </button>
+        <div className="flex justify-end">
+          <button type="button" className="tc-rail-btn h-8 px-3 text-[12.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]" onClick={onCancel}>
+            {t.cancel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -149,17 +198,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
   );
 }
 
-function PastSession({
-  timeline,
-  expanded,
-  onToggleExpanded,
-  onClose,
-}: {
-  timeline: ReplayTimeline;
-  expanded: boolean;
-  onToggleExpanded: () => void;
-  onClose: () => void;
-}) {
+function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose: () => void }) {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const canvases = useCanvasRegistryStore((s) => s.canvases);
@@ -284,7 +323,7 @@ function PastSession({
         </div>
         {actions}
         <MoreMenu timeline={timeline} agent={agent} t={t} onHidden={onClose} />
-        <HeaderEnd expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} t={t} />
+        <CloseButton onClose={onClose} t={t} />
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -373,9 +412,11 @@ function PastSession({
 }
 
 /** A past session continued in chat, live: the same panel, now with a message box. */
-function LiveSession({ terminalId, expanded, onToggleExpanded, onClose }: { terminalId: string; expanded: boolean; onToggleExpanded: () => void; onClose: () => void }) {
+function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () => void }) {
   const t = useT();
   useProjectStore((s) => s.projects);
+  const transcript = useManagerTranscript(terminalId);
+  const [asking, setAsking] = useState(false);
   const found = findTerminal(terminalId);
   if (!found) {
     return <div className="flex h-full items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.reader_live_gone}</div>;
@@ -393,14 +434,37 @@ function LiveSession({ terminalId, expanded, onToggleExpanded, onClose }: { term
             {t.reader_live(agentName)}
           </span>
         </div>
+        <button
+          type="button"
+          className="tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--border-hover)] px-3 text-[12.5px] text-[var(--text-primary)]"
+          onClick={() => void continueChatSessionInTerminal(terminalId)}
+          title={t.reader_continue_terminal_hint}
+        >
+          {t.reader_continue_terminal}
+        </button>
         <button type="button" className={iconButton} onClick={() => panToTerminal(terminalId)} title={t.workdesk_show_on_canvas} aria-label={t.workdesk_show_on_canvas}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
             <circle cx="8" cy="8" r="2.2" />
             <path d="M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5" />
           </svg>
         </button>
-        <HeaderEnd expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} t={t} />
+        <CloseButton onClose={() => setAsking(true)} t={t} />
       </div>
+      {asking && (
+        <CloseSessionDialog
+          running={transcript.running}
+          onTerminal={() => {
+            setAsking(false);
+            void continueChatSessionInTerminal(terminalId);
+          }}
+          onEnd={() => {
+            setAsking(false);
+            closeChatSession(terminalId);
+          }}
+          onCancel={() => setAsking(false)}
+          t={t}
+        />
+      )}
       <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
         <SessionChatBody terminalId={terminalId} agent={terminal.type} />
       </div>
@@ -414,8 +478,6 @@ export function SessionReader() {
   const replayError = useSessionStore((s) => s.replayError);
   const liveChatTerminalId = useSessionStore((s) => s.liveChatTerminalId);
   const loading = useSessionStore((s) => s.panelView === "replay");
-  const expanded = useCanvasStore((s) => s.sessionsOverlayExpanded);
-  const toggleExpanded = useCanvasStore((s) => s.toggleSessionsOverlayExpanded);
   const closeOverlay = useCanvasStore((s) => s.closeSessionsOverlay);
   const close = () => {
     useSessionStore.getState().exitReplay();
@@ -423,15 +485,15 @@ export function SessionReader() {
   };
 
   if (liveChatTerminalId) {
-    return <LiveSession terminalId={liveChatTerminalId} expanded={expanded} onToggleExpanded={toggleExpanded} onClose={close} />;
+    return <LiveSession terminalId={liveChatTerminalId} onClose={close} />;
   }
   if (timeline) {
-    return <PastSession timeline={timeline} expanded={expanded} onToggleExpanded={toggleExpanded} onClose={close} />;
+    return <PastSession timeline={timeline} onClose={close} />;
   }
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 justify-end border-b border-[var(--border)] px-3 py-3">
-        <HeaderEnd expanded={expanded} onToggleExpanded={toggleExpanded} onClose={close} t={t} />
+        <CloseButton onClose={close} t={t} />
       </div>
       <div className="flex flex-1 items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">
         {replayError ?? (loading ? t.reader_loading : t.reader_pick)}

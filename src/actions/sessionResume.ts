@@ -1,6 +1,7 @@
 import { createTerminal, useProjectStore } from "../stores/projectStore";
-import { createTerminalInScene } from "./terminalSceneActions";
-import { startTerminalChat } from "./managerChatMode";
+import { closeTerminalInScene, createTerminalInScene } from "./terminalSceneActions";
+import { moveManagerToTerminal, startTerminalChat } from "./managerChatMode";
+import { findTerminal } from "./terminalLookup";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useCanvasStore } from "../stores/canvasStore";
@@ -97,4 +98,26 @@ export async function forkSessionAt(target: ResumeTarget, filePath: string, prom
   } catch (err) {
     useNotificationStore.getState().notify("error", err instanceof Error ? err.message : String(err));
   }
+}
+
+function closeReader(): void {
+  useSessionStore.getState().exitReplay();
+  useCanvasStore.getState().closeSessionsOverlay();
+}
+
+/**
+ * A session continued in chat goes on in its terminal: the chat closes and
+ * the node becomes the agent's own terminal, resuming the same session.
+ */
+export async function continueChatSessionInTerminal(terminalId: string): Promise<void> {
+  closeReader();
+  await moveManagerToTerminal(terminalId);
+  panToTerminal(terminalId);
+}
+
+/** Ends a session continued in chat: its node closes, and it joins the past sessions. */
+export function closeChatSession(terminalId: string): void {
+  const found = findTerminal(terminalId);
+  closeReader();
+  if (found) closeTerminalInScene(found.project.id, found.worktree.id, terminalId);
 }

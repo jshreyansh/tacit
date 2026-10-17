@@ -1,18 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
-import {
-  useCanvasStore,
-} from "../stores/canvasStore";
+import { CHROME_GAP, useCanvasStore } from "../stores/canvasStore";
+import { chatDockOffset, useChatDockStore } from "../stores/chatDockStore";
 import {
   getCanvasLeftInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
-import { usePinStore } from "../stores/pinStore";
-import {
-  PANEL_TRANSITION_DURATION_MS,
-  PANEL_TRANSITION_EASING_CSS,
-} from "../utils/panelAnimation";
 import { useT } from "../i18n/useT";
 import { SessionReader } from "../toolbar/SessionReader";
 
@@ -43,43 +37,19 @@ import { SessionReader } from "../toolbar/SessionReader";
  * UsageOverlay's auto-hide threshold so the three canvas-gap
  * tenants behave the same under tight layouts.
  */
-const SESSIONS_MIN_GAP_PX = 640;
+const SESSIONS_MIN_GAP_PX = 520;
 
 export function SessionsOverlay() {
   const open = useCanvasStore((s) => s.sessionsOverlayOpen);
-  const expanded = useCanvasStore((s) => s.sessionsOverlayExpanded);
   const close = useCanvasStore((s) => s.closeSessionsOverlay);
   const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
   const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
+  // It opens to the right of the docked chat, and follows its edge while
+  // you drag it.
+  useChatDockStore((s) => chatDockOffset(s, CHROME_GAP));
   const t = useT();
-
-  // Only animate width/left during the brief window after the user
-  // toggles maximize/restore OR opens/closes the task drawer (which
-  // shifts the canvas-gap by 320 px). Continuous geometry changes
-  // (window resize, side-panel drag) would otherwise queue a 180ms
-  // transition every frame and make the drawer chase the pointer.
-  const [animateLayout, setAnimateLayout] = useState(false);
-  const prevExpandedRef = useRef(expanded);
-  const prevTaskDrawerOpenRef = useRef(taskDrawerOpen);
-  useEffect(() => {
-    if (
-      prevExpandedRef.current === expanded &&
-      prevTaskDrawerOpenRef.current === taskDrawerOpen
-    ) {
-      return;
-    }
-    prevExpandedRef.current = expanded;
-    prevTaskDrawerOpenRef.current = taskDrawerOpen;
-    setAnimateLayout(true);
-    const timer = setTimeout(
-      () => setAnimateLayout(false),
-      PANEL_TRANSITION_DURATION_MS + 40,
-    );
-    return () => clearTimeout(timer);
-  }, [expanded, taskDrawerOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,7 +71,7 @@ export function SessionsOverlay() {
   const leftInset = getCanvasLeftInset(
     leftPanelCollapsed,
     leftPanelWidth,
-    taskDrawerOpen,
+    false,
     rightPanelCollapsed,
     rightPanelWidth,
   );
@@ -117,8 +87,6 @@ export function SessionsOverlay() {
     return null;
   }
 
-  const gapMax = `calc(100vw - ${leftInset}px - ${rightInset}px)`;
-  const widthStyle = expanded ? gapMax : `min(60vw, ${gapMax})`;
 
   return (
     <div
@@ -127,17 +95,14 @@ export function SessionsOverlay() {
         top: CHROME_TOP,
         left: leftInset,
         height: CHROME_HEIGHT,
-        width: widthStyle,
-        transition: animateLayout
-          ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
-          : undefined,
+        width: `calc(100vw - ${leftInset}px - ${rightInset}px)`,
       }}
       role="dialog"
       aria-modal="false"
       aria-label={t.sessions_tab}
     >
       {/* The reader draws its own header: the session's name and what you
-          can do with it, then widen and close. */}
+          can do with it, then close. */}
       <div className="flex-1 min-h-0">
         <SessionReader />
       </div>
