@@ -43,7 +43,8 @@ export class CaptureService {
   private seq = 0;
   /**
    * The last value written per key, to skip an entry that repeats it: a
-   * canvas's topology, and the URL a browser was last recorded on. Read back
+   * canvas's topology, a terminal's agent session, and the URL a browser was
+   * last recorded on. Read back
    * from the record before the first such entry, so a restart doesn't write
    * them all again.
    */
@@ -171,7 +172,7 @@ export class CaptureService {
         continue;
       }
       for (const line of text.split("\n")) {
-        if (!line.includes('"topology"') && !line.includes('"navigate"')) continue;
+        if (!line.includes('"topology"') && !line.includes('"session"') && !line.includes('"navigate"')) continue;
         let entry: CaptureEntry;
         try {
           entry = JSON.parse(line) as CaptureEntry;
@@ -234,6 +235,9 @@ const LOOKBACK_FILES = 7;
  * - topology, a periodic checkpoint: 86% identical to the canvas's last one.
  *   The first one in a run is written anyway, so a run read on its own
  *   says what the canvas looked like.
+ * - a session link, which each launch wrote again for every open terminal.
+ *   Written when it changes (/clear, a resume), and first in each run, so a
+ *   run read on its own can find its transcripts.
  * - a browser navigating to the URL it was already recorded on (a reload, or
  *   the tile remounting after a restart): 81% of navigations nobody asked for.
  *   A different URL, a new search included, is still written.
@@ -248,6 +252,9 @@ function repeatKey(
       key: `topology\0${canvasId ?? ""}`,
       value: JSON.stringify([taskId, event.terminals, event.browsers, event.notes, event.wires]),
     };
+  }
+  if (event.kind === "session") {
+    return { key: `session\0${event.node}`, value: JSON.stringify([taskId, event.provider, event.session_id]) };
   }
   if (event.kind === "browser_action" && event.action === "navigate" && event.by === "system" && event.url) {
     return { key: `navigate\0${event.node}`, value: event.url };

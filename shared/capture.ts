@@ -244,8 +244,8 @@ export type CaptureEvent =
   | {
       /**
        * Which agent session a terminal is running: written when Tacit finds
-       * it, when it changes (/clear, a resumed session), and once per launch
-       * for each terminal still open. The join from the record to the
+       * it, when it changes (/clear, a resumed session), and first in each
+       * run; not again on each launch (electron/capture-service.ts). The join from the record to the
        * agent's own transcript, where its inner work (subagents included)
        * is kept (SHR-115).
        */

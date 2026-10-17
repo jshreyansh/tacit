@@ -372,6 +372,53 @@ test("after a restart, a browser reloading the URL it was last recorded on is no
   assert.deepEqual(urls, ["https://example.com/", "https://example.com/next"]);
 });
 
+test("a session link is written when it changes and first in each run, not again on each launch", () => {
+  const dir = tempDir();
+  let run: string | null = null;
+  const launch = () => new CaptureService(dir, undefined, { taskIdFor: () => run });
+  const link = (service: CaptureService, node: string, session: string) =>
+    // As main records it: the envelope's session_id is the link's too.
+    service.record({ kind: "session", node, session_id: session, provider: "claude" }, "c", new Date(), { sessionId: session });
+
+  const first = launch();
+  link(first, "terminal:a", "s1");
+  link(first, "terminal:b", "s9");
+  const second = launch(); // a restart finds both again
+  link(second, "terminal:a", "s1");
+  link(second, "terminal:b", "s9");
+  link(second, "terminal:a", "s2"); // /clear
+  link(second, "terminal:a", "s1"); // resumed the first one: a change too
+  run = "run-a";
+  link(second, "terminal:a", "s1"); // the run's first: written
+
+  const written = readEntries(dir).map((e) => (e.kind === "session" ? `${e.node} ${e.session_id} ${e.task_id}` : ""));
+  assert.deepEqual(written, [
+    "terminal:a s1 null",
+    "terminal:b s9 null",
+    "terminal:a s2 null",
+    "terminal:a s1 null",
+    "terminal:a s1 run-a",
+  ]);
+});
+
+test("a skipped repeat still reaches the run, which learns its sessions from it", () => {
+  const dir = tempDir();
+  const seen: string[] = [];
+  const service = new CaptureService(dir, undefined, {
+    taskIdFor: (event) => {
+      if (event.kind === "session") seen.push(event.session_id);
+      return "run-a";
+    },
+  });
+  const link = () =>
+    service.record({ kind: "session", node: "terminal:a", session_id: "s1", provider: "claude" }, "c", new Date(), { sessionId: "s1" });
+  link();
+  link(); // skipped in the record
+
+  assert.equal(readEntries(dir).length, 1);
+  assert.deepEqual(seen, ["s1", "s1"]);
+});
+
 test("a damaged line in the record doesn't stop the rest being read back", () => {
   const dir = tempDir();
   const shape = { kind: "topology" as const, terminals: 2, browsers: 1, notes: 0, wires: [] as Array<[string, string, string]> };

@@ -193,7 +193,7 @@ export class RunTracker {
     if (event.kind === "session" && this.run.sessions?.some((s) => s.node === event.node)) {
       this.addSession({ node: event.node, provider: event.provider, session_id: event.session_id, file: null });
     }
-    // A session link is written again for every terminal on each launch.
+    // A session link is found again for every terminal on each launch.
     const housekeeping =
       event.kind === "topology" || event.kind === "session" || (event.kind === "browser_action" && event.by === "system");
     if (!housekeeping) {
