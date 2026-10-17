@@ -43,9 +43,12 @@ export class CaptureService {
   private seq = 0;
   /**
    * The last value written per key, to skip an entry that repeats it: a
-   * canvas's topology, and the URL a browser was last recorded on.
+   * canvas's topology, and the URL a browser was last recorded on. Read back
+   * from the record before the first such entry, so a restart doesn't write
+   * them all again.
    */
   private readonly lastWritten = new Map<string, string>();
+  private lastWrittenLoaded = false;
   /** The open run's id for an entry, its `task_id` (electron/run-tracker.ts). */
   private readonly taskIdFor: (event: CaptureEvent) => string | null;
   /** Sees each entry as it's built, whether or not the write lands. */
@@ -90,11 +93,15 @@ export class CaptureService {
     try {
       // Before anything reads it: an automatic run is named from the prompt.
       event = maskEventSecrets(event);
-      const repeat = repeatKey(event, canvasId);
-      if (repeat && this.lastWritten.get(repeat.key) === repeat.value) return true;
       // Asked before building: a prompt with no run open starts one, whose
-      // run_started is written first.
+      // run_started is written first. An entry that may repeat is
+      // housekeeping, which never starts or extends a run.
       const taskId = context.taskId ?? this.taskIdFor(event);
+      const repeat = repeatKey(event, canvasId, taskId);
+      if (repeat) {
+        this.loadLastWritten(now);
+        if (this.lastWritten.get(repeat.key) === repeat.value) return true;
+      }
       const entry = this.buildEntry(event, canvasId, now, { ...context, taskId });
       this.onRecorded(entry);
       const fileName = captureFileNameFor(now);
@@ -134,6 +141,46 @@ export class CaptureService {
       // being captured, and shouldn't read like one in the log.
       console.warn("[CaptureService] failed to record entry:", this.lastError);
       return false;
+    }
+  }
+
+  /**
+   * What the last few days of the record last wrote per repeat key. A
+   * file that can't be read, or a line that isn't JSON, only means one
+   * repeat may be written again.
+   */
+  private loadLastWritten(now: Date): void {
+    if (this.lastWrittenLoaded) return;
+    this.lastWrittenLoaded = true;
+    let names: string[];
+    try {
+      names = fs.readdirSync(this.dirPath);
+    } catch {
+      return;
+    }
+    const today = captureFileNameFor(now);
+    const recent = names
+      .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name) && name <= today)
+      .sort()
+      .slice(-LOOKBACK_FILES);
+    for (const name of recent) {
+      let text: string;
+      try {
+        text = fs.readFileSync(path.join(this.dirPath, name), "utf-8");
+      } catch {
+        continue;
+      }
+      for (const line of text.split("\n")) {
+        if (!line.includes('"topology"') && !line.includes('"navigate"')) continue;
+        let entry: CaptureEntry;
+        try {
+          entry = JSON.parse(line) as CaptureEntry;
+        } catch {
+          continue;
+        }
+        const repeat = repeatKey(entry, entry.canvas ?? null, entry.task_id ?? null);
+        if (repeat) this.lastWritten.set(repeat.key, repeat.value);
+      }
     }
   }
 
@@ -177,11 +224,16 @@ export class CaptureService {
  * record a packaged build is accumulating. JSONL merges trivially if the two
  * ever need to become one history.
  */
+/** Record files read back for the last value per repeat key: about a week. */
+const LOOKBACK_FILES = 7;
+
 /**
  * Entries that repeat the last one of their kind add nothing, and made up
  * most of the first 34 days of the record (10 Oct):
  *
  * - topology, a periodic checkpoint: 86% identical to the canvas's last one.
+ *   The first one in a run is written anyway, so a run read on its own
+ *   says what the canvas looked like.
  * - a browser navigating to the URL it was already recorded on (a reload, or
  *   the tile remounting after a restart): 81% of navigations nobody asked for.
  *   A different URL, a new search included, is still written.
@@ -189,11 +241,12 @@ export class CaptureService {
 function repeatKey(
   event: CaptureEvent,
   canvasId: string | null,
+  taskId: string | null,
 ): { key: string; value: string } | null {
   if (event.kind === "topology") {
     return {
       key: `topology\0${canvasId ?? ""}`,
-      value: JSON.stringify([event.terminals, event.browsers, event.notes, event.wires]),
+      value: JSON.stringify([taskId, event.terminals, event.browsers, event.notes, event.wires]),
     };
   }
   if (event.kind === "browser_action" && event.action === "navigate" && event.by === "system" && event.url) {

@@ -86,6 +86,18 @@ export function recordTopologyCheckpoint(options: { force?: boolean } = {}): voi
   recordDecision({ kind: "topology", ...shape });
 }
 
+/**
+ * A checkpoint as each run starts, so a run read on its own says what the
+ * canvas looked like; main writes it even when it repeats the last one.
+ * Restoring an open run at launch isn't a start, so this never fires while
+ * the stores are mid-restore.
+ */
+export function installRunStartCheckpoint(): () => void {
+  return window.tacit.run.onChanged(({ change }) => {
+    if (change?.kind === "started") recordTopologyCheckpoint({ force: true });
+  });
+}
+
 /** Test seam — resets the throttle so cases don't leak into each other. */
 export function resetTopologyThrottleForTests(): void {
   lastTopologyAt = 0;

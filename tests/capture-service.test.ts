@@ -18,6 +18,11 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "tacit-capture-"));
 }
 
+/** Raw lines, for a file a test has deliberately damaged. */
+function readRawLines(dir: string): string[] {
+  return fs.readFileSync(path.join(dir, captureFileNameFor(new Date())), "utf-8").split("\n").filter(Boolean);
+}
+
 function readEntries(dir: string, date = new Date()): CaptureEntry[] {
   const file = path.join(dir, captureFileNameFor(date));
   if (!fs.existsSync(file)) return [];
@@ -315,6 +320,72 @@ test("a topology identical to its canvas's last one is not written again", () =>
 
   const written = readEntries(dir).map((e) => [e.canvas, e.kind === "topology" ? e.terminals : null]);
   assert.deepEqual(written, [["c1", 2], ["c2", 2], ["c1", 3], ["c1", 2]]);
+});
+
+test("after a restart, a topology identical to the last one recorded is not written again", () => {
+  const dir = tempDir();
+  const shape = { kind: "topology" as const, terminals: 2, browsers: 1, notes: 0, wires: [] as Array<[string, string, string]> };
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  new CaptureService(dir).record(shape, "c1", yesterday);
+  new CaptureService(dir).record({ ...shape, terminals: 3 }, "c2");
+
+  const relaunched = new CaptureService(dir);
+  relaunched.record(shape, "c1"); // same as yesterday's for c1: skipped
+  relaunched.record({ ...shape, terminals: 3 }, "c2"); // same as today's for c2: skipped
+  relaunched.record({ ...shape, notes: 1 }, "c1"); // changed: written
+
+  const written = readEntries(dir).map((e) => [e.canvas, e.kind === "topology" ? e.notes : null]);
+  assert.deepEqual(written, [["c2", 0], ["c1", 1]]);
+});
+
+test("the first topology in a run is written even when it repeats the last one", () => {
+  const dir = tempDir();
+  let run: string | null = null;
+  const service = new CaptureService(dir, undefined, { taskIdFor: () => run });
+  const shape = { kind: "topology" as const, terminals: 2, browsers: 1, notes: 0, wires: [] as Array<[string, string, string]> };
+
+  service.record(shape, "c1");
+  run = "run-a";
+  service.record(shape, "c1"); // the run's first: written
+  service.record(shape, "c1"); // skipped
+  run = "run-b";
+  service.record(shape, "c1"); // the next run's first: written
+
+  // A restart inside a run that was restored stays inside it.
+  const relaunched = new CaptureService(dir, undefined, { taskIdFor: () => run });
+  relaunched.record(shape, "c1");
+
+  assert.deepEqual(readEntries(dir).map((e) => e.task_id), [null, "run-a", "run-b"]);
+});
+
+test("after a restart, a browser reloading the URL it was last recorded on is not written again", () => {
+  const dir = tempDir();
+  const nav = (service: CaptureService, url: string) =>
+    service.record({ kind: "browser_action", node: "browser:a", action: "navigate", backend: "managed", by: "system", ok: true, url }, "c");
+  nav(new CaptureService(dir), "https://example.com/");
+
+  const relaunched = new CaptureService(dir);
+  nav(relaunched, "https://example.com/"); // the tile remounting: skipped
+  nav(relaunched, "https://example.com/next");
+
+  const urls = readEntries(dir).map((e) => (e.kind === "browser_action" ? e.url : null));
+  assert.deepEqual(urls, ["https://example.com/", "https://example.com/next"]);
+});
+
+test("a damaged line in the record doesn't stop the rest being read back", () => {
+  const dir = tempDir();
+  const shape = { kind: "topology" as const, terminals: 2, browsers: 1, notes: 0, wires: [] as Array<[string, string, string]> };
+  // A write cut short by a crash, before the topology.
+  fs.writeFileSync(path.join(dir, captureFileNameFor(new Date())), '{"kind":"topology", broken\n');
+  new CaptureService(dir).record(shape, "c1");
+
+  const relaunched = new CaptureService(dir);
+  relaunched.record(shape, "c1"); // still known: skipped
+  relaunched.record({ ...shape, terminals: 3 }, "c1");
+
+  const lines = readRawLines(dir);
+  assert.equal(lines.length, 3);
+  assert.match(lines[2], /"terminals":3/);
 });
 
 test("entries written before these columns existed read back without them", () => {

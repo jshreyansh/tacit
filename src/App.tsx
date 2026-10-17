@@ -101,7 +101,7 @@ import {
 } from "./snapshotState";
 import { appendSnapshotToHistory } from "./snapshotHistory";
 import { recordDecision, setCaptureCanvas } from "./capture";
-import { recordTopologyCheckpoint } from "./captureTopology";
+import { installRunStartCheckpoint, recordTopologyCheckpoint } from "./captureTopology";
 import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
@@ -470,6 +470,7 @@ export function App() {
   // Where pasted text came from (SHR-62): which node has focus, and copies
   // made inside browser tiles.
   useEffect(() => installHandoffFocusTracking(), []);
+  useEffect(() => installRunStartCheckpoint(), []);
   useEffect(() => {
     if (!window.tacit?.browser?.onDownloadEvent) return;
     return window.tacit.browser.onDownloadEvent((event) => {
