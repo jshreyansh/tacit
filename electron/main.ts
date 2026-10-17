@@ -97,7 +97,10 @@ import {
   checkHydraProjectStatus,
   enableHydraForProject,
 } from "./hydra-project.ts";
-import { getLoginShellEnv } from "./pty-launch.js";
+import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
+import { spawn as spawnChild } from "node:child_process";
+import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
+import type { ApprovalDecision } from "../shared/chat-events";
 import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
@@ -434,6 +437,42 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
 // The open run (T4.1): its id goes on every entry as task_id.
+/**
+ * Managers in chat mode (T6.2): the agent runs in its structured protocol
+ * under the manager terminal's id, with the same tools, hooks and
+ * environment the terminal would give it.
+ */
+const chatEngine = new ChatEngine({
+  spawn: (command, args, options) => spawnChild(command, [...args], { ...options, stdio: "pipe" }),
+  prepare: async ({ terminalId, agent, cwd }) => {
+    const plan = prepareBridgeLaunch({
+      terminalType: agent,
+      terminalId,
+      serverPath: getTacitBridgeCliPath(),
+      portFile: PORT_FILE,
+      inheritedEnv: await getLoginShellEnv(),
+    });
+    const spec = await buildLaunchSpec({
+      cwd,
+      shell: agent,
+      args: [],
+      terminalId,
+      terminalType: agent,
+      extraPathEntries: getTerminalExtraPathEntries(getCliDir(), agent),
+      envOverrides: {
+        ...(plan?.env ?? {}),
+        ...(hookSocketPath ? { TACIT_SOCKET: hookSocketPath } : {}),
+      },
+    });
+    return { command: spec.file, bridgeArgs: plan?.args ?? [], env: spec.env };
+  },
+  onEvent: (terminalId, event) => sendToWindow(mainWindow, "chat:event", { terminalId, event }),
+  // Stream-json fires no Stop hook; the turn's end is the stream's own.
+  onTurnEnded: (terminalId, sessionId) =>
+    telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
+  log: (line) => dbg(line),
+});
+
 const runTracker = new RunTracker({
   statePath: path.join(TACIT_DIR, "current-run.json"),
   write: (event, now) => captureService.record(event, captureCanvasId, now, { method: "main" }),
@@ -2146,6 +2185,46 @@ function setupIpc() {
   ipcMain.handle("run:rename", (event, goal: unknown) => {
     if (!isMainWindowSender(event) || typeof goal !== "string") return null;
     return runTracker.rename(goal, "user");
+  });
+
+  // The manager's chat (T6.2). Only the app's window; ids, folders and
+  // decisions are checked, and text is bounded.
+  const CHAT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+  const chatId = (value: unknown): value is string => typeof value === "string" && CHAT_ID.test(value);
+  const CHAT_DECISIONS: readonly ApprovalDecision[] = ["allow_once", "allow_always", "deny"];
+  ipcMain.handle("chat:start", async (event, request: unknown) => {
+    if (!isMainWindowSender(event) || typeof request !== "object" || request === null) return { ok: false, error: "invalid request" };
+    const { terminalId, agent, cwd, sessionId } = request as Record<string, unknown>;
+    if (!chatId(terminalId)) return { ok: false, error: "invalid terminal" };
+    if (agent !== "claude" && agent !== "codex") return { ok: false, error: "this agent has no chat mode yet" };
+    if (typeof cwd !== "string" || !path.isAbsolute(cwd) || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+      return { ok: false, error: "the terminal's folder doesn't exist" };
+    }
+    if (sessionId !== null && sessionId !== undefined && !chatId(sessionId)) return { ok: false, error: "invalid session" };
+    if (!telemetryService.getTerminalSnapshot(terminalId)) {
+      telemetryService.registerTerminal({ terminalId, worktreePath: cwd, provider: agent as ChatAgent });
+    }
+    await chatEngine.start({ terminalId, agent: agent as ChatAgent, cwd, sessionId: (sessionId as string | null | undefined) ?? null });
+    return { ok: true };
+  });
+  ipcMain.handle("chat:send", (event, terminalId: unknown, text: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof text !== "string" || !text.trim() || text.length > 200_000) return false;
+    return chatEngine.send(terminalId, text);
+  });
+  ipcMain.handle("chat:interrupt", (event, terminalId: unknown) => {
+    if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.interrupt(terminalId);
+  });
+  ipcMain.handle("chat:answer", (event, terminalId: unknown, requestId: unknown, decision: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof requestId !== "string" || requestId.length > 256) return;
+    if (!CHAT_DECISIONS.includes(decision as ApprovalDecision)) return;
+    chatEngine.answer(terminalId, requestId, decision as ApprovalDecision);
+  });
+  ipcMain.handle("chat:stop", (event, terminalId: unknown) => {
+    if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.stop(terminalId);
+  });
+  ipcMain.handle("chat:snapshot", (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId)) return { running: false, sessionId: null, events: [] };
+    return { running: chatEngine.isRunning(terminalId), sessionId: chatEngine.sessionIdOf(terminalId), events: chatEngine.snapshot(terminalId) };
   });
 
   // Handoffs (SHR-62): the canvas says where focus is and when a node
@@ -3987,6 +4066,8 @@ app.on("will-quit", (event) => {
   if (isQuitting) return;
   event.preventDefault();
   isQuitting = true;
+  // Chat-mode managers are child processes; they end with the app.
+  chatEngine.stopAll();
   renderDiagnostics.recordMainEvent("app_will_quit", {
     platform: process.platform,
   });

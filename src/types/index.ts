@@ -10,6 +10,7 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
+import type { ApprovalDecision, ChatEvent } from "../../shared/chat-events";
 import type {
   CaptureEntryView,
   CaptureEvent,
@@ -758,6 +759,16 @@ export interface TacitAPI {
    * terminal was pasted into or had files dropped on it. Main reads the
    * clipboard itself and keeps only a keyed fingerprint.
    */
+  /** The workdesk manager in chat mode (T6.2). */
+  chat: {
+    start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) => Promise<{ ok: boolean; error?: string }>;
+    send: (terminalId: string, text: string) => Promise<boolean>;
+    interrupt: (terminalId: string) => Promise<void>;
+    answer: (terminalId: string, requestId: string, decision: ApprovalDecision) => Promise<void>;
+    stop: (terminalId: string) => Promise<void>;
+    snapshot: (terminalId: string) => Promise<{ running: boolean; sessionId: string | null; events: ChatEvent[] }>;
+    onEvent: (callback: (payload: { terminalId: string; event: ChatEvent }) => void) => () => void;
+  };
   handoff: {
     /** A node ref (`terminal:…`, `browser:…`, `note:…`), or null for Tacit's panels. */
     focus: (node: string | null) => Promise<void>;

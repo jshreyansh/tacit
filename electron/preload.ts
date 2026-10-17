@@ -12,6 +12,7 @@ import type {
 } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { AgentDetection } from "../shared/agent-adapters";
+import type { ApprovalDecision, ChatEvent } from "../shared/chat-events";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 import type {
@@ -248,6 +249,23 @@ contextBridge.exposeInMainWorld("tacit", {
       const listener = (_event: Electron.IpcRendererEvent, payload: { sourceWebContentsId: number }) => callback(payload);
       ipcRenderer.on("handoff:guest-copied", listener);
       return () => ipcRenderer.removeListener("handoff:guest-copied", listener);
+    },
+  },
+  /** The workdesk manager in chat mode (T6.2). */
+  chat: {
+    start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) =>
+      ipcRenderer.invoke("chat:start", request) as Promise<{ ok: boolean; error?: string }>,
+    send: (terminalId: string, text: string) => ipcRenderer.invoke("chat:send", terminalId, text) as Promise<boolean>,
+    interrupt: (terminalId: string) => ipcRenderer.invoke("chat:interrupt", terminalId) as Promise<void>,
+    answer: (terminalId: string, requestId: string, decision: ApprovalDecision) =>
+      ipcRenderer.invoke("chat:answer", terminalId, requestId, decision) as Promise<void>,
+    stop: (terminalId: string) => ipcRenderer.invoke("chat:stop", terminalId) as Promise<void>,
+    snapshot: (terminalId: string) =>
+      ipcRenderer.invoke("chat:snapshot", terminalId) as Promise<{ running: boolean; sessionId: string | null; events: ChatEvent[] }>,
+    onEvent: (callback: (payload: { terminalId: string; event: ChatEvent }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { terminalId: string; event: ChatEvent }) => callback(payload);
+      ipcRenderer.on("chat:event", listener);
+      return () => ipcRenderer.removeListener("chat:event", listener);
     },
   },
   browserConnection: {
