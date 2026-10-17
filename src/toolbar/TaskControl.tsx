@@ -6,18 +6,16 @@ import { useActivityFocusStore } from "../stores/activityFocusStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { taskActorName } from "../utils/taskActor";
-import { useCloseOnOutsideClick } from "./pillChrome";
-import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
+import { PILL_GLASS, useCloseOnOutsideClick } from "./pillChrome";
 
 /**
- * Task recording (T4.1), centred in the title strip where a window title
- * would be. A task groups one piece of work's entries in the record (a "run"
- * there). Recording starts on its own when you first type into an agent, so
- * this is where you see that it has, name it, end it, or start one with a
- * goal of your own. Clicking the chip opens a panel that says what a task is.
- *
- * Only the chip and panel are `no-drag`: the rest of the strip still moves
- * the window.
+ * Context recording (T4.1), as a chip beside the workdesk manager's pill. A
+ * context groups one piece of work's entries in the record (a "run" there).
+ * Recording starts on its own when you first type into an agent, so this is
+ * where you see that it has, name it, end it, or start one with a goal of
+ * your own. It sat in the title strip until the layout redesign (SHR-127)
+ * put it next to the pill, so what you tell the manager and what is being
+ * recorded live in one place. Clicking it opens its card upward.
  */
 
 /** How long a just-started automatic task says where it came from. */
@@ -68,36 +66,33 @@ export function TaskControl() {
   const name = run?.goal ?? t.task_untitled;
 
   return (
-    <div
-      ref={rootRef}
-      className="fixed left-1/2 top-0 z-[96] flex -translate-x-1/2 flex-col items-center"
-      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-    >
-      <div className="flex items-center" style={{ height: TITLE_STRIP_HEIGHT }}>
-        <button
-          className="tc-discovery-chip flex items-center gap-2 rounded-full border px-2.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          style={{ height: TITLE_STRIP_HEIGHT - 6 }}
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          title={run ? undefined : t.task_record_title}
-        >
-          <span
-            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${run ? "animate-pulse" : ""}`}
-            style={run ? { background: "var(--red)" } : { border: "1px solid var(--text-faint)" }}
-          />
-          {run ? (
-            <>
-              <span className="text-[var(--text-faint)]">{t.task_recording}</span>
-              <span className="max-w-[20rem] truncate text-[var(--text-primary)]">{name}</span>
-              <span className="tc-mono tabular-nums text-[var(--text-faint)]">
-                {autoHint ? t.task_auto_hint : elapsed(run.started_at)}
-              </span>
-            </>
-          ) : (
-            <span>{t.task_record}</span>
-          )}
-        </button>
-      </div>
+    <div ref={rootRef} className="pointer-events-auto relative shrink-0">
+      <button
+        className={`tc-pill flex h-10 items-center gap-2.5 px-3 text-left text-[12px] text-[var(--text-muted)] transition-colors duration-quick hover:text-[var(--text-primary)] ${PILL_GLASS}`}
+        style={open ? { borderColor: "color-mix(in srgb, var(--red) 45%, transparent)" } : undefined}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title={run ? t.task_recording : t.task_record_title}
+      >
+        <span
+          className={`inline-block h-2 w-2 shrink-0 rounded-full ${run ? "animate-pulse" : ""}`}
+          style={run ? { background: "var(--red)" } : { border: "1.5px solid var(--text-muted)" }}
+        />
+        {run ? (
+          <>
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="text-[9.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.task_recording_short}</span>
+              <span className="max-w-[11rem] truncate text-[12px] text-[var(--text-primary)]">{name}</span>
+            </span>
+            <span className="tc-mono tabular-nums text-[11px] text-[var(--text-muted)]">
+              {autoHint ? t.task_auto_hint : elapsed(run.started_at)}
+            </span>
+          </>
+        ) : (
+          <span>{t.task_record}</span>
+        )}
+      </button>
       {open && <TaskPanel run={run} onDone={close} />}
     </div>
   );
@@ -161,7 +156,11 @@ function TaskPanel({ run, onDone }: { run: RunInfo | null; onDone: () => void })
 
   return (
     <div
-      className="tc-enter-fade-down mt-1 w-[22rem] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-[11px] shadow-lg"
+      role="dialog"
+      aria-label={t.task_recording}
+      // Opens upward from the chip, over the canvas, like the pill above it.
+      className="tc-float tc-enter-fade-up absolute bottom-full left-0 mb-2 w-[22rem] p-3.5 text-[11px]"
+      style={{ borderRadius: 18 }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onDone();
       }}
@@ -182,12 +181,18 @@ function TaskPanel({ run, onDone }: { run: RunInfo | null; onDone: () => void })
               {run.goal ?? t.task_untitled}
             </button>
           )}
-          <div className="mt-1.5 space-y-0.5 text-[var(--text-muted)]">
-            <div>
-              {startedLine(run, t)} · {t.task_ago(elapsed(run.started_at))}
+          <div className="mt-1 text-[var(--text-muted)]">
+            {namedLine(run, t) ?? startedLine(run, t)} · {t.task_rename_hint}
+          </div>
+          <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+            <div className="rounded-lg border border-[var(--border)] px-2.5 py-1.5">
+              <div className="text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{run.entries}</div>
+              <div className="text-[10.5px] text-[var(--text-muted)]">{t.task_count_entries}</div>
             </div>
-            {namedLine(run, t) && <div>{namedLine(run, t)}</div>}
-            <div>{t.task_entries(run.entries)}</div>
+            <div className="rounded-lg border border-[var(--border)] px-2.5 py-1.5">
+              <div className="tc-mono text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{elapsed(run.started_at)}</div>
+              <div className="text-[10.5px] text-[var(--text-muted)]">{startedLine(run, t)}</div>
+            </div>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-1">
             <button

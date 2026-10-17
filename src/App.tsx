@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { CanvasRoot } from "./canvas/CanvasRoot";
 import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
 import { TitleStrip } from "./toolbar/TitleStrip";
-import { TaskControl } from "./toolbar/TaskControl";
 import { SettingsModal } from "./components/SettingsModal";
 import { useSettingsModalStore } from "./stores/settingsModalStore";
 import { ViewControls } from "./toolbar/ViewControls";
@@ -1211,7 +1210,6 @@ export function App() {
       }`}
     >
       <TitleStrip />
-      <TaskControl />
       <SettingsModalHost />
       <LeftRail />
       <ViewControls />

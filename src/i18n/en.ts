@@ -137,6 +137,8 @@ export const en = {
   task_record: "Record context",
   task_record_title: "Record what happens next as one context",
   task_recording: "Recording context",
+  task_recording_short: "Recording",
+  task_count_entries: "things recorded",
   task_untitled: "Untitled context",
   task_auto_hint: "started when you typed a prompt",
   task_panel_what: "A context groups everything you and your agents do for one piece of work, so you can compare it with the next time you do something similar.",

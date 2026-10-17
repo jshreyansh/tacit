@@ -18,6 +18,7 @@ import { getLivePtyId } from "../actions/terminalLookup";
 import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
+import { TaskControl } from "./TaskControl";
 import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
 import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
@@ -544,12 +545,15 @@ export function WorkspaceManagerPill() {
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[95] pointer-events-none"
+      // The context chip and the pill share one row, centred together, so
+      // what is being recorded sits beside who you are talking to (SHR-127).
+      className="fixed left-1/2 -translate-x-1/2 z-[95] pointer-events-none flex items-end gap-2"
       // Sits directly above the composer. It used to clear the node dock as
       // well, which moved to the left rail — leaving that offset behind would
       // have parked the pill over a gap.
       style={{ bottom: bottomOffset }}
     >
+      <TaskControl />
       <div
         // overflow-hidden, now that nothing escapes the shell. It used to be
         // omitted because the assign and history menus were absolutely

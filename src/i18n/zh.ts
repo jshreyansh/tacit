@@ -135,6 +135,8 @@ export const zh = {
   task_record: "记录上下文",
   task_record_title: "把接下来的操作记录为一个上下文",
   task_recording: "正在记录上下文",
+  task_recording_short: "录制中",
+  task_count_entries: "条记录",
   task_untitled: "未命名上下文",
   task_auto_hint: "在你输入提示时自动开始",
   task_panel_what: "上下文会把你和智能体为一件事所做的一切归在一起，方便下次做类似的事时对比。",
