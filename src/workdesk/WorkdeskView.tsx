@@ -291,12 +291,22 @@ export function WorkdeskView() {
     other: t.workdesk_filter_other,
   };
   const empty = sections.counts.all === 0;
+  const browserWindow = openCard?.kind === "browser";
+  const barGlass = browserWindow ? "pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:blur(22px)_saturate(1.6)]" : "";
   const emptyFilter = !empty && sections.counts[filter] === 0;
 
   return (
     <section
       className="tc-float tc-enter-fade fixed z-[30] flex flex-col overflow-hidden"
-      style={{ left, right: CHROME_INSET, top: TITLE_STRIP_HEIGHT + CHROME_INSET, bottom: CHROME_INSET }}
+      style={{
+        left,
+        right: CHROME_INSET,
+        top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+        bottom: CHROME_INSET,
+        // A browser tab is a window onto the tile laid under it: the panel
+        // paints only its bars, and lets clicks through to the page.
+        ...(browserWindow ? { background: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none", pointerEvents: "none" } : {}),
+      }}
       aria-label={t.workdesk_view_grid}
       onKeyDown={(e) => {
         // Esc leaves a tab for the grid, unless it's meant for a terminal or the note.
@@ -306,7 +316,7 @@ export function WorkdeskView() {
         setOpenNode(null);
       }}
     >
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
+      <div className={`flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5 ${barGlass}`}>
         {filters.map((f) => (
           <button
             key={f}
@@ -345,7 +355,7 @@ export function WorkdeskView() {
       </div>
 
       {openCard && (
-        <div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_40%,transparent)] px-2" role="tablist">
+        <div className={`flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] px-2 ${browserWindow ? barGlass : "bg-[color-mix(in_srgb,var(--bg)_40%,transparent)]"}`} role="tablist">
           <button
             type="button"
             className="tc-rail-btn flex h-[30px] shrink-0 items-center gap-1.5 px-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -387,7 +397,7 @@ export function WorkdeskView() {
 
       {openCard && (
         <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
-          <WorkdeskTab card={openCard} profileName={(id) => identities[id]?.name ?? id} />
+          <WorkdeskTab card={openCard} />
         </div>
       )}
 

@@ -52,9 +52,15 @@ declare global {
 
 interface Props {
   card: BrowserCardData;
+  /**
+   * Laid over the workdesk view's tab at full scale (its layer computes
+   * where): this replaces the tile's own place and size, and it can't be
+   * dragged or resized there, which would move the tile on the canvas.
+   */
+  projectedLayout?: React.CSSProperties;
 }
 
-export function BrowserCard({ card }: Props) {
+export function BrowserCard({ card, projectedLayout }: Props) {
   const connectedBinding = card.backend?.kind === "connected-tab" ? card.backend : null;
   const { register, unregister } = useCardLayoutStore();
   const [urlInput, setUrlInput] = useState(card.url);
@@ -370,15 +376,17 @@ export function BrowserCard({ card }: Props) {
       data-connect-kind="browser"
       data-connect-id={card.id}
       className="absolute rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-col overflow-hidden"
-      style={{
-        left: card.x,
-        top: card.y,
-        width: card.w,
-        height: card.h,
-        boxShadow: "var(--shadow-elev-1)",
-        outline: isSelected ? "2px solid var(--accent)" : undefined,
-        outlineOffset: isSelected ? -2 : undefined,
-      }}
+      style={
+        projectedLayout ?? {
+          left: card.x,
+          top: card.y,
+          width: card.w,
+          height: card.h,
+          boxShadow: "var(--shadow-elev-1)",
+          outline: isSelected ? "2px solid var(--accent)" : undefined,
+          outlineOffset: isSelected ? -2 : undefined,
+        }
+      }
       // Bubble phase, not capture: a capture-phase stop here would block
       // the event from ever reaching descendants' own onMouseDown
       // handlers (header drag-start, corner resize-start) — this way
@@ -408,7 +416,7 @@ export function BrowserCard({ card }: Props) {
     >
       <div
         className="flex-none flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg)] border-b border-[var(--border)] cursor-grab active:cursor-grabbing select-none"
-        onMouseDown={handleDragStart}
+        onMouseDown={projectedLayout ? undefined : handleDragStart}
       >
         <button
           className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -623,7 +631,7 @@ export function BrowserCard({ card }: Props) {
 
       <div
         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-        onMouseDown={handleResizeStart}
+        onMouseDown={projectedLayout ? undefined : handleResizeStart}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-[var(--text-faint)]">
           <path d="M9 1L1 9M9 5L5 9M9 8L8 9" stroke="currentColor" strokeWidth="1" />

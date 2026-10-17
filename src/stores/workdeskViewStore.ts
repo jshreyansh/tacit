@@ -31,8 +31,20 @@ export interface OpenNode {
   id: string;
 }
 
+/**
+ * A browser tile laid over the workdesk view's tab, at full scale: where on
+ * screen (CSS px). The tile stays in its layer, since moving a webview
+ * reloads its page; it is only laid out over the tab while it shows.
+ */
+export interface BrowserProjection {
+  cardId: string;
+  rect: { x: number; y: number; w: number; h: number };
+}
+
 interface WorkdeskViewStore {
   mode: WorkdeskMode;
+  projection: BrowserProjection | null;
+  setProjection: (projection: BrowserProjection | null) => void;
   filter: WorkdeskFilter;
   openNode: OpenNode | null;
   setOpenNode: (node: OpenNode | null) => void;
@@ -45,6 +57,8 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
   mode: loadWorkdeskMode(),
   filter: "all",
   openNode: null,
+  projection: null,
+  setProjection: (projection) => set({ projection }),
   setOpenNode: (openNode) => set({ openNode }),
   // Back on the canvas, the grid opens on its cards next time.
   setMode: (mode) => {

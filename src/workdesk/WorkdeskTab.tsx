@@ -9,7 +9,6 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { updatePinInScene } from "../actions/scenePinActions";
 import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
 import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
-import { useBrowserSnapshots } from "./browserSnapshots";
 import type { BrowserCard, NoteCard, TerminalCard, WorkdeskCard } from "./workdeskModel";
 
 /**
@@ -119,29 +118,40 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   );
 }
 
-function BrowserTab({ card, profile, t }: { card: BrowserCard; profile: string; t: Dict }) {
-  const snapshots = useBrowserSnapshots([card.id], true, 1500);
-  const picture = snapshots[card.id];
+/**
+ * The browser itself, usable: its tile is laid over this window at full
+ * scale (CanvasCardLayer), address bar and profile included, and clicks
+ * pass through to it. The tile never moves in the page, which would reload it.
+ */
+function BrowserTab({ card, t }: { card: BrowserCard; t: Dict }) {
+  const [hole, setHole] = useState<HTMLDivElement | null>(null);
+  const setProjection = useWorkdeskViewStore((s) => s.setProjection);
+  useLayoutEffect(() => {
+    if (!hole) return;
+    const publish = () => {
+      const box = hole.getBoundingClientRect();
+      setProjection({ cardId: card.id, rect: { x: box.left, y: box.top, w: box.width, h: box.height } });
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(hole);
+    window.addEventListener("resize", publish);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", publish);
+      setProjection(null);
+    };
+  }, [hole, card.id, setProjection]);
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
-        <span className="tc-mono min-w-0 flex-1 truncate rounded-full bg-[var(--surface-hover)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]">
-          {card.url}
-        </span>
-        <span className="shrink-0 text-[11.5px] text-[var(--text-muted)]">{t.workdesk_profile(profile)}</span>
+      <div ref={setHole} className="pointer-events-none min-h-0 flex-1" />
+      <div className="pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:blur(22px)_saturate(1.6)]">
+        <Footer hint={t.workdesk_browser_hint}>
+          <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
+            {t.workdesk_show_on_canvas}
+          </button>
+        </Footer>
       </div>
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-[var(--bg)] p-3">
-        {picture ? (
-          <img src={picture} alt={card.title} className="max-w-full rounded-md border border-[var(--border)]" draggable={false} />
-        ) : (
-          <div className="self-center text-[12.5px] text-[var(--text-muted)]">{t.workdesk_no_snapshot}</div>
-        )}
-      </div>
-      <Footer hint={t.workdesk_snapshot_hint}>
-        <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
-          {t.workdesk_show_on_canvas}
-        </button>
-      </Footer>
     </>
   );
 }
@@ -188,9 +198,9 @@ function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
   );
 }
 
-export function WorkdeskTab({ card, profileName }: { card: WorkdeskCard; profileName: (identityId: string) => string }) {
+export function WorkdeskTab({ card }: { card: WorkdeskCard }) {
   const t = useT();
   if (card.kind === "terminal") return <TerminalTab key={card.id} card={card} t={t} />;
-  if (card.kind === "browser") return <BrowserTab key={card.id} card={card} profile={profileName(card.identityId)} t={t} />;
+  if (card.kind === "browser") return <BrowserTab key={card.id} card={card} t={t} />;
   return <NoteTab key={card.id} card={card} t={t} />;
 }

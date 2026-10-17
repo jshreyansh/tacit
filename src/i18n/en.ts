@@ -102,6 +102,7 @@ export const en = {
   workdesk_snapshot_hint: "A live picture of the page. Use the page itself on the canvas.",
   workdesk_no_snapshot: "No picture of this page yet",
   workdesk_terminal_canvas_only: "This terminal shows on the canvas only.",
+  workdesk_browser_hint: "The same browser as on the canvas, at full size.",
   chat_working: "Working",
   chat_tool_run: (n: number) => `Used ${n} tools`,
   chat_tool_run_live: (n: number) => `Using tools · ${n} so far`,

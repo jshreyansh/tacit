@@ -101,6 +101,7 @@ export const zh = {
   workdesk_snapshot_hint: "页面的实时画面。要操作页面，请在画布上使用。",
   workdesk_no_snapshot: "还没有这个页面的画面",
   workdesk_terminal_canvas_only: "这个终端只在画布上显示。",
+  workdesk_browser_hint: "与画布上的是同一个浏览器，这里是全尺寸。",
   chat_working: "工作中",
   chat_tool_run: (n: number) => `使用了 ${n} 个工具`,
   chat_tool_run_live: (n: number) => `正在使用工具 · 已 ${n} 个`,
