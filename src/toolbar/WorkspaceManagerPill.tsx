@@ -19,6 +19,9 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
+import { ChatHistory } from "./ChatHistory";
+import { useCanvasStore } from "../stores/canvasStore";
+import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
 import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
@@ -28,21 +31,6 @@ import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
 import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
 import type { TerminalType } from "../types";
-
-/**
- * How long a tenure ran. The log records start and end, and "held it for 6h" is
- * what a reader actually wants from that pair — a bare pair of timestamps makes
- * them do the subtraction.
- */
-function formatHeld(startedAt: string, endedAt: string | null): string {
-  const start = new Date(startedAt).getTime();
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-  const minutes = Math.max(1, Math.round((end - start) / 60000));
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
-}
 
 /** Time for today's rows, date for older ones — a history list reads as "when". */
 function formatWhen(iso: string): string {
@@ -532,6 +520,25 @@ export function WorkspaceManagerPill() {
     if (ptyId != null) window.tacit.terminal.input(ptyId, "\x1b");
   }, [managerTerminal]);
 
+  // History covers every worktree on this canvas, as the History panel did.
+  const canvasProjectDirs = useMemo(
+    () => projects.flatMap((p) => p.worktrees.map((w) => w.path)),
+    [projects],
+  );
+  const managerSessionIds = useMemo(() => new Set(history.map((row) => row.sessionId)), [history]);
+  const currentManagerSessionId =
+    managerTerminal?.sessionId ?? history.find((row) => row.isCurrent)?.sessionId ?? null;
+  const openSessionsOverlay = useCanvasStore((s) => s.openSessionsOverlay);
+  const loadReplay = useSessionStore((s) => s.loadReplay);
+  /** The transcript opens in the session view beside the chat, with Resume. */
+  const openReplay = useCallback(
+    (filePath: string) => {
+      openSessionsOverlay();
+      void loadReplay(filePath);
+    },
+    [openSessionsOverlay, loadReplay],
+  );
+
   const faceOpen = view !== "chat";
   const running = conversation?.telemetry?.turn_state === "in_turn";
   const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
@@ -737,47 +744,15 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {/* Past chats, newest first, each with the agent's own mark and how
-          long it held the seat. */}
+      {/* Past chats on this workdesk, with the agent, title, size and when;
+          a row opens its transcript in the session view beside the chat. */}
       {view === "history" && (
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {history.map((row) => {
-            const cli = row.cli ?? "agent";
-            const icon = agentIcon(cli) ?? null;
-            return (
-              <button
-                key={row.sessionId}
-                type="button"
-                disabled={!row.sessionFile}
-                onClick={() => {
-                  setViewing(row.isCurrent ? null : row);
-                  setView("chat");
-                }}
-                className="tc-seat-session"
-              >
-                <span className="mark">{icon && <img src={icon} alt="" />}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2">
-                    <span className="tc-mono truncate text-[var(--text-primary)]" style={{ fontSize: "var(--text-xs)" }}>
-                      {cli}
-                    </span>
-                    {row.isCurrent && (
-                      <span className="tc-mono shrink-0 uppercase tracking-wider" style={{ fontSize: "10px", color: "var(--green)" }}>
-                        {t.project_chat_now}
-                      </span>
-                    )}
-                  </span>
-                  <span className="tc-mono mt-0.5 block text-[var(--text-faint)]" style={{ fontSize: "10.5px" }}>
-                    {formatHeld(row.startedAt, row.endedAt)}
-                  </span>
-                </span>
-                <span className="tc-mono shrink-0 tabular-nums text-[var(--text-faint)]" style={{ fontSize: "10.5px" }}>
-                  {formatWhen(row.startedAt)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <ChatHistory
+          projectDirs={canvasProjectDirs}
+          managerSessionIds={managerSessionIds}
+          currentSessionId={currentManagerSessionId}
+          onOpen={openReplay}
+        />
       )}
 
       {view === "roster" && (

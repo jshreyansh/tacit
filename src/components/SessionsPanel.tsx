@@ -758,7 +758,7 @@ function historyProjectName(dir: string): string {
 
 const HIDDEN_HISTORY_STORAGE_KEY = "tacit:history:hidden:v1";
 
-function loadHiddenSessions(): Set<string> {
+export function loadHiddenSessions(): Set<string> {
   if (typeof window === "undefined" || !window.localStorage) return new Set();
   try {
     const raw = window.localStorage.getItem(HIDDEN_HISTORY_STORAGE_KEY);
@@ -772,7 +772,7 @@ function loadHiddenSessions(): Set<string> {
   }
 }
 
-function persistHiddenSessions(hidden: Set<string>): void {
+export function persistHiddenSessions(hidden: Set<string>): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     window.localStorage.setItem(
@@ -784,7 +784,7 @@ function persistHiddenSessions(hidden: Set<string>): void {
 
 const PINNED_HISTORY_STORAGE_KEY = "tacit:history:pinned:v1";
 
-function loadPinnedSessions(): Set<string> {
+export function loadPinnedSessions(): Set<string> {
   if (typeof window === "undefined" || !window.localStorage) return new Set();
   try {
     const raw = window.localStorage.getItem(PINNED_HISTORY_STORAGE_KEY);
@@ -798,7 +798,7 @@ function loadPinnedSessions(): Set<string> {
   }
 }
 
-function persistPinnedSessions(pinned: Set<string>): void {
+export function persistPinnedSessions(pinned: Set<string>): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     window.localStorage.setItem(

@@ -166,7 +166,9 @@ export function LeftRail() {
           where you have been; Files, Diff, Git and Memory are what the work
           produced — a divider between them and no further explanation. */}
       <div className="tc-rail-scroll flex min-h-0 flex-col items-center gap-0.5 overflow-y-auto">
-        {LEFT_TAB_CONFIG.map(({ id, icon: Icon, labelKey }) => {
+        {/* History moved into the docked manager chat (its Chats view), so
+            only Sessions is left here. */}
+        {LEFT_TAB_CONFIG.filter(({ id }) => id !== "history").map(({ id, icon: Icon, labelKey }) => {
           const open = !sessionsCollapsed && sessionsTab === id;
           return (
             <button
