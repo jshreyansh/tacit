@@ -7,7 +7,9 @@ test("a conversation maps to assistant-ui messages with roles, parts and status"
   const t = replayChat([
     { kind: "user_message", id: "u1", text: "read note", at: "2026-10-17T10:00:00Z" },
     { kind: "block_start", key: "a", block: "thinking" },
-    { kind: "block_done", key: "a" },
+    { kind: "block_done", key: "a", text: "the note first" },
+    { kind: "block_start", key: "e", block: "thinking" },
+    { kind: "block_done", key: "e" },
     { kind: "block_start", key: "b", block: "tool", toolCallId: "c1", toolName: "Read" },
     { kind: "tool_input_delta", key: "b", json: '{"file_path":"/x/note.txt"}' },
     { kind: "block_done", key: "b" },
@@ -19,6 +21,7 @@ test("a conversation maps to assistant-ui messages with roles, parts and status"
   assert.deepEqual(user, { id: "u1", role: "user", content: [{ type: "text", text: "read note" }], createdAt: new Date("2026-10-17T10:00:00Z") });
   assert.equal(reply.role, "assistant");
   assert.deepEqual(reply.status, { type: "running" });
+  // The second thought finished empty (Codex's are encrypted): left out.
   assert.deepEqual(reply.content.map((p) => p.type), ["reasoning", "tool-call", "text"]);
   const tool = reply.content[1];
   assert.ok(tool.type === "tool-call");

@@ -100,6 +100,8 @@ import {
 import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import { spawn as spawnChild } from "node:child_process";
 import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
+import { findSessionFile } from "./manager-chat/session-file";
+import { timelineToChatEvents } from "../shared/chat-history";
 import type { ApprovalDecision } from "../shared/chat-events";
 import {
   createDefaultComposerSubmitDeps,
@@ -470,6 +472,14 @@ const chatEngine = new ChatEngine({
   // Stream-json fires no Stop hook; the turn's end is the stream's own.
   onTurnEnded: (terminalId, sessionId) =>
     telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
+  // The agent's own record of the session, so the chat shows what was said
+  // in the terminal and before a restart, as the terminal does.
+  loadHistory: async (agent, sessionId) => {
+    const file = findSessionFile(agent, sessionId, os.homedir());
+    if (!file) return null;
+    const replay = await sessionScanner.loadReplay(file);
+    return timelineToChatEvents(replay.events);
+  },
   log: (line) => dbg(line),
 });
 
@@ -2221,6 +2231,10 @@ function setupIpc() {
   });
   ipcMain.handle("chat:stop", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.stop(terminalId);
+  });
+  // The manager's terminal was closed: its chat agent goes with it.
+  ipcMain.handle("chat:forget", (event, terminalId: unknown) => {
+    if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.forget(terminalId);
   });
   ipcMain.handle("chat:snapshot", (event, terminalId: unknown) => {
     if (!isMainWindowSender(event) || !chatId(terminalId)) return { running: false, sessionId: null, events: [] };

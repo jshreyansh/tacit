@@ -34,7 +34,12 @@ class FakeChild extends EventEmitter {
   }
 }
 
-function setup(agent: "claude" | "codex", sessionId: string | null = null) {
+function setup(
+  agent: "claude" | "codex",
+  sessionId: string | null = null,
+  loadHistory?: (agent: "claude" | "codex", sessionId: string) => Promise<ChatEvent[] | null>,
+) {
+  const logged: string[] = [];
   const child = new FakeChild();
   const spawned: Array<{ command: string; args: readonly string[]; cwd?: string; env?: Record<string, string> }> = [];
   const events: ChatEvent[] = [];
@@ -48,9 +53,11 @@ function setup(agent: "claude" | "codex", sessionId: string | null = null) {
     onEvent: (_id, event) => events.push(event),
     onTurnEnded: (_id, session) => turnsEnded.push(session),
     now: () => new Date("2026-10-17T12:00:00Z"),
+    log: (line) => logged.push(line),
+    ...(loadHistory ? { loadHistory } : {}),
   });
   const started = engine.start({ terminalId: "t1", agent, cwd: "/repo", sessionId });
-  return { child, spawned, events, turnsEnded, engine, started };
+  return { child, spawned, events, turnsEnded, engine, started, logged };
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -211,4 +218,54 @@ test("a second start while the agent runs starts nothing new", async () => {
   assert.equal(spawned.length, 1);
   engine.stop("t1");
   assert.equal(engine.isRunning("t1"), false);
+});
+
+test("a resumed chat opens on the session's history from the agent's record", async () => {
+  const history: ChatEvent[] = [
+    { kind: "user_message", id: "h1", text: "said in the terminal", at: "2026-10-17T11:00:00Z" },
+    { kind: "block_start", key: "h0", block: "text" },
+    { kind: "block_done", key: "h0", text: "noted" },
+    { kind: "turn_ended", outcome: "success" },
+  ];
+  const asked: Array<[string, string]> = [];
+  const { engine, started } = setup("claude", "sess-9", async (agent, id) => {
+    asked.push([agent, id]);
+    return history;
+  });
+  await started;
+  assert.deepEqual(asked, [["claude", "sess-9"]]);
+  assert.deepEqual(engine.snapshot("t1"), history);
+  engine.send("t1", "and now in the chat");
+  assert.equal(engine.snapshot("t1").length, history.length + 1);
+});
+
+test("history replaces what the chat held, and an unreadable record keeps it and says why", async () => {
+  let fail = false;
+  const { engine, started, logged } = setup("claude", "sess-9", async () => {
+    if (fail) throw new Error("EACCES");
+    return [{ kind: "user_message", id: "h1", text: "from the record", at: "2026-10-17T11:00:00Z" }];
+  });
+  await started;
+  engine.send("t1", "typed in the chat");
+  engine.stop("t1");
+  await engine.start({ terminalId: "t1", agent: "claude", cwd: "/repo", sessionId: "sess-9" });
+  assert.deepEqual(engine.snapshot("t1").map((e) => (e.kind === "user_message" ? e.text : e.kind)), ["from the record"]);
+
+  engine.send("t1", "kept");
+  engine.stop("t1");
+  fail = true;
+  await engine.start({ terminalId: "t1", agent: "claude", cwd: "/repo", sessionId: "sess-9" });
+  const said = engine.snapshot("t1").flatMap((e) => (e.kind === "user_message" ? [e.text] : []));
+  assert.deepEqual(said, ["from the record", "kept"]);
+  assert.ok(logged.some((line) => line.includes("unreadable") && line.includes("EACCES")));
+});
+
+test("a new chat with no session reads no history", async () => {
+  let asked = false;
+  const { started } = setup("claude", null, async () => {
+    asked = true;
+    return [];
+  });
+  await started;
+  assert.equal(asked, false);
 });

@@ -29,8 +29,13 @@ async function startChat(terminalId: string): Promise<boolean> {
   });
   if (!result.ok) {
     useNotificationStore.getState().notify("warn", result.error ?? "The chat couldn't start the manager.");
+    return false;
   }
-  return result.ok;
+  // Starting read the session's history from the agent's record: the chat
+  // shows it, including what was said in the terminal.
+  const snapshot = await window.tacit.chat.snapshot(terminalId);
+  useManagerChatStore.getState().hydrate(terminalId, snapshot.events);
+  return true;
 }
 
 /** Moves the manager out of its tile and into the chat. */

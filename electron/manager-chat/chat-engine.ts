@@ -9,8 +9,10 @@ import { startClaudeDriver, startCodexDriver, type ChatDriver, type SpawnFn } fr
  * manager is in the chat; only one of the two runs the session at a time
  * (the renderer swaps them).
  *
- * Every event is kept, with streaming deltas merged, so a window that
- * reloads, or a chat opened later, replays the conversation so far.
+ * The conversation opens on the session's history, read from the agent's
+ * own record of it, so what was said in the terminal or before a restart is
+ * there; every live event is then kept, deltas merged, so a window that
+ * reloads replays the conversation so far.
  */
 
 export type ChatAgent = "claude" | "codex";
@@ -36,6 +38,12 @@ export interface ChatEngineDeps {
   onEvent: (terminalId: string, event: ChatEvent) => void;
   /** A turn ended: telemetry needs to hear it, since stream-json fires no Stop hook. */
   onTurnEnded?: (terminalId: string, sessionId: string | null) => void;
+  /**
+   * The session's history from the agent's own record, as chat events: null
+   * when there's no record to read. It replaces what the chat held, since
+   * the record has everything, including what was said outside the chat.
+   */
+  loadHistory?: (agent: ChatAgent, sessionId: string) => Promise<ChatEvent[] | null>;
   log?: (line: string) => void;
   now?: () => Date;
 }
@@ -102,6 +110,14 @@ export class ChatEngine {
     session.agent = request.agent;
     session.sessionId = request.sessionId ?? session.sessionId;
     this.sessions.set(request.terminalId, session);
+    if (session.sessionId && this.deps.loadHistory) {
+      try {
+        const history = await this.deps.loadHistory(request.agent, session.sessionId);
+        if (history) session.events = [...history];
+      } catch (error) {
+        this.deps.log?.(`[chat] history for ${request.terminalId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     let launch: ChatLaunch;
     try {
       launch = await this.deps.prepare(request);

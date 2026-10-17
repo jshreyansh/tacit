@@ -260,6 +260,7 @@ contextBridge.exposeInMainWorld("tacit", {
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) =>
       ipcRenderer.invoke("chat:answer", terminalId, requestId, decision) as Promise<void>,
     stop: (terminalId: string) => ipcRenderer.invoke("chat:stop", terminalId) as Promise<void>,
+    forget: (terminalId: string) => ipcRenderer.invoke("chat:forget", terminalId) as Promise<void>,
     snapshot: (terminalId: string) =>
       ipcRenderer.invoke("chat:snapshot", terminalId) as Promise<{ running: boolean; sessionId: string | null; events: ChatEvent[] }>,
     onEvent: (callback: (payload: { terminalId: string; event: ChatEvent }) => void) => {

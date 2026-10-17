@@ -398,13 +398,21 @@ test("closeTerminalInScene destroys runtime and removes the terminal from the sc
       worktreePath: "/tmp/project-1",
     });
 
+    const forgotten: string[] = [];
     mockWindow.tacit = {
       terminal: {
         destroy: async () => {},
       },
+      chat: {
+        forget: async (id: string) => {
+          forgotten.push(id);
+        },
+      },
     };
 
     closeTerminalInScene("project-1", "worktree-1", "terminal-1");
+    // A manager running in the chat stops with its terminal.
+    assert.deepEqual(forgotten, ["terminal-1"]);
 
     assert.equal(
       useProjectStore.getState().projects[0].worktrees[0].terminals.length,

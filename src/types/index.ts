@@ -772,6 +772,8 @@ export interface TacitAPI {
     interrupt: (terminalId: string) => Promise<void>;
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) => Promise<void>;
     stop: (terminalId: string) => Promise<void>;
+    /** The manager's terminal was closed: stops its chat agent and drops the chat. */
+    forget: (terminalId: string) => Promise<void>;
     snapshot: (terminalId: string) => Promise<{ running: boolean; sessionId: string | null; events: ChatEvent[] }>;
     onEvent: (callback: (payload: { terminalId: string; event: ChatEvent }) => void) => () => void;
   };

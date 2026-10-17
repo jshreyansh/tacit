@@ -47,7 +47,8 @@ function toPart(part: ChatPart): ThreadPart | null {
     case "text":
       return part.text ? { type: "text", text: part.text } : null;
     case "thinking":
-      return { type: "reasoning", text: part.text };
+      // A finished thought with nothing in it (Codex's are encrypted) is noise.
+      return part.done && !part.text.trim() ? null : { type: "reasoning", text: part.text };
     case "tool":
       return {
         type: "tool-call",

@@ -407,6 +407,8 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                       typeof terminal.autoApprove === "boolean"
                         ? terminal.autoApprove
                         : undefined,
+                    // A manager that runs in the docked chat (T6) stays there.
+                    chatMode: terminal.chatMode === true ? true : undefined,
                     customTitle:
                       typeof terminal.customTitle === "string"
                         ? terminal.customTitle
@@ -557,6 +559,7 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
         terminal: {
           autoApprove:
             typeof t.autoApprove === "boolean" ? t.autoApprove : undefined,
+          chatMode: t.chatMode === true ? true : undefined,
           customTitle:
             typeof t.customTitle === "string" ? t.customTitle : undefined,
           focused: false,

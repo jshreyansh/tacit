@@ -33,6 +33,7 @@ import {
 } from "./tileDimensionsStore.ts";
 import { useTerminalRuntimeStateStore } from "./terminalRuntimeStateStore.ts";
 import { usePinStore } from "./pinStore.ts";
+import { forgetManagerChat } from "./managerChatStore.ts";
 import { destroyTerminalRuntime } from "../terminal/terminalRuntimeStore.ts";
 import { resolveCollisions } from "../canvas/collisionResolver.ts";
 
@@ -349,6 +350,7 @@ function cleanupRemovedTerminalIds(terminalIds: string[]) {
     });
     runtimeState.clearTerminal(terminalId);
     pinState.clearTerminalAssignment(terminalId);
+    forgetManagerChat(terminalId);
   }
 }
 

@@ -344,6 +344,56 @@ test("scene restores keep terminal status while sanitizing runtime-only PTY ids"
   assert.equal(restored.scene.projects[0].worktrees[0].terminals[0].ptyId, null);
 });
 
+test("a manager that runs in the docked chat is still there after a restart", async () => {
+  const { readWorkspaceSnapshot } = await loadSnapshotState("scene-chat-mode");
+  const terminal = (id: string, chatMode: unknown) => ({
+    id,
+    title: "Manager",
+    type: "codex",
+    minimized: false,
+    focused: false,
+    ptyId: null,
+    status: "idle",
+    span: { cols: 1, rows: 1 },
+    chatMode,
+  });
+  const restored = readWorkspaceSnapshot({
+    version: 2,
+    scene: {
+      version: 2,
+      camera: { x: 0, y: 0, zoom: 1 },
+      browserCards: {},
+      annotations: [],
+      projects: [
+        {
+          id: "project-1",
+          name: "Project One",
+          path: "/tmp/project-1",
+          position: { x: 0, y: 0 },
+          collapsed: false,
+          zIndex: 0,
+          worktrees: [
+            {
+              id: "worktree-1",
+              name: "main",
+              path: "/tmp/project-1",
+              position: { x: 0, y: 0 },
+              collapsed: false,
+              terminals: [terminal("in-chat", true), terminal("in-tile", undefined), terminal("odd", "yes")],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.ok(restored && "legacy" in restored);
+  if (!restored || !("legacy" in restored)) return;
+  const byId = new Map(restored.scene.projects[0].worktrees[0].terminals.map((t) => [t.id, t]));
+  assert.equal(byId.get("in-chat")?.chatMode, true);
+  assert.equal(byId.get("in-tile")?.chatMode, undefined);
+  assert.equal(byId.get("odd")?.chatMode, undefined);
+});
+
 test("readWorkspaceSnapshot preserves the skip-restore sentinel", async () => {
   const { readWorkspaceSnapshot } = await loadSnapshotState("skip-restore");
 
