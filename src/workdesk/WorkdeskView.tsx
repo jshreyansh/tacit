@@ -259,6 +259,18 @@ export function WorkdeskView() {
   useEffect(() => {
     if (openNode && !openCard) setOpenNode(null);
   }, [openNode, openCard, setOpenNode]);
+  // The grid opens with the manager's chat docked on its left, as the pill
+  // has nowhere to sit over the cards; back on the canvas the chat is left
+  // as it was before.
+  useEffect(() => {
+    if (mode !== "grid") return;
+    const dock = useChatDockStore.getState();
+    const wasOpen = dock.open;
+    dock.setOpen(true);
+    return () => {
+      if (!wasOpen) useChatDockStore.getState().setOpen(false);
+    };
+  }, [mode]);
   const browserIds = useMemo(() => sections.browserGroups.flatMap((g) => g.cards.map((c) => c.id)), [sections]);
   const snapshots = useBrowserSnapshots(browserIds, mode === "grid" && !openCard, 3000);
 
