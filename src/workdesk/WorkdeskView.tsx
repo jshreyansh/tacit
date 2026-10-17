@@ -14,17 +14,19 @@ import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { agentIcon } from "../toolbar/agentIcons";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import { readTerminalTail } from "../terminal/terminalRegistry";
-import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
 import type { ChatTranscript } from "../../shared/chat-transcript";
 import { CanvasViewIcon, GridViewIcon } from "./viewIcons";
 import { cleanTailLines } from "./terminalTail";
+import { useBrowserSnapshots } from "./browserSnapshots";
+import { WorkdeskTab } from "./WorkdeskTab";
 import {
   buildWorkdeskSections,
   minutesSince,
   type BrowserCard,
   type NoteCard,
   type TerminalCard,
+  type WorkdeskCard,
   type WorkdeskFilter,
 } from "./workdeskModel";
 
@@ -32,7 +34,7 @@ import {
  * The workdesk view (T7): every node on the canvas on screen as a card, in
  * agents, browsers by profile, and terminals and notes, to the right of the
  * docked chat. Cards show live status and the last lines worth reading; a
- * card opens its node on the canvas.
+ * card opens its node full size in the view's tabs.
  */
 
 type Dict = ReturnType<typeof useT>;
@@ -118,11 +120,7 @@ function TerminalCardView({
       type="button"
       className={cardCls}
       style={card.state === "attention" ? { borderColor: "color-mix(in srgb, var(--amber) 55%, transparent)" } : undefined}
-      onClick={() => {
-        useWorkdeskViewStore.getState().setMode("canvas");
-        panToTerminal(card.id);
-      }}
-      title={t.workdesk_open_hint}
+      onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "terminal", id: card.id })}
     >
       <div className={headCls}>
         {icon ? (
@@ -155,27 +153,28 @@ function TerminalCardView({
   );
 }
 
-function BrowserCardView({ card, t }: { card: BrowserCard; t: Dict }) {
+function BrowserCardView({ card, picture }: { card: BrowserCard; picture: string | undefined }) {
   return (
     <button
       type="button"
       className={cardCls}
-      onClick={() => {
-        const data = useBrowserCardStore.getState().cards[card.id];
-        useWorkdeskViewStore.getState().setMode("canvas");
-        if (data) flyToBounds(data.x, data.y, data.w, data.h);
-      }}
-      title={t.workdesk_open_hint}
+      onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "browser", id: card.id })}
     >
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><GlobeIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
         <span className="tc-mono ml-auto max-w-[45%] shrink-0 truncate pl-1 text-[11px] text-[var(--text-faint)]">{card.host}</span>
       </div>
-      <div className="m-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-md border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 py-2.5">
-        <div className="line-clamp-2 text-[12.5px] font-medium text-[var(--text-primary)]">{card.title}</div>
-        <div className="tc-mono truncate text-[11px] text-[var(--text-muted)]">{card.url}</div>
-      </div>
+      {picture ? (
+        <div className="m-2 min-h-0 flex-1 overflow-hidden rounded-md border border-[var(--border)]">
+          <img src={picture} alt="" className="block w-full object-cover object-top" draggable={false} />
+        </div>
+      ) : (
+        <div className="m-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-md border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 py-2.5">
+          <div className="line-clamp-2 text-[12.5px] font-medium text-[var(--text-primary)]">{card.title}</div>
+          <div className="tc-mono truncate text-[11px] text-[var(--text-muted)]">{card.url}</div>
+        </div>
+      )}
     </button>
   );
 }
@@ -185,12 +184,7 @@ function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
     <button
       type="button"
       className={cardCls}
-      onClick={() => {
-        const pin = (usePinStore.getState().pinsByProject[card.projectPath] ?? []).find((p) => p.id === card.id);
-        useWorkdeskViewStore.getState().setMode("canvas");
-        if (pin && typeof pin.x === "number" && typeof pin.y === "number") flyToBounds(pin.x, pin.y, pin.w ?? 280, pin.h ?? 200);
-      }}
-      title={t.workdesk_open_hint}
+      onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "note", id: card.id })}
     >
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><NoteIcon /></span>
@@ -221,6 +215,8 @@ export function WorkdeskView() {
   const filter = useWorkdeskViewStore((s) => s.filter);
   const setFilter = useWorkdeskViewStore((s) => s.setFilter);
   const setMode = useWorkdeskViewStore((s) => s.setMode);
+  const openNode = useWorkdeskViewStore((s) => s.openNode);
+  const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -254,8 +250,20 @@ export function WorkdeskView() {
     () => [...sections.agents, ...sections.other].filter((c): c is TerminalCard => c.kind === "terminal").map((c) => c.id),
     [sections],
   );
+  const allCards = useMemo<WorkdeskCard[]>(
+    () => [...sections.agents, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.other],
+    [sections],
+  );
+  const openCard = openNode ? (allCards.find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null) : null;
+  // A node closed while its tab was open: back to the grid.
   useEffect(() => {
-    if (mode !== "grid") return;
+    if (openNode && !openCard) setOpenNode(null);
+  }, [openNode, openCard, setOpenNode]);
+  const browserIds = useMemo(() => sections.browserGroups.flatMap((g) => g.cards.map((c) => c.id)), [sections]);
+  const snapshots = useBrowserSnapshots(browserIds, mode === "grid" && !openCard, 3000);
+
+  useEffect(() => {
+    if (mode !== "grid" || openCard) return;
     const read = () => {
       const next: Record<string, string[]> = {};
       for (const id of terminalIds) {
@@ -268,7 +276,7 @@ export function WorkdeskView() {
     read();
     const timer = window.setInterval(read, TAIL_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [mode, terminalIds]);
+  }, [mode, terminalIds, openCard]);
 
   if (mode !== "grid") return null;
 
@@ -290,6 +298,13 @@ export function WorkdeskView() {
       className="tc-float tc-enter-fade fixed z-[30] flex flex-col overflow-hidden"
       style={{ left, right: CHROME_INSET, top: TITLE_STRIP_HEIGHT + CHROME_INSET, bottom: CHROME_INSET }}
       aria-label={t.workdesk_view_grid}
+      onKeyDown={(e) => {
+        // Esc leaves a tab for the grid, unless it's meant for a terminal or the note.
+        if (e.key !== "Escape" || !openCard) return;
+        const target = e.target as HTMLElement;
+        if (target.closest(".tc-xterm-host") || target.tagName === "TEXTAREA") return;
+        setOpenNode(null);
+      }}
     >
       <div className="flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
         {filters.map((f) => (
@@ -329,6 +344,54 @@ export function WorkdeskView() {
         </div>
       </div>
 
+      {openCard && (
+        <div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_40%,transparent)] px-2" role="tablist">
+          <button
+            type="button"
+            className="tc-rail-btn flex h-[30px] shrink-0 items-center gap-1.5 px-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            onClick={() => setOpenNode(null)}
+            aria-label={t.workdesk_back_to_grid}
+          >
+            <GridViewIcon size={13} />
+            {t.workdesk_view_grid_short}
+          </button>
+          <span className="mx-1 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
+          {allCards.map((card) => {
+            const active = card === openCard;
+            const icon = card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : null;
+            return (
+              <button
+                key={`${card.kind}:${card.id}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className="tc-rail-btn flex h-[30px] max-w-[200px] shrink-0 items-center gap-1.5 px-2.5 text-[12px]"
+                data-on={active ? "" : undefined}
+                style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
+                onClick={() => setOpenNode({ kind: card.kind, id: card.id })}
+              >
+                {icon ? (
+                  <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
+                ) : (
+                  <span className="flex shrink-0">{card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : <ShellIcon />}</span>
+                )}
+                <span className="truncate">{card.title}</span>
+                {card.kind === "terminal" && card.state === "active" && (
+                  <span className="tc-live-pip inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {openCard && (
+        <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
+          <WorkdeskTab card={openCard} profileName={(id) => identities[id]?.name ?? id} />
+        </div>
+      )}
+
+      {!openCard && (
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-24 pt-3">
         {(empty || emptyFilter) && (
           <div className="py-16 text-center text-[13px] text-[var(--text-muted)]">{empty ? t.workdesk_empty : t.workdesk_empty_filter}</div>
@@ -364,7 +427,7 @@ export function WorkdeskView() {
                   </div>
                   <div className={gridCols}>
                     {group.cards.map((card) => (
-                      <BrowserCardView key={card.id} card={card} t={t} />
+                      <BrowserCardView key={card.id} card={card} picture={snapshots[card.id]} />
                     ))}
                   </div>
                 </div>
@@ -387,6 +450,7 @@ export function WorkdeskView() {
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }

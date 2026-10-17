@@ -2267,6 +2267,36 @@ export function detachTerminalContainer(
   parkTerminalRenderer(runtime, cause);
 }
 
+/**
+ * Shows a terminal's live view somewhere else for a while (the workdesk
+ * view's tab), then hands it back: the returned function puts it back in
+ * the container it was in, its tile, and fits it there. Null for a terminal
+ * with no runtime, or one drawn by the agent renderer, which has no xterm
+ * to move.
+ */
+export function borrowTerminalView(terminalId: string, container: HTMLDivElement): (() => void) | null {
+  const runtime = runtimeRegistry.get(terminalId);
+  if (!runtime || runtime.disposed || runtime.usesAgentRenderer) {
+    return null;
+  }
+  const previous = runtime.attachedContainer;
+  const previousOptions = runtime.attachOptions ?? {};
+  attachTerminalContainer(terminalId, container, previousOptions);
+  fitTerminalRuntime(terminalId);
+  return () => {
+    // Rebuilt, or taken by something else meanwhile: theirs now.
+    if (runtimeRegistry.get(terminalId) !== runtime || runtime.disposed || runtime.attachedContainer !== container) {
+      return;
+    }
+    if (previous?.isConnected) {
+      attachTerminalContainer(terminalId, previous, previousOptions);
+      fitTerminalRuntime(terminalId);
+      return;
+    }
+    detachTerminalContainer(terminalId, { caller: "borrowTerminalView", reason: "borrowed_view_returned" });
+  };
+}
+
 export function fitTerminalRuntime(terminalId: string) {
   const runtime = runtimeRegistry.get(terminalId);
   if (!runtime?.xterm || !runtime.fitAddon || runtime.ptyId === null) {
