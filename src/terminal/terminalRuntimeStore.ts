@@ -543,6 +543,7 @@ async function pollSessionId(
       const candidate = await window.tacit.session.findOpenCode(
         worktreePath,
         startedAt,
+        terminalId,
       );
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
@@ -565,7 +566,7 @@ async function pollSessionId(
     while (!shouldCancel()) {
       await window.tacit.session.waitForOpenCodeWrite();
       if (shouldCancel()) return;
-      const candidate = await window.tacit.session.findOpenCode(worktreePath, startedAt);
+      const candidate = await window.tacit.session.findOpenCode(worktreePath, startedAt, terminalId);
       if (shouldCancel()) return;
       if (candidate?.sessionId) {
         onFound({ sessionId: candidate.sessionId, confidence: candidate.confidence });

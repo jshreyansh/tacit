@@ -2198,3 +2198,25 @@ test("a terminal's session is reported when found and when it changes, not on ev
   assert.deepEqual(links, ["t1:claude:s-1", "t1:claude:s-2"]);
   service.dispose();
 });
+
+test("the sessions other live terminals hold, for one still looking for its own", () => {
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  try {
+    for (const terminalId of ["a", "b", "c", "closed"]) {
+      service.registerTerminal({ terminalId, worktreePath: "/tmp/project", provider: "opencode", ptyId: 1 });
+      service.recordPtyOutput(terminalId, "x");
+    }
+    service.recordSessionAttached({ terminalId: "a", provider: "opencode", sessionId: "ses_a", confidence: "medium" });
+    service.recordSessionAttached({ terminalId: "closed", provider: "opencode", sessionId: "ses_closed", confidence: "medium" });
+    service.recordPtyExit("closed", 0);
+    service.registerTerminal({ terminalId: "claude", worktreePath: "/tmp/project", provider: "claude", ptyId: 2 });
+    service.recordPtyOutput("claude", "x");
+    service.recordSessionAttached({ terminalId: "claude", provider: "claude", sessionId: "uuid-1", confidence: "strong" });
+
+    assert.deepEqual([...service.sessionsHeldByOthers("opencode", "b")], ["ses_a"]);
+    assert.deepEqual([...service.sessionsHeldByOthers("opencode", "a")], [], "its own isn't held by another");
+    assert.deepEqual([...service.sessionsHeldByOthers("opencode", null)], ["ses_a"]);
+  } finally {
+    service.dispose();
+  }
+});

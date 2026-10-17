@@ -74,6 +74,25 @@ test("OpenCode 2.0: a session only in session_v2 is found for its terminal", () 
   });
 });
 
+test("a second terminal in the same folder doesn't take the session the first one runs", () => {
+  withV2Db((dbPath, homeDir, db) => {
+    // The first terminal runs ses_new, still being written to; a second one
+    // opened at 55s hasn't sent its first message yet.
+    db.prepare("UPDATE session_v2 SET time_updated = ? WHERE id = ?").run(70_000, "ses_new");
+    const startedAt = new Date(55_000).toISOString();
+    assert.equal(findBestOpenCodeSession("/tmp/project", startedAt, homeDir)?.sessionId, "ses_new", "the old behaviour");
+    assert.equal(findBestOpenCodeSession("/tmp/project", startedAt, homeDir, new Set(["ses_new"])), null);
+
+    // Its own session, once its first message creates it, is found.
+    db.prepare("INSERT INTO session_v2 VALUES (?, ?, ?, ?)").run("ses_second", "/tmp/project", 80_000, 80_000);
+    assert.deepEqual(findBestOpenCodeSession("/tmp/project", startedAt, homeDir, new Set(["ses_new"])), {
+      sessionId: "ses_second",
+      filePath: dbPath,
+      confidence: "medium",
+    });
+  });
+});
+
 test("OpenCode 2.0: a session's entries become telemetry, each once", () => {
   withV2Db((dbPath) => {
     const read = readOpenCodeSessionTelemetry({ dbPath, sessionId: "ses_new", seenEventKeys: new Set() });

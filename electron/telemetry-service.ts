@@ -1299,6 +1299,19 @@ export class TelemetryService {
     return false;
   }
 
+  /**
+   * Sessions of `provider` that other live terminals already run, so a
+   * terminal still looking for its own doesn't take one of them.
+   */
+  sessionsHeldByOthers(provider: string, terminalId: string | null): Set<string> {
+    const held = new Set<string>();
+    for (const [id, state] of this.terminals) {
+      if (id === terminalId || !state.snapshot.pty_alive) continue;
+      if (state.snapshot.provider === provider && state.snapshot.session_id) held.add(state.snapshot.session_id);
+    }
+    return held;
+  }
+
   getTerminalSnapshot(terminalId: string): TerminalTelemetrySnapshot | null {
     const state = this.terminals.get(terminalId);
     if (!state) return null;

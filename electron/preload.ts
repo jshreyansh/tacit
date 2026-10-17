@@ -132,8 +132,8 @@ contextBridge.exposeInMainWorld("tacit", {
         sessionId: string;
         confidence: "strong";
       } | null>,
-    findOpenCode: (cwd: string, startedAt?: string) =>
-      ipcRenderer.invoke("session:find-opencode", cwd, startedAt) as Promise<{
+    findOpenCode: (cwd: string, startedAt?: string, terminalId?: string) =>
+      ipcRenderer.invoke("session:find-opencode", cwd, startedAt, terminalId) as Promise<{
         sessionId: string;
         filePath: string;
         confidence: "medium" | "weak";

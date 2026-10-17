@@ -1341,8 +1341,9 @@ function setupIpc() {
 
   ipcMain.handle(
     "session:find-opencode",
-    (_event, cwd: string, startedAt?: string) => {
-      return findBestOpenCodeSession(cwd, startedAt);
+    (_event, cwd: string, startedAt?: string, terminalId?: unknown) => {
+      const self = typeof terminalId === "string" && terminalId ? terminalId : null;
+      return findBestOpenCodeSession(cwd, startedAt, undefined, telemetryService.sessionsHeldByOthers("opencode", self));
     },
   );
 

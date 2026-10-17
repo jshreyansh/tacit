@@ -664,6 +664,8 @@ export interface TacitAPI {
     findOpenCode: (
       cwd: string,
       startedAt?: string,
+      /** This terminal, so sessions other terminals hold are skipped. */
+      terminalId?: string,
     ) => Promise<{
       sessionId: string;
       filePath: string;

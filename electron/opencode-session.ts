@@ -468,6 +468,12 @@ export function findBestOpenCodeSession(
   cwd: string,
   startedAt?: string,
   homeDir = os.homedir(),
+  /**
+   * Sessions other terminals already run. Without this, a second OpenCode
+   * terminal in the same folder, before its first message, took the first
+   * terminal's session: it is the one still being written to.
+   */
+  exclude: ReadonlySet<string> = new Set(),
 ): OpenCodeFoundSession | null {
   const dbPath = getOpenCodeDbPath(homeDir);
   const startedMs = startedAt ? new Date(startedAt).getTime() : NaN;
@@ -488,6 +494,7 @@ export function findBestOpenCodeSession(
     const candidates = rows
       .map((row) => {
         if (typeof row.id !== "string" || row.id.length === 0) return null;
+        if (exclude.has(row.id)) return null;
         const createdMs =
           typeof row.time_created === "number" ? row.time_created : 0;
         const updatedMs =
