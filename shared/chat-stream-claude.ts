@@ -1,0 +1,209 @@
+import type { ChatEvent } from "./chat-events";
+
+/**
+ * Claude Code's stream-json output, one line at a time, as chat events.
+ *
+ * Seen on claude 2.1.302 (`-p --input-format stream-json --output-format
+ * stream-json --include-partial-messages --verbose`): `system:init` names
+ * the session; `stream_event` carries Anthropic's streaming events (message
+ * and content-block start, deltas, stop); a complete `assistant` message
+ * arrives for each block just before that block's stop; `user` messages
+ * carry tool results; `result` ends a turn; `control_request` asks the host
+ * something (`can_use_tool` for approvals). Events from a subagent carry
+ * `parent_tool_use_id` and are counted on the subagent's tool call rather
+ * than mixed into the reply. Fixtures: tests/fixtures/claude-stream/.
+ */
+
+export interface ClaudeStreamState {
+  /** The API message currently streaming, so blocks get turn-unique keys. */
+  messageId: string | null;
+  /** Keys of blocks opened by stream events, so a complete message doesn't add them twice. */
+  streamed: Set<string>;
+  /** Tool calls the driver has seen, by key, for matching complete messages. */
+  toolKeys: Map<string, string>;
+}
+
+export function createClaudeStreamState(): ClaudeStreamState {
+  return { messageId: null, streamed: new Set(), toolKeys: new Map() };
+}
+
+type Json = Record<string, unknown>;
+
+function isObject(value: unknown): value is Json {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (isObject(part) && typeof part.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+/** The events for one line. Unknown or unparsable lines give none. */
+export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEvent[] {
+  let msg: Json;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (!isObject(parsed)) return [];
+    msg = parsed;
+  } catch {
+    return [];
+  }
+  const parent = typeof msg.parent_tool_use_id === "string" ? msg.parent_tool_use_id : null;
+
+  switch (msg.type) {
+    case "system": {
+      if (msg.subtype === "init" && typeof msg.session_id === "string") {
+        return [{ kind: "session", sessionId: msg.session_id, ...(typeof msg.model === "string" ? { model: msg.model } : {}) }];
+      }
+      return [];
+    }
+
+    case "stream_event": {
+      if (parent) return [];
+      const ev = isObject(msg.event) ? msg.event : null;
+      if (!ev) return [];
+      if (ev.type === "message_start") {
+        const message = isObject(ev.message) ? ev.message : null;
+        state.messageId = typeof message?.id === "string" ? message.id : `m${Date.now()}`;
+        return [];
+      }
+      const index = typeof ev.index === "number" ? ev.index : null;
+      if (index === null || !state.messageId) return [];
+      const key = `${state.messageId}:${index}`;
+      if (ev.type === "content_block_start") {
+        const block = isObject(ev.content_block) ? ev.content_block : null;
+        if (!block) return [];
+        state.streamed.add(key);
+        if (block.type === "text") return [{ kind: "block_start", key, block: "text" }];
+        if (block.type === "thinking" || block.type === "redacted_thinking") return [{ kind: "block_start", key, block: "thinking" }];
+        if (block.type === "tool_use" || block.type === "server_tool_use") {
+          const id = typeof block.id === "string" ? block.id : key;
+          state.toolKeys.set(id, key);
+          return [{ kind: "block_start", key, block: "tool", toolCallId: id, toolName: typeof block.name === "string" ? block.name : "tool" }];
+        }
+        return [];
+      }
+      if (ev.type === "content_block_delta") {
+        const delta = isObject(ev.delta) ? ev.delta : null;
+        if (!delta) return [];
+        if (delta.type === "text_delta" && typeof delta.text === "string" && delta.text) return [{ kind: "text_delta", key, text: delta.text }];
+        if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking) return [{ kind: "thinking_delta", key, text: delta.thinking }];
+        if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") return [{ kind: "tool_input_delta", key, json: delta.partial_json }];
+        return [];
+      }
+      if (ev.type === "content_block_stop") return [{ kind: "block_done", key }];
+      return [];
+    }
+
+    case "assistant": {
+      const message = isObject(msg.message) ? msg.message : null;
+      const content = Array.isArray(message?.content) ? message.content : [];
+      if (parent) {
+        // A subagent's step: count its tool calls on the subagent's card.
+        return content
+          .filter((block): block is Json => isObject(block) && block.type === "tool_use")
+          .map((block) => ({ kind: "subagent_activity" as const, parentToolCallId: parent, ...(typeof block.name === "string" ? { toolName: block.name } : {}) }));
+      }
+      // The complete content of a block streamed just before: carry the
+      // final tool input. A block nothing streamed (partial messages off)
+      // is opened and closed here instead.
+      const events: ChatEvent[] = [];
+      const messageId = typeof message?.id === "string" ? message.id : null;
+      for (const block of content) {
+        if (!isObject(block)) continue;
+        if (block.type === "tool_use" && typeof block.id === "string") {
+          const key = state.toolKeys.get(block.id);
+          if (key) {
+            events.push({ kind: "block_done", key, input: block.input });
+          } else {
+            const fresh = `${messageId ?? "m"}:${block.id}`;
+            state.toolKeys.set(block.id, fresh);
+            events.push(
+              { kind: "block_start", key: fresh, block: "tool", toolCallId: block.id, toolName: typeof block.name === "string" ? block.name : "tool" },
+              { kind: "block_done", key: fresh, input: block.input },
+            );
+          }
+        } else if (block.type === "text" && typeof block.text === "string" && messageId && !hasStreamed(state, messageId)) {
+          const key = `${messageId}:t${events.length}`;
+          events.push({ kind: "block_start", key, block: "text" }, { kind: "block_done", key, text: block.text });
+        }
+      }
+      return events;
+    }
+
+    case "user": {
+      const message = isObject(msg.message) ? msg.message : null;
+      const content = Array.isArray(message?.content) ? message.content : [];
+      if (parent) return [];
+      return content
+        .filter((block): block is Json => isObject(block) && block.type === "tool_result" && typeof block.tool_use_id === "string")
+        .map((block) => ({
+          kind: "tool_result" as const,
+          toolCallId: block.tool_use_id as string,
+          isError: block.is_error === true,
+          output: toolResultText(block.content),
+        }));
+    }
+
+    case "result": {
+      state.messageId = null;
+      const ok = msg.subtype === "success" && msg.is_error !== true;
+      return [
+        {
+          kind: "turn_ended",
+          outcome: ok ? "success" : "error",
+          ...(ok ? {} : { error: typeof msg.result === "string" ? msg.result : String(msg.subtype ?? "error") }),
+          ...(typeof msg.duration_ms === "number" ? { durationMs: msg.duration_ms } : {}),
+        },
+      ];
+    }
+
+    case "control_request": {
+      const request = isObject(msg.request) ? msg.request : null;
+      if (request?.subtype === "can_use_tool" && typeof msg.request_id === "string") {
+        return [
+          {
+            kind: "approval_request",
+            requestId: msg.request_id,
+            toolName: typeof request.tool_name === "string" ? request.tool_name : "tool",
+            input: request.input ?? {},
+            ...(typeof request.tool_use_id === "string" ? { toolCallId: request.tool_use_id } : {}),
+          },
+        ];
+      }
+      return [];
+    }
+
+    default:
+      return [];
+  }
+}
+
+function hasStreamed(state: ClaudeStreamState, messageId: string): boolean {
+  for (const key of state.streamed) if (key.startsWith(`${messageId}:`)) return true;
+  return false;
+}
+
+/** The stdin line that sends the person's message. */
+export function claudeUserLine(text: string): string {
+  return `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } })}\n`;
+}
+
+/** The stdin line that stops the running turn. */
+export function claudeInterruptLine(requestId: string): string {
+  return `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "interrupt" } })}\n`;
+}
+
+/** The stdin line that answers an approval. */
+export function claudeApprovalLine(requestId: string, allow: boolean, input: unknown, message?: string): string {
+  const response = allow
+    ? { behavior: "allow", updatedInput: input ?? {} }
+    : { behavior: "deny", message: message ?? "The person declined this in Tacit." };
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response } })}\n`;
+}
