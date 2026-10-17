@@ -217,6 +217,12 @@ export interface TerminalData {
   autoApprove?: boolean;
   stashed?: boolean;
   stashedAt?: number;
+  /**
+   * The workdesk manager runs in the docked chat instead of this tile (T6).
+   * The tile keeps its place and id, since Tacit knows the manager by this
+   * terminal, but starts no process: one owner of the session at a time.
+   */
+  chatMode?: boolean;
 }
 
 export interface TerminalRuntimeState {

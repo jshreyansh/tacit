@@ -102,6 +102,7 @@ import {
 import { appendSnapshotToHistory } from "./snapshotHistory";
 import { recordDecision, setCaptureCanvas } from "./capture";
 import { installRunStartCheckpoint, recordTopologyCheckpoint } from "./captureTopology";
+import { installManagerChatListener } from "./actions/managerChatMode";
 import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
@@ -471,6 +472,7 @@ export function App() {
   // made inside browser tiles.
   useEffect(() => installHandoffFocusTracking(), []);
   useEffect(() => installRunStartCheckpoint(), []);
+  useEffect(() => installManagerChatListener(), []);
   useEffect(() => {
     if (!window.tacit?.browser?.onDownloadEvent) return;
     return window.tacit.browser.onDownloadEvent((event) => {

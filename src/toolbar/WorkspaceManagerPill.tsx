@@ -20,6 +20,18 @@ import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
 import { ChatHistory } from "./ChatHistory";
+import { ApprovalCards, ChatThread } from "./chat/ChatThread";
+import { useManagerTranscript } from "../stores/managerChatStore";
+import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
+import {
+  answerManagerApproval,
+  ensureManagerChat,
+  hasChatMode,
+  interruptManagerChat,
+  moveManagerToChat,
+  moveManagerToTerminal,
+  sendToManagerChat,
+} from "../actions/managerChatMode";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
@@ -302,6 +314,16 @@ export function WorkspaceManagerPill() {
     // never seen the conversation on screen — and put its reply in a thread you
     // are not looking at.
     if (viewing) return;
+    if (managerTerminal.chatMode) {
+      setSending(true);
+      try {
+        if (await sendToManagerChat(managerTerminal.id, text)) setDraft("");
+        else useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
     const ptyId = getLivePtyId(managerTerminal.id);
     const found = await waitForTerminalReady(managerTerminal.id);
     if (!found || ptyId == null) {
@@ -467,6 +489,15 @@ export function WorkspaceManagerPill() {
       // could land before the agent had started: Antigravity then showed it
       // as raw `^[[200~` text, echoed by the terminal while nothing was
       // reading it yet.
+      if (hasChatMode(type)) {
+        // Claude and Codex managers start in the chat (T6): the tile starts
+        // no process, and the briefing is the chat's first message.
+        const terminal = createTerminalInScene({ projectId, worktreeId, type });
+        useProjectStore.getState().setTerminalChatMode(projectId, worktreeId, terminal.id, true);
+        assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
+        void ensureManagerChat(terminal.id).then(() => sendToManagerChat(terminal.id, WORKSPACE_MANAGER_BRIEFING));
+        return;
+      }
       const terminal = createTerminalInScene({
         projectId,
         worktreeId,
@@ -539,8 +570,28 @@ export function WorkspaceManagerPill() {
     [openSessionsOverlay, loadReplay],
   );
 
+  // Chat mode (T6): the manager's agent runs in the engine, not its tile.
+  const chatMode = !!managerTerminal?.chatMode;
+  const transcript = useManagerTranscript(chatMode ? managerTerminal!.id : null);
+  useEffect(() => {
+    if (chatMode && managerTerminal) void ensureManagerChat(managerTerminal.id);
+  }, [chatMode, managerTerminal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chatMessages = useMemo(
+    () => transcript.messages.filter((m) => !(m.role === "user" && isWorkspaceManagerBriefing(m.text))),
+    [transcript.messages],
+  );
+  const lastChatReply = useMemo(() => {
+    for (let i = transcript.messages.length - 1; i >= 0; i -= 1) {
+      const m = transcript.messages[i];
+      if (m.role !== "assistant") continue;
+      const text = [...m.parts].reverse().find((p) => p.type === "text" && p.text.trim());
+      if (text && text.type === "text") return text.text.replace(/\s+/g, " ").trim().slice(0, 120);
+    }
+    return null;
+  }, [transcript.messages]);
+
   const faceOpen = view !== "chat";
-  const running = conversation?.telemetry?.turn_state === "in_turn";
+  const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
   const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
 
   const iconButton =
@@ -559,7 +610,27 @@ export function WorkspaceManagerPill() {
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           {/* One line above the pill: what the manager is doing, or the last
               thing it said. */}
-          {managerTerminal && conversation && (running || conversation.lastReply) && (
+          {managerTerminal && chatMode && (running || lastChatReply || transcript.approvals.length > 0) && (
+            <div
+              className={`tc-pill flex max-w-[34rem] items-center gap-1.5 px-3 py-1.5 ${PILL_GLASS}`}
+              style={{
+                fontSize: "var(--text-xs)",
+                borderColor: transcript.approvals.length > 0 ? "color-mix(in srgb, var(--amber) 50%, transparent)" : undefined,
+              }}
+            >
+              {transcript.approvals.length > 0 ? (
+                <span style={{ color: "var(--amber)" }}>{t.chat_approval_title(transcript.approvals[0].toolName)}</span>
+              ) : running ? (
+                <>
+                  <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
+                  <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>
+                </>
+              ) : (
+                <span className="truncate text-[var(--text-muted)]">{lastChatReply}</span>
+              )}
+            </div>
+          )}
+          {managerTerminal && !chatMode && conversation && (running || conversation.lastReply) && (
             <div
               className={`tc-pill max-w-[34rem] px-3 py-1.5 ${PILL_GLASS}`}
               style={{ fontSize: "var(--text-xs)" }}
@@ -669,6 +740,20 @@ export function WorkspaceManagerPill() {
             <path d="M8 5.5V8l1.8 1.2" />
           </svg>
         </button>
+        {managerTerminal && chatMode && (
+          <button
+            type="button"
+            className={iconButton}
+            onClick={() => void moveManagerToTerminal(managerTerminal.id)}
+            title={t.chat_mode_open_terminal_hint}
+            aria-label={t.chat_mode_back_to_terminal}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9.5 2.5h4v4M13.5 2.5L8 8" />
+              <path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" />
+            </svg>
+          </button>
+        )}
         {managerTerminal && (
           <button type="button" className={iconButton} onClick={flyToManager} title={t.project_chat_go_to} aria-label={t.project_chat_go_to}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -730,7 +815,50 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {view === "chat" && conversation && (
+      {view === "chat" && chatMode && managerTerminal && (
+        <ChatThread
+          transcript={{ ...transcript, messages: chatMessages }}
+          agent={managerTerminal.type}
+          onSend={async (text) => {
+            await sendToManagerChat(managerTerminal.id, text);
+          }}
+          onCancel={() => interruptManagerChat(managerTerminal.id)}
+        />
+      )}
+
+      {view === "chat" && chatMode && managerTerminal && transcript.failure && (
+        <div className="mx-3 mb-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", background: "color-mix(in srgb, var(--red) 6%, transparent)" }}>
+          <div className="text-[12.5px]" style={{ color: "var(--red)" }}>{t.chat_failure_title}</div>
+          <div className="mt-1 line-clamp-3 text-[11.5px] text-[var(--text-secondary)]">{transcript.failure}</div>
+          <div className="mt-2 flex gap-1.5">
+            <button type="button" className="tc-rail-btn h-7 border border-[var(--border-hover)] px-2.5 text-[12px] text-[var(--text-primary)]" onClick={() => void ensureManagerChat(managerTerminal.id)}>
+              {t.chat_restart}
+            </button>
+            <button type="button" className="tc-rail-btn h-7 px-2.5 text-[12px] text-[var(--text-muted)]" onClick={() => void moveManagerToTerminal(managerTerminal.id)}>
+              {t.chat_mode_back_to_terminal}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === "chat" && !chatMode && !viewing && managerTerminal && hasChatMode(managerTerminal.type) && (
+        <div className="mx-3 mt-2.5 flex items-center gap-2.5 rounded-xl border border-[var(--border)] px-3 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12.5px] text-[var(--text-primary)]">{t.chat_mode_move_title}</span>
+            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-[var(--text-muted)]">{t.chat_mode_move_body}</span>
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-[9px] px-3 py-1.5 text-[12px] font-medium"
+            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+            onClick={() => void moveManagerToChat(managerTerminal.id)}
+          >
+            {t.chat_mode_move}
+          </button>
+        </div>
+      )}
+
+      {view === "chat" && !chatMode && conversation && (
         <div className="flex min-h-0 flex-1 flex-col">
           <ConversationBody
             conversation={conversation}
@@ -853,9 +981,33 @@ export function WorkspaceManagerPill() {
       )}
 
       {/* The status line and the composer. */}
+      {view === "chat" && chatMode && managerTerminal && (
+        <ApprovalCards
+          approvals={transcript.approvals}
+          onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+        />
+      )}
+
       {view === "chat" && !viewing && managerTerminal && (
         <div className="shrink-0 px-3 pb-3">
-          {running && conversation && (
+          {running && chatMode && (
+            <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
+              <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
+              <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>
+              <button
+                type="button"
+                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                onClick={() => void interruptManagerChat(managerTerminal.id)}
+                title={t.project_chat_stop}
+              >
+                <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
+                  <rect width="10" height="10" rx="2" fill="currentColor" />
+                </svg>
+                {t.project_chat_stop}
+              </button>
+            </div>
+          )}
+          {running && !chatMode && conversation && (
             <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
               <PeekLine conversation={conversation} bare />
               <button

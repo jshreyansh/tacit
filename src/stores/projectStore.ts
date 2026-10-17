@@ -94,6 +94,14 @@ interface ProjectStore {
     worktreeId: string,
     terminalId: string,
   ) => void;
+  /** Moves a manager between its tile and the docked chat (T6), keeping its session. */
+  setTerminalChatMode: (
+    projectId: string,
+    worktreeId: string,
+    terminalId: string,
+    chatMode: boolean,
+    sessionId?: string,
+  ) => void;
   updateTerminalType: (
     projectId: string,
     worktreeId: string,
@@ -793,6 +801,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         worktreeId,
         terminalId,
         (t) => ({ ...t, autoApprove: autoApprove || undefined }),
+      ),
+    }));
+    markDirty();
+  },
+
+  setTerminalChatMode: (projectId, worktreeId, terminalId, chatMode, sessionId) => {
+    set((state) => ({
+      projects: mapTerminals(
+        state.projects,
+        projectId,
+        worktreeId,
+        terminalId,
+        (t) => ({ ...t, chatMode: chatMode || undefined, ...(sessionId ? { sessionId } : {}) }),
       ),
     }));
     markDirty();

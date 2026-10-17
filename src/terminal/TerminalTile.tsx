@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useCallback, useState } from "react";
+﻿import { lazy, Suspense, useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search } from "lucide-react";
 import type { TerminalData } from "../types";
@@ -60,7 +60,12 @@ import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
 import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
 
+// Only a manager in chat mode needs this; loaded on demand, it keeps the
+// tile's own module free of image imports (and testable in Node).
+const ChatModeBody = lazy(() => import("./ChatModeBody").then((m) => ({ default: m.ChatModeBody })));
+
 /** Files dropped on a terminal, for the record: main names them and decides if it counts. */
+
 function recordFileDrop(terminalId: string, paths: string[], dataTransfer: DataTransfer | null): void {
   const fromFilesPanel = !!dataTransfer && Array.from(dataTransfer.types).includes("application/x-tacit-file");
   void window.tacit.handoff?.droppedFiles(terminalId, paths, fromFilesPanel);
@@ -1224,7 +1229,14 @@ export function TerminalTile({
         </div>
       )}
 
-      {useAgentRenderer ? (
+      {terminal.chatMode ? (
+        // The manager runs in the docked chat; this tile starts no process.
+        !terminal.minimized && (
+          <Suspense fallback={null}>
+            <ChatModeBody terminalId={terminal.id} agent={terminal.type} />
+          </Suspense>
+        )
+      ) : useAgentRenderer ? (
         <div
           ref={agentBodyRef}
           className={

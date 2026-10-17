@@ -1,0 +1,327 @@
+import { useMemo, useState, type FC } from "react";
+import {
+  AssistantRuntimeProvider,
+  MessagePrimitive,
+  ThreadPrimitive,
+  useExternalStoreRuntime,
+  type ThreadMessageLike,
+} from "@assistant-ui/react";
+import type { ChatTranscript, PendingApproval } from "../../../shared/chat-transcript";
+import type { ApprovalDecision } from "../../../shared/chat-events";
+import { useT } from "../../i18n/useT";
+import { markdownClassName, renderMarkdown } from "../../utils/markdownClass";
+import { toolVerb } from "../../components/transcriptModel";
+import { agentIcon } from "../agentIcons";
+import { findAgentAdapter } from "../../../shared/agent-adapters";
+import { panToTerminal } from "../../utils/panToTerminal";
+import { spawnedTerminalId, toThreadMessages, workerSpawn } from "./threadMessages";
+
+/**
+ * The docked chat's conversation with a manager in chat mode (T6), drawn by
+ * assistant-ui's thread primitives over our own store (its external-store
+ * runtime): the library handles the scrolling thread and message parts, and
+ * these components give them Tacit's look. Text renders as markdown, tool
+ * calls as cards (a Tacit worker it started as a worker card with Show on
+ * canvas), thinking as a quiet line.
+ */
+
+type Dict = ReturnType<typeof useT>;
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 transition-transform duration-quick ${open ? "rotate-90" : ""}`}>
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+const TextPart: FC<{ text: string }> = ({ text }) => (
+  <div
+    className={markdownClassName}
+    style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.6 }}
+    dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+  />
+);
+
+const ReasoningPart: FC<{ text: string; status?: { type: string } }> = ({ text, status }) => {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const running = status?.type === "running";
+  return (
+    <div className="py-0.5">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-[12px] italic text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+        onClick={() => setOpen((v) => !v)}
+        disabled={!text}
+      >
+        {text && <Chevron open={open} />}
+        <span className={running ? "tc-live-pip" : undefined}>{running ? t.chat_thinking_now : t.chat_thought}</span>
+      </button>
+      {open && text && <div className="mt-1 whitespace-pre-wrap pl-4 text-[12px] italic text-[var(--text-muted)]">{text}</div>}
+    </div>
+  );
+};
+
+interface ToolCardProps {
+  toolName: string;
+  toolCallId: string;
+  args: Record<string, unknown>;
+  argsText?: string;
+  result?: unknown;
+  isError?: boolean;
+  artifact?: { status: "running" | "done" | "error"; subagentSteps: number };
+}
+
+function statusOf(props: ToolCardProps): "running" | "done" | "error" {
+  return props.artifact?.status ?? (props.isError ? "error" : props.result !== undefined ? "done" : "running");
+}
+
+/** The one line that says what a tool call is about. */
+function subjectOf(args: Record<string, unknown>): string {
+  for (const key of ["file_path", "path", "command", "pattern", "url", "query", "description", "prompt", "id", "type"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) {
+      const line = value.split("\n", 1)[0].trim();
+      return key.endsWith("path") ? (line.split(/[\\/]/).filter(Boolean).pop() ?? line) : line.length > 90 ? `${line.slice(0, 90)}…` : line;
+    }
+  }
+  return "";
+}
+
+function StatusMark({ status }: { status: "running" | "done" | "error" }) {
+  if (status === "running") return <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />;
+  if (status === "error") return <span className="text-[11px]" style={{ color: "var(--red)" }} aria-hidden="true">✕</span>;
+  return <span className="text-[11px]" style={{ color: "var(--green)" }} aria-hidden="true">✓</span>;
+}
+
+function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent: string | null; title: string }; t: Dict }) {
+  const status = statusOf(props);
+  const icon = agentIcon(spawn.agent);
+  const id = spawnedTerminalId(typeof props.result === "string" ? props.result : undefined);
+  const agentName = spawn.agent ? (findAgentAdapter(spawn.agent)?.displayName ?? spawn.agent) : t.chat_worker;
+  return (
+    <div className="my-1 flex items-center gap-2.5 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
+      <span className="tc-icon-shell shrink-0" style={{ width: 26, height: 26 }}>
+        {icon && <img src={icon} alt="" className="h-[18px] w-[18px] object-contain" draggable={false} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] text-[var(--text-primary)]">
+          {t.chat_started_worker} · <span className="tc-mono text-[var(--text-secondary)]">{agentName}</span>
+        </span>
+        {spawn.title && <span className="mt-0.5 block truncate text-[11.5px] text-[var(--text-muted)]">“{spawn.title}”</span>}
+        {status === "error" && typeof props.result === "string" && (
+          <span className="mt-0.5 block truncate text-[11.5px]" style={{ color: "var(--red)" }}>{props.result}</span>
+        )}
+      </span>
+      <StatusMark status={status} />
+      {id && (
+        <button
+          type="button"
+          className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-1 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          onClick={() => panToTerminal(id)}
+        >
+          {t.chat_show_on_canvas}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const ToolCard: FC<ToolCardProps> = (props) => {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const spawn = workerSpawn(props.toolName, props.args);
+  if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
+  const status = statusOf(props);
+  const subject = subjectOf(props.args);
+  const steps = props.artifact?.subagentSteps ?? 0;
+  // A failed call opens by itself: folding away the one worth reading is
+  // what this treatment exists to avoid.
+  const expanded = open !== (status === "error");
+  const output = typeof props.result === "string" ? props.result : props.result !== undefined ? JSON.stringify(props.result, null, 2) : "";
+  return (
+    <div className="my-0.5">
+      <button type="button" className="flex w-full items-center gap-1.5 py-0.5 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={expanded}>
+        <span className="text-[var(--text-faint)]"><Chevron open={expanded} /></span>
+        <span className="tc-mono shrink-0 text-[12px]" style={{ color: status === "error" ? "var(--red)" : "var(--text-secondary)" }}>
+          {toolVerb(props.toolName)}
+        </span>
+        {subject && <span className="tc-mono min-w-0 truncate text-[12px] text-[var(--text-muted)]">{subject}</span>}
+        {steps > 0 && <span className="tc-mono shrink-0 text-[11px] text-[var(--text-faint)]">· {t.chat_subagent_steps(steps)}</span>}
+        <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
+      </button>
+      {expanded && (
+        <div className="mb-1 ml-4 mt-1 overflow-hidden rounded-lg border border-[var(--border)]">
+          {props.argsText && (
+            <pre className="tc-mono max-h-40 overflow-auto whitespace-pre-wrap break-all bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[11px] text-[var(--text-muted)]">
+              {prettyJson(props.argsText)}
+            </pre>
+          )}
+          {output && (
+            <pre
+              className="tc-mono max-h-56 overflow-auto whitespace-pre-wrap break-all border-t border-[var(--border)] px-2.5 py-2 text-[11px]"
+              style={{ color: status === "error" ? "var(--red)" : "var(--text-secondary)" }}
+            >
+              {output.length > 8000 ? `${output.slice(0, 8000)}\n…` : output}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+function prettyJson(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
+const UserMessage: FC = () => (
+  <MessagePrimitive.Root className="mb-3 flex justify-end">
+    <div
+      className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
+      style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
+    >
+      <MessagePrimitive.Parts components={{ Text: ({ text }) => <>{text}</> }} />
+    </div>
+  </MessagePrimitive.Root>
+);
+
+function makeAssistantMessage(agent: string, label: string): FC {
+  const icon = agentIcon(agent);
+  return function AssistantMessage() {
+    return (
+      <MessagePrimitive.Root className="mb-4 flex flex-col gap-1">
+        <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-muted)]">
+          {icon && <img src={icon} alt="" className="h-[14px] w-[14px] object-contain" draggable={false} />}
+          <span>{label}</span>
+        </div>
+        <MessagePrimitive.Parts
+          components={{
+            Text: TextPart,
+            Reasoning: ReasoningPart,
+            tools: { Override: ToolCard as never },
+            data: { Fallback: TurnNote as never },
+          }}
+        />
+        <MessagePrimitive.If hasContent={false}>
+          <span className="tc-live-pip text-[12px] text-[var(--text-muted)]">…</span>
+        </MessagePrimitive.If>
+      </MessagePrimitive.Root>
+    );
+  };
+}
+
+/** The closing line of a turn that was stopped or failed. */
+const TurnNote: FC<{ data: unknown }> = ({ data }) => {
+  const t = useT();
+  const note = (data ?? {}) as { kind?: string; error?: string };
+  if (note.kind === "interrupted") {
+    return <div className="mt-0.5 text-[11.5px] text-[var(--text-muted)]">{t.chat_interrupted}</div>;
+  }
+  return (
+    <div className="mt-1 rounded-lg border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
+      {note.error ?? t.chat_turn_failed}
+    </div>
+  );
+};
+
+/** Approvals the manager waits on, stuck above the composer. */
+export function ApprovalCards({
+  approvals,
+  onAnswer,
+}: {
+  approvals: readonly PendingApproval[];
+  onAnswer: (requestId: string, decision: ApprovalDecision) => void;
+}) {
+  const t = useT();
+  if (approvals.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 px-3 pb-2">
+      {approvals.map((a) => {
+        const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
+        const what = typeof input.command === "string" ? input.command : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
+        return (
+          <div
+            key={a.requestId}
+            role="alertdialog"
+            aria-label={t.chat_approval_title(toolVerb(a.toolName))}
+            className="rounded-xl border px-3 pb-3 pt-2.5"
+            style={{ borderColor: "color-mix(in srgb, var(--amber) 50%, transparent)", background: "color-mix(in srgb, var(--amber) 6%, transparent)" }}
+          >
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--amber)" }}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
+              </svg>
+              {t.chat_approval_title(toolVerb(a.toolName))}
+            </div>
+            <pre className="tc-mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[11.5px] text-[var(--text-primary)]">
+              {what}
+            </pre>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => onAnswer(a.requestId, "allow_once")}>
+                {t.chat_approval_allow_once}
+              </button>
+              <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onAnswer(a.requestId, "allow_always")}>
+                {t.chat_approval_allow_always}
+              </button>
+              <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
+                {t.chat_approval_deny}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ChatThread({
+  transcript,
+  agent,
+  onSend,
+  onCancel,
+}: {
+  transcript: ChatTranscript;
+  agent: string;
+  onSend: (text: string) => Promise<void>;
+  onCancel: () => Promise<void>;
+}) {
+  const t = useT();
+  const messages = useMemo(() => toThreadMessages(transcript.messages), [transcript.messages]);
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages: messages as unknown as ThreadMessageLike[],
+    convertMessage: (m) => m,
+    isRunning: transcript.running,
+    onNew: async (message) => {
+      const text = message.content
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      if (text) await onSend(text);
+    },
+    onCancel,
+  });
+  const agentName = findAgentAdapter(agent)?.displayName ?? agent;
+  const AssistantMessage = useMemo(
+    () => makeAssistantMessage(agent, t.chat_from_manager(agentName.split(" ")[0])),
+    [agent, agentName, t],
+  );
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
+        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+          <ThreadPrimitive.Empty>
+            <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.chat_empty}</div>
+          </ThreadPrimitive.Empty>
+          <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </AssistantRuntimeProvider>
+  );
+}

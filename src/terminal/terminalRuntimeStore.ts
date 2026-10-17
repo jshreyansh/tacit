@@ -2131,6 +2131,14 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
 }
 
 export function ensureTerminalRuntime(meta: TerminalRuntimeMeta) {
+  // A manager running in the chat has no terminal process; one left over
+  // from before the switch is stopped, so only one owns the session.
+  if (meta.terminal.chatMode) {
+    if (runtimeRegistry.has(meta.terminal.id)) {
+      destroyTerminalRuntime(meta.terminal.id, { caller: "ensureTerminalRuntime", reason: "terminal_moved_to_chat" });
+    }
+    return null;
+  }
   const resolvedMeta = withResolvedRuntimeMeta(meta);
   const existing = runtimeRegistry.get(meta.terminal.id);
   if (existing) {
@@ -2155,6 +2163,7 @@ export function ensureTerminalRuntime(meta: TerminalRuntimeMeta) {
 export function updateTerminalRuntime(meta: TerminalRuntimeMeta) {
   const resolvedMeta = withResolvedRuntimeMeta(meta);
   const runtime = ensureTerminalRuntime(resolvedMeta);
+  if (!runtime) return;
   runtime.meta = resolvedMeta;
   runtime.cliOverride =
     usePreferencesStore.getState().cliCommands[resolvedMeta.terminal.type] ??
