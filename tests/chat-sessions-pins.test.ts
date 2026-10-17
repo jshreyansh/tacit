@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterLiveTerminals, treeTerminals } from "../src/toolbar/liveSessionsModel";
-import { splitPinsByStatus } from "../src/toolbar/pinsViewModel";
+import { answerMessage, countByFilter, cycleStep, filterTasks, managerTask, noteBodyFromTask, sortTasks } from "../src/tasks/taskModel";
 import { pinHandoffText, type Pin } from "../shared/pin";
 import type { CanvasTerminalItem, ProjectGroup } from "../src/components/sessionPanelModel";
 
@@ -46,19 +46,42 @@ test("the Sessions search finds live terminals by title, project or worktree, ev
   assert.deepEqual(filterLiveTerminals(all, "nothing-like-this"), []);
 });
 
-function pin(id: string, status: Pin["status"], updated: string): Pin {
-  return { id, title: id, status, repo: "/repo/tacit", body: "", links: [], created: updated, updated };
+function pin(id: string, status: Pin["status"], updated: string, extra: Partial<Pin> = {}): Pin {
+  return { id, kind: "task", title: id, status, repo: "/repo/tacit", body: "", links: [], created: updated, updated, ...extra };
 }
 
-test("the Pins view splits open pins from done and dropped ones, newest first", () => {
-  const { open, done } = splitPinsByStatus([
-    pin("old-open", "open", "2026-10-01T00:00:00Z"),
-    pin("done", "done", "2026-10-03T00:00:00Z"),
-    pin("new-open", "open", "2026-10-05T00:00:00Z"),
-    pin("dropped", "dropped", "2026-10-04T00:00:00Z"),
+test("Tasks: whoever needs you first, then work under way; All leaves dropped ones out", () => {
+  const tasks = sortTasks([
+    pin("todo", "open", "2026-10-05T00:00:00Z"),
+    pin("done", "done", "2026-10-06T00:00:00Z"),
+    pin("needs", "needs_you", "2026-10-01T00:00:00Z"),
+    pin("doing", "in_progress", "2026-10-02T00:00:00Z"),
+    pin("dropped", "dropped", "2026-10-07T00:00:00Z"),
   ]);
-  assert.deepEqual(open.map((p) => p.id), ["new-open", "old-open"]);
-  assert.deepEqual(done.map((p) => p.id), ["dropped", "done"]);
+  assert.deepEqual(tasks.map((t) => t.id), ["needs", "doing", "todo", "done", "dropped"]);
+  assert.deepEqual(filterTasks(tasks, "all").map((t) => t.id), ["needs", "doing", "todo", "done"]);
+  assert.deepEqual(filterTasks(tasks, "dropped").map((t) => t.id), ["dropped"]);
+  assert.deepEqual(countByFilter(tasks), { all: 4, needs_you: 1, in_progress: 1, open: 1, done: 1, dropped: 1 });
+});
+
+test("a step moves on to doing, then done, then back; a task turned note keeps its steps as a checklist", () => {
+  const steps = [{ text: "Build", status: "pending" as const }, { text: "Ship", status: "done" as const }];
+  assert.equal(cycleStep(steps, 0)[0].status, "active");
+  assert.equal(cycleStep(cycleStep(steps, 0), 0)[0].status, "done");
+  assert.equal(cycleStep(steps, 1)[1].status, "pending");
+  assert.equal(noteBodyFromTask({ body: "Context", steps }), "Context\n\n- [ ] Build\n- [x] Ship");
+});
+
+test("the manager's task is its own one under way; an answer names the task and the question", () => {
+  const tasks = [
+    pin("worker's", "in_progress", "2026-10-05T00:00:00Z", { owners: ["1792273461776-3"] }),
+    pin("mine, done", "done", "2026-10-06T00:00:00Z", { owners: ["manager"] }),
+    pin("mine", "in_progress", "2026-10-04T00:00:00Z", { owners: ["manager"] }),
+  ];
+  assert.equal(managerTask(tasks, "1792010924415-1")?.id, "mine");
+  assert.equal(managerTask(tasks, "1792273461776-3")?.id, "worker's");
+  const message = answerMessage({ id: "bump-ab12", title: "Bump the version", ask: { reason: "0.9.0 or 1.0.0?", at: "x" } }, "1.0.0");
+  assert.equal(message, 'Answer from the user on the task "Bump the version" (bump-ab12). You asked: "0.9.0 or 1.0.0?" Their answer: 1.0.0');
 });
 
 test("a pin handed to the manager says it is context, then gives its title and body", () => {

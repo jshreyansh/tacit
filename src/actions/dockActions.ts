@@ -4,7 +4,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { createTerminalInScene } from "./terminalSceneActions";
 import { addBrowserCardToScene } from "./sceneCardActions";
-import { createNoteInScene } from "./scenePinActions";
+import { createNoteInScene, createTaskInScene } from "./scenePinActions";
 import type { TerminalType } from "../types";
 
 /**
@@ -58,6 +58,14 @@ export function addTerminal(type: TerminalType) {
 
 export function addBrowser() {
   addBrowserCardToScene(visibleCanvasCenter());
+}
+
+export function addTask() {
+  const { focusedProjectId, projects } = useProjectStore.getState();
+  const project =
+    projects.find((p) => p.id === focusedProjectId) ?? projects[0];
+  if (!project) return;
+  void createTaskInScene(project.path, visibleCanvasCenter());
 }
 
 export function addNote() {

@@ -82,7 +82,7 @@ import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
 import { ContextMenu } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { addBrowserCardToScene } from "../actions/sceneCardActions";
-import { createNoteInScene, updatePinInScene } from "../actions/scenePinActions";
+import { createNoteInScene, createTaskInScene, updatePinInScene } from "../actions/scenePinActions";
 import type { TerminalType, Pin } from "../types";
 
 const EMPTY_EDGES: never[] = [];
@@ -436,6 +436,20 @@ function XyFlowCanvasInner() {
   const handleAddBrowserFromMenu = useCallback(() => {
     if (!contextMenu) return;
     addBrowserCardToScene({ x: contextMenu.flowX, y: contextMenu.flowY });
+  }, [contextMenu]);
+
+  const handleAddTaskFromMenu = useCallback(() => {
+    if (!contextMenu) return;
+    const { focusedProjectId, projects: currentProjects } =
+      useProjectStore.getState();
+    const project =
+      currentProjects.find((p) => p.id === focusedProjectId) ??
+      currentProjects[0];
+    if (!project) return;
+    void createTaskInScene(project.path, {
+      x: contextMenu.flowX,
+      y: contextMenu.flowY,
+    });
   }, [contextMenu]);
 
   const handleAddNoteFromMenu = useCallback(() => {
@@ -1085,6 +1099,10 @@ function XyFlowCanvasInner() {
             {
               label: "New Browser",
               onClick: handleAddBrowserFromMenu,
+            },
+            {
+              label: "New Task",
+              onClick: handleAddTaskFromMenu,
             },
             {
               label: "New Note",

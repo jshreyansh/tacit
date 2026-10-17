@@ -26,30 +26,21 @@ import {
 } from "../utils/markdownClass";
 import { useT } from "../i18n/useT";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { pinKind } from "../../shared/pin";
+import { StatusChip, TaskSections } from "../tasks/TaskParts";
+import { makeNote, makeTask, updateTask } from "../tasks/taskActions";
 
 
 
-function StatusBadge({ status }: { status: Pin["status"] }) {
+/** A task's status, or "note" for a note. */
+function KindBadge({ pin }: { pin: Pin }) {
   const t = useT();
-  if (status === "done") {
+  if (pinKind(pin) === "note") {
     return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--green)_15%,transparent)] text-[var(--green)] border border-[color-mix(in_srgb,var(--green)_25%,transparent)] font-medium">
-        {t["pin.statusDone"]}
-      </span>
+      <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)] font-medium">{t.task_note_kind}</span>
     );
   }
-  if (status === "dropped") {
-    return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--surface-hover)] text-[var(--text-faint)] border border-[var(--border)] font-medium">
-        {t["pin.statusDropped"]}
-      </span>
-    );
-  }
-  return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/25 font-medium">
-      {t["pin.statusOpen"]}
-    </span>
-  );
+  return <StatusChip task={pin} />;
 }
 
 export function PinDetailDrawer() {
@@ -462,7 +453,7 @@ export function PinDetailDrawer() {
                 />
               </svg>
             </button>
-            {pin && <StatusBadge status={pin.status} />}
+            {pin && <KindBadge pin={pin} />}
             {isComposing && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/25 font-medium">
                 {t["pin.compose.newPill"]}
@@ -493,33 +484,13 @@ export function PinDetailDrawer() {
                   {t["pin.action.edit"]}
                 </button>
               )}
-              {pin.status === "open" && (
-                <button
-                  className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--green)_20%,transparent)] hover:text-[var(--green)] transition-colors disabled:opacity-50"
-                  disabled={busy}
-                  onClick={() => void handleStatusChange("done")}
-                >
-                  {t["pin.action.markDone"]}
-                </button>
-              )}
-              {(pin.status === "done" || pin.status === "dropped") && (
-                <button
-                  className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
-                  disabled={busy}
-                  onClick={() => void handleStatusChange("open")}
-                >
-                  {t["pin.action.reopen"]}
-                </button>
-              )}
-              {pin.status === "open" && (
-                <button
-                  className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50"
-                  disabled={busy}
-                  onClick={() => void handleStatusChange("dropped")}
-                >
-                  {t["pin.action.drop"]}
-                </button>
-              )}
+              <button
+                className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void (pinKind(pin) === "task" ? makeNote(pin) : makeTask(pin))}
+              >
+                {pinKind(pin) === "task" ? t.task_make_note : t.note_make_task}
+              </button>
               <div className="w-px h-3 bg-[var(--border)] mx-0.5" />
               <button
                 className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--red)] hover:bg-[var(--red-soft)] transition-colors disabled:opacity-50"
@@ -551,9 +522,9 @@ export function PinDetailDrawer() {
                     disabled={busy}
                     placeholder={t["pin.titlePlaceholder"]}
                   />
-                ) : (
-                  <h1 className="tc-display break-words">{pin?.title}</h1>
-                )}
+                ) : pin ? (
+                  <TitleInput pin={pin} />
+                ) : null}
               </div>
 
               {/* Meta line — only for existing pins */}
@@ -583,6 +554,12 @@ export function PinDetailDrawer() {
                 </div>
               )}
               {isComposing && <div className="mb-6" />}
+
+              {pin && !isComposing && pinKind(pin) === "task" && (
+                <div className="mb-7">
+                  <TaskSections task={pin} />
+                </div>
+              )}
 
               {/* Body */}
               <div className="mb-6">
@@ -692,5 +669,36 @@ export function PinDetailDrawer() {
         onConfirm={() => void handleDelete()}
       />
     </>
+  );
+}
+
+/** The title, editable in place: saved when you leave it or press Enter. */
+function TitleInput({ pin }: { pin: Pin }) {
+  const t = useT();
+  const [title, setTitle] = useState(pin.title);
+  useEffect(() => setTitle(pin.title), [pin.id, pin.title]);
+  const commit = () => {
+    const next = title.trim();
+    if (next && next !== pin.title) void updateTask(pin, { title: next });
+    else setTitle(pin.title);
+  };
+  return (
+    <label className="block">
+      <span className="sr-only">{pinKind(pin) === "task" ? t.task_title_placeholder : t.note_title_placeholder}</span>
+      <input
+        className="tc-display w-full break-words rounded-md bg-transparent outline-none focus:bg-[var(--surface-hover)]"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setTitle(pin.title);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+    </label>
   );
 }

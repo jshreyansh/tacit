@@ -1,3 +1,4 @@
+import { pinKind } from "../../shared/pin";
 import type { Node } from "@xyflow/react";
 import type { ProjectData, Pin } from "../types";
 
@@ -39,9 +40,10 @@ export function buildPinFlowNodes(pins: Pin[]): PinFlowNode[] {
       type: "pin",
       position: { x: pin.x, y: pin.y },
       data: { pinId: pin.id, projectPath: pin.repo },
+      // A task holds its steps and who's on it, so it starts roomier.
       style: {
-        width: pin.w ?? DEFAULT_PIN_WIDTH,
-        height: pin.h ?? DEFAULT_PIN_HEIGHT,
+        width: pin.w ?? (pinKind(pin) === "task" ? 320 : DEFAULT_PIN_WIDTH),
+        height: pin.h ?? (pinKind(pin) === "task" ? 280 : DEFAULT_PIN_HEIGHT),
       },
       draggable: true,
       selectable: true,

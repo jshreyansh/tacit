@@ -1,49 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { usePinStore } from "../stores/pinStore";
-import { removePinFromScene, updatePinInScene } from "../actions/scenePinActions";
+import { updatePinInScene } from "../actions/scenePinActions";
 import type { PinFlowNode } from "./nodeProjection";
 import type { Pin } from "../types";
+import { useT } from "../i18n/useT";
+import { pinKind } from "../../shared/pin";
+import { NeedsYouBlock, OwnerChips, ProgressBar, StatusChip, StepList } from "../tasks/TaskParts";
+import { deleteTask, makeNote, makeTask, removeFromCanvas } from "../tasks/taskActions";
+import { openPinFull } from "../tasks/TasksView";
 
 const MIN_WIDTH = 220;
 const MIN_HEIGHT = 160;
 
-function StatusDot({ status }: { status: Pin["status"] }) {
-  const color =
-    status === "done"
-      ? "var(--green)"
-      : status === "dropped"
-        ? "var(--text-faint)"
-        : "var(--accent)";
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
-      style={{ background: color }}
-    />
-  );
-}
-
 /**
- * Notes are plain markdown/DOM with no native surface to protect (unlike
- * BrowserCard's <webview>), so — per nodeProjection.ts's buildPinFlowNodes —
- * this lives directly inside React Flow's own node tree and gets its
- * drag/select/resize for free from React Flow itself; no manual
- * mousedown-drag wiring like BrowserCard needs.
+ * A task or a note on the canvas. Both are plain DOM with no native surface
+ * to protect (unlike BrowserCard's <webview>), so — per nodeProjection.ts's
+ * buildPinFlowNodes — this lives directly inside React Flow's own node tree
+ * and gets its drag/select/resize from React Flow; the header drags, the
+ * rest is for working in (nodrag).
  */
 export function PinNode({ data }: NodeProps<PinFlowNode>) {
   const [hovered, setHovered] = useState(false);
   const pin = usePinStore((state) =>
     state.pinsByProject[data.projectPath]?.find((p) => p.id === data.pinId),
   );
-
-  const [title, setTitle] = useState(pin?.title ?? "");
-  const [body, setBody] = useState(pin?.body ?? "");
-
-  useEffect(() => {
-    if (!pin) return;
-    setTitle(pin.title);
-    setBody(pin.body);
-  }, [pin?.id, pin?.updated]);
 
   const handleResizeEnd = useCallback(
     (_event: unknown, params: { width: number; height: number }) => {
@@ -57,112 +38,219 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
   );
 
   if (!pin) return null;
-
-  const commitTitle = () => {
-    const trimmed = title.trim();
-    if (trimmed && trimmed !== pin.title) {
-      updatePinInScene(pin.repo, pin.id, { title: trimmed });
-    } else {
-      setTitle(pin.title);
-    }
-  };
-
-  const commitBody = () => {
-    if (body !== pin.body) {
-      updatePinInScene(pin.repo, pin.id, { body });
-    }
-  };
-
-  const toggleStatus = () => {
-    updatePinInScene(pin.repo, pin.id, {
-      status: pin.status === "open" ? "done" : "open",
-    });
-  };
+  const task = pinKind(pin) === "task";
+  const needs = task && pin.status === "needs_you";
 
   return (
     <div
       data-record-node={`note:${pin.id}`}
-      className="h-full w-full flex flex-col rounded-lg border overflow-hidden"
-      style={{
-        background: "color-mix(in srgb, var(--amber) 10%, var(--surface))",
-        borderColor: "color-mix(in srgb, var(--amber) 35%, var(--border))",
-        boxShadow: "var(--shadow-elev-1)",
-      }}
+      className="flex h-full w-full flex-col overflow-hidden rounded-lg border"
+      style={
+        task
+          ? {
+              background: "var(--surface)",
+              borderColor: needs ? "color-mix(in srgb, var(--amber) 55%, var(--border))" : "var(--border)",
+              boxShadow: "var(--shadow-elev-1)",
+            }
+          : {
+              background: "color-mix(in srgb, var(--amber) 10%, var(--surface))",
+              borderColor: "color-mix(in srgb, var(--amber) 35%, var(--border))",
+              boxShadow: "var(--shadow-elev-1)",
+            }
+      }
       onMouseEnter={() => {
         setHovered(true);
         // Same reason as BrowserCard: a note wired to an agent should light
         // that wire from the note's end too.
-        window.dispatchEvent(
-          new CustomEvent("tacit:node-hover", {
-            detail: { kind: "note", id: pin.id },
-          }),
-        );
+        window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: { kind: "note", id: pin.id } }));
       }}
       onMouseLeave={() => {
         setHovered(false);
-        window.dispatchEvent(
-          new CustomEvent("tacit:node-hover", { detail: null }),
-        );
+        window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: null }));
       }}
     >
       <NodeResizer
         isVisible={hovered}
         minWidth={MIN_WIDTH}
         minHeight={MIN_HEIGHT}
-        handleStyle={{
-          width: 8,
-          height: 8,
-          background: "var(--surface)",
-          borderColor: "var(--border-hover)",
-        }}
+        handleStyle={{ width: 8, height: 8, background: "var(--surface)", borderColor: "var(--border-hover)" }}
         onResizeEnd={handleResizeEnd}
       />
+      {task ? <TaskBody pin={pin} /> : <NoteBody pin={pin} />}
+    </div>
+  );
+}
 
+function useTitle(pin: Pin) {
+  const [title, setTitle] = useState(pin.title);
+  useEffect(() => setTitle(pin.title), [pin.id, pin.title]);
+  const commit = () => {
+    const trimmed = title.trim();
+    if (trimmed && trimmed !== pin.title) updatePinInScene(pin.repo, pin.id, { title: trimmed });
+    else setTitle(pin.title);
+  };
+  return { title, setTitle, commit };
+}
+
+function MoreMenu({ pin }: { pin: Pin }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [armDelete, setArmDelete] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const task = pinKind(pin) === "task";
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setArmDelete(false);
+      }
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  const item = "tc-rail-btn flex w-full items-center px-2.5 py-1.5 text-left text-[12.5px] text-[var(--text-primary)]";
+  return (
+    <div ref={ref} className="nodrag relative">
+      <button
+        type="button"
+        className="tc-rail-btn inline-flex h-6 w-6 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        aria-label={t.task_more}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
+      </button>
+      {open && (
+        <div role="menu" className="tc-float absolute right-0 top-7 z-30 w-[200px] p-1.5" style={{ borderRadius: 10 }} onMouseDown={(e) => e.stopPropagation()}>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); openPinFull(pin); }}>
+            {t.task_open_full}
+          </button>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); void (task ? makeNote(pin) : makeTask(pin)); }}>
+            {task ? t.task_make_note : t.note_make_task}
+          </button>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); void removeFromCanvas(pin); }}>
+            {t.task_remove_from_canvas}
+          </button>
+          <div className="mx-1 my-1 h-px bg-[var(--border)]" />
+          <button
+            type="button"
+            role="menuitem"
+            className={`${item} text-[var(--red)]`}
+            onClick={() => {
+              if (armDelete) {
+                setOpen(false);
+                void deleteTask(pin);
+              } else setArmDelete(true);
+            }}
+          >
+            {armDelete ? t.task_delete_confirm : task ? t.task_delete : t.note_delete}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskBody({ pin }: { pin: Pin }) {
+  const t = useT();
+  const { title, setTitle, commit } = useTitle(pin);
+  return (
+    <>
+      <div className="flex flex-none items-center gap-2 border-b border-[var(--border)] px-2.5 py-1.5" data-scene-box-select-block>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M2.5 4l1.2 1.2L6 3M2.5 8l1.2 1.2L6 7M2.5 12h0.01M8 4h5.5M8 8h5.5M8 12h5.5" />
+        </svg>
+        <span className="nodrag">
+          <StatusChip task={pin} />
+        </span>
+        <ProgressBar task={pin} width={36} />
+        <span className="flex-1" />
+        <MoreMenu pin={pin} />
+      </div>
+      <div className="nodrag nowheel flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2.5 py-2" data-scene-box-select-block>
+        <label>
+          <span className="sr-only">{t.task_title_placeholder}</span>
+          <input
+            className="w-full rounded-md bg-transparent px-1 py-0.5 text-[13.5px] font-semibold text-[var(--text-primary)] outline-none focus:bg-[var(--surface-hover)]"
+            value={title}
+            placeholder={t.task_title_placeholder}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commit}
+            onFocus={(e) => {
+              if (pin.title === "Untitled task") e.target.select();
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        </label>
+        <NeedsYouBlock task={pin} />
+        <StepList task={pin} />
+        <OwnerChips task={pin} emptyHint={t.task_nobody} />
+      </div>
+    </>
+  );
+}
+
+function NoteBody({ pin }: { pin: Pin }) {
+  const t = useT();
+  const { title, setTitle, commit } = useTitle(pin);
+  const [body, setBody] = useState(pin.body);
+  useEffect(() => setBody(pin.body), [pin.id, pin.updated]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <>
       <div
         data-scene-box-select-block
-        className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 border-b"
+        className="flex flex-none items-center gap-1.5 border-b px-2.5 py-1.5"
         style={{ borderColor: "color-mix(in srgb, var(--amber) 25%, var(--border))" }}
       >
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">{t.note_title_placeholder}</span>
+          <input
+            data-scene-box-select-block
+            className="nodrag w-full bg-transparent text-[13px] font-medium text-[var(--text-primary)] outline-none"
+            value={title}
+            placeholder={t.note_title_placeholder}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        </label>
         <button
           type="button"
-          className="p-0.5 shrink-0"
-          onClick={toggleStatus}
-          title={pin.status === "open" ? "Mark done" : "Reopen"}
-        >
-          <StatusDot status={pin.status} />
-        </button>
-        <input
-          data-scene-box-select-block
-          className="flex-1 min-w-0 bg-transparent text-[13px] font-medium outline-none text-[var(--text-primary)]"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={commitTitle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          }}
+          className="nodrag tc-rail-btn h-6 shrink-0 border px-2 text-[11px] text-[var(--text-secondary)]"
+          style={{ borderColor: "color-mix(in srgb, var(--amber) 35%, var(--border))" }}
+          onClick={() => void makeTask(pin)}
           onMouseDown={(e) => e.stopPropagation()}
-        />
-        <button
-          type="button"
-          className="p-0.5 shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          onClick={() => removePinFromScene(pin.repo, pin.id)}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+          {t.note_make_task}
         </button>
+        <MoreMenu pin={pin} />
       </div>
-
       <textarea
         data-scene-box-select-block
-        className="flex-1 min-h-0 resize-none bg-transparent px-2.5 py-2 text-[12px] leading-relaxed outline-none text-[var(--text-secondary)]"
+        className="nodrag nowheel min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none"
         style={{ fontFamily: '"Geist Mono", monospace' }}
-        placeholder="Write a note…"
+        placeholder={t.note_body_placeholder}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        onBlur={commitBody}
+        onBlur={() => {
+          if (body !== pin.body) updatePinInScene(pin.repo, pin.id, { body });
+        }}
         onMouseDown={(e) => e.stopPropagation()}
       />
-    </div>
+    </>
   );
 }

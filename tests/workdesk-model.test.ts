@@ -41,20 +41,27 @@ function inputs(over: Partial<WorkdeskInputs> = {}): WorkdeskInputs {
   };
 }
 
-test("agents, terminals and notes go to their groups; minimized and stashed tiles don't show", () => {
+test("agents, terminals, tasks and notes go to their groups; minimized and stashed tiles don't show", () => {
   const s = buildWorkdeskSections(
     inputs({
       pins: [
         { id: "n1", repo: "/repo", title: "Release checklist", body: "- bump", status: "open", x: 10, y: 20 },
         { id: "n2", repo: "/repo", title: "not on the canvas", body: "", status: "open" },
+        { id: "t1", repo: "/repo", kind: "task", title: "Ship it", body: "", status: "needs_you", ask: { reason: "0.9 or 1.0?", at: "2026-10-18T10:00:00Z" }, updated: "2026-10-18T10:00:00Z" },
+        { id: "t2", repo: "/repo", kind: "task", title: "Dropped one", body: "", status: "dropped" },
+        { id: "n3", repo: "/repo", kind: "note", title: "A note off the canvas", body: "", status: "open" },
       ] as unknown as WorkdeskInputs["pins"],
     }),
   );
   assert.deepEqual(s.agents.map((a) => a.id), ["mgr", "claude-1", "codex-1"]);
   assert.equal(s.agents[0].isManager && s.agents[0].chatMode, true);
   assert.equal(s.agents[1].title, "lint-job");
-  assert.deepEqual(s.other.map((c) => c.id), ["shell-1", "n1"]);
-  assert.deepEqual(s.counts, { all: 5, agents: 3, browsers: 0, other: 2 });
+  // A pin from before kinds sat on the canvas (a note) or only in the list (a task).
+  assert.deepEqual(s.other.map((c) => c.id), ["shell-1", "n1", "n3"]);
+  // Whoever needs you first; dropped ones aren't shown.
+  assert.deepEqual(s.tasks.map((c) => c.id), ["t1", "n2"]);
+  assert.equal(s.tasks[0].current, "0.9 or 1.0?");
+  assert.deepEqual(s.counts, { all: 8, agents: 3, browsers: 0, tasks: 2, other: 3 });
 });
 
 test("an agent that needs you comes first, then the working ones; the running turn's start is kept", () => {

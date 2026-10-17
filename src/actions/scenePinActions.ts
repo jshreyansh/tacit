@@ -1,6 +1,7 @@
 import type { Pin, UpdatePinInput } from "../types";
 
-const DEFAULT_NOTE_TITLE = "Untitled";
+const DEFAULT_NOTE_TITLE = "Untitled note";
+const DEFAULT_TASK_TITLE = "Untitled task";
 
 /**
  * Every mutation here fires through `window.tacit.pins.*` and relies
@@ -19,8 +20,23 @@ export function createNoteInScene(
   return window.tacit.pins.create({
     title: DEFAULT_NOTE_TITLE,
     repo: projectPath,
+    kind: "note",
     body: "",
     status: "open",
+    x: position?.x,
+    y: position?.y,
+  });
+}
+
+/** A task on the canvas, ready to name. */
+export function createTaskInScene(
+  projectPath: string,
+  position?: { x: number; y: number },
+): Promise<Pin> {
+  return window.tacit.pins.create({
+    title: DEFAULT_TASK_TITLE,
+    repo: projectPath,
+    kind: "task",
     x: position?.x,
     y: position?.y,
   });

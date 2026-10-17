@@ -22,7 +22,7 @@ import {
   setZoomToHundred,
 } from "../../canvas/zoomActions";
 import { addBrowser, visibleCanvasCenter } from "../../actions/dockActions";
-import { createNoteInScene } from "../../actions/scenePinActions";
+import { createNoteInScene, createTaskInScene } from "../../actions/scenePinActions";
 import {
   stashTerminalInScene,
   toggleTerminalStarredInScene,
@@ -416,6 +416,20 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       // coordinates — so a card from the palette landed wherever the viewport
       // happened to make that mean.
       addBrowser();
+    },
+  });
+
+  list.push({
+    id: "add-task",
+    section: "action",
+    title: t.dock_add_task,
+    keywords: ["todo", "task", "plan", "checklist"],
+    perform: () => {
+      const { focusedProjectId, projects } = useProjectStore.getState();
+      const project =
+        projects.find((p) => p.id === focusedProjectId) ?? projects[0];
+      if (!project) return;
+      void createTaskInScene(project.path, visibleCanvasCenter());
     },
   });
 

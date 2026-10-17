@@ -1,5 +1,6 @@
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
-import type { Pin } from "../../shared/pin";
+import type { Pin, PinStatus } from "../../shared/pin";
+import { pinKind } from "../../shared/pin";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import type { ProjectData } from "../types/index.ts";
 import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from "../components/sessionPanelModel";
@@ -10,7 +11,7 @@ import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from 
  * notes. Pure, so the grouping and ordering are tested without React.
  */
 
-export type WorkdeskFilter = "all" | "agents" | "browsers" | "other";
+export type WorkdeskFilter = "all" | "agents" | "browsers" | "tasks" | "other";
 
 export interface TerminalCard {
   kind: "terminal";
@@ -47,7 +48,21 @@ export interface NoteCard {
   body: string;
 }
 
-export type WorkdeskCard = TerminalCard | BrowserCard | NoteCard;
+export interface TaskCard {
+  kind: "task";
+  id: string;
+  projectPath: string;
+  title: string;
+  status: PinStatus;
+  /** "2/4", or empty with no steps. */
+  progress: string;
+  percent: number;
+  /** The step being done, the agent's question, or nothing. */
+  current: string | null;
+  owners: string[];
+}
+
+export type WorkdeskCard = TerminalCard | BrowserCard | TaskCard | NoteCard;
 
 export interface BrowserGroup {
   identityId: string;
@@ -58,6 +73,8 @@ export interface BrowserGroup {
 export interface WorkdeskSections {
   agents: TerminalCard[];
   browserGroups: BrowserGroup[];
+  /** Whoever needs the person first, then work under way. */
+  tasks: TaskCard[];
   other: Array<TerminalCard | NoteCard>;
   counts: Record<WorkdeskFilter, number>;
   runningAgents: number;
@@ -135,20 +152,43 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
   }
   const browserGroups = [...groups.values()];
 
+  // Every task and note on this workdesk's projects, on the canvas or not.
   const notes: NoteCard[] = input.pins
-    .filter((p) => typeof p.x === "number" && typeof p.y === "number")
+    .filter((p) => pinKind(p) === "note")
     .map((p) => ({ kind: "note", id: p.id, projectPath: p.repo, title: p.title, body: p.body }));
+  const TASK_ORDER: Record<PinStatus, number> = { needs_you: 0, in_progress: 1, open: 2, done: 3, dropped: 4 };
+  const tasks: TaskCard[] = input.pins
+    .filter((p) => pinKind(p) === "task" && p.status !== "dropped")
+    .sort((a, b) => TASK_ORDER[a.status] - TASK_ORDER[b.status] || Date.parse(b.updated) - Date.parse(a.updated))
+    .map((p) => {
+      const steps = p.steps ?? [];
+      const done = steps.filter((st) => st.status === "done").length;
+      const step = steps.find((st) => st.status === "active") ?? steps.find((st) => st.status === "pending");
+      return {
+        kind: "task",
+        id: p.id,
+        projectPath: p.repo,
+        title: p.title,
+        status: p.status,
+        progress: steps.length ? `${done}/${steps.length}` : "",
+        percent: steps.length ? Math.round((done / steps.length) * 100) : 0,
+        current: p.status === "needs_you" ? (p.ask?.reason ?? null) : (step?.text ?? null),
+        owners: p.owners ?? [],
+      };
+    });
 
   const other = [...otherTerminals, ...notes];
   const browserCount = input.browsers.length;
   return {
     agents,
     browserGroups,
+    tasks,
     other,
     counts: {
-      all: agents.length + browserCount + other.length,
+      all: agents.length + browserCount + tasks.length + other.length,
       agents: agents.length,
       browsers: browserCount,
+      tasks: tasks.length,
       other: other.length,
     },
     runningAgents: agents.filter((a) => a.state === "active").length,

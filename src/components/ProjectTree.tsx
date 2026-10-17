@@ -1,3 +1,4 @@
+import { pinKind } from "../../shared/pin";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -427,8 +428,9 @@ function ProjectRow({
   const tasksByProject = usePinStore((s) => s.pinsByProject);
 
   const isTaskDrawerOpen = openProjectPath === project.projectPath;
+  // Tasks not finished yet; notes aren't counted.
   const openCount = (tasksByProject[project.projectPath] ?? []).filter(
-    (t) => t.status === "open",
+    (t) => pinKind(t) === "task" && (t.status === "open" || t.status === "in_progress" || t.status === "needs_you"),
   ).length;
 
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);

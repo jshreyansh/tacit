@@ -27,7 +27,7 @@ function saveMode(mode: WorkdeskMode): void {
 
 /** A node opened full size in the workdesk view's tabs. */
 export interface OpenNode {
-  kind: "terminal" | "browser" | "note";
+  kind: "terminal" | "browser" | "task" | "note";
   id: string;
 }
 

@@ -16,10 +16,10 @@ function withStorage(initial: Record<string, string>, run: (store: Map<string, s
   }
 }
 
-test("a first launch pins Claude, Codex, the browser and notes", () => {
+test("a first launch pins Claude, Codex, the browser, tasks and notes", () => {
   withStorage({}, () => {
-    assert.deepEqual(loadPinned(), ["claude", "codex", "browser", "note"]);
-    assert.deepEqual([...DEFAULT_PINNED], ["claude", "codex", "browser", "note"]);
+    assert.deepEqual(loadPinned(), ["claude", "codex", "browser", "task", "note"]);
+    assert.deepEqual([...DEFAULT_PINNED], ["claude", "codex", "browser", "task", "note"]);
   });
 });
 

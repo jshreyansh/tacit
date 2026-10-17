@@ -9,10 +9,10 @@ import { create } from "zustand";
  * order and nothing else in the preferences.
  */
 
-export const DOCK_IDS = ["claude", "codex", "antigravity", "opencode", "shell", "browser", "note"] as const;
+export const DOCK_IDS = ["claude", "codex", "antigravity", "opencode", "shell", "browser", "task", "note"] as const;
 export type DockId = (typeof DOCK_IDS)[number];
 
-export const DEFAULT_PINNED: readonly DockId[] = ["claude", "codex", "browser", "note"];
+export const DEFAULT_PINNED: readonly DockId[] = ["claude", "codex", "browser", "task", "note"];
 
 const STORAGE_KEY = "tacit.dock.pinned.v1";
 

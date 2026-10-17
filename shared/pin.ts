@@ -121,8 +121,9 @@ export interface UpdatePinInput {
   ask?: Omit<TaskAsk, "at"> | null;
   /** The person's answer to the ask, recorded in the activity. */
   answer?: string;
-  x?: number;
-  y?: number;
+  /** null takes it off the canvas (it stays in the list). */
+  x?: number | null;
+  y?: number | null;
   w?: number;
   h?: number;
 }

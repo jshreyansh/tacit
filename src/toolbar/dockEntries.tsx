@@ -1,4 +1,4 @@
-import { addTerminal, addBrowser, addNote } from "../actions/dockActions";
+import { addTerminal, addBrowser, addNote, addTask } from "../actions/dockActions";
 import { useAgentDetection } from "../stores/agentAvailabilityStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import type { DockId } from "../stores/dockStore";
@@ -6,6 +6,7 @@ import type { TerminalType } from "../types";
 import { AGENT_ICON } from "./agentIcons";
 import browserIcon from "../assets/dock-icons/browser.png";
 import noteIcon from "../assets/dock-icons/note.png";
+import taskIcon from "../assets/dock-icons/task.svg";
 import type { useT } from "../i18n/useT";
 
 type Dict = ReturnType<typeof useT>;
@@ -76,6 +77,7 @@ export const DOCK_ENTRIES: readonly DockEntry[] = [
     create: () => addTerminal("shell"),
   },
   { id: "browser", group: "tools", art: { icon: browserIcon, inner: 23 }, label: (t) => t.dock_browser, create: addBrowser },
+  { id: "task", group: "tools", art: { icon: taskIcon, tiled: true }, label: (t) => t.dock_task, create: addTask },
   { id: "note", group: "tools", art: { icon: noteIcon, tiled: true }, label: (t) => t.dock_note, create: addNote },
 ];
 

@@ -471,7 +471,7 @@ export function ChatThread({
   agent: string;
   onSend: (text: string) => Promise<void>;
   onCancel: () => Promise<void>;
-  /** Who the replies are from; the manager's chat says "· workdesk manager". */
+  /** Who the replies are from; the manager's chat says "· manager". */
   replyLabel?: string;
 }) {
   const t = useT();

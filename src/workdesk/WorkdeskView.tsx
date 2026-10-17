@@ -20,11 +20,15 @@ import { CanvasViewIcon, GridViewIcon } from "./viewIcons";
 import { cleanTailLines } from "./terminalTail";
 import { useBrowserSnapshots } from "./browserSnapshots";
 import { WorkdeskTab } from "./WorkdeskTab";
+import { STATUS_COLOR } from "../tasks/taskModel";
+import { statusLabel, useOwnerView } from "../tasks/TaskParts";
+import { createTask } from "../tasks/taskActions";
 import {
   buildWorkdeskSections,
   minutesSince,
   type BrowserCard,
   type NoteCard,
+  type TaskCard,
   type TerminalCard,
   type WorkdeskCard,
   type WorkdeskFilter,
@@ -179,6 +183,70 @@ function BrowserCardView({ card, picture }: { card: BrowserCard; picture: string
   );
 }
 
+function TaskIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 4l1.2 1.2L6 3M2.5 8l1.2 1.2L6 7M2.5 12h0.01M8 4h5.5M8 8h5.5M8 12h5.5" />
+    </svg>
+  );
+}
+
+/** A task as a card: its status, progress, the step under way (or the question), who's on it. */
+function TaskCardView({ card, t }: { card: TaskCard; t: Dict }) {
+  const color = STATUS_COLOR[card.status];
+  return (
+    <button
+      type="button"
+      className={cardCls}
+      style={card.status === "needs_you" ? { borderColor: "color-mix(in srgb, var(--amber) 50%, var(--border))" } : undefined}
+      onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "task", id: card.id })}
+    >
+      <div className={headCls}>
+        <span className="flex shrink-0 text-[var(--text-muted)]"><TaskIcon /></span>
+        <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
+        <span className="ml-auto shrink-0 rounded-full border px-1.5 text-[10.5px]" style={{ color, borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}>
+          {statusLabel(card.status, t)}
+        </span>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 py-2.5">
+        {card.progress && (
+          <span className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
+              <span className="block h-1 rounded-full" style={{ width: `${card.percent}%`, background: color }} />
+            </span>
+            <span className="tc-mono text-[11px] text-[var(--text-muted)]">{card.progress}</span>
+          </span>
+        )}
+        <span className="line-clamp-3 text-[12px] leading-[1.6]" style={{ color: card.status === "needs_you" ? "var(--amber)" : "var(--text-secondary)" }}>
+          {card.current ?? (card.status === "done" ? t.workdesk_all_steps_done : t.workdesk_no_steps)}
+        </span>
+        <span className="mt-auto">
+          <OwnerList owners={card.owners} />
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function OwnerList({ owners }: { owners: string[] }) {
+  return (
+    <span className="flex flex-wrap gap-1">
+      {owners.map((o) => (
+        <OwnerDot key={o} owner={o} />
+      ))}
+    </span>
+  );
+}
+
+function OwnerDot({ owner }: { owner: string }) {
+  const view = useOwnerView(owner);
+  return view.icon ? (
+    <img src={view.icon} alt={view.label} title={view.label} className="h-3.5 w-3.5 object-contain" draggable={false} />
+  ) : (
+    <span className="text-[10.5px] text-[var(--text-faint)]">{view.label}</span>
+  );
+}
+
 function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
   return (
     <button
@@ -217,6 +285,14 @@ export function WorkdeskView() {
   const setMode = useWorkdeskViewStore((s) => s.setMode);
   const openNode = useWorkdeskViewStore((s) => s.openNode);
   const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
+  // A new task from the grid opens in its tab, ready to name.
+  const addGridTask = async () => {
+    const { focusedProjectId, projects: all } = useProjectStore.getState();
+    const project = all.find((p) => p.id === focusedProjectId) ?? all[0];
+    if (!project) return;
+    const made = await createTask(project.path);
+    if (made) setOpenNode({ kind: "task", id: made.id });
+  };
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -251,7 +327,7 @@ export function WorkdeskView() {
     [sections],
   );
   const allCards = useMemo<WorkdeskCard[]>(
-    () => [...sections.agents, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.other],
+    () => [...sections.agents, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.tasks, ...sections.other],
     [sections],
   );
   const openCard = openNode ? (allCards.find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null) : null;
@@ -295,11 +371,12 @@ export function WorkdeskView() {
   const left = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatDockOffset(chatDock, CHROME_GAP);
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
   const show = (f: WorkdeskFilter) => filter === "all" || filter === f;
-  const filters: WorkdeskFilter[] = ["all", "agents", "browsers", "other"];
+  const filters: WorkdeskFilter[] = ["all", "agents", "browsers", "tasks", "other"];
   const filterLabel: Record<WorkdeskFilter, string> = {
     all: t.workdesk_filter_all,
     agents: t.workdesk_filter_agents,
     browsers: t.workdesk_filter_browsers,
+    tasks: t.workdesk_tasks,
     other: t.workdesk_filter_other,
   };
   const empty = sections.counts.all === 0;
@@ -395,7 +472,9 @@ export function WorkdeskView() {
                 {icon ? (
                   <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
                 ) : (
-                  <span className="flex shrink-0">{card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : <ShellIcon />}</span>
+                  <span className="flex shrink-0">
+                    {card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : card.kind === "task" ? <TaskIcon /> : <ShellIcon />}
+                  </span>
                 )}
                 <span className="truncate">{card.title}</span>
                 {card.kind === "terminal" && card.state === "active" && (
@@ -454,6 +533,31 @@ export function WorkdeskView() {
                   </div>
                 </div>
               ))}
+            </>
+          )}
+          {show("tasks") && (
+            <>
+              <div className="flex items-center gap-2">
+                <SectionHead title={t.workdesk_tasks} summary={String(sections.tasks.length)} />
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-[var(--text-secondary)] text-[var(--bg)] hover:bg-[var(--text-primary)]"
+                  title={t.tasks_new}
+                  aria-label={t.tasks_new}
+                  onClick={() => void addGridTask()}
+                >
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                </button>
+              </div>
+              {sections.tasks.length > 0 && (
+                <div className={gridCols}>
+                  {sections.tasks.map((card) => (
+                    <TaskCardView key={card.id} card={card} t={t} />
+                  ))}
+                </div>
+              )}
             </>
           )}
           {show("other") && sections.other.length > 0 && (

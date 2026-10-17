@@ -9,7 +9,11 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { updatePinInScene } from "../actions/scenePinActions";
 import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
 import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
-import type { BrowserCard, NoteCard, TerminalCard, WorkdeskCard } from "./workdeskModel";
+import type { BrowserCard, NoteCard, TaskCard, TerminalCard, WorkdeskCard } from "./workdeskModel";
+import type { Pin } from "../types";
+import { TaskSections } from "../tasks/TaskParts";
+import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
+import { showPinOnCanvas } from "../tasks/TasksView";
 
 /**
  * One node full size in the workdesk view's tabs (T7, G2). A terminal's
@@ -156,42 +160,144 @@ function BrowserTab({ card, t }: { card: BrowserCard; t: Dict }) {
   );
 }
 
-function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
-  const [body, setBody] = useState(card.body);
+/** Typing in a field is saved shortly after it stops, and on leaving it. */
+function useDebouncedSave(save: (value: string) => void) {
   const timer = useRef<number | null>(null);
-  // Typing is saved shortly after it stops, and on leaving the tab.
   const pending = useRef<string | null>(null);
   const flush = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
     if (pending.current !== null) {
-      updatePinInScene(card.projectPath, card.id, { body: pending.current });
+      save(pending.current);
       pending.current = null;
     }
   };
-  useEffect(() => flush, [card.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const change = (value: string) => {
+    pending.current = value;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(flush, NOTE_SAVE_MS);
+  };
+  useEffect(() => flush, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return { change, flush };
+}
+
+function usePin(projectPath: string, id: string): Pin | null {
+  return usePinStore((s) => s.pinsByProject[projectPath]?.find((p) => p.id === id) ?? null);
+}
+
+/** A title you can edit where it is: saved on Enter or when you leave it. */
+function EditableTitle({ pin, placeholder }: { pin: Pin; placeholder: string }) {
+  const [title, setTitle] = useState(pin.title);
+  useEffect(() => setTitle(pin.title), [pin.id, pin.title]);
+  const commit = () => {
+    const next = title.trim();
+    if (next && next !== pin.title) void updateTask(pin, { title: next });
+    else setTitle(pin.title);
+  };
+  return (
+    <label className="block">
+      <span className="sr-only">{placeholder}</span>
+      <input
+        value={title}
+        placeholder={placeholder}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className="w-full rounded-md bg-transparent px-1.5 py-1 text-[20px] font-semibold text-[var(--text-primary)] outline-none focus:bg-[var(--surface-hover)]"
+      />
+    </label>
+  );
+}
+
+function BodyField({ pin, placeholder, minHeight }: { pin: Pin; placeholder: string; minHeight: number }) {
+  const [body, setBody] = useState(pin.body);
+  useEffect(() => setBody(pin.body), [pin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { change, flush } = useDebouncedSave((value) => void updateTask(pin, { body: value }));
+  return (
+    <label className="flex">
+      <span className="sr-only">{placeholder}</span>
+      <textarea
+        value={body}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setBody(e.target.value);
+          change(e.target.value);
+        }}
+        onBlur={flush}
+        onKeyDown={(e) => e.stopPropagation()}
+        style={{ minHeight }}
+        className="w-full resize-y rounded-[9px] border border-[var(--border)] bg-transparent px-3 py-2 text-[13.5px] leading-[1.7] text-[var(--text-secondary)] outline-none focus:border-[var(--border-hover)]"
+      />
+    </label>
+  );
+}
+
+function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
+  const pin = usePin(card.projectPath, card.id);
+  const [armDelete, setArmDelete] = useState(false);
+  if (!pin) return null;
+  const onCanvas = typeof pin.x === "number" && typeof pin.y === "number";
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 px-7 py-6">
-        <div className="text-[18px] font-semibold text-[var(--text-primary)]">{card.title}</div>
-        <label className="flex min-h-0 flex-1">
-          <span className="sr-only">{card.title}</span>
-          <textarea
-            value={body}
-            onChange={(e) => {
-              setBody(e.target.value);
-              pending.current = e.target.value;
-              if (timer.current !== null) window.clearTimeout(timer.current);
-              timer.current = window.setTimeout(flush, NOTE_SAVE_MS);
-            }}
-            onBlur={flush}
-            className="min-h-0 flex-1 resize-none bg-transparent text-[14px] leading-[1.8] text-[var(--text-secondary)] outline-none"
-          />
-        </label>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[780px] flex-col gap-5 px-7 py-6">
+          <EditableTitle pin={pin} placeholder={t.task_title_placeholder} />
+          <TaskSections task={pin} />
+          <section className="flex flex-col gap-2" aria-label={t.task_notes}>
+            <span className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.task_notes}</span>
+            <BodyField pin={pin} placeholder={t.note_body_placeholder} minHeight={90} />
+          </section>
+        </div>
+      </div>
+      <Footer hint={t.workdesk_tasks}>
+        {(pin.owners ?? []).every((o) => o !== "manager") && pin.status !== "done" && (
+          <button type="button" className={footButton} onClick={() => void handTaskToManager(pin)}>
+            {t.task_hand}
+          </button>
+        )}
+        <button type="button" className={footButton} onClick={() => void showPinOnCanvas(pin)}>
+          {onCanvas ? t.task_show_on_canvas : t.task_put_on_canvas}
+        </button>
+        <button type="button" className={footButton} onClick={() => void makeNote(pin)}>
+          {t.task_make_note}
+        </button>
+        <button
+          type="button"
+          className={`${footButton} !text-[var(--red)]`}
+          onClick={() => {
+            if (armDelete) void deleteTask(pin);
+            else setArmDelete(true);
+          }}
+          onBlur={() => setArmDelete(false)}
+        >
+          {armDelete ? t.task_delete_confirm : t.task_delete}
+        </button>
+      </Footer>
+    </>
+  );
+}
+
+function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
+  const pin = usePin(card.projectPath, card.id);
+  if (!pin) return null;
+  const onCanvas = typeof pin.x === "number" && typeof pin.y === "number";
+  return (
+    <>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[780px] flex-col gap-3 px-7 py-6">
+          <EditableTitle pin={pin} placeholder={t.note_title_placeholder} />
+          <BodyField pin={pin} placeholder={t.note_body_placeholder} minHeight={360} />
+        </div>
       </div>
       <Footer hint={t.workdesk_note}>
-        <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
-          {t.workdesk_show_on_canvas}
+        <button type="button" className={footButton} onClick={() => void makeTask(pin)}>
+          {t.note_make_task}
+        </button>
+        <button type="button" className={footButton} onClick={() => void showPinOnCanvas(pin)}>
+          {onCanvas ? t.task_show_on_canvas : t.task_put_on_canvas}
         </button>
       </Footer>
     </>
@@ -202,5 +308,6 @@ export function WorkdeskTab({ card }: { card: WorkdeskCard }) {
   const t = useT();
   if (card.kind === "terminal") return <TerminalTab key={card.id} card={card} t={t} />;
   if (card.kind === "browser") return <BrowserTab key={card.id} card={card} t={t} />;
+  if (card.kind === "task") return <TaskTab key={card.id} card={card} t={t} />;
   return <NoteTab key={card.id} card={card} t={t} />;
 }

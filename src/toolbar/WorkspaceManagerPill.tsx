@@ -21,11 +21,14 @@ import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
 import { ChatHistory } from "./ChatHistory";
 import { LiveSessions, useNeedsYouCount } from "./LiveSessions";
-import { PinsView } from "./PinsView";
+import { TasksView } from "../tasks/TasksView";
+import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { TaskBar } from "../tasks/TaskParts";
+import { managerTask } from "../tasks/taskModel";
+import { openPinFull } from "../tasks/TasksView";
 import { usePinStore } from "../stores/pinStore";
 import { ContextMeter, LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
 import { useManagerChatStore } from "../stores/managerChatStore";
-import { pinHandoffText, type Pin } from "../../shared/pin";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
 import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
@@ -420,7 +423,7 @@ export function WorkspaceManagerPill() {
           .getState()
           .notify(
             "warn",
-            "Couldn't brief the new workdesk manager — its shell process isn't ready yet. It still has the role; just ask it to call get_workspace_summary directly.",
+            "Couldn't brief the new manager — its shell process isn't ready yet. It still has the role; just ask it to call get_workspace_summary directly.",
           );
         return;
       }
@@ -438,7 +441,7 @@ export function WorkspaceManagerPill() {
           .getState()
           .notify(
             "warn",
-            `Couldn't brief the new workspace manager: ${result.detail ?? result.error}. It still has the role; just ask it to call get_workspace_summary directly.`,
+            `Couldn't brief the new manager: ${result.detail ?? result.error}. It still has the role; just ask it to call get_workspace_summary directly.`,
           );
       }
     },
@@ -638,18 +641,12 @@ export function WorkspaceManagerPill() {
     if (pinsProject && !(dockOpen && view === "pins")) usePinStore.getState().closeDrawer();
   }, [pinsProject, dockOpen, view]);
 
-  /** A pin handed to the manager lands in the message box, to send when you're ready. */
-  const handPin = useCallback(
-    (pin: Pin) => {
-      if (!managerTerminal) {
-        useNotificationStore.getState().notify("warn", t.chat_pins_hand_no_manager);
-        return;
-      }
-      setDraft(pinHandoffText(pin));
-      setView("chat");
-      requestAnimationFrame(() => inputRef.current?.focus());
-    },
-    [managerTerminal, setView, t],
+  const tasksWaiting = useTasksNeedingYou().length;
+  // The manager's own task, kept with the project, sits above the message box.
+  const pinsByProject = usePinStore((s) => s.pinsByProject);
+  const activeTask = useMemo(
+    () => managerTask(Object.values(pinsByProject).flat(), managerTerminal?.id ?? null),
+    [pinsByProject, managerTerminal?.id],
   );
   const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
   // A move asked for mid-turn happens when the turn ends. One that no longer
@@ -846,17 +843,19 @@ export function WorkspaceManagerPill() {
         </button>
         <button
           type="button"
-          className={iconButton}
+          className={`${iconButton} relative`}
           data-on={view === "pins" ? "" : undefined}
           aria-pressed={view === "pins"}
           onClick={() => setView(view === "pins" ? "chat" : "pins")}
-          title={t.chat_pins}
-          aria-label={t.chat_pins}
+          title={tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : t.tasks_title}
+          aria-label={tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : t.tasks_title}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M6 2.5h4l-.6 4 2 2H4.6l2-2z" />
-            <path d="M8 8.5v5" />
+            <path d="M2.5 4l1.2 1.2L6 3M2.5 8l1.2 1.2L6 7M2.5 12h0.01M8 4h5.5M8 8h5.5M8 12h5.5" />
           </svg>
+          {tasksWaiting > 0 && view !== "pins" && (
+            <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
+          )}
         </button>
         {managerTerminal && chatMode && (
           <button
@@ -1008,7 +1007,7 @@ export function WorkspaceManagerPill() {
       )}
 
       {/* A project's pins; one opens in the pin view beside the chat. */}
-      {view === "pins" && <PinsView onHand={handPin} />}
+      {view === "pins" && <TasksView />}
 
       {view === "roster" && (
         <div role="menu" aria-label={t.project_chat_assign} className="min-h-0 flex-1 overflow-y-auto p-1.5">
@@ -1117,7 +1116,11 @@ export function WorkspaceManagerPill() {
 
       {view === "chat" && !viewing && chatMode && managerTerminal && (
         <div className="shrink-0 pt-1">
-          <PlanCard transcript={transcript} />
+          {activeTask ? (
+            <TaskBar task={activeTask} onOpen={() => openPinFull(activeTask)} />
+          ) : (
+            <PlanCard transcript={transcript} />
+          )}
           <LimitCard
             terminalId={managerTerminal.id}
             transcript={transcript}

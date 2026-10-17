@@ -15,6 +15,9 @@ import {
   type CanvasTerminalItem,
 } from "../components/sessionPanelModel";
 import { filterLiveTerminals, treeTerminals } from "./liveSessionsModel";
+import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { openPinFull } from "../tasks/TasksView";
+import type { Pin } from "../types";
 import { findTerminal } from "../actions/terminalLookup";
 import { useCanvasStore } from "../stores/canvasStore";
 
@@ -55,15 +58,38 @@ function useLiveTree() {
   }, [projects, runtimeTerminals, liveSessions, historySessions, seenTerminalIds]);
 }
 
-/** How many terminals are waiting on you, for the dot on the Sessions icon. */
+/** What's waiting on you (terminals, and tasks an agent asked about), for the amber dots. */
 export function useNeedsYouCount(): number {
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
-  return useMemo(() => {
+  const tasks = useTasksNeedingYou().length;
+  const terminals = useMemo(() => {
     const telemetry = new Map<string, (typeof runtimeTerminals)[string]["telemetry"]>();
     for (const [id, runtime] of Object.entries(runtimeTerminals)) telemetry.set(id, runtime.telemetry);
     return buildCanvasTerminalSections(projects, telemetry, new Map()).attention.length;
   }, [projects, runtimeTerminals]);
+  return terminals + tasks;
+}
+
+/** A task an agent asked you about: its question, opening the task. */
+function TaskNeedsRow({ task }: { task: Pin }) {
+  return (
+    <button
+      type="button"
+      className="tc-row-icon mx-1 flex w-[calc(100%-8px)] items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[var(--sidebar-hover)]"
+      onClick={() => openPinFull(task)}
+    >
+      <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--amber)]" />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[var(--text-primary)]" style={{ fontSize: "var(--text-sm)" }}>
+          {task.title}
+        </span>
+        <span className="tc-caption truncate" style={{ color: "var(--amber)" }}>
+          {task.ask?.reason}
+        </span>
+      </span>
+    </button>
+  );
 }
 
 function Heading({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "amber" }) {
@@ -81,6 +107,7 @@ function Heading({ children, tone = "muted" }: { children: React.ReactNode; tone
 export function LiveSessions({ query }: { query: string }) {
   const t = useT();
   const { attention, tree, stashed, seenTerminalIds } = useLiveTree();
+  const waitingTasks = useTasksNeedingYou();
   const managerId = useCanvasRegistryStore(
     (s) => (s.canvases.find((c) => c.id === s.activeCanvasId) ?? s.canvases[0])?.workspaceManagerTerminalId ?? null,
   );
@@ -121,13 +148,18 @@ export function LiveSessions({ query }: { query: string }) {
 
   return (
     <>
-      {attention.length > 0 && (
+      {(attention.length > 0 || waitingTasks.length > 0) && (
         <section aria-label={t.chat_sessions_needs_you_heading}>
           <Heading tone="amber">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--amber)]" />
             {t.chat_sessions_needs_you_heading}
           </Heading>
-          <div className="tc-sidebar-tree-font flex flex-col">{attention.map((item) => card(item, false))}</div>
+          <div className="tc-sidebar-tree-font flex flex-col">
+            {attention.map((item) => card(item, false))}
+            {waitingTasks.map((task) => (
+              <TaskNeedsRow key={task.id} task={task} />
+            ))}
+          </div>
         </section>
       )}
       <section aria-label={t.chat_sessions_on_workdesk}>
