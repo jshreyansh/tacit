@@ -130,6 +130,8 @@ interface ManagedTerminalRuntime {
   globalDisposers: Array<() => void>;
   hasRespawned: boolean;
   hostElement: HTMLDivElement | null;
+  /** A font size for while its view is borrowed (the workdesk tab), over the preference. */
+  viewFontSize: number | null;
   inputDisposable: { dispose(): void } | null;
   meta: TerminalRuntimeMeta;
   mode: TerminalMountMode;
@@ -1429,8 +1431,9 @@ function setupRuntimeSubscriptions(runtime: ManagedTerminalRuntime) {
       }
     }
 
-    if (runtime.xterm.options.fontSize !== state.terminalFontSize) {
-      runtime.xterm.options.fontSize = state.terminalFontSize;
+    const fontSize = runtime.viewFontSize ?? state.terminalFontSize;
+    if (runtime.xterm.options.fontSize !== fontSize) {
+      runtime.xterm.options.fontSize = fontSize;
       atlasInvalidated = true;
       atlasReasons.push("font_size");
       if (shouldFitAttachedRuntime(runtime)) {
@@ -1646,6 +1649,7 @@ function buildTerminalRuntime(
     globalDisposers: [],
     hasRespawned: false,
     hostElement: null,
+    viewFontSize: null,
     inputDisposable: null,
     meta: resolvedMeta,
     mode,
@@ -2274,13 +2278,20 @@ export function detachTerminalContainer(
  * with no runtime, or one drawn by the agent renderer, which has no xterm
  * to move.
  */
-export function borrowTerminalView(terminalId: string, container: HTMLDivElement): (() => void) | null {
+export function borrowTerminalView(
+  terminalId: string,
+  container: HTMLDivElement,
+  fontSize?: number,
+): (() => void) | null {
   const runtime = runtimeRegistry.get(terminalId);
   if (!runtime || runtime.disposed || runtime.usesAgentRenderer) {
     return null;
   }
   const previous = runtime.attachedContainer;
   const previousOptions = runtime.attachOptions ?? {};
+  // On the canvas the zoom shrinks the text; here it's at full scale, so it
+  // takes its own size, and the preference comes back with the tile.
+  setViewFontSize(runtime, fontSize ?? null);
   attachTerminalContainer(terminalId, container, previousOptions);
   fitTerminalRuntime(terminalId);
   return () => {
@@ -2288,6 +2299,7 @@ export function borrowTerminalView(terminalId: string, container: HTMLDivElement
     if (runtimeRegistry.get(terminalId) !== runtime || runtime.disposed || runtime.attachedContainer !== container) {
       return;
     }
+    setViewFontSize(runtime, null);
     if (previous?.isConnected) {
       attachTerminalContainer(terminalId, previous, previousOptions);
       fitTerminalRuntime(terminalId);
@@ -2295,6 +2307,12 @@ export function borrowTerminalView(terminalId: string, container: HTMLDivElement
     }
     detachTerminalContainer(terminalId, { caller: "borrowTerminalView", reason: "borrowed_view_returned" });
   };
+}
+
+function setViewFontSize(runtime: ManagedTerminalRuntime, fontSize: number | null): void {
+  runtime.viewFontSize = fontSize;
+  const size = fontSize ?? usePreferencesStore.getState().terminalFontSize;
+  if (runtime.xterm && runtime.xterm.options.fontSize !== size) runtime.xterm.options.fontSize = size;
 }
 
 export function fitTerminalRuntime(terminalId: string) {

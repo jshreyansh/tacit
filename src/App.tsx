@@ -1,3 +1,4 @@
+import { useWorkdeskViewStore } from "./stores/workdeskViewStore";
 import { WorkdeskView } from "./workdesk/WorkdeskView";
 import { useEffect } from "react";
 import { CanvasRoot } from "./canvas/CanvasRoot";
@@ -341,6 +342,7 @@ export function App() {
   useKeyboardShortcuts();
   const t = useT();
   const composerEnabled = usePreferencesStore((s) => s.composerEnabled);
+  const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
   const globalSearchEnabled = usePreferencesStore((s) => s.globalSearchEnabled);
   const drawingEnabled = usePreferencesStore((s) => s.drawingEnabled);
   const summaryEnabled = usePreferencesStore((s) => s.summaryEnabled);
@@ -1224,11 +1226,12 @@ export function App() {
       <OnboardingModal />
       <WorkspaceManagerPill />
       {drawingEnabled && <DrawingPanel />}
-      {completionGlowEnabled && <CompletionGlow />}
-      <ShortcutHints />
-      <DiscoveryCue />
-      <StatusDigest />
-      {composerEnabled && <ComposerBar />}
+      {/* Canvas-only overlays: the grid has none of what they point at. */}
+      {!gridMode && completionGlowEnabled && <CompletionGlow />}
+      {!gridMode && <ShortcutHints />}
+      {!gridMode && <DiscoveryCue />}
+      {!gridMode && <StatusDigest />}
+      {!gridMode && composerEnabled && <ComposerBar />}
       <HandoffDragChip />
       <NotificationToast />
       {globalSearchEnabled && <SearchModal />}

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import { borrowTerminalView, fitTerminalRuntime } from "../terminal/terminalRuntimeStore";
 import { usePinStore } from "../stores/pinStore";
+import { usePreferencesStore } from "../stores/preferencesStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
@@ -21,6 +22,8 @@ import type { BrowserCard, NoteCard, TerminalCard, WorkdeskCard } from "./workde
 type Dict = ReturnType<typeof useT>;
 
 const NOTE_SAVE_MS = 500;
+/** The app's own text size: a terminal in a tab reads like the chat beside it. */
+const TAB_FONT_SIZE = 13;
 
 export function showOnCanvas(card: WorkdeskCard): void {
   useWorkdeskViewStore.getState().setMode("canvas");
@@ -54,7 +57,8 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
 
   useLayoutEffect(() => {
     if (!container || card.chatMode) return;
-    const giveBack = borrowTerminalView(card.id, container);
+    const preferred = usePreferencesStore.getState().terminalFontSize;
+    const giveBack = borrowTerminalView(card.id, container, Math.min(preferred, TAB_FONT_SIZE));
     setBorrowed(giveBack !== null);
     if (!giveBack) return;
     const fit = () => fitTerminalRuntime(card.id);
