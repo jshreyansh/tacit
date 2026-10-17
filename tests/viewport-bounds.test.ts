@@ -13,7 +13,6 @@ import {
   CHROME_GAP,
   CHROME_INSET,
   LEFT_RAIL_WIDTH,
-  RIGHT_RAIL_WIDTH,
 } from "../src/stores/canvasStore.ts";
 
 // Two different questions that used to have one answer.
@@ -41,15 +40,15 @@ test("left inset adds the panel and a second gap when it is open", () => {
   );
 });
 
-test("right inset is the rail alone, whatever the old panel state says", () => {
-  // The code tabs moved to the left rail and their panel opens on the left,
-  // so nothing widens this edge any more. Both calls must agree: the stale
-  // `false` is what two dozen call sites still pass from the old store field,
-  // and treating it as "panel open" would reserve 360px of canvas nothing
-  // paints on.
-  const railOnly = CHROME_INSET + RIGHT_RAIL_WIDTH + CHROME_GAP;
-  assert.equal(getRightPanelInset(true, 360), railOnly);
-  assert.equal(getRightPanelInset(false, 360), railOnly);
+test("right inset is the edge gap alone, whatever the old panel state says", () => {
+  // The right rail is gone (its dock moved to the left bar; only the small
+  // view controls float at the bottom right), so nothing covers this edge.
+  // Both calls must agree: the stale `false` is what two dozen call sites
+  // still pass from the old store field, and treating it as "panel open"
+  // would reserve 360px of canvas nothing paints on.
+  const edgeOnly = CHROME_INSET + CHROME_GAP;
+  assert.equal(getRightPanelInset(true, 360), edgeOnly);
+  assert.equal(getRightPanelInset(false, 360), edgeOnly);
 });
 
 test("left inset covers the code panel, which now shares this edge", () => {

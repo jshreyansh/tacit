@@ -4,7 +4,6 @@ import {
   CHROME_GAP,
   CHROME_INSET,
   LEFT_RAIL_WIDTH,
-  RIGHT_RAIL_WIDTH,
   PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
 
@@ -26,22 +25,19 @@ export function getCanvasContainerLeft() {
 }
 
 /**
- * Width of the right chrome: the rail, and nothing else.
- *
- * The code-navigation tabs (Files / Diff / Git / Memory) used to open a panel
- * on this edge. They now open on the left beside Sessions and History, so the
- * right edge is the creation dock alone and its width no longer varies.
+ * Width of the right chrome. The right rail is gone: its dock moved to the
+ * left bar and only the small view controls float at the bottom right, so
+ * the canvas keeps the whole edge apart from the usual inset and gap.
  *
  * The parameters survive because two dozen call sites pass them, and every one
- * of those reads the same now-inert store fields. Taking them would be a
- * rename across the app for no behavioural gain; ignoring them here makes
+ * of those reads the same now-inert store fields. Ignoring them here makes
  * every existing caller correct without being touched.
  */
 export function getRightPanelInset(
   _rightPanelCollapsed?: boolean,
   _rightPanelWidth?: number,
 ) {
-  return CHROME_INSET + RIGHT_RAIL_WIDTH + CHROME_GAP;
+  return CHROME_INSET + CHROME_GAP;
 }
 
 export function getCanvasRightInset(

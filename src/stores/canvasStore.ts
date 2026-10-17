@@ -47,18 +47,6 @@ export interface CanvasViewportAdapter {
 // `rightPanelWidth` from the store so drag-resize works.
 export const DEFAULT_RIGHT_PANEL_WIDTH = 360;
 export const RIGHT_PANEL_WIDTH = DEFAULT_RIGHT_PANEL_WIDTH;
-/**
- * The right rail — the panel's four surfaces, plus the update indicator and
- * the Hub.
- *
- * Like the left rail it replaces the panel's own collapsed tab strip rather
- * than sitting beside it. Every consumer of "right chrome width" goes through
- * `getRightPanelInset`.
- */
-// Narrower than the left rail on purpose: this one holds icon tiles, which
-// read at their own size, where the left holds stroke glyphs that need a
-// little more air around them to stay legible.
-export const RIGHT_RAIL_WIDTH = 46;
 /** Gap between the window edge and the floating chrome. */
 export const CHROME_INSET = 12;
 /** Gap between a rail and the panel beside it. */

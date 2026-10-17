@@ -11,6 +11,13 @@ import { RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import tacitMark from "../assets/tacit-mark.png";
+import { useState } from "react";
+import { useDockStore } from "../stores/dockStore";
+import { useUpdaterStore } from "../stores/updaterStore";
+import { UpdateModal } from "../components/UpdateModal";
+import { UpdateStatusButton } from "./UpdateStatusButton";
+import { AllNodesIcon } from "./NodeTray";
+import { DockIcon, createFromDock, dockEntry, useDockAvailability, type DockEntry } from "./dockEntries";
 
 /**
  * The left rail — everywhere you can look, plus Settings.
@@ -67,6 +74,28 @@ function HubIcon() {
   );
 }
 
+/**
+ * One pinned node in the dock. An agent whose CLI isn't installed stays
+ * visible but dimmed, and a click says why. It is aria-disabled rather than
+ * disabled so the hover tooltip still shows the reason.
+ */
+function DockRailButton({ entry }: { entry: DockEntry }) {
+  const t = useT();
+  const { missing, title } = useDockAvailability(entry);
+  const label = title ? `${entry.label(t)} ${missing ? "" : title}`.trim() : entry.label(t);
+  return (
+    <button
+      className={`${buttonCls}${missing ? " opacity-40" : ""}`}
+      aria-disabled={missing || undefined}
+      onClick={() => createFromDock(entry, title, missing)}
+      title={missing ? (title ?? label) : t.dock_add(label)}
+      aria-label={missing ? (title ?? label) : t.dock_add(label)}
+    >
+      <DockIcon art={entry.art} />
+    </button>
+  );
+}
+
 export function LeftRail() {
   const t = useT();
   const sessionsCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
@@ -84,8 +113,14 @@ export function LeftRail() {
   const toggleHub = useHubStore((s) => s.toggleHub);
   const hubShortcut = useShortcutStore((s) => s.shortcuts.toggleHub);
   const hubLabel = t["hub.toolbarLabel"](formatShortcut(hubShortcut, isMac));
+  const pinned = useDockStore((s) => s.pinned);
+  const trayOpen = useDockStore((s) => s.trayOpen);
+  const toggleTray = useDockStore((s) => s.toggleTray);
+  const updateStatus = useUpdaterStore((s) => s.status);
+  const [showUpdate, setShowUpdate] = useState(false);
 
   return (
+    <>
     <div
       // Floats over the canvas rather than being welded to the window edge.
       // A welded rail cannot start below the title strip without leaving a
@@ -186,12 +221,37 @@ export function LeftRail() {
             </button>
           );
         })}
+
+        {/* The dock: what you add to the canvas. Only pinned nodes sit here;
+            the All Nodes tray holds every kind and is where you pin. */}
+        <div
+          aria-hidden="true"
+          className="my-1.5 h-px w-6 shrink-0 bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
+        />
+        {pinned.map((id) => (
+          <DockRailButton key={id} entry={dockEntry(id)} />
+        ))}
+        <button
+          className={buttonCls}
+          data-on={trayOpen ? "" : undefined}
+          onClick={toggleTray}
+          title={t.dock_all_nodes}
+          aria-label={t.dock_all_nodes}
+          aria-pressed={trayOpen}
+          aria-haspopup="dialog"
+        >
+          <AllNodesIcon size={30} />
+        </button>
       </div>
 
       {/* Settings, alone at the far end. It is the one control here that opens
           nothing on the canvas and belongs to no panel, so it keeps the corner
           furthest from everything you reach for while working. */}
       <div className="relative mt-auto flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
+        {/* Update, and only when there is one. */}
+        {updateStatus !== "idle" && (
+          <UpdateStatusButton status={updateStatus} t={t} onClick={() => setShowUpdate(true)} />
+        )}
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           onClick={() => openSettings()}
@@ -214,5 +274,8 @@ export function LeftRail() {
         </button>
       </div>
     </div>
+    {/* Outside the rail: its backdrop blur would trap a fixed modal inside it. */}
+    {showUpdate && <UpdateModal onClose={() => setShowUpdate(false)} />}
+    </>
   );
 }

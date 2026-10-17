@@ -5,7 +5,8 @@ import { TitleStrip } from "./toolbar/TitleStrip";
 import { TaskControl } from "./toolbar/TaskControl";
 import { SettingsModal } from "./components/SettingsModal";
 import { useSettingsModalStore } from "./stores/settingsModalStore";
-import { RightRail } from "./toolbar/RightRail";
+import { ViewControls } from "./toolbar/ViewControls";
+import { NodeTray } from "./toolbar/NodeTray";
 import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
@@ -1213,7 +1214,8 @@ export function App() {
       <TaskControl />
       <SettingsModalHost />
       <LeftRail />
-      <RightRail />
+      <ViewControls />
+      <NodeTray />
       <LeftPanel />
       <RightPanel />
       <CanvasRoot />
