@@ -13,10 +13,23 @@ interface ManagerChatStore {
   apply: (terminalId: string, event: ChatEvent) => void;
   hydrate: (terminalId: string, events: ChatEvent[]) => void;
   drop: (terminalId: string) => void;
+  /**
+   * A move between chat and terminal asked for mid-turn, waiting for the turn
+   * to end: a turn lives in the process running it, so moving stops it.
+   */
+  pendingMoves: Record<string, "terminal" | "chat">;
+  setPendingMove: (terminalId: string, to: "terminal" | "chat" | null) => void;
 }
 
 export const useManagerChatStore = create<ManagerChatStore>((set) => ({
   transcripts: {},
+  pendingMoves: {},
+  setPendingMove: (terminalId, to) =>
+    set((state) => {
+      if ((state.pendingMoves[terminalId] ?? null) === to) return state;
+      const { [terminalId]: _was, ...rest } = state.pendingMoves;
+      return { pendingMoves: to ? { ...rest, [terminalId]: to } : rest };
+    }),
   apply: (terminalId, event) =>
     set((state) => ({
       transcripts: {
@@ -28,9 +41,10 @@ export const useManagerChatStore = create<ManagerChatStore>((set) => ({
     set((state) => ({ transcripts: { ...state.transcripts, [terminalId]: replayChat(events) } })),
   drop: (terminalId) =>
     set((state) => {
-      if (!(terminalId in state.transcripts)) return state;
+      if (!(terminalId in state.transcripts) && !(terminalId in state.pendingMoves)) return state;
       const { [terminalId]: _dropped, ...rest } = state.transcripts;
-      return { transcripts: rest };
+      const { [terminalId]: _move, ...moves } = state.pendingMoves;
+      return { transcripts: rest, pendingMoves: moves };
     }),
 }));
 
@@ -43,6 +57,10 @@ export function forgetManagerChat(terminalId: string): void {
   useManagerChatStore.getState().drop(terminalId);
   if (typeof window === "undefined" || !window.tacit) return;
   void window.tacit.chat.forget(terminalId);
+}
+
+export function usePendingManagerMove(terminalId: string | null): "terminal" | "chat" | null {
+  return useManagerChatStore((s) => (terminalId ? s.pendingMoves[terminalId] : undefined) ?? null);
 }
 
 export function useManagerTranscript(terminalId: string | null): ChatTranscript {

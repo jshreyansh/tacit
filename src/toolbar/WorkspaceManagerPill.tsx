@@ -21,15 +21,17 @@ import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
 import { ChatHistory } from "./ChatHistory";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
-import { useManagerTranscript } from "../stores/managerChatStore";
+import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
 import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
 import {
   answerManagerApproval,
   ensureManagerChat,
   hasChatMode,
   interruptManagerChat,
-  moveManagerToChat,
+  cancelManagerMove,
+  moveManagerNow,
   moveManagerToTerminal,
+  requestManagerMove,
   sendToManagerChat,
 } from "../actions/managerChatMode";
 import { useCanvasStore } from "../stores/canvasStore";
@@ -592,6 +594,37 @@ export function WorkspaceManagerPill() {
 
   const faceOpen = view !== "chat";
   const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
+  // A move asked for mid-turn happens when the turn ends. One that no longer
+  // applies (the manager already moved) is dropped.
+  const pendingMove = usePendingManagerMove(managerTerminal?.id ?? null);
+  useEffect(() => {
+    if (!managerTerminal || !pendingMove) return;
+    if ((pendingMove === "terminal") !== chatMode) cancelManagerMove(managerTerminal.id);
+    else if (!running) requestManagerMove(managerTerminal.id, pendingMove, false);
+  }, [pendingMove, running, chatMode, managerTerminal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pendingMoveLine = managerTerminal && pendingMove && (
+    <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
+      <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
+      <span className="min-w-0 truncate text-[var(--text-secondary)]">
+        {pendingMove === "terminal" ? t.chat_move_pending_terminal : t.chat_move_pending_chat}
+      </span>
+      <button
+        type="button"
+        className="tc-rail-btn ml-auto h-6 shrink-0 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        onClick={() => moveManagerNow(managerTerminal.id)}
+        title={t.chat_move_now_hint}
+      >
+        {t.chat_move_now}
+      </button>
+      <button
+        type="button"
+        className="tc-rail-btn h-6 shrink-0 px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        onClick={() => cancelManagerMove(managerTerminal.id)}
+      >
+        {t.cancel}
+      </button>
+    </div>
+  );
   const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
 
   const iconButton =
@@ -751,7 +784,7 @@ export function WorkspaceManagerPill() {
           <button
             type="button"
             className={iconButton}
-            onClick={() => void moveManagerToTerminal(managerTerminal.id)}
+            onClick={() => requestManagerMove(managerTerminal.id, "terminal", running)}
             title={t.chat_mode_open_terminal_hint}
             aria-label={t.chat_mode_back_to_terminal}
           >
@@ -858,12 +891,14 @@ export function WorkspaceManagerPill() {
             type="button"
             className="shrink-0 rounded-[9px] px-3 py-1.5 text-[12px] font-medium"
             style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-            onClick={() => void moveManagerToChat(managerTerminal.id)}
+            onClick={() => requestManagerMove(managerTerminal.id, "chat", running)}
+            disabled={pendingMove === "chat"}
           >
             {t.chat_mode_move}
           </button>
         </div>
       )}
+      {view === "chat" && !chatMode && !viewing && pendingMove === "chat" && <div className="mx-3 mt-1">{pendingMoveLine}</div>}
 
       {view === "chat" && !chatMode && conversation && (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -997,7 +1032,8 @@ export function WorkspaceManagerPill() {
 
       {view === "chat" && !viewing && managerTerminal && (
         <div className="shrink-0 px-3 pb-3">
-          {running && chatMode && (
+          {running && chatMode && pendingMove === "terminal" && pendingMoveLine}
+          {running && chatMode && pendingMove !== "terminal" && (
             <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
               <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
               <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>

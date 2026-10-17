@@ -60,6 +60,30 @@ export async function moveManagerToTerminal(terminalId: string): Promise<void> {
 }
 
 /**
+ * Asks to move the manager to the terminal or into the chat. While it's
+ * mid-turn the move waits for the turn to end (the pill carries it out),
+ * since moving stops the process the turn runs in; otherwise it moves now.
+ */
+export function requestManagerMove(terminalId: string, to: "terminal" | "chat", busy: boolean): void {
+  if (busy) {
+    useManagerChatStore.getState().setPendingMove(terminalId, to);
+    return;
+  }
+  useManagerChatStore.getState().setPendingMove(terminalId, null);
+  void (to === "terminal" ? moveManagerToTerminal(terminalId) : moveManagerToChat(terminalId));
+}
+
+/** Carries out a waiting move at once, stopping the turn. */
+export function moveManagerNow(terminalId: string): void {
+  const to = useManagerChatStore.getState().pendingMoves[terminalId];
+  if (to) requestManagerMove(terminalId, to, false);
+}
+
+export function cancelManagerMove(terminalId: string): void {
+  useManagerChatStore.getState().setPendingMove(terminalId, null);
+}
+
+/**
  * For a manager already in chat mode: catches up on the conversation and,
  * when its agent isn't running (the app just started), starts it again on
  * the same session.
