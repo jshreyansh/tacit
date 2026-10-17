@@ -110,7 +110,7 @@ export class CaptureService {
 
       if (this.cappedFiles.has(fileName)) return false;
 
-      fs.mkdirSync(this.dirPath, { recursive: true });
+      fs.mkdirSync(this.dirPath, { recursive: true, mode: RECORD_DIR_MODE });
 
       const line = `${JSON.stringify(entry)}\n`;
 
@@ -130,7 +130,7 @@ export class CaptureService {
         return false;
       }
 
-      fs.appendFileSync(filePath, line, "utf-8");
+      fs.appendFileSync(filePath, line, { encoding: "utf-8", mode: RECORD_FILE_MODE });
       if (repeat) this.lastWritten.set(repeat.key, repeat.value);
       this.entriesWritten++;
       this.lastWriteAt = entry.at;
@@ -260,6 +260,50 @@ function repeatKey(
     return { key: `navigate\0${event.node}`, value: event.url };
   }
   return null;
+}
+
+/**
+ * The record holds prompts and masked copies of whole agent sessions, which
+ * the agents themselves keep readable only by this user (Claude's and
+ * OpenCode's are 0600), so the record is kept the same way.
+ */
+export const RECORD_DIR_MODE = 0o700;
+export const RECORD_FILE_MODE = 0o600;
+
+/**
+ * Makes the record readable only by this user, including what earlier
+ * builds wrote readable by everyone. Run once at launch. A file it can't
+ * change is left as it is and counted, not thrown.
+ */
+export function makeRecordPrivate(dir: string): { changed: number; failed: number } {
+  const result = { changed: 0, failed: 0 };
+  const tighten = (target: string, mode: number) => {
+    try {
+      const stat = fs.lstatSync(target);
+      if (stat.isSymbolicLink()) return;
+      if ((stat.mode & 0o777) === mode) return;
+      fs.chmodSync(target, mode);
+      result.changed++;
+    } catch {
+      result.failed++;
+    }
+  };
+  const walk = (current: string) => {
+    tighten(current, RECORD_DIR_MODE);
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const target = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(target);
+      else if (entry.isFile()) tighten(target, RECORD_FILE_MODE);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return result;
 }
 
 export function getCaptureDir(tacitDir: string): string {

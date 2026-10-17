@@ -4,6 +4,7 @@ import readline from "node:readline";
 import { transcriptPath } from "../shared/capture";
 import { maskSecrets } from "../shared/secret-mask";
 import { exportOpenCodeSession } from "./opencode-session";
+import { RECORD_DIR_MODE, RECORD_FILE_MODE } from "./capture-service";
 
 /**
  * Keeps a copy of each agent session a run used, under the record
@@ -81,9 +82,9 @@ export class TranscriptKeeper {
 
 /** Copies a text file line by line, masked, replacing the target at the end. */
 async function copyMasked(from: string, to: string): Promise<void> {
-  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.mkdirSync(path.dirname(to), { recursive: true, mode: RECORD_DIR_MODE });
   const temp = `${to}.${process.pid}.tmp`;
-  const out = fs.createWriteStream(temp, { encoding: "utf-8" });
+  const out = fs.createWriteStream(temp, { encoding: "utf-8", mode: RECORD_FILE_MODE });
   try {
     const lines = readline.createInterface({ input: fs.createReadStream(from, { encoding: "utf-8" }), crlfDelay: Infinity });
     for await (const line of lines) {
@@ -99,8 +100,8 @@ async function copyMasked(from: string, to: string): Promise<void> {
 }
 
 function writeMasked(to: string, lines: string[]): void {
-  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.mkdirSync(path.dirname(to), { recursive: true, mode: RECORD_DIR_MODE });
   const temp = `${to}.${process.pid}.tmp`;
-  fs.writeFileSync(temp, lines.map((line) => `${maskSecrets(line)}\n`).join(""), "utf-8");
+  fs.writeFileSync(temp, lines.map((line) => `${maskSecrets(line)}\n`).join(""), { encoding: "utf-8", mode: RECORD_FILE_MODE });
   fs.renameSync(temp, to);
 }

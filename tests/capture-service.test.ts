@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { CaptureService, getCaptureDir } from "../electron/capture-service";
+import { CaptureService, getCaptureDir, makeRecordPrivate } from "../electron/capture-service";
 import {
   CAPTURE_MAX_TEXT_LENGTH,
   CAPTURE_SCHEMA_VERSION,
@@ -469,4 +469,34 @@ test("a browser reloading the URL it was last recorded on is not written again",
     "browser:a https://example.com/search?q=two system",
     "browser:a https://example.com/search?q=two terminal:mgr",
   ]);
+});
+
+test("the record is created readable only by this user", () => {
+  const dir = path.join(tempDir(), "record");
+  new CaptureService(dir).record({ kind: "close", node: "terminal:a", by: "user" }, "c");
+  const file = path.join(dir, captureFileNameFor(new Date()));
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});
+
+test("a record written readable by everyone is made private at launch", () => {
+  const dir = tempDir();
+  const nested = path.join(dir, "transcripts", "claude");
+  fs.mkdirSync(nested, { recursive: true, mode: 0o755 });
+  fs.chmodSync(dir, 0o755);
+  fs.writeFileSync(path.join(dir, "2026-10-01.jsonl"), "{}\n", { mode: 0o644 });
+  fs.writeFileSync(path.join(nested, "s1.jsonl"), "{}\n", { mode: 0o644 });
+  const outside = path.join(tempDir(), "elsewhere.txt");
+  fs.writeFileSync(outside, "x", { mode: 0o644 });
+  fs.symlinkSync(outside, path.join(dir, "link.jsonl"));
+
+  const result = makeRecordPrivate(dir);
+
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(nested).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(path.join(dir, "2026-10-01.jsonl")).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(path.join(nested, "s1.jsonl")).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(outside).mode & 0o777, 0o644); // a link is not followed
+  assert.deepEqual(makeRecordPrivate(dir), { changed: 0, failed: 0 }); // nothing left to do
+  assert.equal(result.failed, 0);
 });

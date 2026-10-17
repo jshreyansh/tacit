@@ -32,6 +32,11 @@ test("a Claude transcript and its subagents are copied under the record, masked"
   const sub = path.join(recordDir, "transcripts/claude/abc-123/subagents");
   assert.equal(fs.readFileSync(path.join(sub, "agent-a1.jsonl"), "utf-8"), '{"type":"user","text":"password: [masked:password]"}\n');
   assert.ok(fs.existsSync(path.join(sub, "agent-a1.meta.json")));
+  // As private as the agent's own transcript.
+  for (const file of ["transcripts/claude/abc-123.jsonl", "transcripts/claude/abc-123/subagents/agent-a1.jsonl"]) {
+    assert.equal(fs.statSync(path.join(recordDir, file)).mode & 0o777, 0o600, file);
+  }
+  assert.equal(fs.statSync(path.join(recordDir, "transcripts/claude")).mode & 0o777, 0o700);
 
   // Kept again after the session grew: the copy is replaced, not appended to.
   fs.appendFileSync(sessionFile, JSON.stringify({ type: "user", message: { content: "next" } }) + "\n");
@@ -54,6 +59,7 @@ test("an OpenCode session is exported from its database, oldest first", async ()
   const lines = fs.readFileSync(path.join(recordDir, "transcripts/opencode/ses_1.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
   assert.deepEqual(lines.map((l) => `${l.type}:${l.id}`), ["message:m1", "part:p1"]);
   assert.equal(lines[1].data.text, "my password is [masked:password]");
+  assert.equal(fs.statSync(path.join(recordDir, "transcripts/opencode/ses_1.jsonl")).mode & 0o777, 0o600);
 });
 
 test("a session that can't be kept is skipped, and the others still are", async () => {

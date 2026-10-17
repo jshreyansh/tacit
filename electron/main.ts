@@ -202,7 +202,7 @@ import { TelemetryService } from "./telemetry-service";
 import { createRenderDiagnosticsLogger } from "./render-diagnostics";
 import { RenderThrottlingCoordinator } from "./render-throttling-coordinator";
 import { HookReceiver } from "./hook-receiver";
-import { CaptureService, getCaptureDir } from "./capture-service";
+import { CaptureService, getCaptureDir, makeRecordPrivate } from "./capture-service";
 import { TranscriptKeeper } from "./transcript-keeper";
 import { RunTracker } from "./run-tracker";
 import {
@@ -455,6 +455,11 @@ const runTracker = new RunTracker({
     );
   },
 });
+// Earlier builds wrote the record readable by every account on the Mac.
+{
+  const { changed, failed } = makeRecordPrivate(getCaptureDir(TACIT_DIR));
+  if (changed || failed) console.log(`[CaptureService] made the record private: ${changed} changed, ${failed} couldn't be`);
+}
 const transcriptKeeper = new TranscriptKeeper(getCaptureDir(TACIT_DIR));
 const captureService = new CaptureService(getCaptureDir(TACIT_DIR), undefined, {
   harnessOf: (ref) => recordNodes.harnessOf(ref),
@@ -2127,7 +2132,7 @@ function setupIpc() {
 
   // The canvas's run control. The goal is free text from the person, kept
   // in the record; anything else is refused.
-  ipcMain.handle("run:current", () => runTracker.current());
+  ipcMain.handle("run:current", (event) => (isMainWindowSender(event) ? runTracker.current() : null));
   ipcMain.handle("run:start", (event, goal: unknown) => {
     if (!isMainWindowSender(event)) return null;
     if (goal !== null && typeof goal !== "string") return null;
