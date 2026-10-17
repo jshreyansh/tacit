@@ -91,6 +91,19 @@ export function workerSpawn(toolName: string, args: JsonObject): { agent: string
   return { agent, title: title.replace(/\s+/g, " ").slice(0, 140) };
 }
 
+/**
+ * The one line a folded run of tool calls reads as: the first few tools by
+ * name, repeats counted, the rest as "+N more".
+ */
+export function toolRunSummary(names: readonly string[], shown = 3): string {
+  const counts = new Map<string, number>();
+  for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const distinct = [...counts.keys()];
+  const head = distinct.slice(0, shown).map((name) => (counts.get(name)! > 1 ? `${name} ×${counts.get(name)}` : name));
+  const rest = distinct.length - shown;
+  return rest > 0 ? `${head.join(", ")} +${rest} more` : head.join(", ");
+}
+
 /** The terminal id a spawn tool's result names, when it does. */
 export function spawnedTerminalId(result: string | undefined): string | null {
   if (!result) return null;

@@ -1,8 +1,9 @@
-import { useMemo, useState, type FC } from "react";
+import { Children, useMemo, useState, type FC, type PropsWithChildren } from "react";
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
   useExternalStoreRuntime,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -14,7 +15,7 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { spawnedTerminalId, toThreadMessages, workerSpawn } from "./threadMessages";
+import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "./threadMessages";
 
 /**
  * The docked chat's conversation with a manager in chat mode (T6), drawn by
@@ -172,6 +173,58 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   );
 };
 
+interface RunPart {
+  type: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  isError?: boolean;
+  artifact?: { status?: string };
+}
+
+/** Runs shorter than this stay as they are. */
+const FOLD_AT = 3;
+
+/**
+ * A run of tool calls in a row, folded into one line ("Used 9 tools ·
+ * list_nodes, wait_for_nodes ×2 +5 more") that opens to the rows. Worker
+ * cards and failed calls stay visible while it's folded, and while it runs
+ * the latest call shows beneath the line.
+ */
+const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> = ({ startIndex, endIndex, children }) => {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const parts = useAuiState((s) => s.message.parts) as readonly RunPart[];
+  const run = parts.slice(startIndex, endIndex + 1);
+  const rows = Children.toArray(children);
+  const isWorker = (p: RunPart | undefined) => !!p?.toolName && workerSpawn(p.toolName, p.args ?? {}) !== null;
+  const plain = run.filter((p) => !isWorker(p));
+  if (plain.length < FOLD_AT) return <>{children}</>;
+  const running = plain.some((p) => p.artifact?.status === "running");
+  const failed = plain.some((p) => p.artifact?.status === "error" || p.isError);
+  const lastPlain = run.reduce((last, p, i) => (isWorker(p) ? last : i), -1);
+  const visible = (i: number) => {
+    if (open) return true;
+    const p = run[i];
+    if (isWorker(p) || p?.artifact?.status === "error" || p?.isError) return true;
+    return running && i === lastPlain;
+  };
+  return (
+    <div className="my-0.5">
+      <button type="button" className="flex w-full items-center gap-1.5 py-0.5 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="text-[var(--text-faint)]"><Chevron open={open} /></span>
+        <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{running ? t.chat_tool_run_live(plain.length) : t.chat_tool_run(plain.length)}</span>
+        <span className="tc-mono min-w-0 truncate text-[12px] text-[var(--text-muted)]">
+          {toolRunSummary(plain.map((p) => toolVerb(p.toolName)))}
+        </span>
+        <span className="ml-auto shrink-0 pl-2"><StatusMark status={running ? "running" : failed ? "error" : "done"} /></span>
+      </button>
+      <div className={open ? "ml-2 border-l border-[var(--border)] pl-2" : undefined}>
+        {rows.map((row, i) => (visible(i) ? row : null))}
+      </div>
+    </div>
+  );
+};
+
 function prettyJson(text: string): string {
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
@@ -205,6 +258,7 @@ function makeAssistantMessage(agent: string, label: string): FC {
             Text: TextPart,
             Reasoning: ReasoningPart,
             tools: { Override: ToolCard as never },
+            ToolGroup: ToolRun,
             data: { Fallback: TurnNote as never },
           }}
         />

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnedTerminalId, toThreadMessages, workerSpawn } from "../src/toolbar/chat/threadMessages";
+import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "../src/toolbar/chat/threadMessages";
 import { replayChat } from "../shared/chat-transcript";
 
 test("a conversation maps to assistant-ui messages with roles, parts and status", () => {
@@ -70,4 +70,13 @@ test("Tacit's spawn tool reads as a worker card, with the new terminal's id from
   assert.equal(spawnedTerminalId("not json, but \"id\": \"t-9\" in it"), "t-9");
   assert.equal(spawnedTerminalId("refused: at the limit"), null);
   assert.equal(spawnedTerminalId(undefined), null);
+});
+
+test("a folded run of tools reads as its first few names, repeats counted", () => {
+  assert.equal(toolRunSummary(["log_activity", "wait_for_nodes", "get_node_state"]), "log_activity, wait_for_nodes, get_node_state");
+  assert.equal(
+    toolRunSummary(["log_activity", "wait_for_nodes", "recall", "wait_for_nodes", "Shell", "spawn_note", "log_activity"]),
+    "log_activity ×2, wait_for_nodes ×2, recall +2 more",
+  );
+  assert.equal(toolRunSummary([]), "");
 });
