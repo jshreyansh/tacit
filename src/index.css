@@ -1469,10 +1469,30 @@ a.tc-kbd[data-dragover="true"] {
   animation: tc-live-pip-pulse 1.4s ease-in-out infinite;
 }
 
+/* The docked chat's "reply on its way" dots: between sending and the first
+   words, so a quiet second or three reads as the agent at work. */
+@keyframes tc-typing-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.tc-typing-dot {
+  animation: tc-typing-dot 1.2s ease-in-out infinite;
+}
+
 /* Respect reduced-motion: collapse all entrance animations and long
    transitions. Everything still works, just without the parallax. */
 @media (prefers-reduced-motion: reduce) {
   .tc-live-pip,
+  .tc-typing-dot,
   .tc-enter-fade,
   .tc-enter-fade-quick,
   .tc-enter-fade-up,

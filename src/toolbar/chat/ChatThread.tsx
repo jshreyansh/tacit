@@ -244,15 +244,57 @@ const UserMessage: FC = () => (
   </MessagePrimitive.Root>
 );
 
-function makeAssistantMessage(agent: string, label: string): FC {
+/** Three dots that pulse in turn: the reply is on its way. */
+function TypingDots({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-5 items-center gap-1" role="status" aria-label={label}>
+      {[0, 160, 320].map((delay) => (
+        <span
+          key={delay}
+          className="tc-typing-dot inline-block h-[5px] w-[5px] rounded-full"
+          style={{ background: "var(--text-muted)", animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function ReplyHeader({ agent, label, live }: { agent: string; label: string; live?: boolean }) {
   const icon = agentIcon(agent);
+  return (
+    <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-muted)]">
+      {icon && <img src={icon} alt="" className={`h-[14px] w-[14px] object-contain ${live ? "tc-live-pip" : ""}`} draggable={false} />}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/** A reply that has begun but has nothing in it yet. */
+function EmptyRunningReply() {
+  const t = useT();
+  const running = useAuiState((s) => s.message.status?.type === "running");
+  return running ? <TypingDots label={t.chat_reply_coming} /> : null;
+}
+
+/**
+ * Between sending and the agent's first event, before there's a reply to
+ * draw: its header, live, with the dots, so the wait reads as work.
+ */
+function PendingReply({ agent, label }: { agent: string; label: string }) {
+  const t = useT();
+  return (
+    <div className="tc-enter-fade-up mb-4 flex flex-col gap-1">
+      <ReplyHeader agent={agent} label={label} live />
+      <TypingDots label={t.chat_reply_coming} />
+    </div>
+  );
+}
+
+function makeAssistantMessage(agent: string, label: string): FC {
   return function AssistantMessage() {
     return (
       <MessagePrimitive.Root className="mb-4 flex flex-col gap-1">
-        <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-muted)]">
-          {icon && <img src={icon} alt="" className="h-[14px] w-[14px] object-contain" draggable={false} />}
-          <span>{label}</span>
-        </div>
+        <ReplyHeader agent={agent} label={label} />
         <MessagePrimitive.Parts
           components={{
             Text: TextPart,
@@ -263,7 +305,7 @@ function makeAssistantMessage(agent: string, label: string): FC {
           }}
         />
         <MessagePrimitive.If hasContent={false}>
-          <span className="tc-live-pip text-[12px] text-[var(--text-muted)]">…</span>
+          <EmptyRunningReply />
         </MessagePrimitive.If>
       </MessagePrimitive.Root>
     );
@@ -288,15 +330,21 @@ const TurnNote: FC<{ data: unknown }> = ({ data }) => {
 export function ApprovalCards({
   approvals,
   onAnswer,
+  floating = false,
+  glass = "",
 }: {
   approvals: readonly PendingApproval[];
   onAnswer: (requestId: string, decision: ApprovalDecision) => void;
+  /** Above the pill, over the canvas: the first request only, on glass. */
+  floating?: boolean;
+  glass?: string;
 }) {
   const t = useT();
   if (approvals.length === 0) return null;
+  const shown = floating ? approvals.slice(0, 1) : approvals;
   return (
-    <div className="flex flex-col gap-2 px-3 pb-2">
-      {approvals.map((a) => {
+    <div className={floating ? "flex w-full flex-col" : "flex flex-col gap-2 px-3 pb-2"}>
+      {shown.map((a) => {
         const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
         const what = typeof input.command === "string" ? input.command : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
         return (
@@ -304,14 +352,22 @@ export function ApprovalCards({
             key={a.requestId}
             role="alertdialog"
             aria-label={t.chat_approval_title(toolVerb(a.toolName))}
-            className="rounded-xl border px-3 pb-3 pt-2.5"
-            style={{ borderColor: "color-mix(in srgb, var(--amber) 50%, transparent)", background: "color-mix(in srgb, var(--amber) 6%, transparent)" }}
+            className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
+            style={{
+              borderColor: "color-mix(in srgb, var(--amber) 50%, transparent)",
+              ...(floating
+                ? { borderRadius: 16, cornerShape: "squircle" }
+                : { background: "color-mix(in srgb, var(--amber) 6%, transparent)" }),
+            }}
           >
             <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--amber)" }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
                 <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
               </svg>
               {t.chat_approval_title(toolVerb(a.toolName))}
+              {floating && approvals.length > 1 && (
+                <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.chat_approval_more(approvals.length - 1)}</span>
+              )}
             </div>
             <pre className="tc-mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[11.5px] text-[var(--text-primary)]">
               {what}
@@ -361,10 +417,11 @@ export function ChatThread({
     onCancel,
   });
   const agentName = findAgentAdapter(agent)?.displayName ?? agent;
-  const AssistantMessage = useMemo(
-    () => makeAssistantMessage(agent, t.chat_from_manager(agentName.split(" ")[0])),
-    [agent, agentName, t],
-  );
+  const replyLabel = t.chat_from_manager(agentName.split(" ")[0]);
+  const AssistantMessage = useMemo(() => makeAssistantMessage(agent, replyLabel), [agent, replyLabel]);
+  // Sent, and nothing back yet: the agent's first event makes the reply.
+  const last = transcript.messages[transcript.messages.length - 1];
+  const awaitingReply = last?.role === "user" && !transcript.failure;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -374,6 +431,7 @@ export function ChatThread({
             <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.chat_empty}</div>
           </ThreadPrimitive.Empty>
           <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+          {awaitingReply && <PendingReply agent={agent} label={replyLabel} />}
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>

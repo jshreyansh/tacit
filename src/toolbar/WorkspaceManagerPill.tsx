@@ -610,17 +610,24 @@ export function WorkspaceManagerPill() {
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           {/* One line above the pill: what the manager is doing, or the last
               thing it said. */}
-          {managerTerminal && chatMode && (running || lastChatReply || transcript.approvals.length > 0) && (
+          {/* A request waiting on you is answered right here, chat open or not:
+              answering it is what the pill is kept for. */}
+          {managerTerminal && chatMode && transcript.approvals.length > 0 && (
+            <div className="w-[min(34rem,calc(100vw-2rem))]">
+              <ApprovalCards
+                floating
+                glass={PILL_GLASS}
+                approvals={transcript.approvals}
+                onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+              />
+            </div>
+          )}
+          {managerTerminal && chatMode && transcript.approvals.length === 0 && (running || lastChatReply) && (
             <div
               className={`tc-pill flex max-w-[34rem] items-center gap-1.5 px-3 py-1.5 ${PILL_GLASS}`}
-              style={{
-                fontSize: "var(--text-xs)",
-                borderColor: transcript.approvals.length > 0 ? "color-mix(in srgb, var(--amber) 50%, transparent)" : undefined,
-              }}
+              style={{ fontSize: "var(--text-xs)" }}
             >
-              {transcript.approvals.length > 0 ? (
-                <span style={{ color: "var(--amber)" }}>{t.chat_approval_title(transcript.approvals[0].toolName)}</span>
-              ) : running ? (
+              {running ? (
                 <>
                   <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
                   <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>

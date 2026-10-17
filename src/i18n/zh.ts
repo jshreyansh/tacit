@@ -62,6 +62,8 @@ export const zh = {
   chat_interrupted: "已停止。",
   chat_turn_failed: "这一回合失败了。",
   chat_empty: "向工作台经理提出需求。它的回复会边写边出现在这里。",
+  chat_reply_coming: "回复即将到来",
+  chat_approval_more: (n: number) => `还有 ${n} 个在等待`,
   chat_working: "工作中",
   chat_tool_run: (n: number) => `使用了 ${n} 个工具`,
   chat_tool_run_live: (n: number) => `正在使用工具 · 已 ${n} 个`,

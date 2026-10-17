@@ -62,6 +62,8 @@ export const en = {
   chat_interrupted: "Stopped.",
   chat_turn_failed: "This turn failed.",
   chat_empty: "Ask the workdesk manager for something. Its replies stream in here as they're written.",
+  chat_reply_coming: "Reply on its way",
+  chat_approval_more: (n: number) => `+${n} more waiting`,
   chat_working: "Working",
   chat_tool_run: (n: number) => `Used ${n} tools`,
   chat_tool_run_live: (n: number) => `Using tools · ${n} so far`,
