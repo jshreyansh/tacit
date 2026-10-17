@@ -22,7 +22,9 @@ export type ThreadPart =
       readonly artifact?: { status: "running" | "done" | "error"; subagentSteps: number };
     }
   /** How a turn ended when it didn't finish: stopped, or failed and why. */
-  | { readonly type: "data-turn-note"; readonly data: { readonly kind: "interrupted" | "error"; readonly error?: string } };
+  | { readonly type: "data-turn-note"; readonly data: { readonly kind: "interrupted" | "error"; readonly error?: string } }
+  /** A line between messages: earlier turns summarized to make room. */
+  | { readonly type: "data-compacted"; readonly data: { readonly preTokens?: number } };
 
 export type ThreadStatus =
   | { readonly type: "running" }
@@ -35,6 +37,8 @@ export interface ThreadMessage {
   readonly content: readonly ThreadPart[];
   readonly createdAt?: Date;
   readonly status?: ThreadStatus;
+  /** `steered`: a message sent mid-turn. `note`: a line, not a reply. */
+  readonly metadata?: { readonly custom: { readonly steered?: boolean; readonly note?: boolean } };
 }
 
 function asArgs(input: unknown): JsonObject {
@@ -66,7 +70,22 @@ function toPart(part: ChatPart): ThreadPart | null {
 export function toThreadMessages(messages: readonly ChatMessage[]): ThreadMessage[] {
   return messages.map((m) => {
     if (m.role === "user") {
-      return { id: m.id, role: "user", content: [{ type: "text", text: m.text }], createdAt: new Date(m.at) };
+      return {
+        id: m.id,
+        role: "user",
+        content: [{ type: "text", text: m.text }],
+        createdAt: new Date(m.at),
+        ...(m.steered ? { metadata: { custom: { steered: true } } } : {}),
+      };
+    }
+    if (m.role === "note") {
+      return {
+        id: m.id,
+        role: "assistant",
+        content: [{ type: "data-compacted", data: m.preTokens !== undefined ? { preTokens: m.preTokens } : {} }],
+        status: { type: "complete", reason: "stop" },
+        metadata: { custom: { note: true } },
+      };
     }
     const status: ThreadStatus = !m.done
       ? { type: "running" }

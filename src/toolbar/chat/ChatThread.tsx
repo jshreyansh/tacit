@@ -18,6 +18,8 @@ import { panToTerminal } from "../../utils/panToTerminal";
 import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "./threadMessages";
 import { findTerminal } from "../../actions/terminalLookup";
 import { linkNodeIds, NODE_CHIP_HREF, type NodeDescription } from "../sessionReaderModel";
+import { todoPlan } from "../../../shared/chat-stream-claude";
+import { CompactedDivider, PlanSteps } from "./LongRunning";
 
 /**
  * The docked chat's conversation with a manager in chat mode (T6), drawn by
@@ -158,6 +160,16 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   const [open, setOpen] = useState(false);
   const spawn = workerSpawn(props.toolName, props.args);
   if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
+  // Claude's todo list reads as its plan, as it does live.
+  const plan = props.toolName === "TodoWrite" ? todoPlan(props.args) : null;
+  if (plan) {
+    return (
+      <div className="my-1 rounded-[10px] border border-[var(--border)] px-3 py-2">
+        <div className="mb-1.5 text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_plan}</div>
+        <PlanSteps steps={plan} />
+      </div>
+    );
+  }
   const status = statusOf(props);
   const subject = subjectOf(props.args);
   const steps = props.artifact?.subagentSteps ?? 0;
@@ -267,8 +279,16 @@ function MessageAnchor({ children, className }: PropsWithChildren<{ className: s
   );
 }
 
+/** Sent while a turn ran: said above the message, since it changed that turn. */
+function SteeredLabel() {
+  const t = useT();
+  const steered = useAuiState((s) => (s.message.metadata as { custom?: { steered?: boolean } } | undefined)?.custom?.steered === true);
+  return steered ? <div className="mb-1 w-full text-right text-[11px] text-[var(--text-muted)]">{t.chat_steered}</div> : null;
+}
+
 const UserMessage: FC = () => (
-  <MessageAnchor className="mb-3 flex justify-end">
+  <MessageAnchor className="mb-3 flex flex-col items-end">
+    <SteeredLabel />
     <div
       className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
       style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
@@ -324,8 +344,24 @@ function PendingReply({ agent, label }: { agent: string; label: string }) {
   );
 }
 
+/** A line between messages, not a reply: earlier turns summarized. */
+function NoteMessage() {
+  const t = useT();
+  const preTokens = useAuiState((s) => {
+    const part = s.message.parts[0] as { data?: { preTokens?: number } } | undefined;
+    return part?.data?.preTokens;
+  });
+  return (
+    <MessageAnchor className="flex flex-col">
+      <CompactedDivider preTokens={preTokens} t={t} />
+    </MessageAnchor>
+  );
+}
+
 function makeAssistantMessage(agent: string, label: string): FC {
   return function AssistantMessage() {
+    const note = useAuiState((s) => (s.message.metadata as { custom?: { note?: boolean } } | undefined)?.custom?.note === true);
+    if (note) return <NoteMessage />;
     return (
       <MessageAnchor className="mb-4 flex flex-col gap-1">
         <ReplyHeader agent={agent} label={label} />

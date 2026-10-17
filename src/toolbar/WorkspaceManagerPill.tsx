@@ -23,6 +23,8 @@ import { ChatHistory } from "./ChatHistory";
 import { LiveSessions, useNeedsYouCount } from "./LiveSessions";
 import { PinsView } from "./PinsView";
 import { usePinStore } from "../stores/pinStore";
+import { ContextMeter, LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
+import { useManagerChatStore } from "../stores/managerChatStore";
 import { pinHandoffText, type Pin } from "../../shared/pin";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
@@ -332,6 +334,13 @@ export function WorkspaceManagerPill() {
     // are not looking at.
     if (viewing) return;
     if (managerTerminal.chatMode) {
+      // Written while it works: queued, to go when the turn ends.
+      const busy = useManagerChatStore.getState().transcripts[managerTerminal.id]?.running ?? false;
+      if (busy || (useManagerChatStore.getState().queues[managerTerminal.id]?.length ?? 0) > 0) {
+        useManagerChatStore.getState().enqueue(managerTerminal.id, text);
+        setDraft("");
+        return;
+      }
       setSending(true);
       try {
         if (await sendToManagerChat(managerTerminal.id, text)) setDraft("");
@@ -590,6 +599,18 @@ export function WorkspaceManagerPill() {
   // Chat mode (T6): the manager's agent runs in the engine, not its tile.
   const chatMode = !!managerTerminal?.chatMode;
   const transcript = useManagerTranscript(chatMode ? managerTerminal!.id : null);
+  const chatTerminalId = chatMode ? managerTerminal!.id : null;
+  const sendQueued = useCallback(
+    async (text: string) => {
+      if (!chatTerminalId) return false;
+      const ok = await sendToManagerChat(chatTerminalId, text);
+      if (!ok) useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
+      return ok;
+    },
+    [chatTerminalId, t],
+  );
+  useQueueSender(chatTerminalId, transcript, sendQueued);
+  const queuedCount = useQueue(chatTerminalId).length;
   useEffect(() => {
     if (chatMode && managerTerminal) void ensureManagerChat(managerTerminal.id);
   }, [chatMode, managerTerminal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -802,6 +823,7 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
+        {chatMode && <ContextMeter transcript={transcript} />}
         {/* Sessions and Pins each open in place of the conversation; the lit
             icon takes you back. */}
         <button
@@ -1093,6 +1115,26 @@ export function WorkspaceManagerPill() {
         />
       )}
 
+      {view === "chat" && !viewing && chatMode && managerTerminal && (
+        <div className="shrink-0 pt-1">
+          <PlanCard transcript={transcript} />
+          <LimitCard
+            terminalId={managerTerminal.id}
+            transcript={transcript}
+            agentName={agentName(managerTerminal.type)}
+            handOver={
+              managerTerminal.type === "claude" || managerTerminal.type === "codex"
+                ? (() => {
+                    const other = managerTerminal.type === "claude" ? "codex" : "claude";
+                    return { label: t.chat_limit_hand_to(agentName(other)), run: () => spawnAndAssignManager(other as TerminalType) };
+                  })()
+                : undefined
+            }
+          />
+          <QueuedMessages terminalId={managerTerminal.id} onSendNow={(text) => void sendQueued(text)} />
+        </div>
+      )}
+
       {view === "chat" && !viewing && managerTerminal && (
         <div className="shrink-0 px-3 pb-3">
           {running && chatMode && pendingMove === "terminal" && pendingMoveLine}
@@ -1152,7 +1194,7 @@ export function WorkspaceManagerPill() {
                 // The canvas listens globally for single-key shortcuts.
                 e.stopPropagation();
               }}
-              placeholder={running ? t.project_chat_placeholder_running : t.project_chat_placeholder}
+              placeholder={running || queuedCount > 0 ? (chatMode ? t.chat_placeholder_queued : t.project_chat_placeholder_running) : t.project_chat_placeholder}
               className="max-h-40 min-h-[2.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
             />
             <div className="flex items-center gap-1">

@@ -19,6 +19,7 @@ import { loadHiddenSessions, persistHiddenSessions } from "../components/Session
 import { agentIcon } from "./agentIcons";
 import { ChatThread } from "./chat/ChatThread";
 import { SessionChatBody } from "./chat/SessionChat";
+import { ContextMeter } from "./chat/LongRunning";
 import { projectName, stamp } from "./chatHistoryModel";
 import {
   agentOfSessionFile,
@@ -434,6 +435,7 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
             {t.reader_live(agentName)}
           </span>
         </div>
+        <ContextMeter transcript={transcript} />
         <button
           type="button"
           className="tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--border-hover)] px-3 text-[12.5px] text-[var(--text-primary)]"

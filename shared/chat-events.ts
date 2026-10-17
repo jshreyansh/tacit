@@ -28,7 +28,23 @@ export type ChatEvent =
   | { kind: "approval_request"; requestId: string; toolName: string; input: unknown; toolCallId?: string }
   | { kind: "approval_settled"; requestId: string }
   | { kind: "turn_ended"; outcome: "success" | "error" | "interrupted"; error?: string; durationMs?: number }
+  /** How full the agent's context window is, in tokens; `window` when the agent says. */
+  | { kind: "context"; used: number; window?: number }
+  /** Earlier turns were summarized to make room; `preTokens` is how full it was before. */
+  | { kind: "compacted"; trigger?: "auto" | "manual"; preTokens?: number }
+  /** The agent's plan for this turn, replaced whole each time it changes. */
+  | { kind: "plan"; steps: PlanStep[] }
+  /**
+   * Where the account stands against its usage limit: fine, close to it, or
+   * out until `resetsAt` (ISO time).
+   */
+  | { kind: "rate_limit"; status: "ok" | "warning" | "limited"; resetsAt?: string; usedPercent?: number; window?: string }
   /** The agent process ended. A non-zero code or an error means it failed. */
   | { kind: "exited"; code: number | null; error?: string };
 
 export type ApprovalDecision = "allow_once" | "allow_always" | "deny";
+
+export interface PlanStep {
+  text: string;
+  status: "pending" | "active" | "done";
+}

@@ -1,4 +1,4 @@
-import type { ChatEvent } from "./chat-events";
+import type { ChatEvent, PlanStep } from "./chat-events";
 
 /**
  * Claude Code's stream-json output, one line at a time, as chat events.
@@ -21,11 +21,34 @@ export interface ClaudeStreamState {
   streamed: Set<string>;
   /** Tool calls the driver has seen, by key, for matching complete messages. */
   toolKeys: Map<string, string>;
+  /** Tokens in the context at the last reply, to pair with the window the turn's result names. */
+  lastContext: number | null;
 }
 
 export function createClaudeStreamState(): ClaudeStreamState {
-  return { messageId: null, streamed: new Set(), toolKeys: new Map() };
+  return { messageId: null, streamed: new Set(), toolKeys: new Map(), lastContext: null };
 }
+
+const PLAN_STATUS: Record<string, PlanStep["status"]> = { pending: "pending", in_progress: "active", completed: "done" };
+
+/** Claude's todo list (its TodoWrite tool) as the turn's plan. */
+export function todoPlan(input: unknown): PlanStep[] | null {
+  if (!isObject(input) || !Array.isArray(input.todos)) return null;
+  const steps = input.todos
+    .filter((todo): todo is Json => isObject(todo) && typeof todo.content === "string")
+    .map((todo) => ({ text: todo.content as string, status: PLAN_STATUS[String(todo.status)] ?? "pending" }));
+  return steps.length > 0 ? steps : null;
+}
+
+/** Tokens a reply's request held: its input, cached or not, and its output. */
+function contextTokens(usage: unknown): number | null {
+  if (!isObject(usage)) return null;
+  const n = (key: string) => (typeof usage[key] === "number" ? (usage[key] as number) : 0);
+  const total = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens") + n("output_tokens");
+  return total > 0 ? total : null;
+}
+
+const RATE_STATUS: Record<string, "ok" | "warning" | "limited"> = { allowed: "ok", allowed_warning: "warning", rejected: "limited" };
 
 type Json = Record<string, unknown>;
 
@@ -61,7 +84,36 @@ export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEve
       if (msg.subtype === "init" && typeof msg.session_id === "string") {
         return [{ kind: "session", sessionId: msg.session_id, ...(typeof msg.model === "string" ? { model: msg.model } : {}) }];
       }
+      if (msg.subtype === "compact_boundary") {
+        const meta = isObject(msg.compact_metadata) ? msg.compact_metadata : {};
+        state.lastContext = null;
+        return [
+          {
+            kind: "compacted",
+            ...(meta.trigger === "auto" || meta.trigger === "manual" ? { trigger: meta.trigger } : {}),
+            ...(typeof meta.pre_tokens === "number" ? { preTokens: meta.pre_tokens } : {}),
+          },
+        ];
+      }
       return [];
+    }
+
+    case "rate_limit_event": {
+      const info = isObject(msg.rate_limit_info) ? msg.rate_limit_info : null;
+      const status = info ? RATE_STATUS[String(info.status)] : undefined;
+      if (!info || !status) return [];
+      const kind = typeof info.rateLimitType === "string" ? info.rateLimitType : undefined;
+      const windows = isObject(info.unifiedWindows) ? info.unifiedWindows : {};
+      const current = kind && isObject(windows[kind]) ? (windows[kind] as Json) : null;
+      return [
+        {
+          kind: "rate_limit",
+          status,
+          ...(typeof info.resetsAt === "number" ? { resetsAt: new Date(info.resetsAt * 1000).toISOString() } : {}),
+          ...(typeof current?.utilization === "number" ? { usedPercent: Math.round(current.utilization * 100) } : {}),
+          ...(kind ? { window: kind } : {}),
+        },
+      ];
     }
 
     case "stream_event": {
@@ -115,8 +167,17 @@ export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEve
       // is opened and closed here instead.
       const events: ChatEvent[] = [];
       const messageId = typeof message?.id === "string" ? message.id : null;
+      const used = contextTokens(message?.usage);
+      if (used !== null && used !== state.lastContext) {
+        state.lastContext = used;
+        events.push({ kind: "context", used });
+      }
       for (const block of content) {
         if (!isObject(block)) continue;
+        if (block.type === "tool_use" && block.name === "TodoWrite") {
+          const steps = todoPlan(block.input);
+          if (steps) events.push({ kind: "plan", steps });
+        }
         if (block.type === "tool_use" && typeof block.id === "string") {
           const key = state.toolKeys.get(block.id);
           if (key) {
@@ -154,7 +215,16 @@ export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEve
     case "result": {
       state.messageId = null;
       const ok = msg.subtype === "success" && msg.is_error !== true;
+      // The model's context window, which only the result names.
+      const models = isObject(msg.modelUsage) ? Object.values(msg.modelUsage).filter(isObject) : [];
+      const window = models.map((m) => m.contextWindow).find((w): w is number => typeof w === "number" && w > 0);
+      const context: ChatEvent[] = window && state.lastContext ? [{ kind: "context", used: state.lastContext, window }] : [];
+      // Out of usage: said in the result's text when no limit event came first.
+      const text = typeof msg.result === "string" ? msg.result : "";
+      const limited: ChatEvent[] = !ok && /usage limit|hit your limit|rate limit/i.test(text) ? [{ kind: "rate_limit", status: "limited" }] : [];
       return [
+        ...context,
+        ...limited,
         {
           kind: "turn_ended",
           outcome: ok ? "success" : "error",

@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ChatEvent } from "./chat-events";
+import type { ApprovalDecision, ChatEvent, PlanStep } from "./chat-events";
 
 /**
  * Codex's app-server protocol (JSON-RPC over stdio) as chat events.
@@ -102,6 +102,16 @@ const APPROVAL_METHODS: Record<string, (params: Json) => { toolName: string; inp
   applyPatchApproval: (p) => ({ toolName: "Edit", input: { reason: p.reason, fileChanges: p.fileChanges } }),
 };
 
+const PLAN_STATUS: Record<string, PlanStep["status"]> = { pending: "pending", inProgress: "active", in_progress: "active", completed: "done" };
+
+/** A Codex error that means the account is out of its usage. */
+function isUsageLimit(error: unknown): boolean {
+  if (!isObject(error)) return false;
+  const info = error.codexErrorInfo;
+  if (info === "usageLimitExceeded" || (isObject(info) && "usageLimitExceeded" in info)) return true;
+  return typeof error.message === "string" && /usage limit/i.test(error.message);
+}
+
 /** One message from the server as events. A request it can't answer gives none (the driver refuses it). */
 export function parseCodexMessage(state: CodexStreamState, message: unknown): ChatEvent[] {
   if (!isObject(message)) return [];
@@ -126,6 +136,38 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       state.threadId = thread.id;
       return [{ kind: "session", sessionId: thread.id }];
     }
+    case "thread/tokenUsage/updated": {
+      const usage = isObject(params.tokenUsage) ? params.tokenUsage : null;
+      const last = isObject(usage?.last) ? usage.last : null;
+      if (typeof last?.totalTokens !== "number") return [];
+      const window = typeof usage?.modelContextWindow === "number" && usage.modelContextWindow > 0 ? usage.modelContextWindow : undefined;
+      return [{ kind: "context", used: last.totalTokens, ...(window ? { window } : {}) }];
+    }
+    case "account/rateLimits/updated": {
+      const limits = isObject(params.rateLimits) ? params.rateLimits : null;
+      const primary = isObject(limits?.primary) ? limits.primary : null;
+      if (!limits || !primary) return [];
+      const used = typeof primary.usedPercent === "number" ? primary.usedPercent : undefined;
+      const status = limits.rateLimitReachedType ? "limited" : used !== undefined && used >= 80 ? "warning" : "ok";
+      return [
+        {
+          kind: "rate_limit",
+          status,
+          ...(typeof primary.resetsAt === "number" ? { resetsAt: new Date(primary.resetsAt * 1000).toISOString() } : {}),
+          ...(used !== undefined ? { usedPercent: Math.round(used) } : {}),
+          ...(typeof primary.windowDurationMins === "number" ? { window: `${primary.windowDurationMins}m` } : {}),
+        },
+      ];
+    }
+    case "turn/plan/updated": {
+      const plan = Array.isArray(params.plan) ? params.plan : [];
+      const steps = plan
+        .filter((s): s is Json => isObject(s) && typeof s.step === "string")
+        .map((s) => ({ text: s.step as string, status: PLAN_STATUS[String(s.status)] ?? "pending" }));
+      return steps.length > 0 ? [{ kind: "plan", steps }] : [];
+    }
+    case "thread/compacted":
+      return [{ kind: "compacted" }];
     case "turn/started": {
       const turn = isObject(params.turn) ? params.turn : null;
       state.turnId = typeof turn?.id === "string" ? turn.id : state.turnId;
@@ -154,6 +196,7 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       if (!item || typeof item.id !== "string") return [];
       if (item.type === "agentMessage") return [{ kind: "block_done", key: item.id, text: typeof item.text === "string" ? item.text : undefined }];
       if (item.type === "reasoning") return [{ kind: "block_done", key: item.id, text: reasoningText(item) }];
+      if (item.type === "contextCompaction") return [{ kind: "compacted" }];
       const tool = toolView(item);
       if (!tool) return [];
       const { output, isError } = toolOutcome(item);
@@ -175,7 +218,9 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       const error = isObject(turn?.error) && typeof turn.error.message === "string" ? turn.error.message : undefined;
       const durationMs = typeof turn?.durationMs === "number" ? turn.durationMs : undefined;
       const outcome = status === "completed" ? "success" : status === "interrupted" ? "interrupted" : "error";
+      const limited: ChatEvent[] = outcome === "error" && isUsageLimit(turn?.error) ? [{ kind: "rate_limit", status: "limited" }] : [];
       return [
+        ...limited,
         {
           kind: "turn_ended",
           outcome,

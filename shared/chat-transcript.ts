@@ -1,4 +1,4 @@
-import type { ChatEvent } from "./chat-events";
+import type { ChatEvent, PlanStep } from "./chat-events";
 
 /**
  * The conversation on screen, built from chat events alone (T6.2).
@@ -32,6 +32,16 @@ export interface ChatUserMessage {
   id: string;
   text: string;
   at: string;
+  /** Sent while a turn ran: it steered that turn rather than starting one. */
+  steered?: boolean;
+}
+
+/** A line in the conversation that isn't anyone's message: earlier turns summarized. */
+export interface ChatNoteMessage {
+  role: "note";
+  id: string;
+  kind: "compacted";
+  preTokens?: number;
 }
 
 export interface ChatAssistantMessage {
@@ -44,7 +54,7 @@ export interface ChatAssistantMessage {
   durationMs?: number;
 }
 
-export type ChatMessage = ChatUserMessage | ChatAssistantMessage;
+export type ChatMessage = ChatUserMessage | ChatAssistantMessage | ChatNoteMessage;
 
 export interface PendingApproval {
   requestId: string;
@@ -62,6 +72,12 @@ export interface ChatTranscript {
   approvals: PendingApproval[];
   /** Set when the agent process ended unexpectedly. */
   failure: string | null;
+  /** How full the context window is. */
+  context: { used: number; window: number | null } | null;
+  /** The plan of the running or last turn. */
+  plan: PlanStep[] | null;
+  /** Where the account stands against its usage limit, once the agent has said. */
+  limit: { status: "ok" | "warning" | "limited"; resetsAt?: string; usedPercent?: number; window?: string } | null;
 }
 
 export const EMPTY_TRANSCRIPT: ChatTranscript = {
@@ -71,6 +87,9 @@ export const EMPTY_TRANSCRIPT: ChatTranscript = {
   running: false,
   approvals: [],
   failure: null,
+  context: null,
+  plan: null,
+  limit: null,
 };
 
 let assistantSeq = 0;
@@ -130,13 +149,42 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
       return { ...t, sessionId: event.sessionId, model: event.model ?? t.model, failure: null };
 
     case "user_message": {
-      // A message sent mid-turn closes nothing: the agent reads it after.
+      // A message sent mid-turn closes nothing: it steers the running turn.
+      // A new turn starts without the last one's plan.
+      const steered = t.running;
       return {
         ...t,
         failure: null,
-        messages: [...t.messages, { role: "user", id: event.id, text: event.text, at: event.at }],
+        ...(steered ? {} : { plan: null }),
+        messages: [...t.messages, { role: "user", id: event.id, text: event.text, at: event.at, ...(steered ? { steered: true } : {}) }],
       };
     }
+
+    case "context":
+      return { ...t, context: { used: event.used, window: event.window ?? t.context?.window ?? null } };
+
+    case "compacted":
+      return {
+        ...t,
+        messages: [
+          ...t.messages,
+          { role: "note", id: `n${++assistantSeq}`, kind: "compacted", ...(event.preTokens !== undefined ? { preTokens: event.preTokens } : {}) },
+        ],
+      };
+
+    case "plan":
+      return { ...t, plan: event.steps };
+
+    case "rate_limit":
+      return {
+        ...t,
+        limit: {
+          status: event.status,
+          ...(event.resetsAt ? { resetsAt: event.resetsAt } : {}),
+          ...(event.usedPercent !== undefined ? { usedPercent: event.usedPercent } : {}),
+          ...(event.window ? { window: event.window } : {}),
+        },
+      };
 
     case "block_start":
       return withAssistant(t, (m) => {

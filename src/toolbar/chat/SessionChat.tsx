@@ -10,6 +10,8 @@ import {
 } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { ApprovalCards, ChatThread } from "./ChatThread";
+import { LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./LongRunning";
+import { useManagerChatStore } from "../../stores/managerChatStore";
 
 /**
  * A chat with one session that isn't the manager: a past session continued
@@ -65,7 +67,7 @@ export function ChatComposer({
             className="block max-h-40 w-full resize-none bg-transparent text-[13px] leading-[1.5] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
         </label>
-        {running ? (
+        {running && (
           <button
             type="button"
             className="tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)]"
@@ -76,7 +78,8 @@ export function ChatComposer({
             </svg>
             {t.project_chat_stop}
           </button>
-        ) : (
+        )}
+        {(!running || draft.trim()) && (
           <button
             type="button"
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[var(--text-secondary)] text-[var(--bg)] disabled:opacity-40"
@@ -107,11 +110,21 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
     void ensureManagerChat(terminalId);
   }, [terminalId]);
   const agentName = findAgentAdapter(agent)?.displayName ?? agent;
-  const send = async (text: string) => {
+  const queue = useQueue(terminalId);
+  const sendNow = async (text: string) => {
     const ok = await sendToManagerChat(terminalId, text);
     if (!ok) useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
     return ok;
   };
+  // Written while it works: queued, to go when the turn ends.
+  const send = async (text: string) => {
+    if (transcript.running || queue.length > 0) {
+      useManagerChatStore.getState().enqueue(terminalId, text);
+      return true;
+    }
+    return sendNow(text);
+  };
+  useQueueSender(terminalId, transcript, sendNow);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ChatThread
@@ -127,6 +140,9 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         </div>
       )}
       <ApprovalCards approvals={transcript.approvals} onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)} />
+      <PlanCard transcript={transcript} />
+      <LimitCard terminalId={terminalId} transcript={transcript} agentName={agentName} />
+      <QueuedMessages terminalId={terminalId} onSendNow={(text) => void sendNow(text)} />
       <ChatComposer
         running={transcript.running}
         placeholder={t.reader_message_session}
