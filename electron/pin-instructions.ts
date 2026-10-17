@@ -12,6 +12,14 @@ the user wants done — captured when the user expresses intent, not when the
 work happens. Use the \`tacit pin\` CLI to read and write them. Any agent
 terminal can record, read, and update pins.
 
+The user sees pins as **Tasks** (and **Notes**). A task has a status
+(todo, doing, needs-you, done, dropped), steps, and who's on it;
+\`tacit task\` is the same CLI as \`tacit pin\`. When you work on a task,
+keep its steps current: \`tacit task step <id> <n> --status doing|done\`,
+\`tacit task step <id> --add "<step>"\`. When you need a decision only the
+user can make, \`tacit task ask <id> "<question>" [--choices a,b]\`: it
+shows as Needs you, and their answer arrives in this terminal.
+
 When to record a pin:
 - User says "记一下", "回头处理", "帮我留意", "later", "todo this", or any phrasing that defers the work.
 - User describes a problem or idea but isn't asking you to fix it right now.
