@@ -146,21 +146,53 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
   );
 }
 
-/** How full the context is: a small bar and the percent, the detail on hover. */
+/**
+ * How full the context is: a small bar and the percent. Hovering or
+ * focusing it opens a card with the tokens and the usage limit.
+ */
 export function ContextMeter({ transcript }: { transcript: ChatTranscript }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
   const percent = contextPercent(transcript.context);
   if (percent === null || !transcript.context) return null;
   const limit = transcript.limit;
-  const lines = [t.chat_context_detail(percent, formatTokens(transcript.context.used), formatTokens(transcript.context.window ?? 0))];
-  if (limit?.usedPercent !== undefined) lines.push(t.chat_limit_detail(limit.usedPercent, resetLabel(limit.resetsAt) ?? ""));
   const tone = percent >= 85 ? "var(--red)" : percent >= 65 ? "var(--amber)" : "var(--text-muted)";
+  const resets = resetLabel(limit?.resetsAt);
+  const summary = t.chat_context_detail(percent, formatTokens(transcript.context.used), formatTokens(transcript.context.window ?? 0));
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-[var(--text-muted)]" title={lines.join("\n")} aria-label={lines.join(". ")}>
-      <span aria-hidden="true" className="block h-1 w-9 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-        <span className="block h-1 rounded-full" style={{ width: `${percent}%`, background: tone }} />
-      </span>
-      {percent}%
+    <span className="relative flex shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] tabular-nums text-[var(--text-muted)] hover:bg-[var(--surface-hover)]"
+        aria-label={summary}
+        aria-expanded={open}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span aria-hidden="true" className="block h-1 w-9 overflow-hidden rounded-full bg-[var(--surface-hover)]">
+          <span className="block h-1 rounded-full" style={{ width: `${percent}%`, background: tone }} />
+        </span>
+        {percent}%
+      </button>
+      {open && (
+        <div role="tooltip" className="tc-float absolute right-0 top-full z-20 mt-1.5 flex w-[260px] flex-col gap-2 p-3 text-left" style={{ borderRadius: 12 }}>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_context}</span>
+            <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
+              <span className="block h-1.5 rounded-full" style={{ width: `${percent}%`, background: tone }} />
+            </span>
+            <span className="text-[12px] text-[var(--text-secondary)]">{summary}</span>
+            <span className="text-[11px] leading-snug text-[var(--text-muted)]">{t.chat_context_hint}</span>
+          </div>
+          {limit?.usedPercent !== undefined && (
+            <div className="flex flex-col gap-1 border-t border-[var(--border)] pt-2">
+              <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_usage_limit}</span>
+              <span className="text-[12px] text-[var(--text-secondary)]">{t.chat_limit_detail(limit.usedPercent, resets ?? "")}</span>
+            </div>
+          )}
+        </div>
+      )}
     </span>
   );
 }
