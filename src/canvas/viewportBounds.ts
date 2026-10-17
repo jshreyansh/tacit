@@ -5,7 +5,6 @@ import {
   CHROME_GAP,
   CHROME_INSET,
   LEFT_RAIL_WIDTH,
-  PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
 
 /**
@@ -85,21 +84,19 @@ export function getLeftPanelInset(
 export function getCanvasLeftInset(
   leftPanelCollapsed: boolean,
   leftPanelWidth: number,
-  taskDrawerOpen: boolean,
+  // Pins used to open in a drawer here, which pushed the canvas right. They
+  // open in the docked chat now, whose width getLeftPanelInset already
+  // counts, so this no longer moves anything. Kept so its callers needn't
+  // all change at once.
+  _pinsOpen: boolean,
   codePanelCollapsed = true,
   codePanelWidth = 0,
 ) {
-  return (
-    getLeftPanelInset(
-      leftPanelCollapsed,
-      leftPanelWidth,
-      codePanelCollapsed,
-      codePanelWidth,
-    ) +
-    // The gap matters as much as the width. Without it the pin drawer and
-    // whatever opens beyond it sat flush against each other while every other
-    // pair had 8px between them — the uneven spacing was one missing term.
-    (taskDrawerOpen ? PIN_DRAWER_WIDTH + CHROME_GAP : 0)
+  return getLeftPanelInset(
+    leftPanelCollapsed,
+    leftPanelWidth,
+    codePanelCollapsed,
+    codePanelWidth,
   );
 }
 

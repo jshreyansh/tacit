@@ -6,7 +6,8 @@ import {
 import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
 import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
-import { LEFT_TAB_CONFIG } from "../components/leftPanelTabs";
+import { useChatDockStore } from "../stores/chatDockStore";
+import { useNeedsYouCount } from "./LiveSessions";
 import { RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
@@ -98,10 +99,11 @@ function DockRailButton({ entry }: { entry: DockEntry }) {
 
 export function LeftRail() {
   const t = useT();
-  const sessionsCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const setSessionsCollapsed = useCanvasStore((s) => s.setLeftPanelCollapsed);
-  const sessionsTab = useCanvasStore((s) => s.leftPanelActiveTab);
-  const setSessionsTab = useCanvasStore((s) => s.setLeftPanelActiveTab);
+  const chatOpen = useChatDockStore((s) => s.open);
+  const toggleChat = useChatDockStore((s) => s.toggle);
+  const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
+  const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
+  const needsYou = useNeedsYouCount();
 
   const codeCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const setCodeCollapsed = useCanvasStore((s) => s.setRightPanelCollapsed);
@@ -147,10 +149,7 @@ export function LeftRail() {
             // The other half of the exclusivity canvasStore enforces: opening
             // a panel closes the Hub, so opening the Hub closes the panels.
             // Without this the Hub simply paints over whichever was open.
-            if (!hubOpen) {
-              setSessionsCollapsed(true);
-              setCodeCollapsed(true);
-            }
+            if (!hubOpen) setCodeCollapsed(true);
             toggleHub();
           }}
           title={hubLabel}
@@ -166,34 +165,23 @@ export function LeftRail() {
           where you have been; Files, Diff, Git and Memory are what the work
           produced — a divider between them and no further explanation. */}
       <div className="tc-rail-scroll flex min-h-0 flex-col items-center gap-0.5 overflow-y-auto">
-        {/* History moved into the docked manager chat (its Chats view), so
-            only Sessions is left here. */}
-        {LEFT_TAB_CONFIG.filter(({ id }) => id !== "history").map(({ id, icon: Icon, labelKey }) => {
-          const open = !sessionsCollapsed && sessionsTab === id;
-          return (
-            <button
-              key={id}
-              className={`${buttonCls} text-[var(--text-muted)]`}
-              data-on={open ? "" : undefined}
-              title={t[labelKey]}
-              aria-label={t[labelKey]}
-              aria-pressed={open}
-              onClick={() => {
-                // Pressing the lit one closes the panel; pressing any other
-                // switches to it without closing. Opening this panel closes
-                // the code panel — they share an edge (see canvasStore).
-                if (open) {
-                  setSessionsCollapsed(true);
-                  return;
-                }
-                setSessionsTab(id);
-                setSessionsCollapsed(false);
-              }}
-            >
-              <Icon size={17} />
-            </button>
-          );
-        })}
+        {/* The workdesk manager's chat. Sessions and History moved into it
+            (its Sessions view), along with Pins. */}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          data-on={chatOpen ? "" : undefined}
+          title={chatLabel}
+          aria-label={chatLabel}
+          aria-pressed={chatOpen}
+          onClick={toggleChat}
+        >
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
+          </svg>
+          {needsYou > 0 && !chatOpen && (
+            <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
+          )}
+        </button>
 
         <div
           aria-hidden="true"

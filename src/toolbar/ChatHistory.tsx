@@ -53,11 +53,11 @@ function titleText(entry: ChatHistoryEntry, t: Dict): { text: string; manager: b
   }
 }
 
-function PinGlyph({ filled }: { filled: boolean }) {
+/** A star, not a pin: pins are the work you record (the Pins view). */
+function StarGlyph({ filled }: { filled: boolean }) {
   return (
-    <svg width="11" height="11" viewBox="0 0 16 16" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6 2.5h4l-.6 4 2 2H4.6l2-2z" />
-      <path d="M8 8.5v5" fill="none" />
+    <svg width="11" height="11" viewBox="0 0 16 16" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2l1.8 3.7 4 .6-2.9 2.8.7 4L8 11.2 4.4 13.1l.7-4L2.2 6.3l4-.6z" />
     </svg>
   );
 }
@@ -139,7 +139,7 @@ function HistoryItem({
       <span className="tc-mono mt-0.5 shrink-0 text-[10.5px] tabular-nums text-[var(--text-faint)] group-hover:hidden">
         {stamp(entry.lastActivityAt)}
       </span>
-      {/* Pin and hide on hover, in the stamp's place. Hiding takes two
+      {/* Star and hide on hover, in the stamp's place. Hiding takes two
           clicks, as in the History panel. */}
       <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
         <button
@@ -153,7 +153,7 @@ function HistoryItem({
           aria-label={pinned ? t.chat_history_unpin : t.chat_history_pin}
           title={pinned ? t.chat_history_unpin : t.chat_history_pin}
         >
-          <PinGlyph filled={pinned} />
+          <StarGlyph filled={pinned} />
         </button>
         <button
           type="button"
@@ -181,6 +181,7 @@ export function ChatHistory({
   managerSessionIds,
   currentSessionId,
   onOpen,
+  live,
 }: {
   projectDirs: string[];
   /** Sessions that held the manager's seat, from the tenure log. */
@@ -188,6 +189,11 @@ export function ChatHistory({
   /** The manager's live session, marked "now". */
   currentSessionId: string | null;
   onOpen: (filePath: string) => void;
+  /**
+   * What is on the workdesk now, above the past sessions, given the search
+   * so one box searches both (the Sessions view).
+   */
+  live?: (query: string) => React.ReactNode;
 }) {
   const t = useT();
   const [entries, setEntries] = useState<ChatHistoryEntry[]>([]);
@@ -314,8 +320,8 @@ export function ChatHistory({
                 setQuery("");
               }
             }}
-            placeholder={t.chat_history_search}
-            aria-label={t.chat_history_search}
+            placeholder={live ? t.chat_sessions_search : t.chat_history_search}
+            aria-label={live ? t.chat_sessions_search : t.chat_history_search}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
           <span className="tc-mono shrink-0 text-[10.5px] tabular-nums">{loading && entries.length === 0 ? "…" : visible.length}</span>
@@ -323,6 +329,10 @@ export function ChatHistory({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+        {live?.(query)}
+        {live && (
+          <div className="px-3.5 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_sessions_earlier}</div>
+        )}
         {loading && entries.length === 0 && (
           <div className="px-4 py-6 text-center text-[12px] text-[var(--text-muted)]">{t.chat_history_loading}</div>
         )}

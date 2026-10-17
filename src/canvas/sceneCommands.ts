@@ -1,4 +1,4 @@
-import { useCanvasStore } from "../stores/canvasStore";
+import { useChatDockStore } from "../stores/chatDockStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { generateId, useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
@@ -113,13 +113,11 @@ export async function addProjectFromDirectoryPath(
   addProject(project);
 
   // When the canvas is empty, dropping a project only registers it in
-  // state — there is no visible change on the canvas itself. Auto-open
-  // the LEFT panel (project list) so the user can actually see the
-  // new project/worktree tree and pick where to launch a terminal.
-  // (Pre-refactor this opened the right panel's "sessions" tab; the
-  // list moved to the left panel.)
+  // state — there is no visible change on the canvas itself. Open the
+  // docked chat's Sessions view, where the new project's tree is, so the
+  // user can see it and pick where to launch a terminal.
   if (wasEmpty) {
-    useCanvasStore.getState().setLeftPanelCollapsed(false);
+    useChatDockStore.getState().showFace("sessions");
   }
 
   if (options.notifyAdded) {

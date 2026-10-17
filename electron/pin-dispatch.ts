@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ComposerImageAttachment } from "../src/types";
+import { pinTaskInstruction } from "../shared/pin";
 
 const IMAGE_MIME: Record<string, string> = {
   png: "image/png",
@@ -19,18 +20,6 @@ export interface PinComposerInput {
 export interface PinComposerPayload {
   text: string;
   images: ComposerImageAttachment[];
-}
-
-function usesCjk(text: string): boolean {
-  return /[\u3400-\u9fff]/u.test(text);
-}
-
-function buildPinTaskInstruction(pin: PinComposerInput): string {
-  const sourceText = `${pin.title}\n${pin.body}`;
-  if (usesCjk(sourceText)) {
-    return "这是一个已有的 Tacit pin，作为当前对话的上下文提供。不要把它再次记录为新的 pin；请根据用户的后续说明判断是执行、研究还是讨论。如果意图不明确，先询问下一步。";
-  }
-  return "This is an existing Tacit pin provided as context for the current conversation. Do not create or record it as a new pin; use the user's surrounding instructions to decide whether to execute, investigate, or discuss it. If the intent is unclear, ask what to do next.";
 }
 
 function escapeRegex(s: string): string {
@@ -57,7 +46,7 @@ export async function buildPinComposerPayload(
   // Prepend the pin title as an h1 so the agent gets the user's framing,
   // not just the description. Title comes first; body follows after a blank
   // line. Empty bodies still produce a usable prompt with just the title.
-  const instructionPrefix = `${buildPinTaskInstruction(pin)}\n\n`;
+  const instructionPrefix = `${pinTaskInstruction(pin)}\n\n`;
   const titlePrefix = pin.title.trim() ? `# ${pin.title.trim()}\n\n` : "";
 
   const matches: { full: string; alt: string; basename: string }[] = [];

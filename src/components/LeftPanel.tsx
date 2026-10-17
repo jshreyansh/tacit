@@ -25,7 +25,6 @@ import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { buildProjectTree, type CanvasTerminalItem } from "./sessionPanelModel";
 import { ProjectTree } from "./ProjectTree";
 import { TerminalCard, HistorySection, StashedSection } from "./SessionsPanel";
-import { PinDrawer } from "./PinDrawer";
 
 /*
  * Left panel — project management + session history.
@@ -250,7 +249,6 @@ export function LeftPanel() {
 
   return (
     <>
-      <PinDrawer />
       {/* Floats beside the rail, over the canvas. Hidden rather than zero-width
           when collapsed: a glass box with a shadow still casts one at 0px. */}
       <div

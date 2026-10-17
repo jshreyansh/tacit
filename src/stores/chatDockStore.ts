@@ -39,10 +39,22 @@ export function loadChatWidth(): number {
   }
 }
 
+/**
+ * What the docked chat shows: the conversation, the live and past sessions,
+ * the pins, or the roster for choosing a manager. Held here rather than in
+ * the chat so other places can open it on a face: a project's pin badge,
+ * a terminal's pin chip, a first project added to an empty canvas.
+ */
+export type ChatFace = "chat" | "sessions" | "pins" | "roster";
+
 interface ChatDockStore {
   open: boolean;
   width: number;
+  face: ChatFace;
   setOpen: (open: boolean) => void;
+  setFace: (face: ChatFace) => void;
+  /** Opens the chat on a face. */
+  showFace: (face: ChatFace) => void;
   toggle: () => void;
   /** While dragging: moves the edge without saving on every frame. */
   setWidth: (width: number) => void;
@@ -53,7 +65,10 @@ interface ChatDockStore {
 export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   open: false,
   width: loadChatWidth(),
+  face: "chat",
   setOpen: (open) => set({ open }),
+  setFace: (face) => set({ face }),
+  showFace: (face) => set({ open: true, face }),
   toggle: () => set({ open: !get().open }),
   setWidth: (width) => set({ width: clampChatWidth(width) }),
   commitWidth: () => {

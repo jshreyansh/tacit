@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { Pin, CreatePinInput, UpdatePinInput } from "../types";
+import type { Pin, CreatePinInput, UpdatePinInput, PinEvent } from "../types";
+import { useChatDockStore } from "./chatDockStore";
 
 interface TerminalPinAssignment {
   pinId: string;
@@ -129,6 +130,8 @@ export const usePinStore = create<PinStoreState & PinStoreActions>(
           });
       }
       set({ openProjectPath: projectPath });
+      // A project's pins are shown in the docked chat's Pins view.
+      useChatDockStore.getState().showFace("pins");
     },
 
     closeDrawer: () =>
@@ -184,3 +187,18 @@ export const usePinStore = create<PinStoreState & PinStoreActions>(
 );
 
 export type { Pin, CreatePinInput, UpdatePinInput };
+
+/**
+ * Keeps the store in step with pins created, changed or removed anywhere (an
+ * agent's `tacit pin add`, another window). Started once by the app.
+ */
+export function subscribePinEvents(): () => void {
+  return window.tacit.pins.subscribe((event: PinEvent) => {
+    const { upsertPin, removePin } = usePinStore.getState();
+    if (event.type === "pin:created" || event.type === "pin:updated") {
+      upsertPin(event.repo, event.pin);
+    } else if (event.type === "pin:removed") {
+      removePin(event.repo, event.id);
+    }
+  });
+}

@@ -73,7 +73,7 @@ import {
 import { installReplyDelivery } from "./browser/chatReplyDelivery";
 import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
 import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
-import { usePinStore } from "./stores/pinStore";
+import { subscribePinEvents, usePinStore } from "./stores/pinStore";
 import {
   useCanvasRegistryStore,
   getActiveCanvas,
@@ -335,6 +335,8 @@ function useWorkspaceOpen() {
 
 export function App() {
   useWorktreeWatcher();
+  // Pins change outside the app too (an agent's `tacit pin add`).
+  useEffect(() => (window.tacit?.pins ? subscribePinEvents() : undefined), []);
   usePinPreloader();
   useStatePersistence();
   useAutoSave();

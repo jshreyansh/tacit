@@ -20,6 +20,10 @@ import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { TaskControl } from "./TaskControl";
 import { ChatHistory } from "./ChatHistory";
+import { LiveSessions, useNeedsYouCount } from "./LiveSessions";
+import { PinsView } from "./PinsView";
+import { usePinStore } from "../stores/pinStore";
+import { pinHandoffText, type Pin } from "../../shared/pin";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
 import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
@@ -147,9 +151,11 @@ export function WorkspaceManagerPill() {
    * bottom of the screen, so anything hanging below it is clipped by
    * construction. They are faces now: one shell, contents swapped, a back
    * button to return. Nothing can be positioned off-screen because nothing is
-   * positioned at all.
+   * positioned at all. Held in the dock's store, so a pin badge or a
+   * terminal's pin chip can open the chat on Pins.
    */
-  const [view, setView] = useState<"chat" | "roster" | "history">("chat");
+  const view = useChatDockStore((s) => s.face);
+  const setView = useChatDockStore((s) => s.setFace);
   /**
    * Resting, it is the pill at the bottom; opened, it docks full height on
    * the left beside the bar (SHR-127). The old in-between heights grew a
@@ -249,8 +255,8 @@ export function WorkspaceManagerPill() {
 
   // A seat that empties while the chat is open shows who could take it.
   useEffect(() => {
-    if (!managerTerminal && dockOpen) setView("roster");
-  }, [managerTerminal, dockOpen]);
+    if (!managerTerminal && dockOpen && view === "chat") setView("roster");
+  }, [managerTerminal, dockOpen, view, setView]);
 
   // Closing the chat leaves it on the conversation, live, for next time.
   useEffect(() => {
@@ -370,8 +376,8 @@ export function WorkspaceManagerPill() {
    */
   const openRoster = useCallback(() => {
     setDockOpen(true);
-    setView((v) => (v === "roster" && managerTerminal ? "chat" : "roster"));
-  }, [setDockOpen, managerTerminal]);
+    setView(view === "roster" && managerTerminal ? "chat" : "roster");
+  }, [setDockOpen, setView, view, managerTerminal]);
 
   /** Terminal record by id, across every project — used for the handover notice. */
   const findTerminalById = useCallback(
@@ -593,6 +599,28 @@ export function WorkspaceManagerPill() {
   }, [transcript.messages]);
 
   const faceOpen = view !== "chat";
+  const needsYou = useNeedsYouCount();
+
+  // The pin view beside the chat belongs to the Pins face: leaving it, or
+  // closing the chat, closes the project's pins too.
+  const pinsProject = usePinStore((s) => s.openProjectPath);
+  useEffect(() => {
+    if (pinsProject && !(dockOpen && view === "pins")) usePinStore.getState().closeDrawer();
+  }, [pinsProject, dockOpen, view]);
+
+  /** A pin handed to the manager lands in the message box, to send when you're ready. */
+  const handPin = useCallback(
+    (pin: Pin) => {
+      if (!managerTerminal) {
+        useNotificationStore.getState().notify("warn", t.chat_pins_hand_no_manager);
+        return;
+      }
+      setDraft(pinHandoffText(pin));
+      setView("chat");
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [managerTerminal, setView, t],
+  );
   const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
   // A move asked for mid-turn happens when the turn ends. One that no longer
   // applies (the manager already moved) is dropped.
@@ -765,19 +793,38 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
+        {/* Sessions and Pins each open in place of the conversation; the lit
+            icon takes you back. */}
         <button
           type="button"
-          className={iconButton}
-          data-on={view === "history" ? "" : undefined}
-          aria-pressed={view === "history"}
-          onClick={() => setView(view === "history" ? "chat" : "history")}
-          title={t.project_chat_history}
-          aria-label={t.project_chat_history}
+          className={`${iconButton} relative`}
+          data-on={view === "sessions" ? "" : undefined}
+          aria-pressed={view === "sessions"}
+          onClick={() => setView(view === "sessions" ? "chat" : "sessions")}
+          title={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
+          aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M8 3a5 5 0 1 1-4.2 2.3" />
             <path d="M3.2 3.5v2.2h2.2" />
             <path d="M8 5.5V8l1.8 1.2" />
+          </svg>
+          {needsYou > 0 && view !== "sessions" && (
+            <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
+          )}
+        </button>
+        <button
+          type="button"
+          className={iconButton}
+          data-on={view === "pins" ? "" : undefined}
+          aria-pressed={view === "pins"}
+          onClick={() => setView(view === "pins" ? "chat" : "pins")}
+          title={t.chat_pins}
+          aria-label={t.chat_pins}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 2.5h4l-.6 4 2 2H4.6l2-2z" />
+            <path d="M8 8.5v5" />
           </svg>
         </button>
         {managerTerminal && chatMode && (
@@ -809,8 +856,10 @@ export function WorkspaceManagerPill() {
           title={`${t.project_chat_collapse_dock} (${shortcutLabel})`}
           aria-label={t.project_chat_collapse_dock}
         >
+          {/* Down, then left: back into the pill at the bottom left. */}
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M10 4L6 8l4 4" />
+            <path d="M11.5 2.5v6a2 2 0 0 1-2 2H4" />
+            <path d="M6.5 8L4 10.5 6.5 13" />
           </svg>
         </button>
       </div>
@@ -820,7 +869,7 @@ export function WorkspaceManagerPill() {
       <TaskControl variant="strip" />
 
       {/* A face (choosing a manager, or past chats) gets a way back. */}
-      {faceOpen && managerTerminal && (
+      {view === "roster" && managerTerminal && (
         <div className="flex shrink-0 items-center gap-2 px-2 pt-2">
           <button
             type="button"
@@ -833,7 +882,7 @@ export function WorkspaceManagerPill() {
             {t.back}
           </button>
           <span className="text-[12px] text-[var(--text-faint)]">
-            {view === "roster" ? t.project_chat_assign : t.project_chat_history}
+            {t.project_chat_assign}
           </span>
         </div>
       )}
@@ -914,16 +963,21 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {/* Past chats on this workdesk, with the agent, title, size and when;
-          a row opens its transcript in the session view beside the chat. */}
-      {view === "history" && (
+      {/* What is on this workdesk now (needs you, then every project's
+          terminals), then past sessions with the agent, title, size and when;
+          a past row opens its transcript in the session view beside the chat. */}
+      {view === "sessions" && (
         <ChatHistory
           projectDirs={canvasProjectDirs}
           managerSessionIds={managerSessionIds}
           currentSessionId={currentManagerSessionId}
           onOpen={openReplay}
+          live={(query) => <LiveSessions query={query} />}
         />
       )}
+
+      {/* A project's pins; one opens in the pin view beside the chat. */}
+      {view === "pins" && <PinsView onHand={handPin} />}
 
       {view === "roster" && (
         <div role="menu" aria-label={t.project_chat_assign} className="min-h-0 flex-1 overflow-y-auto p-1.5">

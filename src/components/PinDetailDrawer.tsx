@@ -369,11 +369,8 @@ export function PinDetailDrawer() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [isOpen]);
 
-  // The detail drawer always renders to the right of the pin drawer,
-  // so its left edge IS the drawer-aware left inset (left panel +
-  // PIN_DRAWER_WIDTH). composingForPin and openDetailPinId both
-  // require openProjectPath, so by the time isOpen is true the pin
-  // drawer is open and the +320 is folded into the inset.
+  // Opens to the right of the docked chat, whose Pins view lists the
+  // pins (and of the code panel when it is open).
   const pinDrawerOpen = openProjectPath !== null || composingForPin !== null;
   const effectiveLeftInset = getCanvasLeftInset(
     leftPanelCollapsed,
