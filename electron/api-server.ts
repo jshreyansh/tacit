@@ -14,6 +14,7 @@ import {
   validateWorktreePath,
 } from "../hydra/src/spawn";
 import { PinStore, PinStoreError } from "./pin-store";
+import { parsePinStatus, pinKind, type PinStatus } from "../shared/pin";
 import { resolveCanvasProjectRoot } from "./pin-project-resolver";
 import { renderPinToPng } from "./pin-render";
 import { cleanupPinRenderCache } from "./pin-render-utils";
@@ -386,6 +387,12 @@ export class ApiServer {
         },
         body,
       );
+    }
+    // The task list, for an agent: always its own project's, and its changes
+    // are recorded as its own.
+    const taskRoute = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/tasks(?:\/([a-z0-9][a-z0-9-]*))?$/.exec(pathname);
+    if (taskRoute) {
+      return this.terminalTasks(method, taskRoute[1], taskRoute[2] ?? null, body);
     }
     if (method === "POST" && START_TASK_ROUTE.test(pathname)) {
       return this.startRunFor(pathname.split("/")[2], body);
@@ -819,6 +826,73 @@ export class ApiServer {
     return this.execRenderer(`window.__tcApi.getProjects()`);
   }
 
+  /** The project a terminal belongs to, as the task store keys it. */
+  private async repoOfTerminal(terminalId: string): Promise<string> {
+    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
+    for (const project of projects ?? []) {
+      for (const worktree of project.worktrees ?? []) {
+        if ((worktree.terminals ?? []).some((t: { id?: string }) => t.id === terminalId)) {
+          return resolveCanvasProjectRoot(worktree.path, projects);
+        }
+      }
+    }
+    throw Object.assign(new Error(`Terminal not on the canvas: ${terminalId}`), { status: 404 });
+  }
+
+  /**
+   * Backs the task tools (list_tasks, create_task, update_task, ask_user):
+   * the same list the person sees in Tasks, scoped to the agent's project.
+   */
+  private async terminalTasks(method: string, terminalId: string, taskId: string | null, body: any) {
+    const repo = await this.repoOfTerminal(terminalId);
+    const actor = `terminal:${terminalId}`;
+    try {
+      if (method === "GET" && !taskId) {
+        return { tasks: this.deps.taskStore.list(repo).filter((pin) => pinKind(pin) === "task") };
+      }
+      if (method === "POST" && !taskId) {
+        const task = this.deps.taskStore.create(
+          {
+            title: body?.title,
+            repo,
+            kind: "task",
+            body: body?.body,
+            steps: body?.steps,
+            owners: body?.owners ?? [terminalId],
+            status: body?.status === undefined ? undefined : requireStatus(body.status),
+          },
+          actor,
+        );
+        return { task };
+      }
+      if (method === "PUT" && taskId) {
+        const ask =
+          body?.ask && typeof body.ask === "object"
+            ? { reason: body.ask.reason, choices: body.ask.choices, by: terminalId }
+            : body?.ask === null
+              ? null
+              : undefined;
+        const task = this.deps.taskStore.update(
+          repo,
+          taskId,
+          {
+            title: body?.title,
+            status: body?.status === undefined ? undefined : requireStatus(body.status),
+            body: body?.body,
+            steps: body?.steps,
+            owners: body?.owners,
+            ask,
+          },
+          actor,
+        );
+        return { task };
+      }
+    } catch (err) {
+      throw rethrowPinStoreError(err);
+    }
+    throw Object.assign(new Error("Not found"), { status: 404 });
+  }
+
   private async pinList(url: URL) {
     const inputRepo = requireRepoQuery(url);
     const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
@@ -834,17 +908,23 @@ export class ApiServer {
     const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
     const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
     try {
-      const pin = this.deps.taskStore.create({
-        title: body?.title,
-        repo: canonicalRepo,
-        body: body?.body,
-        status: body?.status,
-        links: body?.links,
-        x: body?.x,
-        y: body?.y,
-        w: body?.w,
-        h: body?.h,
-      });
+      const pin = this.deps.taskStore.create(
+        {
+          title: body?.title,
+          repo: canonicalRepo,
+          kind: body?.kind,
+          body: body?.body,
+          status: body?.status === undefined ? undefined : requireStatus(body.status),
+          links: body?.links,
+          steps: body?.steps,
+          owners: body?.owners,
+          x: body?.x,
+          y: body?.y,
+          w: body?.w,
+          h: body?.h,
+        },
+        pinActor(body?.actor),
+      );
       return { pin };
     } catch (err) {
       throw rethrowPinStoreError(err);
@@ -900,16 +980,26 @@ export class ApiServer {
     const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
     const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
     try {
-      const pin = this.deps.taskStore.update(canonicalRepo, id, {
-        title: body?.title,
-        status: body?.status,
-        body: body?.body,
-        links: body?.links,
-        x: body?.x,
-        y: body?.y,
-        w: body?.w,
-        h: body?.h,
-      });
+      const pin = this.deps.taskStore.update(
+        canonicalRepo,
+        id,
+        {
+          title: body?.title,
+          kind: body?.kind,
+          status: body?.status === undefined ? undefined : requireStatus(body.status),
+          body: body?.body,
+          links: body?.links,
+          steps: body?.steps,
+          owners: body?.owners,
+          ask: body?.ask,
+          answer: typeof body?.answer === "string" ? body.answer : undefined,
+          x: body?.x,
+          y: body?.y,
+          w: body?.w,
+          h: body?.h,
+        },
+        pinActor(body?.actor),
+      );
       return { pin };
     } catch (err) {
       throw rethrowPinStoreError(err);
@@ -1712,6 +1802,18 @@ function requireRepoQuery(url: URL): string {
     });
   }
   return repo;
+}
+
+/** Who made a change, from the request: an agent's terminal, else the person. */
+function pinActor(raw: unknown): string {
+  return typeof raw === "string" && /^terminal:[A-Za-z0-9._-]{1,128}$/.test(raw) ? raw : "user";
+}
+
+/** A status as typed ("todo", "doing", "needs-you"…), or a 400. */
+function requireStatus(raw: unknown): PinStatus {
+  const status = parsePinStatus(raw);
+  if (!status) throw Object.assign(new Error(`Invalid status: ${String(raw)}`), { status: 400 });
+  return status;
 }
 
 function rethrowPinStoreError(err: unknown): Error {

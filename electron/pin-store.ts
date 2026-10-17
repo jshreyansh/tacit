@@ -7,18 +7,40 @@ import type {
   Pin,
   PinStatus,
   PinLink,
+  PinActor,
   CreatePinInput,
   UpdatePinInput,
+  TaskAsk,
+  TaskActivity,
+  TaskStep,
 } from "../shared/pin.js";
-import { normalizePinBodyInput } from "../shared/pin.js";
+import {
+  PIN_STATUSES,
+  appendActivity,
+  describeTaskChange,
+  normalizePinBodyInput,
+  parseSteps,
+  pinKind,
+  statusFromSteps,
+} from "../shared/pin.js";
 
 export type { Pin, PinStatus, PinLink, CreatePinInput, UpdatePinInput };
 
-const VALID_STATUSES: ReadonlySet<PinStatus> = new Set([
-  "open",
-  "done",
-  "dropped",
-]);
+const VALID_STATUSES: ReadonlySet<PinStatus> = new Set(PIN_STATUSES);
+const OWNER_REGEX = /^(manager|[A-Za-z0-9._-]{1,128})$/;
+
+function cleanOwners(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new PinStoreError("owners must be a list", 400);
+  return [...new Set(raw.filter((o): o is string => typeof o === "string" && OWNER_REGEX.test(o)))].slice(0, 12);
+}
+
+function cleanSteps(raw: unknown): TaskStep[] | undefined {
+  if (raw === undefined) return undefined;
+  const steps = parseSteps(raw);
+  if (!steps) throw new PinStoreError("steps must be a list", 400);
+  return steps;
+}
 const ID_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 
 export class PinStore extends EventEmitter {
@@ -59,7 +81,7 @@ export class PinStore extends EventEmitter {
     return pin;
   }
 
-  create(input: CreatePinInput): Pin {
+  create(input: CreatePinInput, actor: PinActor = "user"): Pin {
     if (!input.title?.trim()) {
       throw new PinStoreError("title is required", 400);
     }
@@ -73,17 +95,27 @@ export class PinStore extends EventEmitter {
     const dir = this.repoDir(repo);
     fs.mkdirSync(dir, { recursive: true });
 
+    if (input.kind !== undefined && input.kind !== "task" && input.kind !== "note") {
+      throw new PinStoreError(`Invalid kind: ${String(input.kind)}`, 400);
+    }
     const id = this.generateId(input.title, dir);
     const now = new Date().toISOString();
+    const kind = input.kind ?? "task";
+    const steps = kind === "task" ? (cleanSteps(input.steps) ?? []) : [];
+    const owners = kind === "task" ? (cleanOwners(input.owners) ?? []) : [];
     const pin: Pin = {
       id,
+      kind,
       title: input.title.trim(),
-      status: input.status ?? "open",
+      status: statusFromSteps(input.status ?? "open", steps, owners),
       repo,
       body: normalizePinBodyInput(input.body ?? ""),
       links: input.links ?? [],
       created: now,
       updated: now,
+      ...(steps.length ? { steps } : {}),
+      ...(owners.length ? { owners } : {}),
+      activity: appendActivity([], actor, [kind === "task" ? "made this task" : "made this note"], now),
       ...(input.x === undefined ? {} : { x: input.x }),
       ...(input.y === undefined ? {} : { y: input.y }),
       ...(input.w === undefined ? {} : { w: input.w }),
@@ -95,7 +127,7 @@ export class PinStore extends EventEmitter {
     return pin;
   }
 
-  update(repo: string, id: string, patch: UpdatePinInput): Pin {
+  update(repo: string, id: string, patch: UpdatePinInput, actor: PinActor = "user"): Pin {
     const existing = this.get(repo, id);
     if (!existing) throw new PinStoreError(`Pin not found: ${id}`, 404);
 
@@ -105,22 +137,65 @@ export class PinStore extends EventEmitter {
     if (patch.title !== undefined && !patch.title.trim()) {
       throw new PinStoreError("title cannot be empty", 400);
     }
+    if (patch.kind !== undefined && patch.kind !== "task" && patch.kind !== "note") {
+      throw new PinStoreError(`Invalid kind: ${String(patch.kind)}`, 400);
+    }
 
-    const next: Pin = {
+    const now = new Date().toISOString();
+    const kind = patch.kind ?? pinKind(existing);
+    let steps = cleanSteps(patch.steps) ?? existing.steps ?? [];
+    // Marked done by hand: whatever steps were left are done too.
+    if (patch.status === "done" && patch.steps === undefined) steps = steps.map((step) => ({ ...step, status: "done" as const }));
+    const owners = cleanOwners(patch.owners) ?? existing.owners ?? [];
+    // A question sets Needs you; an answer (or clearing it) puts the task
+    // back in progress unless the status is set at the same time.
+    let ask: TaskAsk | undefined = existing.ask;
+    let status: PinStatus = patch.status ?? existing.status;
+    if (patch.ask) {
+      if (typeof patch.ask.reason !== "string" || !patch.ask.reason.trim()) {
+        throw new PinStoreError("a question needs a reason", 400);
+      }
+      ask = {
+        reason: patch.ask.reason.trim().slice(0, 500),
+        ...(Array.isArray(patch.ask.choices)
+          ? { choices: patch.ask.choices.filter((c): c is string => typeof c === "string" && !!c.trim()).map((c) => c.trim().slice(0, 80)).slice(0, 6) }
+          : {}),
+        ...(typeof patch.ask.by === "string" && OWNER_REGEX.test(patch.ask.by) ? { by: patch.ask.by } : {}),
+        at: now,
+      };
+      status = "needs_you";
+    } else if (patch.ask === null || patch.answer !== undefined) {
+      ask = undefined;
+      if (patch.status === undefined && existing.status === "needs_you") status = "in_progress";
+    }
+    if (patch.status !== undefined && patch.status !== "needs_you" && patch.ask === undefined) ask = undefined;
+    // A status set by hand stands; otherwise the steps and owners say it.
+    if (kind === "task" && patch.status === undefined && (patch.steps !== undefined || patch.owners !== undefined)) {
+      status = statusFromSteps(status, steps, owners);
+    }
+
+    const draft: Pin = {
       ...existing,
+      kind,
       title: patch.title?.trim() ?? existing.title,
-      status: patch.status ?? existing.status,
+      status,
       body:
         patch.body !== undefined
           ? normalizePinBodyInput(patch.body)
           : existing.body,
       links: patch.links ?? existing.links,
+      steps,
+      owners,
+      ask,
       x: patch.x ?? existing.x,
       y: patch.y ?? existing.y,
       w: patch.w ?? existing.w,
       h: patch.h ?? existing.h,
-      updated: new Date().toISOString(),
+      updated: now,
     };
+    const answer = typeof patch.answer === "string" ? patch.answer.trim().slice(0, 500) : undefined;
+    const lines = describeTaskChange({ ...existing, kind: pinKind(existing) }, draft, answer);
+    const next: Pin = lines.length ? { ...draft, activity: appendActivity(existing.activity, actor, lines, now) } : draft;
     this.writeFile(this.pinPath(repo, id), next);
     this.populateAttachmentsUrl(next);
     this.emit("pin:updated", { pin: next, repo: path.resolve(repo) });
@@ -250,8 +325,21 @@ export class PinStore extends EventEmitter {
       ) {
         return null;
       }
+      const steps = parseJson<TaskStep[]>(meta.steps, (v) => parseSteps(v) ?? undefined);
+      const owners = parseJson<string[]>(meta.owners, (v) =>
+        Array.isArray(v) ? v.filter((o): o is string => typeof o === "string" && OWNER_REGEX.test(o)) : undefined,
+      );
+      const ask = parseJson<TaskAsk>(meta.ask, (v) =>
+        v && typeof v === "object" && typeof (v as TaskAsk).reason === "string" && typeof (v as TaskAsk).at === "string" ? (v as TaskAsk) : undefined,
+      );
+      const activity = parseJson<TaskActivity[]>(meta.activity, (v) =>
+        Array.isArray(v)
+          ? v.filter((a): a is TaskActivity => !!a && typeof a.at === "string" && typeof a.by === "string" && typeof a.text === "string")
+          : undefined,
+      );
       return {
         id: meta.id,
+        ...(meta.kind === "task" || meta.kind === "note" ? { kind: meta.kind } : {}),
         title: meta.title,
         status,
         repo: meta.repo,
@@ -259,6 +347,10 @@ export class PinStore extends EventEmitter {
         links: parseLinks(meta.links),
         created: meta.created,
         updated: meta.updated,
+        ...(steps?.length ? { steps } : {}),
+        ...(owners?.length ? { owners } : {}),
+        ...(ask ? { ask } : {}),
+        ...(activity?.length ? { activity } : {}),
         ...parseSpatialFields(meta),
       };
     } catch {
@@ -269,12 +361,19 @@ export class PinStore extends EventEmitter {
   private writeFile(filePath: string, pin: Pin): void {
     const dir = path.dirname(filePath);
     fs.mkdirSync(dir, { recursive: true });
+    // The task fields are written only when present, as JSON on one line
+    // each, so a plain note's file reads as it always did.
     const frontmatter = [
       `id: ${pin.id}`,
+      ...(pin.kind ? [`kind: ${pin.kind}`] : []),
       `title: ${escapeYamlString(pin.title)}`,
       `status: ${pin.status}`,
       `repo: ${escapeYamlString(pin.repo)}`,
       `links: ${JSON.stringify(pin.links)}`,
+      ...(pin.steps?.length ? [`steps: ${JSON.stringify(pin.steps)}`] : []),
+      ...(pin.owners?.length ? [`owners: ${JSON.stringify(pin.owners)}`] : []),
+      ...(pin.ask ? [`ask: ${JSON.stringify(pin.ask)}`] : []),
+      ...(pin.activity?.length ? [`activity: ${JSON.stringify(pin.activity)}`] : []),
       `created: ${pin.created}`,
       `updated: ${pin.updated}`,
       ...spatialFrontmatterLines(pin),
@@ -346,6 +445,16 @@ function parseFrontmatter(text: string): Record<string, string> {
     out[m[1]] = unescapeYamlString(m[2]);
   }
   return out;
+}
+
+/** A JSON frontmatter field, or undefined when it's missing or doesn't parse. */
+function parseJson<T>(raw: string | undefined, check: (value: unknown) => T | undefined): T | undefined {
+  if (!raw) return undefined;
+  try {
+    return check(JSON.parse(raw));
+  } catch {
+    return undefined;
+  }
 }
 
 function parseLinks(raw: string | undefined): PinLink[] {

@@ -3,6 +3,7 @@ import https from "https";
 import fs from "fs";
 import path from "path";
 import { resolveTacitPortFile } from "../shared/tacit-instance";
+import { parsePinStatus, pinKind } from "../shared/pin";
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
@@ -697,10 +698,22 @@ async function main() {
       } else {
         console.log(result.diff);
       }
-    } else if (group === "pin") {
+    } else if (group === "task" || group === "pin" || group === "note") {
+      // `tacit task` is the task list the person sees; `tacit pin` is its
+      // old name and still works; `tacit note add` makes a note.
       const pinOptionalFlag = (flag: string): string | undefined => {
         const idx = rest.indexOf(flag);
         return idx >= 0 && idx + 1 < rest.length ? rest[idx + 1] : undefined;
+      };
+      const allFlags = (flag: string): string[] =>
+        rest.flatMap((arg, i) => (arg === flag && i + 1 < rest.length ? [rest[i + 1]] : []));
+      // An agent's changes are its own in the task's history.
+      const actor = process.env.TACIT_TERMINAL_ID?.trim() ? `terminal:${process.env.TACIT_TERMINAL_ID.trim()}` : "user";
+      const STATUS_LABEL: Record<string, string> = { open: "to do", in_progress: "in progress", needs_you: "needs you", done: "done", dropped: "dropped" };
+      const STEP_MARK: Record<string, string> = { pending: "○", active: "▸", done: "✓" };
+      const progressOf = (t: any): string => {
+        const steps: any[] = t.steps ?? [];
+        return steps.length ? ` ${steps.filter((s) => s.status === "done").length}/${steps.length}` : "";
       };
       const pinRequireFlag = (flag: string): string => {
         const value = pinOptionalFlag(flag);
@@ -732,12 +745,17 @@ async function main() {
         const linkUrl = pinOptionalFlag("--link");
         const linkType = pinOptionalFlag("--link-type") ?? "url";
         const links = linkUrl ? [{ type: linkType, url: linkUrl }] : undefined;
+        const kind = group === "note" ? "note" : (pinOptionalFlag("--kind") ?? "task");
+        const steps = allFlags("--step");
         const result = await request("POST", "/pin/create", {
           title,
           repo: resolveRepo(),
+          kind,
           body: pinBody,
           status,
           links,
+          ...(steps.length ? { steps } : {}),
+          actor,
           x: pinNumberFlag("--x"),
           y: pinNumberFlag("--y"),
           w: pinNumberFlag("--w"),
@@ -748,24 +766,31 @@ async function main() {
       } else if (command === "list") {
         const repo = resolveRepo();
         const statusFilter = pinOptionalFlag("--status");
+        const wanted = statusFilter ? parsePinStatus(statusFilter) : null;
+        if (statusFilter && !wanted) {
+          console.error(`Unknown status: ${statusFilter} (todo, doing, needs-you, done, dropped)`);
+          process.exit(1);
+        }
+        const kindFilter = group === "note" ? "note" : group === "task" ? "task" : pinOptionalFlag("--kind");
         const result = await request(
           "GET",
           `/pin/list?repo=${encodeURIComponent(repo)}`,
         );
-        const pins = statusFilter
-          ? result.pins.filter((t: any) => t.status === statusFilter)
-          : result.pins;
+        const pins = result.pins.filter(
+          (t: any) => (!wanted || t.status === wanted) && (!kindFilter || pinKind(t) === kindFilter),
+        );
         if (jsonFlag) {
           console.log(JSON.stringify({ pins }, null, 2));
           return;
         }
         if (pins.length === 0) {
-          console.log("No pins.");
+          console.log(group === "note" ? "No notes." : "No tasks.");
           return;
         }
         for (const t of pins) {
           const linkSuffix = t.links?.length ? `  [${t.links.length} link]` : "";
-          console.log(`${t.id}  [${t.status}]  ${t.title}${linkSuffix}`);
+          const label = pinKind(t) === "note" ? "note" : `${STATUS_LABEL[t.status] ?? t.status}${progressOf(t)}`;
+          console.log(`${t.id}  [${label}]  ${t.title}${linkSuffix}`);
         }
       } else if (command === "show" && rest[0]) {
         const id = rest[0];
@@ -780,10 +805,17 @@ async function main() {
         }
         const t = result.pin;
         console.log(`id:      ${t.id}`);
+        console.log(`kind:    ${pinKind(t)}`);
         console.log(`title:   ${t.title}`);
-        console.log(`status:  ${t.status}`);
+        if (pinKind(t) === "task") console.log(`status:  ${STATUS_LABEL[t.status] ?? t.status}${progressOf(t)}`);
+        if (t.owners?.length) console.log(`owners:  ${t.owners.join(", ")}`);
+        if (t.ask) console.log(`asks:    ${t.ask.reason}${t.ask.choices?.length ? `  (${t.ask.choices.join(" / ")})` : ""}`);
         console.log(`created: ${t.created}`);
         console.log(`updated: ${t.updated}`);
+        if (t.steps?.length) {
+          console.log(`steps:`);
+          t.steps.forEach((s: any, i: number) => console.log(`  ${i + 1}. ${STEP_MARK[s.status] ?? "○"} ${s.text}`));
+        }
         if (t.links?.length) {
           console.log(`links:`);
           for (const l of t.links) {
@@ -821,7 +853,9 @@ async function main() {
       } else if (command === "update" && rest[0]) {
         const id = rest[0];
         const repo = resolveRepo();
-        const payload: Record<string, unknown> = { repo };
+        const payload: Record<string, unknown> = { repo, actor };
+        const newKind = pinOptionalFlag("--kind");
+        if (newKind !== undefined) payload.kind = newKind;
         const newTitle = pinOptionalFlag("--title");
         if (newTitle !== undefined) payload.title = newTitle;
         const newStatus = pinOptionalFlag("--status");
@@ -843,6 +877,53 @@ async function main() {
         );
         if (jsonFlag) console.log(JSON.stringify(result, null, 2));
         else console.log(`Updated ${result.pin.id}`);
+      } else if ((command === "step" || command === "ask" || command === "assign" || command === "done") && rest[0]) {
+        // The task changes agents make most: a step on, a question for the
+        // person, who's on it, done.
+        const id = rest[0];
+        const repo = resolveRepo();
+        const current = (await request("GET", `/pin/${encodeURIComponent(id)}?repo=${encodeURIComponent(repo)}`)).pin;
+        const payload: Record<string, unknown> = { repo, actor };
+        if (command === "done") {
+          payload.status = "done";
+        } else if (command === "step") {
+          const steps: any[] = [...(current.steps ?? [])];
+          const add = pinOptionalFlag("--add");
+          if (add) {
+            steps.push({ text: add, status: "pending" });
+          } else {
+            const n = Number(rest[1]);
+            if (!Number.isInteger(n) || n < 1 || n > steps.length) {
+              console.error(`Step number 1-${steps.length || 0}, or --add "<text>"`);
+              process.exit(1);
+            }
+            const wantedStatus = (pinOptionalFlag("--status") ?? "done").toLowerCase();
+            const status = wantedStatus === "doing" || wantedStatus === "active" || wantedStatus === "in_progress" ? "active" : wantedStatus === "todo" || wantedStatus === "pending" ? "pending" : "done";
+            steps[n - 1] = { ...steps[n - 1], status };
+          }
+          payload.steps = steps;
+        } else if (command === "ask") {
+          const reason = rest[1];
+          if (!reason || reason.startsWith("--")) {
+            console.error('Usage: tacit task ask <id> "<question>" [--choices a,b]');
+            process.exit(1);
+          }
+          const choices = pinOptionalFlag("--choices")?.split(",").map((c) => c.trim()).filter(Boolean);
+          payload.ask = { reason, ...(choices?.length ? { choices } : {}), ...(process.env.TACIT_TERMINAL_ID ? { by: process.env.TACIT_TERMINAL_ID.trim() } : {}) };
+        } else {
+          const to = pinOptionalFlag("--to") ?? "me";
+          const owner = to === "me" ? process.env.TACIT_TERMINAL_ID?.trim() : to;
+          if (!owner) {
+            console.error("--to me works inside a Tacit terminal; else --to manager or a terminal id");
+            process.exit(1);
+          }
+          payload.owners = rest.includes("--remove")
+            ? (current.owners ?? []).filter((o: string) => o !== owner)
+            : [...new Set([...(current.owners ?? []), owner])];
+        }
+        const result = await request("PUT", `/pin/${encodeURIComponent(id)}`, payload);
+        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
+        else console.log(`${result.pin.id}  [${STATUS_LABEL[result.pin.status] ?? result.pin.status}${progressOf(result.pin)}]  ${result.pin.title}`);
       } else if ((command === "rm" || command === "remove") && rest[0]) {
         const id = rest[0];
         const repo = resolveRepo();
@@ -854,13 +935,17 @@ async function main() {
         else console.log(`Removed ${id}`);
       } else {
         console.log(
-          "Usage: tacit pin <add|list|show|render|update|rm> [args]\n" +
-          "  pin add --title <t> [--body <b>] [--status open|done|dropped] [--link <url>] [--link-type <type>] [--repo <path>] [--x N] [--y N] [--w N] [--h N]\n" +
-          "  pin list [--status open|done|dropped] [--repo <path>]\n" +
-          "  pin show <id> [--repo <path>]\n" +
-          "  pin render <id> [--repo <path>] [--out <png>] [--width N] [--height N] [--wait-ms N] [--full-page]\n" +
-          "  pin update <id> [--title <t>] [--status <s>] [--body <b>] [--x N] [--y N] [--w N] [--h N] [--repo <path>]\n" +
-          "  pin rm <id> [--repo <path>]",
+          "Usage: tacit task <add|list|show|step|ask|assign|done|update|render|rm> [args]   (tacit pin works too; tacit note add makes a note)\n" +
+          "  task add --title <t> [--step <text>]... [--body <b>] [--status todo|doing|done] [--link <url>] [--link-type <type>] [--repo <path>]\n" +
+          "  task list [--status todo|doing|needs-you|done|dropped] [--repo <path>]\n" +
+          "  task show <id> [--repo <path>]\n" +
+          "  task step <id> <n> [--status todo|doing|done]   |   task step <id> --add <text>\n" +
+          "  task ask <id> <question> [--choices a,b]        (sets Needs you; the answer comes into this terminal)\n" +
+          "  task assign <id> [--to me|manager|<terminal-id>] [--remove]\n" +
+          "  task done <id>\n" +
+          "  task update <id> [--title <t>] [--status <s>] [--body <b>] [--kind task|note] [--x N] [--y N] [--w N] [--h N] [--repo <path>]\n" +
+          "  task render <id> [--repo <path>] [--out <png>] [--width N] [--height N] [--wait-ms N] [--full-page]\n" +
+          "  task rm <id> [--repo <path>]",
         );
       }
     } else if (group === "browser") {
@@ -938,7 +1023,7 @@ async function main() {
       console.log(JSON.stringify(state, null, 2));
     } else {
       console.log(
-        "Usage: tacit <project|workflow|worktree|terminal|telemetry|pin|browser|diff|state> <command> [args]",
+        "Usage: tacit <project|workflow|worktree|terminal|telemetry|task|browser|diff|state> <command> [args]",
       );
       console.log("");
       console.log("Commands:");
@@ -1036,22 +1121,24 @@ async function main() {
       );
       console.log("  diff <worktree-path> [--summary]            Get git diff");
       console.log(
-        "  pin add --title <t> [--body <b>] [--link <url>]   Record a pin",
+        "  task add --title <t> [--step <s>]... [--body <b>]  Record a task (pin works too)",
       );
       console.log(
-        "  pin list [--status open|done|dropped]              List pins for cwd repo",
+        "  task list [--status todo|doing|needs-you|done]   List tasks for cwd repo",
       );
       console.log(
-        "  pin show <id>                              Show pin detail",
+        "  task show <id>                             Show a task: status, steps, owners",
       );
       console.log(
-        "  pin render <id>                            Render pin HTML/Markdown to PNG",
+        "  task step <id> <n> [--status doing|done]   Move a step on (or --add <text>)",
+        "  task ask <id> <question> [--choices a,b]   Ask the person (sets Needs you)",
+        "  task render <id>                           Render a task's HTML/Markdown to PNG",
       );
       console.log(
-        "  pin update <id> [--title|--status|--body]  Edit a pin",
+        "  task update <id> [--title|--status|--body] Edit a task",
       );
       console.log(
-        "  pin rm <id>                                Delete a pin",
+        "  task rm <id>                               Delete a task",
       );
       console.log(
         "  browser add <url> [--x N] [--y N]          Add a browser tile to the canvas",

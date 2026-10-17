@@ -3427,30 +3427,36 @@ function setupIpc() {
     return safeStorage.decryptString(Buffer.from(base64, "base64"));
   });
 
-  ipcMain.handle("pin:list", (_event, repo: string) => {
+  // Tasks and notes: only the app's own window, and the store checks each
+  // field. Changes from here are the person's ("user") in a task's history.
+  ipcMain.handle("pin:list", (event, repo: unknown) => {
+    if (!isMainWindowSender(event) || typeof repo !== "string") return [];
     return taskStore.list(repo);
   });
 
   ipcMain.handle(
     "pin:create",
-    (_event, input: Parameters<typeof taskStore.create>[0]) => {
-      return taskStore.create(input);
+    (event, input: Parameters<typeof taskStore.create>[0]) => {
+      if (!isMainWindowSender(event)) throw new Error("Not allowed");
+      return taskStore.create(input, "user");
     },
   );
 
   ipcMain.handle(
     "pin:update",
     (
-      _event,
+      event,
       repo: string,
       id: string,
       patch: Parameters<typeof taskStore.update>[2],
     ) => {
-      return taskStore.update(repo, id, patch);
+      if (!isMainWindowSender(event) || typeof repo !== "string" || typeof id !== "string") throw new Error("Not allowed");
+      return taskStore.update(repo, id, patch, "user");
     },
   );
 
-  ipcMain.handle("pin:remove", (_event, repo: string, id: string) => {
+  ipcMain.handle("pin:remove", (event, repo: string, id: string) => {
+    if (!isMainWindowSender(event) || typeof repo !== "string" || typeof id !== "string") throw new Error("Not allowed");
     taskStore.remove(repo, id);
   });
 
