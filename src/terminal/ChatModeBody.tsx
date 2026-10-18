@@ -4,10 +4,9 @@ import { ManagerMark } from "../toolbar/ManagerMark";
 import { ensureManagerChat, requestManagerMove } from "../actions/managerChatMode";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
-import { useSessionStore } from "../stores/sessionStore";
-import { useCanvasStore } from "../stores/canvasStore";
 import { continueChatSessionInTerminal } from "../actions/sessionResume";
 import { useEffect } from "react";
+import { openLiveChatSession } from "../actions/openSession";
 
 /**
  * A tile whose agent runs in chat mode (T6). It starts no process; it says
@@ -63,10 +62,7 @@ function SessionChatModeBody({ terminalId, agent }: { terminalId: string; agent:
   useEffect(() => {
     void ensureManagerChat(terminalId);
   }, [terminalId]);
-  const showChat = () => {
-    useSessionStore.getState().openLiveChat(terminalId);
-    useCanvasStore.getState().openSessionsOverlay();
-  };
+  const showChat = () => openLiveChatSession(terminalId);
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center nopan nodrag">
       <ManagerMark agent={agent} size={34} working={transcript.running} />

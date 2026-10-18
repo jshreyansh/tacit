@@ -1240,8 +1240,9 @@ export function App() {
       <CommandPalette />
       <SnapshotHistoryModal />
       <UsageOverlay />
-      <SessionsOverlay />
-      <FileEditorDrawer />
+      {/* In the grid, sessions and files open as tabs of their own. */}
+      {!gridMode && <SessionsOverlay />}
+      {!gridMode && <FileEditorDrawer />}
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />

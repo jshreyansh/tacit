@@ -61,6 +61,7 @@ import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
 import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
 import type { TerminalType } from "../types";
+import { openPastSession } from "../actions/openSession";
 
 /** Time for today's rows, date for older ones — a history list reads as "when". */
 function formatWhen(iso: string): string {
@@ -606,15 +607,10 @@ export function WorkspaceManagerPill() {
   const managerSessionIds = useMemo(() => new Set(history.map((row) => row.sessionId)), [history]);
   const currentManagerSessionId =
     managerTerminal?.sessionId ?? history.find((row) => row.isCurrent)?.sessionId ?? null;
-  const openSessionsOverlay = useCanvasStore((s) => s.openSessionsOverlay);
-  const loadReplay = useSessionStore((s) => s.loadReplay);
   /** The transcript opens in the session view beside the chat, with Resume. */
   const openReplay = useCallback(
-    (filePath: string) => {
-      openSessionsOverlay();
-      void loadReplay(filePath);
-    },
-    [openSessionsOverlay, loadReplay],
+    (filePath: string) => openPastSession(filePath),
+    [],
   );
 
   // Chat mode (T6): the manager's agent runs in the engine, not its tile.

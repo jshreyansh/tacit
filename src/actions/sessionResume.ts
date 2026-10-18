@@ -61,22 +61,33 @@ function newTerminal(target: ResumeTarget, sessionId: string, chatMode: boolean)
  * live in the reader. The tile starts no process; the chat agent resumes
  * the session.
  */
-export async function continueSessionInChat(target: ResumeTarget): Promise<void> {
+/**
+ * `onOpened`: the session was read in a tab of the workdesk view, which
+ * becomes the live agent's tab instead of the reader showing it.
+ */
+export async function continueSessionInChat(target: ResumeTarget, onOpened?: (terminalId: string) => void): Promise<void> {
   const created = newTerminal(target, target.sessionId, true);
-  useSessionStore.getState().openLiveChat(created.id);
+  if (onOpened) onOpened(created.id);
+  else useSessionStore.getState().openLiveChat(created.id);
   const ok = await startTerminalChat(created.id);
   if (!ok) {
     // It couldn't start: the node goes back to being a terminal that resumes it.
     useProjectStore.getState().setTerminalChatMode(target.projectId, target.worktreeId, created.id, false);
+    if (onOpened) return;
     useSessionStore.getState().exitReplay();
     useCanvasStore.getState().closeSessionsOverlay();
     panToTerminal(created.id);
   }
 }
 
-/** Resumes the session in the agent's own terminal on the canvas. */
-export function resumeSessionInTerminal(target: ResumeTarget, notice: string): void {
+/** Resumes the session in the agent's own terminal on the canvas (or in the tab it was read in). */
+export function resumeSessionInTerminal(target: ResumeTarget, notice: string, onOpened?: (terminalId: string) => void): void {
   const created = newTerminal(target, target.sessionId, false);
+  if (onOpened) {
+    onOpened(created.id);
+    useNotificationStore.getState().notify("info", notice);
+    return;
+  }
   useSessionStore.getState().exitReplay();
   useCanvasStore.getState().closeSessionsOverlay();
   panToTerminal(created.id);
@@ -87,10 +98,21 @@ export function resumeSessionInTerminal(target: ResumeTarget, notice: string): v
  * A new session made of this one up to a turn, resumed in a terminal: to
  * try that turn again, or go another way from it.
  */
-export async function forkSessionAt(target: ResumeTarget, filePath: string, promptIndex: number, notice: string): Promise<void> {
+export async function forkSessionAt(
+  target: ResumeTarget,
+  filePath: string,
+  promptIndex: number,
+  notice: string,
+  onOpened?: (terminalId: string) => void,
+): Promise<void> {
   try {
     const { newSessionId } = await useSessionStore.getState().forkSession(filePath, promptIndex, target.agent);
     const created = newTerminal(target, newSessionId, false);
+    if (onOpened) {
+      onOpened(created.id);
+      useNotificationStore.getState().notify("info", notice);
+      return;
+    }
     useSessionStore.getState().exitReplay();
     useCanvasStore.getState().closeSessionsOverlay();
     panToTerminal(created.id);

@@ -6,7 +6,8 @@ import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useIdentityStore } from "../stores/identityStore";
 import { usePinStore } from "../stores/pinStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
-import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
+import { useChatDockStore } from "../stores/chatDockStore";
+import { useLeftChromeInset } from "../stores/chromeLayout";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { tabKey, useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import { closeTerminalInScene } from "../actions/terminalSceneActions";
@@ -35,6 +36,7 @@ import {
   type TaskCard,
   type TerminalCard,
   type WorkdeskCard,
+  type TabCard,
   type WorkdeskFilter,
 } from "./workdeskModel";
 
@@ -65,6 +67,24 @@ function ShellIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="M7 10l3 2-3 2M12 14h4" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 1.75h5.25L12.5 5v9.25h-8.5z" />
+      <path d="M9 1.75V5.25h3.5" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.5H5" />
+      <path d="M8 5v3l2 1.5" />
     </svg>
   );
 }
@@ -292,6 +312,8 @@ export function WorkdeskView() {
   const hiddenTabs = useWorkdeskViewStore((s) => s.hiddenTabs);
   const hideTab = useWorkdeskViewStore((s) => s.hideTab);
   const [closing, setClosing] = useState<WorkdeskCard | null>(null);
+  const sessionTabs = useWorkdeskViewStore((s) => s.sessionTabs);
+  const fileTabs = useWorkdeskViewStore((s) => s.fileTabs);
   // A new task from the grid opens in its tab, ready to name.
   const addGridTask = async () => {
     const { focusedProjectId, projects: all } = useProjectStore.getState();
@@ -308,7 +330,7 @@ export function WorkdeskView() {
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const transcripts = useManagerChatStore((s) => s.transcripts);
-  const chatDock = useChatDockStore();
+  const leftInset = useLeftChromeInset();
   const [tails, setTails] = useState<Record<string, string[]>>({});
   const [now, setNow] = useState(() => Date.now());
 
@@ -337,7 +359,17 @@ export function WorkdeskView() {
     () => [...sections.agents, ...sections.terminals, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.tasks, ...sections.notes],
     [sections],
   );
-  const openCard = openNode ? (allCards.find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null) : null;
+  // Past sessions and files opened here, each in a tab after the nodes.
+  const extraCards = useMemo<TabCard[]>(
+    () => [
+      ...sessionTabs.map((s): TabCard => ({ kind: "session", id: s.id, title: s.title ?? t.reader_loading, agent: s.agent })),
+      ...fileTabs.map((p): TabCard => ({ kind: "file", id: p, title: p.split("/").pop() ?? p })),
+    ],
+    [sessionTabs, fileTabs, t],
+  );
+  const openCard: TabCard | null = openNode
+    ? ([...allCards, ...extraCards].find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null)
+    : null;
   // A node closed while its tab was open: back to the grid. One just added
   // may not be listed yet, so only a node that was seen counts as closed.
   const seenOpen = useRef<string | null>(null);
@@ -380,15 +412,23 @@ export function WorkdeskView() {
 
   // The strip: every terminal and browser, and the tasks and notes not
   // closed from it (the open one always shows).
-  const tabCards = allCards.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c)));
+  const tabCards: TabCard[] = [...allCards.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c))), ...extraCards];
   /** Closing a tab moves to the one beside it, as a browser does. */
-  const nextAfter = (card: WorkdeskCard): OpenNode | null => {
+  const nextAfter = (card: TabCard): OpenNode | null => {
     if (card !== openCard) return openNode;
     const at = tabCards.indexOf(card);
     const next = tabCards[at + 1] ?? tabCards[at - 1];
     return next ? { kind: next.kind, id: next.id } : null;
   };
-  const closeTab = (card: WorkdeskCard) => {
+  const closeTab = (card: TabCard) => {
+    // A session or file tab just closes; reading or editing it is all it was.
+    if (card.kind === "session" || card.kind === "file") {
+      const next = nextAfter(card);
+      if (card.kind === "session") useWorkdeskViewStore.getState().closeSession(card.id);
+      else useWorkdeskViewStore.getState().closeFile(card.id);
+      setOpenNode(next);
+      return;
+    }
     if (card.kind === "task" || card.kind === "note") {
       const next = nextAfter(card);
       hideTab({ kind: card.kind, id: card.id });
@@ -407,7 +447,8 @@ export function WorkdeskView() {
     setOpenNode(next);
   };
 
-  const left = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatDockOffset(chatDock, CHROME_GAP);
+  // Beside whatever is open on the left (the chat, a panel, the Hub), never under it.
+  const left = leftInset;
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
   const show = (f: WorkdeskFilter) => filter === "all" || filter === f;
   // Tasks and notes sit together, as they're kept together.
@@ -513,7 +554,8 @@ export function WorkdeskView() {
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
           {tabCards.map((card) => {
             const active = card === openCard;
-            const icon = card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : null;
+            const icon =
+              card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : card.kind === "session" && card.agent ? agentIcon(card.agent) : null;
             return (
               <div
                 key={`${card.kind}:${card.id}`}
@@ -532,7 +574,19 @@ export function WorkdeskView() {
                     <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
                   ) : (
                     <span className="flex shrink-0">
-                      {card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : card.kind === "task" ? <TaskIcon /> : <ShellIcon />}
+                      {card.kind === "browser" ? (
+                        <GlobeIcon />
+                      ) : card.kind === "note" ? (
+                        <NoteIcon />
+                      ) : card.kind === "task" ? (
+                        <TaskIcon />
+                      ) : card.kind === "file" ? (
+                        <FileIcon />
+                      ) : card.kind === "session" ? (
+                        <HistoryIcon />
+                      ) : (
+                        <ShellIcon />
+                      )}
                     </span>
                   )}
                   <span className="truncate">{card.title}</span>

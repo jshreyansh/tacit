@@ -9,11 +9,17 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { updatePinInScene } from "../actions/scenePinActions";
 import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
 import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
-import type { BrowserCard, NoteCard, TaskCard, TerminalCard, WorkdeskCard } from "./workdeskModel";
+import type { BrowserCard, NoteCard, TabCard, TaskCard, TerminalCard } from "./workdeskModel";
+import { PastSessionTab } from "../toolbar/SessionReader";
+import { FileEditorDrawer } from "../components/FileEditorDrawer";
+import { SessionChatBody } from "../toolbar/chat/SessionChat";
+import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
+import { cancelManagerMove, moveManagerNow } from "../actions/managerChatMode";
 import type { Pin } from "../types";
 import { TaskSections } from "../tasks/TaskParts";
 import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
 import { showPinOnCanvas } from "../tasks/TasksView";
+import { openFileInView, openPastSession } from "../actions/openSession";
 
 /**
  * One node full size in the workdesk view's tabs (T7, G2). A terminal's
@@ -29,7 +35,18 @@ const NOTE_SAVE_MS = 500;
 const TAB_FONT_SIZE = 13;
 
 /** The canvas, on this node: a task or note not on it yet is put there. */
-export async function showOnCanvas(card: WorkdeskCard): Promise<void> {
+export async function showOnCanvas(card: TabCard): Promise<void> {
+  // A past session or a file: the canvas, with it in the reader or the editor.
+  if (card.kind === "session") {
+    useWorkdeskViewStore.getState().setMode("canvas");
+    openPastSession(card.id);
+    return;
+  }
+  if (card.kind === "file") {
+    useWorkdeskViewStore.getState().setMode("canvas");
+    openFileInView(card.id);
+    return;
+  }
   if (card.kind === "task" || card.kind === "note") {
     const pin = (usePinStore.getState().pinsByProject[card.projectPath] ?? []).find((p) => p.id === card.id);
     if (pin) return showPinOnCanvas(pin);
@@ -57,10 +74,73 @@ function Footer({ hint, children }: { hint: string; children: React.ReactNode })
 const footButton =
   "tc-rail-btn h-7 shrink-0 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
 
+/**
+ * Terminal or Chat, for an agent that has a chat mode (Claude, Codex):
+ * moving stops the process the turn runs in, so mid-turn it waits for the
+ * turn to end, with Switch now and Cancel.
+ */
+function ViewSwitch({ card, busy, t }: { card: TerminalCard; busy: boolean; t: Dict }) {
+  const pending = usePendingManagerMove(card.id);
+  const openChat = useChatDockStore((s) => s.setOpen);
+  const pick = (to: "terminal" | "chat") => {
+    if ((to === "chat") === card.chatMode) return;
+    requestManagerMove(card.id, to, busy);
+    // The manager's chat lives in the dock.
+    if (to === "chat" && card.isManager) openChat(true);
+  };
+  const segment = (to: "terminal" | "chat", label: string) => {
+    const on = (to === "chat") === card.chatMode;
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={on}
+        className="h-6 rounded-[6px] px-2.5 text-[11.5px] transition-colors duration-quick"
+        style={{ background: on ? "var(--surface-hover)" : "transparent", color: on ? "var(--text-primary)" : "var(--text-muted)", fontWeight: on ? 600 : 500 }}
+        onClick={() => pick(to)}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
+      <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--text-muted)]">
+        {pending ? (pending === "terminal" ? t.chat_move_pending_terminal : t.chat_move_pending_chat) : card.subtitle}
+      </span>
+      {pending && (
+        <>
+          <button type="button" className={footButton} onClick={() => moveManagerNow(card.id)} title={t.chat_move_now_hint}>
+            {t.chat_move_now}
+          </button>
+          <button type="button" className={footButton} onClick={() => cancelManagerMove(card.id)}>
+            {t.cancel}
+          </button>
+        </>
+      )}
+      <div role="tablist" aria-label={t.workdesk_view_as} className="flex gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
+        {segment("terminal", t.workdesk_view_terminal)}
+        {segment("chat", t.workdesk_view_chat)}
+      </div>
+    </div>
+  );
+}
+
 function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [borrowed, setBorrowed] = useState(true);
   const openChat = useChatDockStore((s) => s.setOpen);
+  const transcript = useManagerTranscript(card.chatMode ? card.id : null);
+  const switchable = hasChatMode(card.type);
+  const busy = card.chatMode ? transcript.running : card.state === "active";
+  // A move asked for mid-turn happens when the turn ends (the pill does
+  // this for the manager); one that no longer applies is dropped.
+  const pending = usePendingManagerMove(card.id);
+  useEffect(() => {
+    if (card.isManager || !pending) return;
+    if ((pending === "terminal") !== card.chatMode) cancelManagerMove(card.id);
+    else if (!busy) requestManagerMove(card.id, pending, false);
+  }, [pending, busy, card.chatMode, card.isManager, card.id]);
 
   useLayoutEffect(() => {
     if (!container || card.chatMode) return;
@@ -77,42 +157,32 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
     };
   }, [container, card.id, card.chatMode]);
 
-  if (card.chatMode) {
-    return (
-      <>
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="text-[13px] text-[var(--text-primary)]">{t.workdesk_in_chat}</div>
-          <button type="button" className={footButton} onClick={() => openChat(true)}>
-            {t.chat_mode_show_chat}
-          </button>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
-      <div className="relative min-h-0 flex-1 bg-[var(--bg)]">
-        <div ref={setContainer} className="absolute inset-0 m-2" />
-        {!borrowed && (
-          <div className="absolute inset-0 flex items-center justify-center text-[12.5px] text-[var(--text-muted)]">
-            {t.workdesk_terminal_canvas_only}
+      {switchable && <ViewSwitch card={card} busy={busy} t={t} />}
+      {card.chatMode ? (
+        card.isManager ? (
+          // The manager's chat is the docked one.
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
+            <div className="text-[13px] text-[var(--text-primary)]">{t.workdesk_in_chat}</div>
+            <button type="button" className={footButton} onClick={() => openChat(true)}>
+              {t.chat_mode_show_chat}
+            </button>
           </div>
-        )}
-      </div>
-      {card.isManager && hasChatMode(card.type) && (
-        <Footer hint={card.subtitle}>
-          <button
-            type="button"
-            className={footButton}
-            onClick={() => {
-              requestManagerMove(card.id, "chat", card.state === "active");
-              openChat(true);
-            }}
-          >
-            {t.workdesk_open_as_chat}
-          </button>
-        </Footer>
+        ) : (
+          <div className="mx-auto flex min-h-0 w-full max-w-[780px] flex-1 flex-col">
+            <SessionChatBody terminalId={card.id} agent={card.type} />
+          </div>
+        )
+      ) : (
+        <div className="relative min-h-0 flex-1 bg-[var(--bg)]">
+          <div ref={setContainer} className="absolute inset-0 m-2" />
+          {!borrowed && (
+            <div className="absolute inset-0 flex items-center justify-center text-[12.5px] text-[var(--text-muted)]">
+              {t.workdesk_terminal_canvas_only}
+            </div>
+          )}
+        </div>
       )}
     </>
   );
@@ -285,8 +355,24 @@ function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
   );
 }
 
-export function WorkdeskTab({ card }: { card: WorkdeskCard }) {
+export function WorkdeskTab({ card }: { card: TabCard }) {
   const t = useT();
+  if (card.kind === "session") return <PastSessionTab key={card.id} filePath={card.id} />;
+  if (card.kind === "file") {
+    return (
+      <FileEditorDrawer
+        key={card.id}
+        embedded={{
+          path: card.id,
+          onClose: () => {
+            const view = useWorkdeskViewStore.getState();
+            view.closeFile(card.id);
+            view.setOpenNode(null);
+          },
+        }}
+      />
+    );
+  }
   if (card.kind === "terminal") return <TerminalTab key={card.id} card={card} t={t} />;
   if (card.kind === "browser") return <BrowserTab key={card.id} card={card} t={t} />;
   if (card.kind === "task") return <TaskTab key={card.id} card={card} t={t} />;

@@ -1,8 +1,8 @@
 import type { SearchResult } from "../../stores/searchStore";
 import { useSearchStore } from "../../stores/searchStore";
 import { useCanvasStore } from "../../stores/canvasStore";
-import { useSessionStore } from "../../stores/sessionStore";
 import { panToTerminal } from "../../utils/panToTerminal";
+import { openFileInView, openPastSession } from "../../actions/openSession";
 
 export function executeResult(result: SearchResult): void {
   const { data } = result;
@@ -15,7 +15,7 @@ export function executeResult(result: SearchResult): void {
     case "file":
       // Files open in the FileEditorDrawer (full-canvas Monaco) — the
       // old "preview" right-panel tab is gone.
-      useCanvasStore.getState().openFileEditor(data.filePath);
+      openFileInView(data.filePath);
       break;
 
     case "terminal":
@@ -39,8 +39,7 @@ export function executeResult(result: SearchResult): void {
       // Sessions live in the full-screen overlay now (no longer a
       // right-panel tab). Open the overlay and let it pick up the
       // loaded replay.
-      useCanvasStore.getState().openSessionsOverlay();
-      useSessionStore.getState().loadReplay(data.filePath);
+      openPastSession(data.filePath);
       break;
 
     case "memory":

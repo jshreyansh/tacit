@@ -8,6 +8,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useCanvasStore } from "../stores/canvasStore";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import { timelineToChatEvents } from "../../shared/chat-history";
@@ -198,7 +199,12 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
   );
 }
 
-function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose: () => void }) {
+/**
+ * `onLive`: read in a tab of the workdesk view. Continuing, resuming or
+ * forking it hands the tab to the live agent, and a session already held by
+ * a terminal opens that terminal's tab; the tab's own × closes it.
+ */
+function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; onClose: () => void; onLive?: (terminalId: string) => void }) {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const canvases = useCanvasRegistryStore((s) => s.canvases);
@@ -240,6 +246,11 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
     .filter(Boolean)
     .join(" · ");
 
+  // In a tab, the tab takes the session's name.
+  useEffect(() => {
+    if (onLive) useWorkdeskViewStore.getState().nameSession(timeline.filePath, titleText, agent);
+  }, [onLive, timeline.filePath, titleText, agent]);
+
   const jumpTo = (messageId: string) => {
     setActiveTurn(messageId);
     threadRef.current?.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -265,7 +276,7 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
     );
   } else if (holding && holdingTerminal?.chatMode) {
     actions = (
-      <button type="button" className={primary} onClick={() => useSessionStore.getState().openLiveChat(holding)}>
+      <button type="button" className={primary} onClick={() => (onLive ? onLive(holding) : useSessionStore.getState().openLiveChat(holding))}>
         {t.reader_open_chat}
       </button>
     );
@@ -275,17 +286,18 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
         type="button"
         className={secondary}
         onClick={() => {
+          if (onLive) return onLive(holding);
           onClose();
           panToTerminal(holding);
         }}
       >
-        {t.workdesk_show_on_canvas}
+        {onLive ? t.reader_open_tab : t.workdesk_show_on_canvas}
       </button>
     );
   } else {
     actions = (
       <>
-        <button type="button" className={primary} disabled={!target} title={noTargetHint} onClick={() => target && void continueSessionInChat(target)}>
+        <button type="button" className={primary} disabled={!target} title={noTargetHint} onClick={() => target && void continueSessionInChat(target, onLive)}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M7 5l12 7-12 7z" />
           </svg>
@@ -296,7 +308,7 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
           className={secondary}
           disabled={!target}
           title={noTargetHint}
-          onClick={() => target && resumeSessionInTerminal(target, t.reader_resumed_toast(agentName))}
+          onClick={() => target && resumeSessionInTerminal(target, t.reader_resumed_toast(agentName), onLive)}
         >
           {t.reader_resume_terminal}
         </button>
@@ -323,7 +335,7 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
         </div>
         {actions}
         <MoreMenu timeline={timeline} agent={agent} t={t} onHidden={onClose} />
-        <CloseButton onClose={onClose} t={t} />
+        {!onLive && <CloseButton onClose={onClose} t={t} />}
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -362,7 +374,7 @@ function PastSession({ timeline, onClose }: { timeline: ReplayTimeline; onClose:
                   <button
                     type="button"
                     className="tc-rail-btn absolute right-1 top-1 hidden h-6 w-6 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] group-hover:inline-flex"
-                    onClick={() => void forkSessionAt(target, timeline.filePath, turn.promptIndex, t.reader_forked_toast)}
+                    onClick={() => void forkSessionAt(target, timeline.filePath, turn.promptIndex, t.reader_forked_toast, onLive)}
                     title={t.reader_fork}
                     aria-label={t.reader_fork}
                   >
@@ -469,6 +481,39 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
         <SessionChatBody terminalId={terminalId} agent={terminal.type} />
       </div>
     </div>
+  );
+}
+
+/** A past session in a tab of the workdesk view: read, then continued right there. */
+export function PastSessionTab({ filePath }: { filePath: string }) {
+  const t = useT();
+  const [timeline, setTimeline] = useState<ReplayTimeline | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setTimeline(null);
+    setError(null);
+    window.tacit.sessions
+      .loadReplay(filePath)
+      .then((loaded) => !cancelled && setTimeline(loaded))
+      .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath]);
+  const view = useWorkdeskViewStore.getState();
+  if (!timeline) {
+    return <div className="flex flex-1 items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">{error ?? t.reader_loading}</div>;
+  }
+  return (
+    <PastSession
+      timeline={timeline}
+      onClose={() => {
+        view.closeSession(filePath);
+        view.setOpenNode(null);
+      }}
+      onLive={(terminalId) => useWorkdeskViewStore.getState().sessionWentLive(filePath, terminalId)}
+    />
   );
 }
 

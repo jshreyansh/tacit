@@ -2,9 +2,8 @@ import { useEffect } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { CHROME_GAP, useCanvasStore } from "../stores/canvasStore";
-import { chatDockOffset, useChatDockStore } from "../stores/chatDockStore";
+import { useLeftChromeInset } from "../stores/chromeLayout";
 import {
-  getCanvasLeftInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { useT } from "../i18n/useT";
@@ -42,13 +41,11 @@ const SESSIONS_MIN_GAP_PX = 520;
 export function SessionsOverlay() {
   const open = useCanvasStore((s) => s.sessionsOverlayOpen);
   const close = useCanvasStore((s) => s.closeSessionsOverlay);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   // It opens to the right of the docked chat, and follows its edge while
   // you drag it.
-  useChatDockStore((s) => chatDockOffset(s, CHROME_GAP));
+  const chromeLeft = useLeftChromeInset();
   const t = useT();
 
   useEffect(() => {
@@ -68,13 +65,7 @@ export function SessionsOverlay() {
 
   if (!open) return null;
 
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    false,
-    rightPanelCollapsed,
-    rightPanelWidth,
-  );
+  const leftInset = chromeLeft;
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   // Auto-hide when canvas gap is too narrow — same contract as

@@ -51,8 +51,16 @@ export function tabKey(node: OpenNode): string {
 
 /** A node opened full size in the workdesk view's tabs. */
 export interface OpenNode {
-  kind: "terminal" | "browser" | "task" | "note";
+  /** `session`: a past session read in a tab, by its file path; `file`: a file, by its path. */
+  kind: "terminal" | "browser" | "task" | "note" | "session" | "file";
   id: string;
+}
+
+/** A past session open in a tab; its title once the session is read. */
+export interface SessionTab {
+  id: string;
+  title: string | null;
+  agent: string | null;
 }
 
 /**
@@ -81,6 +89,17 @@ interface WorkdeskViewStore {
    */
   hiddenTabs: string[];
   hideTab: (node: OpenNode) => void;
+  /** Past sessions opened from history, each in its own tab, newest last. */
+  sessionTabs: SessionTab[];
+  openSession: (filePath: string) => void;
+  closeSession: (filePath: string) => void;
+  nameSession: (filePath: string, title: string, agent: string | null) => void;
+  /** A session continued (in chat or its terminal): its tab becomes the live agent's. */
+  sessionWentLive: (filePath: string, terminalId: string) => void;
+  /** Files opened from Files, Memory or search, each in its own tab. */
+  fileTabs: string[];
+  openFile: (filePath: string) => void;
+  closeFile: (filePath: string) => void;
 }
 
 export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
@@ -90,6 +109,26 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
   projection: null,
   setProjection: (projection) => set({ projection }),
   hiddenTabs: loadHidden(),
+  sessionTabs: [],
+  openSession: (filePath) => {
+    const tabs = get().sessionTabs;
+    if (!tabs.some((s) => s.id === filePath)) set({ sessionTabs: [...tabs, { id: filePath, title: null, agent: null }] });
+    get().setOpenNode({ kind: "session", id: filePath });
+  },
+  closeSession: (filePath) => set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) })),
+  nameSession: (filePath, title, agent) =>
+    set((s) => ({ sessionTabs: s.sessionTabs.map((tab) => (tab.id === filePath ? { ...tab, title, agent } : tab)) })),
+  fileTabs: [],
+  openFile: (filePath) => {
+    const tabs = get().fileTabs;
+    if (!tabs.includes(filePath)) set({ fileTabs: [...tabs, filePath] });
+    get().setOpenNode({ kind: "file", id: filePath });
+  },
+  closeFile: (filePath) => set((s) => ({ fileTabs: s.fileTabs.filter((p) => p !== filePath) })),
+  sessionWentLive: (filePath, terminalId) => {
+    set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) }));
+    get().setOpenNode({ kind: "terminal", id: terminalId });
+  },
   hideTab: (node) => {
     const hiddenTabs = [...new Set([...get().hiddenTabs, tabKey(node)])];
     saveHidden(hiddenTabs);

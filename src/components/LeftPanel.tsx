@@ -25,6 +25,8 @@ import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { buildProjectTree, type CanvasTerminalItem } from "./sessionPanelModel";
 import { ProjectTree } from "./ProjectTree";
 import { TerminalCard, HistorySection, StashedSection } from "./SessionsPanel";
+import { openPastSession } from "../actions/openSession";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 
 /*
  * Left panel — project management + session history.
@@ -136,6 +138,8 @@ export function LeftPanel() {
       // `openSessionsOverlay` enforces canvas-gap mutual exclusion
       // (file editor + usage get evicted), then the drawer renders
       // whatever `sessionStore.loadReplay` produces.
+      // In the grid it opens as a tab instead.
+      if (useWorkdeskViewStore.getState().mode === "grid") return openPastSession(filePath);
       openSessions();
       loadReplay(filePath);
     },

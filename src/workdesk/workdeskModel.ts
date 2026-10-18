@@ -64,6 +64,24 @@ export interface TaskCard {
 
 export type WorkdeskCard = TerminalCard | BrowserCard | TaskCard | NoteCard;
 
+/** A past session read in a tab of the workdesk view, by its file path. */
+export interface SessionTabCard {
+  kind: "session";
+  id: string;
+  title: string;
+  agent: string | null;
+}
+
+/** A file open in a tab of the workdesk view, by its path. */
+export interface FileTabCard {
+  kind: "file";
+  id: string;
+  title: string;
+}
+
+/** What a tab in the workdesk view can hold: any node, a past session, or a file. */
+export type TabCard = WorkdeskCard | SessionTabCard | FileTabCard;
+
 export interface BrowserGroup {
   identityId: string;
   name: string;

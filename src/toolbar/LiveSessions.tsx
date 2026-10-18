@@ -19,7 +19,7 @@ import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
 import { openPinFull } from "../tasks/TasksView";
 import type { Pin } from "../types";
 import { findTerminal } from "../actions/terminalLookup";
-import { useCanvasStore } from "../stores/canvasStore";
+import { openLiveChatSession } from "../actions/openSession";
 
 /**
  * A session continued in chat (not the manager) opens its chat beside the
@@ -28,10 +28,7 @@ import { useCanvasStore } from "../stores/canvasStore";
 function openChatSession(terminalId: string): (() => void) | undefined {
   const terminal = findTerminal(terminalId)?.terminal;
   if (!terminal?.chatMode) return undefined;
-  return () => {
-    useSessionStore.getState().openLiveChat(terminalId);
-    useCanvasStore.getState().openSessionsOverlay();
-  };
+  return () => openLiveChatSession(terminalId);
 }
 
 /**

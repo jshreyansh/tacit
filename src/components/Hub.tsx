@@ -57,7 +57,8 @@ import type {
 // at typical project naming density. Narrower than the panel's expanded
 // width on purpose — the Hub overlays the panel rather than sharing the
 // column, so a slimmer drawer leaves more canvas visible past the curtain.
-export const HUB_WIDTH = 340;
+export { HUB_WIDTH } from "../stores/chromeLayout";
+import { HUB_WIDTH } from "../stores/chromeLayout";
 /** Hinges on the left rail, beside the button that opens it and in the same
  *  place as every other surface that rail opens. */
 const HUB_LEFT = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP;

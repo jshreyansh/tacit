@@ -29,6 +29,7 @@ import {
   resolveRepoContext,
   type RepoContextOption,
 } from "./RightPanel/repoContext";
+import { openFileInView } from "../actions/openSession";
 
 // ── Tab icon SVGs (14×14, matching the minimal aesthetic) ──
 
@@ -289,16 +290,15 @@ export function RightPanel() {
     [width, setWidth]
   );
 
-  const openFileEditor = useCanvasStore((s) => s.openFileEditor);
-
   const handleFileClick = useCallback(
     (filePath: string) => {
       // Files now open in the full-canvas FileEditorDrawer (Monaco),
       // not a preview tab. Keeps readable width and makes save/edit
       // first-class.
-      openFileEditor(filePath);
+      // In the workdesk view's grid it opens as a tab instead.
+      openFileInView(filePath);
     },
-    [openFileEditor]
+    []
   );
 
   const handleEnableHydra = useCallback(async () => {

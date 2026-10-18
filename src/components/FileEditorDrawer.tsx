@@ -11,11 +11,11 @@ import {
   useCanvasStore,
 } from "../stores/canvasStore";
 import {
-  getCanvasLeftInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { usePinStore } from "../stores/pinStore";
+import { useLeftChromeInset } from "../stores/chromeLayout";
 import {
   PANEL_TRANSITION_DURATION_MS,
   PANEL_TRANSITION_EASING_CSS,
@@ -213,17 +213,23 @@ function isReadSuccess(r: FileReadResult): r is FileReadSuccess {
   return "content" in r;
 }
 
-export function FileEditorDrawer() {
+/**
+ * `embedded`: the editor fills a tab of the workdesk view instead of
+ * floating over the canvas, for the file the tab holds; closing goes
+ * through the tab.
+ */
+export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onClose: () => void } } = {}) {
   const t = useT();
-  const path = useCanvasStore((s) => s.fileEditorPath);
+  const drawerPath = useCanvasStore((s) => s.fileEditorPath);
+  const path = embedded ? embedded.path : drawerPath;
   const expanded = useCanvasStore((s) => s.fileEditorExpanded);
-  const close = useCanvasStore((s) => s.closeFileEditor);
+  const closeDrawer = useCanvasStore((s) => s.closeFileEditor);
+  const close = embedded ? embedded.onClose : closeDrawer;
   const toggleExpanded = useCanvasStore((s) => s.toggleFileEditorExpanded);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
+  const chromeLeft = useLeftChromeInset();
   const theme = useThemeStore((s) => s.theme);
 
   const [content, setContent] = useState("");
@@ -350,7 +356,7 @@ export function FileEditorDrawer() {
         e.preventDefault();
         e.stopPropagation();
         void handleSave();
-      } else if (e.key === "Escape") {
+      } else if (e.key === "Escape" && !embedded) {
         // Don't swallow Esc if Monaco has a dialog open (find/replace
         // widget). Cheap heuristic: only close when the focused
         // element is the editor itself or outside.
@@ -361,22 +367,15 @@ export function FileEditorDrawer() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, handleSave, handleClose]);
+  }, [open, handleSave, handleClose, embedded]);
 
   if (!open || !path) return null;
 
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-    rightPanelCollapsed,
-    rightPanelWidth,
-  );
+  const leftInset = chromeLeft;
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
-  // Drawer is anchored so its RIGHT edge sits flush against the
-  // LEFT edge of the right panel — the drawer pulls out from the
-  // right panel's seam, leaving that panel fully visible so the
-  // user can keep browsing Files/Diff/Git while reading code.
+  // The drawer hinges on whatever is open on the left (the docked chat,
+  // the Files / Diff / Git / Memory panel, the Hub), so it follows that
+  // edge as any of them opens, closes or is dragged wider.
   //
   // Level-1 width: 55% of viewport width, but never wider than the
   // actual canvas gap (leftInset + rightInset subtracted). On tight
@@ -390,16 +389,20 @@ export function FileEditorDrawer() {
 
   return (
     <div
-      className="tc-enter-fade-up tc-float fixed z-50 flex flex-col overflow-hidden"
-      style={{
-        top: CHROME_TOP,
-        right: rightInset,
-        height: CHROME_HEIGHT,
-        width: widthStyle,
-        transition: animateLayout
-          ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, right ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
-          : undefined,
-      }}
+      className={embedded ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "tc-enter-fade-up tc-float fixed z-50 flex flex-col overflow-hidden"}
+      style={
+        embedded
+          ? undefined
+          : {
+              top: CHROME_TOP,
+              left: leftInset,
+              height: CHROME_HEIGHT,
+              width: widthStyle,
+              transition: animateLayout
+                ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
+                : undefined,
+            }
+      }
       role="dialog"
       aria-modal="false"
       aria-label={fileName}
@@ -444,6 +447,7 @@ export function FileEditorDrawer() {
 
         <button
           className="flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+          style={{ display: embedded ? "none" : undefined }}
           onClick={toggleExpanded}
           title={
             expanded
