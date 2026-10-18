@@ -40,6 +40,16 @@ export function IconGit({ size = 14 }: { size?: number }) {
   );
 }
 
+/** The rail's one mark for the code surfaces: files, diff and git. */
+export function IconCode({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 4.5L1.75 8 5 11.5M11 4.5L14.25 8 11 11.5M9.25 3l-2.5 10" />
+    </svg>
+  );
+}
+
 export function IconMemory({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
@@ -64,3 +74,13 @@ export const RIGHT_TAB_CONFIG: {
   { id: "git", icon: IconGit, labelKey: "left_panel_git" },
   { id: "memory", icon: IconMemory, labelKey: "left_panel_memory" },
 ];
+
+/**
+ * Files, Diff and Git are one surface on the rail, switched by the tabs at
+ * the top of the panel; Memory keeps its own button.
+ */
+export const CODE_TABS = RIGHT_TAB_CONFIG.filter((tab) => tab.id === "files" || tab.id === "diff" || tab.id === "git");
+
+export function isCodeTab(tab: RightPanelTab): boolean {
+  return CODE_TABS.some((c) => c.id === tab);
+}

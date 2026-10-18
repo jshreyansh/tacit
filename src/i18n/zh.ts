@@ -386,6 +386,7 @@ export const zh = {
   left_panel_diff: "差异",
   left_panel_preview: "预览",
   left_panel_git: "Git",
+  left_panel_code: "代码",
   left_panel_memory: "记忆",
   left_panel_sessions: "会话",
   left_panel_history: "历史",

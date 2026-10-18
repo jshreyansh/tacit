@@ -6,7 +6,7 @@ import {
   CHROME_INSET,
   LEFT_RAIL_WIDTH,
 } from "../stores/canvasStore";
-import { RIGHT_TAB_CONFIG as TAB_CONFIG } from "./rightPanelTabs";
+import { CODE_TABS, isCodeTab, RIGHT_TAB_CONFIG as TAB_CONFIG } from "./rightPanelTabs";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { useProjectStore } from "../stores/projectStore";
 import { useT } from "../i18n/useT";
@@ -378,16 +378,39 @@ export function RightPanel() {
           className="absolute inset-y-0 right-0 flex flex-col"
           style={{ width }}
         >
-      {/* No tab strip: the rail has a button per surface and is the only place
-          that says which one you are on. */}
+      {/* Files, Diff and Git share one rail button, so their tabs sit here;
+          Memory has its own button and just its name. */}
       <div className="shrink-0 px-2 pt-2 pb-2">
         <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg)] p-0.5">
-          <div className="flex-1 min-w-0 truncate px-2 text-[11px] font-semibold text-[var(--text-primary)]">
-            {t[
-              TAB_CONFIG.find((tab) => tab.id === activeTab)?.labelKey ??
-                "left_panel_files"
-            ]}
-          </div>
+          {isCodeTab(activeTab) ? (
+            <div role="tablist" aria-label={t.left_panel_code} className="flex min-w-0 flex-1 items-center gap-0.5">
+              {CODE_TABS.map(({ id, icon: Icon, labelKey }) => {
+                const on = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setActiveTab(id)}
+                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-[11.5px] transition-colors duration-quick"
+                    style={{
+                      background: on ? "var(--surface-hover)" : "transparent",
+                      color: on ? "var(--text-primary)" : "var(--text-muted)",
+                      fontWeight: on ? 600 : 500,
+                    }}
+                  >
+                    <Icon size={13} />
+                    <span className="truncate">{t[labelKey]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0 truncate px-2 text-[11px] font-semibold text-[var(--text-primary)]">
+              {t[TAB_CONFIG.find((tab) => tab.id === activeTab)?.labelKey ?? "left_panel_files"]}
+            </div>
+          )}
           <PanelCollapseButton
             onCollapse={() => setCollapsed(true)}
             className="ml-0.5"

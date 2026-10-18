@@ -389,6 +389,7 @@ export const en = {
   left_panel_diff: "Diff",
   left_panel_preview: "Preview",
   left_panel_git: "Git",
+  left_panel_code: "Code",
   left_panel_memory: "Memory",
   left_panel_sessions: "Sessions",
   left_panel_history: "History",

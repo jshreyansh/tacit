@@ -2,17 +2,18 @@ import {
   useCanvasStore,
   CHROME_INSET,
   LEFT_RAIL_WIDTH,
+  type RightPanelTab,
 } from "../stores/canvasStore";
 import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
 import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
-import { RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
+import { IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import tacitMark from "../assets/tacit-mark.png";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDockStore } from "../stores/dockStore";
 import { useUpdaterStore } from "../stores/updaterStore";
 import { UpdateModal } from "../components/UpdateModal";
@@ -109,6 +110,9 @@ export function LeftRail() {
   const setCodeCollapsed = useCanvasStore((s) => s.setRightPanelCollapsed);
   const codeTab = useCanvasStore((s) => s.rightPanelActiveTab);
   const setCodeTab = useCanvasStore((s) => s.setRightPanelActiveTab);
+  const codeOpen = !codeCollapsed && isCodeTab(codeTab);
+  const lastCodeTab = useRef<RightPanelTab>(isCodeTab(codeTab) ? codeTab : "files");
+  if (isCodeTab(codeTab)) lastCodeTab.current = codeTab;
 
   const openSettings = useSettingsModalStore((s) => s.openSettings);
   const hubOpen = useHubStore((s) => s.open);
@@ -188,7 +192,26 @@ export function LeftRail() {
           className="my-1.5 h-px w-6 shrink-0 bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
         />
 
-        {RIGHT_TAB_CONFIG.map(({ id, icon: Icon, labelKey }) => {
+        {/* Files, Diff and Git are one button; the panel's tabs switch
+            between them, and it opens on the one you were last on. */}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          data-on={codeOpen ? "" : undefined}
+          title={t.left_panel_code}
+          aria-label={t.left_panel_code}
+          aria-pressed={codeOpen}
+          onClick={() => {
+            if (codeOpen) {
+              setCodeCollapsed(true);
+              return;
+            }
+            setCodeTab(lastCodeTab.current);
+            setCodeCollapsed(false);
+          }}
+        >
+          <IconCode size={18} />
+        </button>
+        {RIGHT_TAB_CONFIG.filter(({ id }) => !isCodeTab(id)).map(({ id, icon: Icon, labelKey }) => {
           const open = !codeCollapsed && codeTab === id;
           return (
             <button
