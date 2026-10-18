@@ -7,6 +7,7 @@ import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { continueChatSessionInTerminal } from "../actions/sessionResume";
 import { useEffect } from "react";
 import { openLiveChatSession } from "../actions/openSession";
+import { ManagerChatHost } from "../toolbar/chat/ManagerChatHost";
 
 /**
  * A tile whose agent runs in chat mode (T6). It starts no process; it says
@@ -23,8 +24,11 @@ export function ChatModeBody({ terminalId, agent }: { terminalId: string; agent:
 function ManagerChatModeBody({ terminalId, agent }: { terminalId: string; agent: string }) {
   const t = useT();
   const openChat = useChatDockStore((s) => s.setOpen);
+  const onCanvas = useChatDockStore((s) => s.placement === "canvas" && s.open);
   const transcript = useManagerTranscript(terminalId);
   const pendingMove = usePendingManagerMove(terminalId);
+  // Placed on the canvas: the chat itself, here in its tile.
+  if (onCanvas) return <ManagerChatHost />;
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center nopan nodrag">
       <ManagerMark agent={agent} size={34} working={transcript.running} />

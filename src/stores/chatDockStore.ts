@@ -40,6 +40,66 @@ export function loadChatWidth(): number {
 }
 
 /**
+ * Where the manager's chat lives, one place at a time:
+ * - `dock`: full height beside the left bar; panels and the grid open after it.
+ * - `float`: a window over everything in Tacit, moved by its header and
+ *   resized from its edges; it pushes nothing aside.
+ * - `full`: over everything right of the bar, the conversation in one
+ *   readable column.
+ * - `canvas`: inside the manager's tile, panning and zooming with the canvas
+ *   (in the grid, the manager's tab).
+ * ⌘J, the bar's chat button and the pill open it wherever it was last put.
+ */
+export type ChatPlacement = "dock" | "float" | "full" | "canvas";
+
+const PLACEMENT_KEY = "tacit.chatDock.placement.v1";
+const FLOAT_KEY = "tacit.chatDock.float.v1";
+
+export interface FloatRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export const FLOAT_MIN = { w: 340, h: 360 };
+
+export function loadPlacement(): ChatPlacement {
+  try {
+    const raw = storage()?.getItem(PLACEMENT_KEY);
+    return raw === "float" || raw === "full" || raw === "canvas" ? raw : "dock";
+  } catch {
+    return "dock";
+  }
+}
+
+/** Where a floating chat opens first: the bottom right, 420 by 620. */
+export function defaultFloatRect(view: { width: number; height: number }): FloatRect {
+  const w = Math.min(420, view.width - 32);
+  const h = Math.min(620, view.height - 80);
+  return { x: view.width - w - 24, y: view.height - h - 24, w, h };
+}
+
+/** Kept on screen whatever the window's size: at least its header stays in reach. */
+export function clampFloatRect(rect: FloatRect, view: { width: number; height: number }): FloatRect {
+  const w = Math.round(Math.min(Math.max(rect.w, FLOAT_MIN.w), view.width - 16));
+  const h = Math.round(Math.min(Math.max(rect.h, FLOAT_MIN.h), view.height - 16));
+  const x = Math.round(Math.min(Math.max(rect.x, 8), view.width - w - 8));
+  const y = Math.round(Math.min(Math.max(rect.y, 8), view.height - h - 8));
+  return { x, y, w, h };
+}
+
+function loadFloatRect(): FloatRect | null {
+  try {
+    const parsed = JSON.parse(storage()?.getItem(FLOAT_KEY) ?? "null") as Partial<FloatRect> | null;
+    if (!parsed || ![parsed.x, parsed.y, parsed.w, parsed.h].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+    return parsed as FloatRect;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * What the docked chat shows: the conversation, the live and past sessions,
  * the pins, or the roster for choosing a manager. Held here rather than in
  * the chat so other places can open it on a face: a project's pin badge,
@@ -50,6 +110,14 @@ export type ChatFace = "chat" | "sessions" | "pins" | "roster";
 interface ChatDockStore {
   open: boolean;
   width: number;
+  placement: ChatPlacement;
+  /** Moves the chat to another place, and opens it there. */
+  setPlacement: (placement: ChatPlacement) => void;
+  /** The floating chat's place and size; null until it first floats. */
+  floatRect: FloatRect | null;
+  setFloatRect: (rect: FloatRect) => void;
+  /** At the end of a move or resize: keeps it for next time. */
+  commitFloatRect: () => void;
   face: ChatFace;
   setOpen: (open: boolean) => void;
   setFace: (face: ChatFace) => void;
@@ -75,6 +143,25 @@ interface ChatDockStore {
 export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   open: false,
   width: loadChatWidth(),
+  placement: loadPlacement(),
+  setPlacement: (placement) => {
+    try {
+      storage()?.setItem(PLACEMENT_KEY, placement);
+    } catch {
+      // Storage blocked: it still moves for this session.
+    }
+    set({ placement, open: true });
+  },
+  floatRect: loadFloatRect(),
+  setFloatRect: (floatRect) => set({ floatRect }),
+  commitFloatRect: () => {
+    try {
+      const rect = get().floatRect;
+      if (rect) storage()?.setItem(FLOAT_KEY, JSON.stringify(rect));
+    } catch {
+      // Storage blocked: the place still holds for this session.
+    }
+  },
   resizing: false,
   setResizing: (resizing) => set({ resizing }),
   face: "chat",
@@ -100,6 +187,7 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
 }));
 
 /** How far the chat pushes whatever opens after it: its width and a gap, or nothing. */
-export function chatDockOffset(state: { open: boolean; width: number }, gap: number): number {
-  return state.open ? state.width + gap : 0;
+/** The room the chat takes beside the bar: only docked does. */
+export function chatDockOffset(state: { open: boolean; width: number; placement?: ChatPlacement }, gap: number): number {
+  return state.open && (state.placement ?? "dock") === "dock" ? state.width + gap : 0;
 }

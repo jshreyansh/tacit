@@ -11,6 +11,7 @@ import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
 import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
 import type { BrowserCard, NoteCard, TabCard, TaskCard, TerminalCard } from "./workdeskModel";
 import { PastSessionTab } from "../toolbar/SessionReader";
+import { ManagerChatHost } from "../toolbar/chat/ManagerChatHost";
 import { FileEditorDrawer } from "../components/FileEditorDrawer";
 import { SessionChatBody } from "../toolbar/chat/SessionChat";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
@@ -132,6 +133,8 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   const openChat = useChatDockStore((s) => s.setOpen);
   const transcript = useManagerTranscript(card.chatMode ? card.id : null);
   const switchable = hasChatMode(card.type);
+  // The manager's chat placed on the canvas shows here, in its tab.
+  const managerOnCanvas = useChatDockStore((s) => s.placement === "canvas" && s.open);
   const busy = card.chatMode ? transcript.running : card.state === "active";
   // A move asked for mid-turn happens when the turn ends (the pill does
   // this for the manager); one that no longer applies is dropped.
@@ -161,7 +164,9 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
     <>
       {switchable && <ViewSwitch card={card} busy={busy} t={t} />}
       {card.chatMode ? (
-        card.isManager ? (
+        card.isManager && managerOnCanvas ? (
+          <ManagerChatHost />
+        ) : card.isManager ? (
           // The manager's chat is the docked one.
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
             <div className="text-[13px] text-[var(--text-primary)]">{t.workdesk_in_chat}</div>

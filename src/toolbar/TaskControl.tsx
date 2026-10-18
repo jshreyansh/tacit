@@ -22,11 +22,14 @@ import { PILL_GLASS, useCloseOnOutsideClick } from "./pillChrome";
 const AUTO_HINT_MS = 6_000;
 
 /**
+ * `rail`: a record button in the left bar, above the zoom: one click starts
+ * recording; while it records, a click opens its card beside the bar, Stop
+ * first, so a stray click doesn't end it.
  * `pill`: the chip beside the manager's pill, its card opening upward.
  * `strip`: the context line under the docked chat's header, its card
- * opening downward over the conversation. One control in either place.
+ * opening downward over the conversation.
  */
-export function TaskControl({ variant = "pill", trailing }: { variant?: "pill" | "strip"; trailing?: React.ReactNode } = {}) {
+export function TaskControl({ variant = "pill", trailing }: { variant?: "rail" | "pill" | "strip"; trailing?: React.ReactNode } = {}) {
   const t = useT();
   const [run, setRun] = useState<RunInfo | null>(null);
   const [open, setOpen] = useState(false);
@@ -69,6 +72,36 @@ export function TaskControl({ variant = "pill", trailing }: { variant?: "pill" |
   }, [run]);
 
   const name = run?.goal ?? t.task_untitled;
+
+  if (variant === "rail") {
+    const label = run ? `${t.task_recording_short} · ${name} · ${elapsed(run.started_at)}` : t.task_record_title;
+    return (
+      <div ref={rootRef} className="relative flex shrink-0 flex-col items-center">
+        <button
+          className="tc-rail-btn relative inline-flex h-10 w-10 shrink-0 flex-col items-center justify-center gap-0.5 transition-transform duration-quick active:scale-[0.94]"
+          data-on={open ? "" : undefined}
+          onClick={() => {
+            if (run) setOpen((v) => !v);
+            else void window.tacit.run.start(null);
+          }}
+          aria-expanded={run ? open : undefined}
+          aria-haspopup={run ? "dialog" : undefined}
+          aria-label={label}
+          title={label}
+        >
+          <RecordIcon recording={!!run} />
+          {run && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
+        </button>
+        {/* Started on its own when you first typed to an agent: said beside the bar. */}
+        {autoHint && !open && (
+          <div className="tc-float tc-enter-fade pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)]" style={{ borderRadius: 10 }}>
+            {t.task_auto_hint}
+          </div>
+        )}
+        {open && <TaskPanel run={run} onDone={close} placement="beside" />}
+      </div>
+    );
+  }
 
   if (variant === "strip") {
     return (
@@ -134,7 +167,28 @@ export function TaskControl({ variant = "pill", trailing }: { variant?: "pill" |
   );
 }
 
-function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "below" }) {
+/** Record: a red ring with a dot; recording: a red disc with a white stop square, breathing. */
+function RecordIcon({ recording }: { recording: boolean }) {
+  if (!recording) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="8" fill="none" stroke="var(--red)" strokeWidth="1.6" />
+        <circle cx="10" cy="10" r="4.4" fill="var(--red)" />
+      </svg>
+    );
+  }
+  return (
+    <span className="relative flex h-[18px] w-[18px] items-center justify-center">
+      <span className="absolute inset-0 animate-ping rounded-full opacity-30" style={{ background: "var(--red)", animationDuration: "2s" }} />
+      <svg width="18" height="18" viewBox="0 0 20 20" className="relative" aria-hidden="true">
+        <circle cx="10" cy="10" r="9" fill="var(--red)" />
+        <rect x="6.6" y="6.6" width="6.8" height="6.8" rx="1.6" fill="white" />
+      </svg>
+    </span>
+  );
+}
+
+function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "below" | "beside" }) {
   const t = useT();
   // "new" is a goal for a task to start; "rename" edits the open one's name.
   const [editing, setEditing] = useState<"new" | "rename" | null>(run ? null : "new");
@@ -199,7 +253,9 @@ function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; 
       className={
         placement === "above"
           ? "tc-float tc-enter-fade-up absolute bottom-full left-0 z-10 mb-2 w-[22rem] p-3.5 text-[11px]"
-          : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
+          : placement === "beside"
+            ? "tc-float tc-enter-fade absolute bottom-0 left-full z-50 ml-3 w-[22rem] p-3.5 text-[11px]"
+            : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
       }
       style={{ borderRadius: 18 }}
       onKeyDown={(e) => {
