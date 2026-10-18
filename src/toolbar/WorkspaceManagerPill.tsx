@@ -29,6 +29,7 @@ import { usePinStore } from "../stores/pinStore";
 import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSender } from "./chat/LongRunning";
 import { ComposerBox, useAttachments } from "./chat/Composer";
 import { PaperclipIcon } from "./chat/Attachments";
+import { TaskControl } from "./TaskControl";
 import { withMentions } from "../../shared/chat-attachments";
 import type { ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
@@ -850,6 +851,8 @@ export function WorkspaceManagerPill() {
         className="tc-enter-fade-up pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
         style={{ bottom: bottomOffset }}
       >
+        {/* Recording what you work on, beside the pill. */}
+        <TaskControl variant="icon" shell="pill" />
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           {/* One line above the pill: what the manager is doing, or the last
               thing it said. */}
@@ -1153,6 +1156,8 @@ export function WorkspaceManagerPill() {
             <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
           )}
         </button>
+        {/* Recording, here while the pill is away. */}
+        <TaskControl variant="icon" shell="header" />
         {/* Where the chat lives, and taking the manager to its terminal. */}
         <ChatPlacementMenu
           buttonClass={iconButton}

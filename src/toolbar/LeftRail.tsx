@@ -11,7 +11,6 @@ import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
 import { IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
-import { TaskControl } from "./TaskControl";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import tacitMark from "../assets/tacit-mark.png";
@@ -230,8 +229,6 @@ export function LeftRail() {
       {/* The foot, always in view: how you look at the canvas (zoom, Fit,
           Focus, Canvas or Grid), then the Hub, then Settings in the corner. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
-        {/* Recording what you work on: one click starts it. */}
-        <TaskControl variant="rail" />
         <ViewControls />
         {/* Update, and only when there is one. */}
         {updateStatus !== "idle" && (

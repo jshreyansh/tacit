@@ -21,10 +21,9 @@ import { findAgentAdapter } from "../../shared/agent-adapters";
 import { readTerminalTail } from "../terminal/terminalRegistry";
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
 import type { ChatTranscript } from "../../shared/chat-transcript";
-import { CanvasViewIcon, GridViewIcon } from "./viewIcons";
 import { cleanTailLines } from "./terminalTail";
 import { useBrowserSnapshots } from "./browserSnapshots";
-import { showOnCanvas, WorkdeskTab } from "./WorkdeskTab";
+import { WorkdeskTab } from "./WorkdeskTab";
 import { STATUS_COLOR } from "../tasks/taskModel";
 import { statusLabel, useOwnerView } from "../tasks/TaskParts";
 import {
@@ -305,7 +304,6 @@ export function WorkdeskView() {
   const mode = useWorkdeskViewStore((s) => s.mode);
   const filter = useWorkdeskViewStore((s) => s.filter);
   const setFilter = useWorkdeskViewStore((s) => s.setFilter);
-  const setMode = useWorkdeskViewStore((s) => s.setMode);
   const openNode = useWorkdeskViewStore((s) => s.openNode);
   const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
   const hiddenTabs = useWorkdeskViewStore((s) => s.hiddenTabs);
@@ -509,32 +507,6 @@ export function WorkdeskView() {
               </button>
             );
           })}
-        </div>
-        <div className="flex-1" />
-        <div className="flex gap-0.5 rounded-[9px] border border-[var(--border)] p-0.5" role="group" aria-label={t.workdesk_view_switch}>
-          {/* With a node open, Canvas shows that node there; from the grid it
-              goes back to the canvas as it was. */}
-          <button
-            type="button"
-            className="tc-rail-btn flex h-7 w-8 items-center justify-center text-[var(--text-muted)]"
-            onClick={() => (openCard ? void showOnCanvas(openCard) : setMode("canvas"))}
-            aria-pressed={false}
-            aria-label={openCard ? t.workdesk_show_on_canvas : t.workdesk_view_canvas_short}
-            title={openCard ? t.workdesk_show_on_canvas : t.workdesk_view_canvas_short}
-          >
-            <CanvasViewIcon size={14} />
-          </button>
-          <button
-            type="button"
-            className="tc-rail-btn flex h-7 w-8 items-center justify-center text-[var(--text-primary)]"
-            data-on=""
-            aria-pressed={true}
-            onClick={() => setOpenNode(null)}
-            aria-label={t.workdesk_view_grid_short}
-            title={t.workdesk_view_grid_short}
-          >
-            <GridViewIcon size={14} />
-          </button>
         </div>
       </div>
 

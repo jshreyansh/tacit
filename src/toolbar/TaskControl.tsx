@@ -22,14 +22,20 @@ import { PILL_GLASS, useCloseOnOutsideClick } from "./pillChrome";
 const AUTO_HINT_MS = 6_000;
 
 /**
- * `rail`: a record button in the left bar, above the zoom: one click starts
- * recording; while it records, a click opens its card beside the bar, Stop
- * first, so a stray click doesn't end it.
+ * `icon`: a record button, left of the manager's pill (`shell: "pill"`,
+ * its card opening upward) or in the open chat's header while the pill is
+ * away (`shell: "header"`, card below). One click starts recording; while
+ * it records, a click opens its card, Stop first, so a stray click doesn't
+ * end it.
  * `pill`: the chip beside the manager's pill, its card opening upward.
  * `strip`: the context line under the docked chat's header, its card
  * opening downward over the conversation.
  */
-export function TaskControl({ variant = "pill", trailing }: { variant?: "rail" | "pill" | "strip"; trailing?: React.ReactNode } = {}) {
+export function TaskControl({
+  variant = "pill",
+  trailing,
+  shell = "pill",
+}: { variant?: "icon" | "pill" | "strip"; trailing?: React.ReactNode; shell?: "pill" | "header" } = {}) {
   const t = useT();
   const [run, setRun] = useState<RunInfo | null>(null);
   const [open, setOpen] = useState(false);
@@ -73,12 +79,18 @@ export function TaskControl({ variant = "pill", trailing }: { variant?: "rail" |
 
   const name = run?.goal ?? t.task_untitled;
 
-  if (variant === "rail") {
+  if (variant === "icon") {
     const label = run ? `${t.task_recording_short} · ${name} · ${elapsed(run.started_at)}` : t.task_record_title;
+    const pill = shell === "pill";
     return (
-      <div ref={rootRef} className="relative flex shrink-0 flex-col items-center">
+      <div ref={rootRef} className={`relative flex shrink-0 flex-col items-center ${pill ? "pointer-events-auto" : ""}`}>
         <button
-          className="tc-rail-btn relative inline-flex h-10 w-10 shrink-0 flex-col items-center justify-center gap-0.5 transition-transform duration-quick active:scale-[0.94]"
+          className={
+            pill
+              ? `tc-pill relative inline-flex h-12 w-12 shrink-0 flex-col items-center justify-center gap-0.5 transition-transform duration-quick active:scale-[0.94] ${PILL_GLASS}`
+              : "tc-rail-btn relative inline-flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-0.5 transition-transform duration-quick active:scale-[0.94]"
+          }
+          style={pill && run ? { borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" } : undefined}
           data-on={open ? "" : undefined}
           onClick={() => {
             if (run) setOpen((v) => !v);
@@ -90,15 +102,18 @@ export function TaskControl({ variant = "pill", trailing }: { variant?: "rail" |
           title={label}
         >
           <RecordIcon recording={!!run} />
-          {run && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
+          {run && pill && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
         </button>
-        {/* Started on its own when you first typed to an agent: said beside the bar. */}
+        {/* Started on its own when you first typed to an agent: said beside it. */}
         {autoHint && !open && (
-          <div className="tc-float tc-enter-fade pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)]" style={{ borderRadius: 10 }}>
+          <div
+            className={`tc-float tc-enter-fade pointer-events-none absolute z-50 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)] ${pill ? "bottom-full left-0 mb-2" : "right-0 top-full mt-2"}`}
+            style={{ borderRadius: 10 }}
+          >
             {t.task_auto_hint}
           </div>
         )}
-        {open && <TaskPanel run={run} onDone={close} placement="beside" />}
+        {open && <TaskPanel run={run} onDone={close} placement={pill ? "above" : "below-right"} />}
       </div>
     );
   }
@@ -188,7 +203,7 @@ function RecordIcon({ recording }: { recording: boolean }) {
   );
 }
 
-function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "below" | "beside" }) {
+function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "below" | "below-right" }) {
   const t = useT();
   // "new" is a goal for a task to start; "rename" edits the open one's name.
   const [editing, setEditing] = useState<"new" | "rename" | null>(run ? null : "new");
@@ -253,8 +268,8 @@ function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; 
       className={
         placement === "above"
           ? "tc-float tc-enter-fade-up absolute bottom-full left-0 z-10 mb-2 w-[22rem] p-3.5 text-[11px]"
-          : placement === "beside"
-            ? "tc-float tc-enter-fade absolute bottom-0 left-full z-50 ml-3 w-[22rem] p-3.5 text-[11px]"
+          : placement === "below-right"
+            ? "tc-float tc-enter-fade-down absolute right-0 top-full z-50 mt-2 w-[22rem] p-3.5 text-[11px]"
             : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
       }
       style={{ borderRadius: 18 }}

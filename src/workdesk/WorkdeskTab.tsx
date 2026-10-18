@@ -63,6 +63,36 @@ export async function showOnCanvas(card: TabCard): Promise<void> {
   }
 }
 
+/**
+ * The canvas, on the node open in the workdesk view's tab: what the view
+ * toggle does from a tab. With nothing open it's just the canvas.
+ */
+export async function showOpenNodeOnCanvas(): Promise<void> {
+  const view = useWorkdeskViewStore.getState();
+  const node = view.openNode;
+  if (!node) return view.setMode("canvas");
+  switch (node.kind) {
+    case "session":
+      return showOnCanvas({ kind: "session", id: node.id, title: "", agent: null });
+    case "file":
+      return showOnCanvas({ kind: "file", id: node.id, title: "" });
+    case "task":
+    case "note": {
+      const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === node.id);
+      if (pin) return showPinOnCanvas(pin);
+      return view.setMode("canvas");
+    }
+    case "terminal":
+      view.setMode("canvas");
+      return panToTerminal(node.id);
+    case "browser": {
+      view.setMode("canvas");
+      const data = useBrowserCardStore.getState().cards[node.id];
+      if (data) flyToBounds(data.x, data.y, data.w, data.h);
+    }
+  }
+}
+
 function Footer({ hint, children }: { hint: string; children: React.ReactNode }) {
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-3.5 py-2.5 text-[12px] text-[var(--text-muted)]">

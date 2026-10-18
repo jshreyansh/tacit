@@ -10,6 +10,7 @@ import {
 import { useT } from "../i18n/useT";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { CanvasViewIcon, GridViewIcon } from "../workdesk/viewIcons";
+import { showOpenNodeOnCanvas } from "../workdesk/WorkdeskTab";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 
 const platform = window.tacit?.app.platform ?? "darwin";
@@ -89,8 +90,22 @@ export function ViewControls() {
   }, []);
 
 
-  // The grid has its own Canvas | Grid switch, and nothing here to zoom.
-  if (mode === "grid") return null;
+  // One button for the view: it shows the one it switches to. From a node
+  // open full size in the grid, the canvas opens on that node.
+  const toGrid = mode !== "grid";
+  const viewToggle = (
+    <button
+      className={buttonCls}
+      onClick={() => (toGrid ? setMode("grid") : void showOpenNodeOnCanvas())}
+      title={toGrid ? `${t.workdesk_view_grid} (${formatShortcut(gridShortcut, isMac)})` : `${t.workdesk_view_canvas} (${formatShortcut(gridShortcut, isMac)})`}
+      aria-label={toGrid ? t.workdesk_view_grid : t.workdesk_view_canvas}
+    >
+      {toGrid ? <GridViewIcon /> : <CanvasViewIcon />}
+    </button>
+  );
+
+  // The grid has nothing here to zoom: just the way back to the canvas.
+  if (mode === "grid") return <div className="flex shrink-0 flex-col items-center">{viewToggle}</div>;
 
   return (
     <div className="flex shrink-0 flex-col items-center">
@@ -215,27 +230,7 @@ export function ViewControls() {
         </div>
 
         {/* Canvas or Grid: the same nodes, laid out freely or as cards. */}
-        <div className="flex flex-col gap-0.5" role="group" aria-label={t.workdesk_view_switch}>
-          <button
-            className={buttonCls}
-            onClick={() => setMode("canvas")}
-            title={t.workdesk_view_canvas}
-            aria-label={t.workdesk_view_canvas}
-            aria-pressed={true}
-            data-on=""
-          >
-            <CanvasViewIcon />
-          </button>
-          <button
-            className={buttonCls}
-            onClick={() => setMode("grid")}
-            title={`${t.workdesk_view_grid} (${formatShortcut(gridShortcut, isMac)})`}
-            aria-label={t.workdesk_view_grid}
-            aria-pressed={false}
-          >
-            <GridViewIcon />
-          </button>
-        </div>
+        {viewToggle}
     </div>
   );
 }
