@@ -12,7 +12,7 @@ export type ChatEvent =
   /** The agent's session id: what "Open in terminal" resumes. */
   | { kind: "session"; sessionId: string; model?: string }
   /** What the person sent, as the engine sent it. */
-  | { kind: "user_message"; id: string; text: string; at: string }
+  | { kind: "user_message"; id: string; text: string; at: string; attachments?: ChatAttachment[] }
   /** A block of the agent's reply opens. `key` is unique within the turn. */
   | { kind: "block_start"; key: string; block: ChatBlockKind; toolCallId?: string; toolName?: string }
   | { kind: "text_delta"; key: string; text: string }
@@ -54,6 +54,27 @@ export type ChatEvent =
 
 export type ApprovalDecision = "allow_once" | "allow_always" | "deny";
 
+/** A file sent with a message; the agent reads it from its path. */
+export interface ChatAttachment {
+  name: string;
+  path: string;
+  kind: "image" | "file";
+  /** A picture of an image, as a data URL, for the chat to show. */
+  preview?: string;
+}
+
+/** A file attached in the message box, named by its id until it's sent. */
+export interface ChatAttachmentInfo extends ChatAttachment {
+  id: string;
+  size: number;
+}
+
+/** What attaching gave: the files, and why any couldn't be attached. */
+export interface ChatAttachResult {
+  attachments: ChatAttachmentInfo[];
+  errors: string[];
+}
+
 export interface PlanStep {
   text: string;
   status: "pending" | "active" | "done";
@@ -80,6 +101,8 @@ export type ChatAnswers = Record<string, string[]>;
 export interface ChatModelOption {
   id: string;
   label: string;
+  /** The name alone, for the chip (Claude's "Default (recommended)" is "Opus 5.5"). */
+  short?: string;
   description?: string;
   /** Effort levels this model takes, low to high; empty when it has none. */
   efforts: string[];
@@ -90,6 +113,8 @@ export interface ChatModelOption {
 export interface ChatModeOption {
   id: string;
   label: string;
+  /** A word or two, for the chip. */
+  short?: string;
   description?: string;
 }
 

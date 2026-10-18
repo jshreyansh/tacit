@@ -26,6 +26,7 @@ import { findTerminal } from "../../actions/terminalLookup";
 import { linkNodeIds, NODE_CHIP_HREF, type NodeDescription } from "../sessionReaderModel";
 import { todoPlan } from "../../../shared/chat-stream-claude";
 import { CompactedDivider, PlanSteps } from "./LongRunning";
+import { SentAttachments } from "./Attachments";
 
 /**
  * The docked chat's conversation with a manager in chat mode (T6), drawn by
@@ -415,15 +416,25 @@ function SteeredLabel() {
   return steered ? <div className="mb-1 w-full text-right text-[11px] text-[var(--text-muted)]">{t.chat_steered}</div> : null;
 }
 
-const UserMessage: FC = () => (
-  <MessageAnchor className="mb-3 flex flex-col items-end">
-    <SteeredLabel />
+/** The text, when there is any: a message can be only files. */
+function UserBubble() {
+  const hasText = useAuiState((s) => s.message.content.length > 0);
+  if (!hasText) return null;
+  return (
     <div
       className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
       style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
     >
       <MessagePrimitive.Parts components={{ Text: UserText }} />
     </div>
+  );
+}
+
+const UserMessage: FC = () => (
+  <MessageAnchor className="mb-3 flex flex-col items-end">
+    <SteeredLabel />
+    <SentAttachments />
+    <UserBubble />
   </MessageAnchor>
 );
 

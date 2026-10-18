@@ -1,4 +1,5 @@
-import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
+import { withMentions } from "./chat-attachments";
 
 /**
  * Codex's app-server protocol (JSON-RPC over stdio) as chat events.
@@ -239,8 +240,12 @@ export function codexApprovalResult(method: string, decision: ApprovalDecision):
 }
 
 /** The `turn/start` input for a message. */
-export function codexUserInput(text: string): Json[] {
-  return [{ type: "text", text, text_elements: [] }];
+/** What a turn is given: the text with a path per file, and each image as a picture. */
+export function codexUserInput(text: string, attachments: readonly ChatAttachment[] = []): Json[] {
+  const files = attachments.filter((a) => a.kind !== "image").map((a) => a.path);
+  const images = attachments.filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }));
+  const body = withMentions(text, files);
+  return [...(body.trim() ? [{ type: "text", text: body, text_elements: [] }] : []), ...images];
 }
 
 export function codexQuestions(params: Json): ChatQuestion[] {
@@ -271,9 +276,9 @@ export function codexQuestionResult(answers: ChatAnswers | null): Json {
 
 /** Codex's ways of working, as its own app names them, and what each sets on a turn. */
 export const CODEX_MODES: Array<ChatModeOption & { approvalPolicy: string; sandboxPolicy: Json }> = [
-  { id: "read-only", label: "Read only", description: "Reads and answers; asks before changing anything", approvalPolicy: "on-request", sandboxPolicy: { type: "readOnly" } },
+  { id: "read-only", label: "Read only", short: "Read", description: "Reads and answers; asks before changing anything", approvalPolicy: "on-request", sandboxPolicy: { type: "readOnly" } },
   { id: "auto", label: "Auto", description: "Works in this folder; asks before going outside it", approvalPolicy: "on-request", sandboxPolicy: { type: "workspaceWrite" } },
-  { id: "full-access", label: "Full access", description: "Runs anything without asking", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } },
+  { id: "full-access", label: "Full access", short: "Full", description: "Runs anything without asking", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } },
 ];
 
 /** The mode a thread is in, from its approval policy and sandbox. */

@@ -768,7 +768,14 @@ export interface TacitAPI {
   /** The workdesk manager in chat mode (T6.2). */
   chat: {
     start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) => Promise<{ ok: boolean; error?: string }>;
-    send: (terminalId: string, text: string) => Promise<boolean>;
+    /** Sends a message with the files attached to it, by id; rejects when a file is gone. */
+    send: (terminalId: string, text: string, attachmentIds?: string[]) => Promise<boolean>;
+    /** The open dialog, starting in the chat's folder. */
+    pickAttachments: (terminalId: string) => Promise<import("../../shared/chat-events").ChatAttachResult>;
+    /** Files dragged from Tacit's own Files panel, by path. */
+    attachPaths: (paths: string[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
+    /** Files dropped or pasted on the message box. */
+    attachFiles: (files: File[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
     interrupt: (terminalId: string) => Promise<void>;
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) => Promise<void>;
     /** Answers the agent's questions, by question id; null skips them. */

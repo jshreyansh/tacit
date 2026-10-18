@@ -103,6 +103,7 @@ import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
 import { findSessionFile } from "./manager-chat/session-file";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
+import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
 import type { ApprovalDecision } from "../shared/chat-events";
 import {
   createDefaultComposerSubmitDeps,
@@ -473,15 +474,35 @@ const chatEngine = new ChatEngine({
   // Stream-json fires no Stop hook; the turn's end is the stream's own.
   onTurnEnded: (terminalId, sessionId) =>
     telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
+  limits: chatLimitStore(path.join(TACIT_DIR, "chat-limits.json")),
   // The agent's own record of the session, so the chat shows what was said
   // in the terminal and before a restart, as the terminal does.
-  limits: chatLimitStore(path.join(TACIT_DIR, "chat-limits.json")),
   loadHistory: async (agent, sessionId) => {
     const file = findSessionFile(agent, sessionId, os.homedir());
     if (!file) return null;
     const replay = await sessionScanner.loadReplay(file);
     return timelineToChatEvents(replay.events);
   },
+  log: (line) => dbg(line),
+});
+
+/** A picture of an attached image for the chat: at most 480px, small enough to keep with the message. */
+function attachmentPreview(filePath: string): string | undefined {
+  if ((fs.statSync(filePath, { throwIfNoEntry: false })?.size ?? Infinity) > 40 * 1024 * 1024) return undefined;
+  const image = nativeImage.createFromPath(filePath);
+  if (image.isEmpty()) return undefined;
+  const { width, height } = image.getSize();
+  const scale = Math.min(1, 480 / Math.max(width, height));
+  const small = scale < 1 ? image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: "good" }) : image;
+  const png = small.toPNG();
+  // A photo is far smaller as JPEG; a small PNG keeps its transparency.
+  return png.byteLength <= 200_000 ? `data:image/png;base64,${png.toString("base64")}` : `data:image/jpeg;base64,${small.toJPEG(82).toString("base64")}`;
+}
+
+/** Files sent with chat messages; pasted images are saved beside Tacit's state. */
+const chatAttachments = new ChatAttachments({
+  dir: path.join(TACIT_DIR, "chat-attachments"),
+  preview: attachmentPreview,
   log: (line) => dbg(line),
 });
 
@@ -2219,9 +2240,46 @@ function setupIpc() {
     await chatEngine.start({ terminalId, agent: agent as ChatAgent, cwd, sessionId: (sessionId as string | null | undefined) ?? null });
     return { ok: true };
   });
-  ipcMain.handle("chat:send", (event, terminalId: unknown, text: unknown) => {
-    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof text !== "string" || !text.trim() || text.length > 200_000) return false;
-    return chatEngine.send(terminalId, text);
+  // A message names its files by the ids they got when attached; an unknown
+  // one fails the send rather than going without it.
+  ipcMain.handle("chat:send", (event, terminalId: unknown, text: unknown, attachmentIds: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof text !== "string" || text.length > 200_000) return false;
+    const attachments = chatAttachments.resolve(attachmentIds);
+    if (!text.trim() && attachments.length === 0) return false;
+    return chatEngine.send(terminalId, text, attachments);
+  });
+  // Attaching files: picked in the open dialog (starting in the chat's
+  // folder), dropped on the message box, or a pasted image.
+  chatAttachments.prune();
+  const attachEach = (items: unknown[], add: (item: unknown) => AttachmentInfo) => {
+    const attachments: AttachmentInfo[] = [];
+    const errors: string[] = [];
+    for (const item of items) {
+      try {
+        attachments.push(add(item));
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return { attachments, errors };
+  };
+  ipcMain.handle("chat:attach-pick", async (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event) || !mainWindow) return { attachments: [], errors: [] };
+    const cwd = chatId(terminalId) ? chatEngine.cwdOf(terminalId) : null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile", "multiSelections"],
+      ...(cwd ? { defaultPath: cwd } : {}),
+    });
+    if (result.canceled) return { attachments: [], errors: [] };
+    return attachEach(result.filePaths.slice(0, 20), (p) => chatAttachments.addPath(p));
+  });
+  ipcMain.handle("chat:attach-paths", (event, paths: unknown) => {
+    if (!isMainWindowSender(event) || !Array.isArray(paths)) return { attachments: [], errors: [] };
+    return attachEach(paths.slice(0, 20), (p) => chatAttachments.addPath(p));
+  });
+  ipcMain.handle("chat:attach-image", (event, name: unknown, bytes: unknown) => {
+    if (!isMainWindowSender(event)) return { attachments: [], errors: [] };
+    return attachEach([bytes], (b) => chatAttachments.addImage(name, b));
   });
   ipcMain.handle("chat:interrupt", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.interrupt(terminalId);

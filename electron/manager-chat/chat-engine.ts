@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatSettings } from "../../shared/chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatSettings } from "../../shared/chat-events";
 import { startClaudeDriver, startCodexDriver, type ChatDriver, type SpawnFn } from "./drivers";
 
 /**
@@ -70,6 +70,7 @@ interface ChatSession {
   driver: ChatDriver | null;
   events: ChatEvent[];
   sessionId: string | null;
+  cwd: string;
   /** What the person picked (model, effort, mode), set again when the agent restarts. */
   chosen?: Partial<ChatSettings>;
 }
@@ -125,8 +126,9 @@ export class ChatEngine {
 
   private async launch(request: ChatStartRequest): Promise<void> {
     const existing = this.sessions.get(request.terminalId);
-    const session: ChatSession = existing ?? { agent: request.agent, driver: null, events: [], sessionId: request.sessionId };
+    const session: ChatSession = existing ?? { agent: request.agent, driver: null, events: [], sessionId: request.sessionId, cwd: request.cwd };
     session.agent = request.agent;
+    session.cwd = request.cwd;
     session.sessionId = request.sessionId ?? session.sessionId;
     this.sessions.set(request.terminalId, session);
     if (session.sessionId && this.deps.loadHistory) {
@@ -172,13 +174,24 @@ export class ChatEngine {
     if (event.kind === "turn_ended") this.deps.onTurnEnded?.(terminalId, session.sessionId);
   }
 
-  /** Sends the person's message. False when no agent is running for this manager. */
-  send(terminalId: string, text: string): boolean {
+  /** Sends the person's message and its files. False when no agent is running for this manager. */
+  send(terminalId: string, text: string, attachments: readonly ChatAttachment[] = []): boolean {
     const session = this.sessions.get(terminalId);
     if (!session?.driver) return false;
-    this.record(terminalId, { kind: "user_message", id: randomUUID(), text, at: (this.deps.now?.() ?? new Date()).toISOString() });
-    session.driver.send(text);
+    this.record(terminalId, {
+      kind: "user_message",
+      id: randomUUID(),
+      text,
+      at: (this.deps.now?.() ?? new Date()).toISOString(),
+      ...(attachments.length ? { attachments: [...attachments] } : {}),
+    });
+    session.driver.send(text, attachments);
     return true;
+  }
+
+  /** The folder the chat's agent works in. */
+  cwdOf(terminalId: string): string | null {
+    return this.sessions.get(terminalId)?.cwd ?? null;
   }
 
   interrupt(terminalId: string): void {

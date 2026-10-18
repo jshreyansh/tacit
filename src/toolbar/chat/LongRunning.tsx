@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatTranscript } from "../../../shared/chat-transcript";
-import type { PlanStep } from "../../../shared/chat-events";
+import type { ChatAttachmentInfo, PlanStep } from "../../../shared/chat-events";
+import { useNotificationStore } from "../../stores/notificationStore";
+import { PaperclipIcon } from "./Attachments";
 import { useManagerChatStore, type QueuedMessage } from "../../stores/managerChatStore";
 import { contextPercent, formatTokens, lastOutcome, limitTone, limitWindowMinutes, resetLabel, shouldSendQueued } from "./longRunningModel";
 import { agentIcon } from "../agentIcons";
@@ -28,7 +30,11 @@ export function useQueue(terminalId: string | null): QueuedMessage[] {
  * rest as each turn ends. A message that can't be sent goes back first in
  * line.
  */
-export function useQueueSender(terminalId: string | null, transcript: ChatTranscript, send: (text: string) => Promise<boolean>): void {
+export function useQueueSender(
+  terminalId: string | null,
+  transcript: ChatTranscript,
+  send: (text: string, attachments?: ChatAttachmentInfo[]) => Promise<boolean>,
+): void {
   const queue = useQueue(terminalId);
   const waitUntil = useManagerChatStore((s) => (terminalId ? s.waitUntil[terminalId] : undefined) ?? null);
   const awaiting = useRef(false);
@@ -64,16 +70,25 @@ export function useQueueSender(terminalId: string | null, transcript: ChatTransc
     store.removeQueued(terminalId, next.id);
     if (waitUntil) store.setWaitUntil(terminalId, null);
     awaiting.current = true;
-    void send(next.text).then((ok) => {
-      if (ok) return;
-      awaiting.current = false;
-      useManagerChatStore.setState((s) => ({ queues: { ...s.queues, [terminalId]: [next, ...(s.queues[terminalId] ?? [])] } }));
-    });
+    const putBack = () => useManagerChatStore.setState((s) => ({ queues: { ...s.queues, [terminalId]: [next, ...(s.queues[terminalId] ?? [])] } }));
+    send(next.text, next.attachments).then(
+      (ok) => {
+        if (ok) return;
+        awaiting.current = false;
+        putBack();
+      },
+      (error: unknown) => {
+        // A file it carried is gone: it waits in the queue, held until the
+        // next turn, rather than retrying at once.
+        useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error));
+        putBack();
+      },
+    );
   }, [terminalId, transcript, queue, waitUntil, now, send]);
 }
 
 /** The queue above the message box: each message can go now, be edited, or removed. */
-export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; onSendNow: (text: string) => void }) {
+export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; onSendNow: (text: string, attachments?: ChatAttachmentInfo[]) => void }) {
   const t = useT();
   const queue = useQueue(terminalId);
   const [editing, setEditing] = useState<string | null>(null);
@@ -105,8 +120,14 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
               className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none"
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate" title={q.text}>
-              {q.text}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5" title={[q.text, ...(q.attachments ?? []).map((a) => a.name)].filter(Boolean).join("\n")}>
+              <span className="min-w-0 truncate">{q.text}</span>
+              {q.attachments?.length ? (
+                <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--text-muted)]">
+                  <PaperclipIcon size={11} />
+                  {q.attachments.length}
+                </span>
+              ) : null}
             </span>
           )}
           <button
@@ -116,7 +137,7 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
             aria-label={t.chat_queued_send_now}
             onClick={() => {
               store.removeQueued(terminalId, q.id);
-              onSendNow(q.text);
+              onSendNow(q.text, q.attachments);
             }}
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -214,7 +235,7 @@ export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; 
       {open && (
         <div
           role="tooltip"
-          className="tc-float absolute bottom-full left-1/2 z-30 mb-2 flex w-[250px] -translate-x-1/2 flex-col gap-2 p-3 text-left"
+          className="tc-float absolute bottom-full right-0 z-30 mb-2 flex w-[250px] flex-col gap-2 p-3 text-left"
           style={{ borderRadius: 12 }}
         >
           {agentName && (

@@ -12,7 +12,7 @@ import type {
 } from "../shared/capture";
 import type { ManagerSessionRow, ManagerTenure } from "../shared/manager-role";
 import type { AgentDetection } from "../shared/agent-adapters";
-import type { ApprovalDecision, ChatEvent } from "../shared/chat-events";
+import type { ApprovalDecision, ChatAttachResult, ChatEvent } from "../shared/chat-events";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 import type {
@@ -255,7 +255,23 @@ contextBridge.exposeInMainWorld("tacit", {
   chat: {
     start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) =>
       ipcRenderer.invoke("chat:start", request) as Promise<{ ok: boolean; error?: string }>,
-    send: (terminalId: string, text: string) => ipcRenderer.invoke("chat:send", terminalId, text) as Promise<boolean>,
+    send: (terminalId: string, text: string, attachmentIds?: string[]) =>
+      ipcRenderer.invoke("chat:send", terminalId, text, attachmentIds ?? []) as Promise<boolean>,
+    pickAttachments: (terminalId: string) => ipcRenderer.invoke("chat:attach-pick", terminalId) as Promise<ChatAttachResult>,
+    attachPaths: (paths: string[]) => ipcRenderer.invoke("chat:attach-paths", paths) as Promise<ChatAttachResult>,
+    // A dropped file goes by its path; a pasted image has none, so its bytes go.
+    attachFiles: async (files: File[]): Promise<ChatAttachResult> => {
+      const results: ChatAttachResult[] = [];
+      const paths = files.map((file) => webUtils.getPathForFile(file));
+      const withPath = paths.filter(Boolean);
+      if (withPath.length) results.push((await ipcRenderer.invoke("chat:attach-paths", withPath)) as ChatAttachResult);
+      for (const [i, file] of files.entries()) {
+        if (paths[i]) continue;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        results.push((await ipcRenderer.invoke("chat:attach-image", file.name, bytes)) as ChatAttachResult);
+      }
+      return { attachments: results.flatMap((r) => r.attachments), errors: results.flatMap((r) => r.errors) };
+    },
     interrupt: (terminalId: string) => ipcRenderer.invoke("chat:interrupt", terminalId) as Promise<void>,
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) =>
       ipcRenderer.invoke("chat:answer", terminalId, requestId, decision) as Promise<void>,

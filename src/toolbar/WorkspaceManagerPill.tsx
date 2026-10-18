@@ -27,7 +27,10 @@ import { TaskBar } from "../tasks/TaskParts";
 import { managerTask } from "../tasks/taskModel";
 import { openPinFull } from "../tasks/TasksView";
 import { usePinStore } from "../stores/pinStore";
-import { LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
+import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSender } from "./chat/LongRunning";
+import { ComposerBox, useAttachments } from "./chat/Composer";
+import { withMentions } from "../../shared/chat-attachments";
+import type { ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { QuestionForm } from "./chat/QuestionForm";
@@ -174,6 +177,7 @@ export function WorkspaceManagerPill() {
   const dockWidth = useChatDockStore((s) => s.width);
   const setDockOpen = useChatDockStore((s) => s.setOpen);
   const [draft, setDraft] = useState("");
+  const attachments = useAttachments(managerTerminal?.id ?? null);
   // Text sent here from elsewhere (a past session to ask about) joins the draft.
   const draftInsert = useChatDockStore((s) => s.draftInsert);
   useEffect(() => {
@@ -333,7 +337,8 @@ export function WorkspaceManagerPill() {
 
   const send = useCallback(async () => {
     const text = draft.trim();
-    if (!text || sending || !managerTerminal) return;
+    const files = attachments.items;
+    if ((!text && files.length === 0) || attachments.busy || sending || !managerTerminal) return;
     // Never while reading an archive. The composer is replaced in that state,
     // but the guard belongs here too: `send` targets whoever holds the seat
     // now, so a stray Enter would deliver your message to an agent that has
@@ -344,14 +349,19 @@ export function WorkspaceManagerPill() {
       // Written while it works: queued, to go when the turn ends.
       const busy = useManagerChatStore.getState().transcripts[managerTerminal.id]?.running ?? false;
       if (busy || (useManagerChatStore.getState().queues[managerTerminal.id]?.length ?? 0) > 0) {
-        useManagerChatStore.getState().enqueue(managerTerminal.id, text);
+        useManagerChatStore.getState().enqueue(managerTerminal.id, text, files);
         setDraft("");
+        attachments.clear();
         return;
       }
       setSending(true);
       try {
-        if (await sendToManagerChat(managerTerminal.id, text)) setDraft("");
-        else useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
+        if (await sendToManagerChat(managerTerminal.id, text, files)) {
+          setDraft("");
+          attachments.clear();
+        } else useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
+      } catch (error) {
+        useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error));
       } finally {
         setSending(false);
       }
@@ -372,9 +382,13 @@ export function WorkspaceManagerPill() {
           terminalType: found.terminal.type,
           worktreePath: found.worktree.path,
         },
-        text,
+        // The agent's own terminal reads `@path` as a file too.
+        withMentions(text, files.map((f) => f.path)),
       );
-      if (result.ok) setDraft("");
+      if (result.ok) {
+        setDraft("");
+        attachments.clear();
+      }
       else {
         useNotificationStore
           .getState()
@@ -383,7 +397,7 @@ export function WorkspaceManagerPill() {
     } finally {
       setSending(false);
     }
-  }, [draft, sending, managerTerminal, viewing, t]);
+  }, [draft, attachments, sending, managerTerminal, viewing, t]);
 
   /** Picking someone returns you to the conversation with them. */
   const returnToChat = useCallback(() => {
@@ -608,9 +622,9 @@ export function WorkspaceManagerPill() {
   const transcript = useManagerTranscript(chatMode ? managerTerminal!.id : null);
   const chatTerminalId = chatMode ? managerTerminal!.id : null;
   const sendQueued = useCallback(
-    async (text: string) => {
+    async (text: string, files?: ChatAttachmentInfo[]) => {
       if (!chatTerminalId) return false;
-      const ok = await sendToManagerChat(chatTerminalId, text);
+      const ok = await sendToManagerChat(chatTerminalId, text, files);
       if (!ok) useNotificationStore.getState().notify("warn", t.project_chat_send_not_ready);
       return ok;
     },
@@ -1150,7 +1164,14 @@ export function WorkspaceManagerPill() {
                 : undefined
             }
           />
-          <QueuedMessages terminalId={managerTerminal.id} onSendNow={(text) => void sendQueued(text)} />
+          <QueuedMessages
+            terminalId={managerTerminal.id}
+            onSendNow={(text, files) =>
+              void sendQueued(text, files).catch((error: unknown) =>
+                useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error)),
+              )
+            }
+          />
         </div>
       )}
 
@@ -1190,69 +1211,18 @@ export function WorkspaceManagerPill() {
               </button>
             </div>
           )}
-          <div
-            className="flex flex-col gap-2 border px-3 pb-2 pt-2.5"
-            style={{
-              borderRadius: 14,
-              cornerShape: "squircle",
-              borderColor: "var(--border-hover)",
-              background: "color-mix(in srgb, var(--bg) 70%, transparent)",
-            } as React.CSSProperties}
-          >
-            <textarea
-              ref={inputRef}
-              rows={2}
-              value={draft}
-              disabled={sending}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-                // The canvas listens globally for single-key shortcuts.
-                e.stopPropagation();
-              }}
-              placeholder={running || queuedCount > 0 ? (chatMode ? t.chat_placeholder_queued : t.project_chat_placeholder_running) : t.project_chat_placeholder}
-              className="max-h-40 min-h-[2.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
-            />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="tc-rail-btn flex h-7 items-center gap-1 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                onClick={() => {
-                  // Claude and Codex both read "@path" in a prompt as a file
-                  // to attach; this starts one where the cursor is.
-                  const el = inputRef.current;
-                  const at = el?.selectionStart ?? draft.length;
-                  const next = `${draft.slice(0, at)}@${draft.slice(at)}`;
-                  setDraft(next);
-                  requestAnimationFrame(() => {
-                    el?.focus();
-                    el?.setSelectionRange(at + 1, at + 1);
-                  });
-                }}
-                title={t.project_chat_mention_file_hint}
-              >
-                {t.project_chat_mention_file}
-              </button>
-              {chatMode && <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} agent={managerTerminal.type} />}
-              <div className="flex-1" />
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-[9px] transition-opacity duration-quick disabled:opacity-40"
-                style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-                disabled={!draft.trim() || sending}
-                onClick={() => void send()}
-                aria-label={t.project_chat_send}
-                title={t.project_chat_send}
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M8 13V3M4 7l4-4 4 4" />
-                </svg>
-              </button>
-            </div>
-          </div>
+          <ComposerBox
+            inputRef={inputRef}
+            value={draft}
+            onChange={setDraft}
+            onSubmit={() => void send()}
+            disabled={sending}
+            placeholder={running || queuedCount > 0 ? (chatMode ? t.chat_placeholder_queued : t.project_chat_placeholder_running) : t.project_chat_placeholder}
+            attachments={attachments}
+            settings={chatMode ? <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} /> : undefined}
+            meter={chatMode ? <UsageMeter transcript={transcript} agent={managerTerminal.type} /> : undefined}
+            canSend={(!!draft.trim() || attachments.items.length > 0) && !attachments.busy && !sending}
+          />
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "node:child_process";
-import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatSettings } from "../../shared/chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatSettings } from "../../shared/chat-events";
+import { withMentions } from "../../shared/chat-attachments";
 import {
   claudeAnswerInput,
   claudeApprovalLine,
@@ -41,7 +42,8 @@ export interface DriverOptions {
 }
 
 export interface ChatDriver {
-  send(text: string): void;
+  /** The person's message, with any files sent with it. */
+  send(text: string, attachments?: readonly ChatAttachment[]): void;
   interrupt(): void;
   answer(requestId: string, decision: ApprovalDecision): void;
   /** Answers the agent's questions; null skips them. */
@@ -189,7 +191,8 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
   write(claudeControlLine(INIT_REQUEST, { subtype: "initialize" }));
 
   return {
-    send: (text) => write(claudeUserLine(text)),
+    // Claude reads each `@path` as an attachment: an image as an image.
+    send: (text, attachments = []) => write(claudeUserLine(withMentions(text, attachments.map((a) => a.path)))),
     answerQuestion: (requestId, answers) => {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
@@ -238,7 +241,7 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
   let nextId = 0;
   let exited = false;
   let ready = false;
-  const queued: string[] = [];
+  const queued: Array<{ text: string; attachments: readonly ChatAttachment[] }> = [];
   const pending = new Map<number, (result: { result?: unknown; error?: { message?: string } }) => void>();
   const err = stderrTail();
 
@@ -272,9 +275,9 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     };
   };
 
-  const startTurn = async (text: string) => {
+  const startTurn = async (text: string, attachments: readonly ChatAttachment[] = []) => {
     if (!state.threadId) return;
-    const input = codexUserInput(text);
+    const input = codexUserInput(text, attachments);
     if (state.turnId) {
       // Mid-turn: steer the running turn, as Codex's own app does.
       const steered = await request("turn/steer", { threadId: state.threadId, input, expectedTurnId: state.turnId });
@@ -351,16 +354,16 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
       if (limit) options.emit(limit);
     });
     ready = true;
-    for (const text of queued.splice(0)) await startTurn(text);
+    for (const message of queued.splice(0)) await startTurn(message.text, message.attachments);
   })();
 
   return {
-    send: (text) => {
+    send: (text, attachments = []) => {
       if (!ready) {
-        queued.push(text);
+        queued.push({ text, attachments });
         return;
       }
-      void startTurn(text);
+      void startTurn(text, attachments);
     },
     interrupt: () => {
       if (state.threadId && state.turnId) void request("turn/interrupt", { threadId: state.threadId, turnId: state.turnId });

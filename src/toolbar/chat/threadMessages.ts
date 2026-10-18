@@ -27,6 +27,14 @@ export type ThreadPart =
   | { readonly type: "data-compacted"; readonly data: { readonly preTokens?: number } }
   | { readonly type: "data-briefing"; readonly data: { readonly text: string } };
 
+export interface ThreadAttachment {
+  readonly id: string;
+  readonly type: "image" | "file";
+  readonly name: string;
+  readonly status: { readonly type: "complete" };
+  readonly content: readonly { readonly type: "image"; readonly image: string }[];
+}
+
 export type ThreadStatus =
   | { readonly type: "running" }
   | { readonly type: "complete"; readonly reason: "stop" }
@@ -38,6 +46,8 @@ export interface ThreadMessage {
   readonly content: readonly ThreadPart[];
   readonly createdAt?: Date;
   readonly status?: ThreadStatus;
+  /** Files sent with a user message: an image carries its picture. */
+  readonly attachments?: readonly ThreadAttachment[];
   /** `steered`: a message sent mid-turn. `note`: a line, not a reply. */
   readonly metadata?: { readonly custom: { readonly steered?: boolean; readonly note?: boolean } };
 }
@@ -74,8 +84,19 @@ export function toThreadMessages(messages: readonly ChatMessage[]): ThreadMessag
       return {
         id: m.id,
         role: "user",
-        content: [{ type: "text", text: m.text }],
+        content: m.text ? [{ type: "text", text: m.text }] : [],
         createdAt: new Date(m.at),
+        ...(m.attachments?.length
+          ? {
+              attachments: m.attachments.map((a, i) => ({
+                id: `${m.id}-a${i}`,
+                type: a.kind,
+                name: a.name,
+                status: { type: "complete" as const },
+                content: a.preview ? [{ type: "image" as const, image: a.preview }] : [],
+              })),
+            }
+          : {}),
         ...(m.steered ? { metadata: { custom: { steered: true } } } : {}),
       };
     }

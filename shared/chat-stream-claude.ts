@@ -329,8 +329,8 @@ export function claudeAnswerInput(input: unknown, answers: ChatAnswers): Json {
 }
 
 const CLAUDE_MODES: Array<ChatModeOption & { needsAuto?: boolean }> = [
-  { id: "default", label: "Ask before edits", description: "Asks before changing files or running commands" },
-  { id: "acceptEdits", label: "Accept edits", description: "Edits files without asking; still asks for commands" },
+  { id: "default", label: "Ask before edits", short: "Ask", description: "Asks before changing files or running commands" },
+  { id: "acceptEdits", label: "Accept edits", short: "Edits", description: "Edits files without asking; still asks for commands" },
   { id: "plan", label: "Plan", description: "Reads and plans; changes nothing until you approve" },
   { id: "auto", label: "Auto", description: "Decides for itself what's safe to run", needsAuto: true },
 ];
@@ -345,6 +345,10 @@ export function claudeCapabilities(reply: unknown): { models: ChatModelOption[];
       id: m.value as string,
       label: typeof m.displayName === "string" ? m.displayName : (m.value as string),
       ...(typeof m.description === "string" ? { description: m.description } : {}),
+      // "Default (recommended)" says which model in its description: "Opus 5.5 · Best for…".
+      ...(m.value === "default" && typeof m.description === "string" && m.description.split(" · ")[0].trim()
+        ? { short: m.description.split(" · ")[0].trim() }
+        : {}),
       efforts: m.supportsEffort === true && Array.isArray(m.supportedEffortLevels) ? m.supportedEffortLevels.filter((e): e is string => typeof e === "string") : [],
       isDefault: m.value === "default",
     }));

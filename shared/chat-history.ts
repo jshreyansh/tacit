@@ -1,4 +1,5 @@
 import type { ChatEvent } from "./chat-events";
+import { splitMentions } from "./chat-attachments";
 import type { TimelineEvent } from "./sessions";
 
 /**
@@ -71,7 +72,11 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
           break;
         }
         endTurn();
-        out.push({ kind: "user_message", id: `${idPrefix}u${ev.index}`, text: ev.textPreview, at: ev.timestamp });
+        {
+          // Files sent with it are mentions on its last lines.
+          const { text, attachments } = splitMentions(ev.textPreview);
+          out.push({ kind: "user_message", id: `${idPrefix}u${ev.index}`, text, at: ev.timestamp, ...(attachments.length ? { attachments } : {}) });
+        }
         inTurn = true;
         break;
       case "assistant_text":

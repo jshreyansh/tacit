@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatEvent } from "../../shared/chat-events";
+import type { ChatAttachmentInfo, ChatEvent } from "../../shared/chat-events";
 import { EMPTY_TRANSCRIPT, reduceChat, replayChat, type ChatTranscript } from "../../shared/chat-transcript";
 
 /**
@@ -24,7 +24,7 @@ interface ManagerChatStore {
    * turn ends; any can be sent at once to steer, edited, or removed.
    */
   queues: Record<string, QueuedMessage[]>;
-  enqueue: (terminalId: string, text: string) => void;
+  enqueue: (terminalId: string, text: string, attachments?: ChatAttachmentInfo[]) => void;
   editQueued: (terminalId: string, id: string, text: string) => void;
   removeQueued: (terminalId: string, id: string) => void;
   /** Out of usage: the queue holds until the limit resets (ISO time). */
@@ -35,6 +35,7 @@ interface ManagerChatStore {
 export interface QueuedMessage {
   id: string;
   text: string;
+  attachments?: ChatAttachmentInfo[];
 }
 
 let queueSeq = 0;
@@ -44,8 +45,13 @@ export const useManagerChatStore = create<ManagerChatStore>((set) => ({
   pendingMoves: {},
   queues: {},
   waitUntil: {},
-  enqueue: (terminalId, text) =>
-    set((state) => ({ queues: { ...state.queues, [terminalId]: [...(state.queues[terminalId] ?? []), { id: `q${++queueSeq}`, text }] } })),
+  enqueue: (terminalId, text, attachments) =>
+    set((state) => ({
+      queues: {
+        ...state.queues,
+        [terminalId]: [...(state.queues[terminalId] ?? []), { id: `q${++queueSeq}`, text, ...(attachments?.length ? { attachments } : {}) }],
+      },
+    })),
   editQueued: (terminalId, id, text) =>
     set((state) => ({ queues: { ...state.queues, [terminalId]: (state.queues[terminalId] ?? []).map((q) => (q.id === id ? { ...q, text } : q)) } })),
   removeQueued: (terminalId, id) =>

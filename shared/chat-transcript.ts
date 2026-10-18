@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
+import type { ChatAttachment, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
 
 /**
  * The conversation on screen, built from chat events alone (T6.2).
@@ -34,6 +34,7 @@ export interface ChatUserMessage {
   at: string;
   /** Sent while a turn ran: it steered that turn rather than starting one. */
   steered?: boolean;
+  attachments?: ChatAttachment[];
 }
 
 /** A line in the conversation that isn't anyone's message: earlier turns summarized. */
@@ -174,7 +175,17 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
         running: true,
         failure: null,
         ...(steered ? {} : { plan: null }),
-        messages: [...t.messages, { role: "user", id: event.id, text: event.text, at: event.at, ...(steered ? { steered: true } : {}) }],
+        messages: [
+          ...t.messages,
+          {
+            role: "user",
+            id: event.id,
+            text: event.text,
+            at: event.at,
+            ...(steered ? { steered: true } : {}),
+            ...(event.attachments?.length ? { attachments: event.attachments } : {}),
+          },
+        ],
       };
     }
 

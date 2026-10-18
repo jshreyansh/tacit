@@ -1,4 +1,4 @@
-import type { ApprovalDecision } from "../../shared/chat-events";
+import type { ApprovalDecision, ChatAttachResult, ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -97,8 +97,19 @@ export async function ensureManagerChat(terminalId: string): Promise<void> {
   if (!snapshot.running) await startTerminalChat(terminalId);
 }
 
-export function sendToManagerChat(terminalId: string, text: string): Promise<boolean> {
-  return window.tacit.chat.send(terminalId, text);
+/** Sends a message and its files. Rejects when an attached file is no longer available. */
+export function sendToManagerChat(terminalId: string, text: string, attachments: readonly ChatAttachmentInfo[] = []): Promise<boolean> {
+  return window.tacit.chat.send(terminalId, text, attachments.map((a) => a.id));
+}
+
+/** The open dialog, for files to send with a message. */
+export function pickChatAttachments(terminalId: string): Promise<ChatAttachResult> {
+  return window.tacit.chat.pickAttachments(terminalId);
+}
+
+/** Files dropped or pasted on the message box; paths when they come from the Files panel. */
+export function attachChatFiles(files: File[] | { paths: string[] }): Promise<ChatAttachResult> {
+  return Array.isArray(files) ? window.tacit.chat.attachFiles(files) : window.tacit.chat.attachPaths(files.paths);
 }
 
 export function interruptManagerChat(terminalId: string): Promise<void> {
