@@ -50,6 +50,70 @@ function unwrapCodeCall(preview: string): { name: string; input: Record<string, 
 
 const INTERRUPT_MARKER = /^\[Request interrupted by user( for tool use)?\]$/;
 
+/**
+ * A session carried over into Codex from another agent keeps that agent's
+ * tool calls and results as text in its replies:
+ *
+ *     [external_agent_tool_call: Bash]
+ *     description: Wait 8 seconds
+ *     command: sleep 8 && echo slept
+ *     [/external_agent_tool_call]
+ *     [external_agent_tool_result]          (or `[external_agent_tool_result: error]`)
+ *     slept
+ *     [/external_agent_tool_result]
+ *
+ * Split back into what they were: text, a tool call with its fields, its result.
+ */
+export type CarriedPart =
+  | { kind: "text"; text: string }
+  | { kind: "call"; name: string; input: Record<string, unknown> }
+  | { kind: "result"; isError: boolean; output: string };
+
+const CARRIED = /\[external_agent_tool_(call|result)(?::\s*([^\]\n]*))?\]\n?([\s\S]*?)(?:\n?\[\/external_agent_tool_\1\]|$)/g;
+
+/** `key: value` lines; a line that doesn't start a field continues the one before. */
+function carriedFields(body: string): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  let last: string | null = null;
+  for (const line of body.split("\n")) {
+    const field = /^([A-Za-z_][A-Za-z0-9_-]*):\s?(.*)$/.exec(line);
+    if (field && !(field[1] in input)) {
+      last = field[1];
+      input[last] = field[2];
+    } else if (last) {
+      input[last] = `${input[last]}\n${line}`;
+    } else if (line.trim()) {
+      input.description = line;
+      last = "description";
+    }
+  }
+  return input;
+}
+
+export function splitCarriedTools(text: string): CarriedPart[] {
+  if (!text.includes("[external_agent_tool_")) return [{ kind: "text", text }];
+  const parts: CarriedPart[] = [];
+  let at = 0;
+  for (const m of text.matchAll(CARRIED)) {
+    const before = text.slice(at, m.index).trim();
+    if (before) parts.push({ kind: "text", text: before });
+    if (m[1] === "call") {
+      const input = carriedFields(m[3]);
+      // Read, Edit and Write name their file `file`; the chat reads `file_path`, as Claude writes it.
+      if (typeof input.file === "string" && !("file_path" in input)) {
+        input.file_path = input.file;
+        delete input.file;
+      }
+      parts.push({ kind: "call", name: m[2]?.trim() || "tool", input });
+    }
+    else parts.push({ kind: "result", isError: m[2]?.trim() === "error", output: m[3] });
+    at = m.index + m[0].length;
+  }
+  const after = text.slice(at).trim();
+  if (after) parts.push({ kind: "text", text: after });
+  return parts;
+}
+
 export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefix = "h"): ChatEvent[] {
   const out: ChatEvent[] = [];
   const openCalls: string[] = [];
@@ -82,8 +146,21 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
       case "assistant_text":
         if (!ev.textPreview.trim()) break;
         inTurn = true;
-        block += 1;
-        out.push({ kind: "block_start", key, block: "text" }, { kind: "block_done", key, text: ev.textPreview });
+        // Tool calls carried over from another agent, written as text, show as the calls they were.
+        splitCarriedTools(ev.textPreview).forEach((part, i) => {
+          block += 1;
+          const partKey = `${idPrefix}${block}`;
+          if (part.kind === "text") {
+            out.push({ kind: "block_start", key: partKey, block: "text" }, { kind: "block_done", key: partKey, text: part.text });
+          } else if (part.kind === "call") {
+            const callId = `${idPrefix}x${ev.index}-${i}`;
+            openCalls.push(callId);
+            out.push({ kind: "block_start", key: partKey, block: "tool", toolCallId: callId, toolName: part.name }, { kind: "block_done", key: partKey, input: part.input });
+          } else {
+            const callId = openCalls.shift();
+            if (callId) out.push({ kind: "tool_result", toolCallId: callId, isError: part.isError, output: part.output });
+          }
+        });
         break;
       case "thinking":
         // Codex keeps its reasoning encrypted: nothing to show.
