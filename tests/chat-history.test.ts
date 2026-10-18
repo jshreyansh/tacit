@@ -74,3 +74,25 @@ test("a call the record never answered closes with its turn instead of spinning"
   assert.ok(reply.parts[0].type === "tool" && reply.parts[0].status !== "running");
   assert.equal(t.running, false);
 });
+
+test("Claude's stop marker ends the turn as stopped, not as a message from the person", () => {
+  const t = replayChat(
+    timelineToChatEvents([
+      ev("user_prompt", "set the reminder"),
+      ev("tool_use", "$ sed -i ...", { toolName: "Bash" }),
+      ev("user_prompt", "[Request interrupted by user for tool use]"),
+      ev("user_prompt", "[Request interrupted by user]"),
+    ]),
+  );
+  assert.equal(t.running, false);
+  assert.deepEqual(t.messages.map((m) => m.role), ["user", "assistant"]);
+  const reply = t.messages[1];
+  assert.ok(reply.role === "assistant" && reply.outcome === "interrupted");
+});
+
+test("a sent message starts the turn; a chat reopened on history that ends with it isn't waiting", () => {
+  const sent = replayChat([{ kind: "user_message", id: "u1", text: "hi", at: "2026-10-18T10:00:00Z" }]);
+  assert.equal(sent.running, true);
+  const reopened = replayChat(timelineToChatEvents([ev("user_prompt", "hi")]));
+  assert.equal(reopened.running, false);
+});

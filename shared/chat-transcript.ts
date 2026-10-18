@@ -163,10 +163,13 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
 
     case "user_message": {
       // A message sent mid-turn closes nothing: it steers the running turn.
-      // A new turn starts without the last one's plan.
+      // A new turn starts without the last one's plan. Sent, the turn is on
+      // until the agent ends it, so a chat reopened on history that ends
+      // with the person's message isn't left waiting for a reply.
       const steered = t.running;
       return {
         ...t,
+        running: true,
         failure: null,
         ...(steered ? {} : { plan: null }),
         messages: [...t.messages, { role: "user", id: event.id, text: event.text, at: event.at, ...(steered ? { steered: true } : {}) }],

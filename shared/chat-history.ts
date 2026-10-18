@@ -47,22 +47,29 @@ function unwrapCodeCall(preview: string): { name: string; input: Record<string, 
   return { name: call[1], input };
 }
 
+const INTERRUPT_MARKER = /^\[Request interrupted by user( for tool use)?\]$/;
+
 export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefix = "h"): ChatEvent[] {
   const out: ChatEvent[] = [];
   const openCalls: string[] = [];
   let inTurn = false;
   let block = 0;
-  const endTurn = () => {
+  const endTurn = (outcome: "success" | "interrupted" = "success") => {
     if (!inTurn) return;
     // A call the record never answered (the turn was stopped) closes with it.
     for (const callId of openCalls.splice(0)) out.push({ kind: "tool_result", toolCallId: callId, isError: false, output: "" });
-    out.push({ kind: "turn_ended", outcome: "success" });
+    out.push({ kind: "turn_ended", outcome });
     inTurn = false;
   };
   for (const ev of timeline) {
     const key = `${idPrefix}${block}`;
     switch (ev.type) {
       case "user_prompt":
+        // Claude records a stop as a message from the person; it's the turn ending.
+        if (INTERRUPT_MARKER.test(ev.textPreview.trim())) {
+          endTurn("interrupted");
+          break;
+        }
         endTurn();
         out.push({ kind: "user_message", id: `${idPrefix}u${ev.index}`, text: ev.textPreview, at: ev.timestamp });
         inTurn = true;

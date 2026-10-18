@@ -663,7 +663,7 @@ export function ChatThread({
   const AssistantMessage = useMemo(() => makeAssistantMessage(agent, replyLabel), [agent, replyLabel]);
   // Sent, and nothing back yet: the agent's first event makes the reply.
   const last = transcript.messages[transcript.messages.length - 1];
-  const awaitingReply = last?.role === "user" && !transcript.failure;
+  const awaitingReply = last?.role === "user" && transcript.running && !transcript.failure;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
