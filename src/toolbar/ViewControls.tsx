@@ -1,9 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import {
-  useCanvasStore,
-  CHROME_INSET,
-  LEFT_RAIL_WIDTH,
-} from "../stores/canvasStore";
+import { useCanvasStore } from "../stores/canvasStore";
 import { fitAllProjects, stepZoomAtCenter } from "../canvas/zoomActions";
 import { clampScale } from "../canvas/viewportZoom";
 import {
@@ -20,11 +16,10 @@ const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 /**
- * How you are looking at the canvas: zoom, Fit and Focus, in a narrow
- * floating strip at the bottom of the right edge. They were the foot of the
- * right rail; the rail's dock moved to the left bar and its update notice to
- * the left bar's foot, so what is left floats on its own and gives the
- * canvas back the rest of the edge.
+ * How you are looking at the canvas: zoom, Fit and Focus, then Canvas or
+ * Grid, at the foot of the left bar above Settings. They used to float on
+ * their own at the bottom right; in the bar they sit with every other
+ * control and leave the canvas's corner clear.
  */
 
 const buttonCls =
@@ -98,10 +93,7 @@ export function ViewControls() {
   if (mode === "grid") return null;
 
   return (
-    <div
-      className="tc-float fixed z-50 flex flex-col items-center py-2"
-      style={{ right: CHROME_INSET, bottom: CHROME_INSET, width: LEFT_RAIL_WIDTH }}
-    >
+    <div className="flex shrink-0 flex-col items-center">
         {/* View: how you are looking at the canvas. The rail reads top to
             bottom as app, then inspect, then view — zoom, Fit and Focus are
             adjustments you make to what you are already looking at, so they
@@ -125,11 +117,10 @@ export function ViewControls() {
                 ref={zoomPopoverRef}
                 role="menu"
                 aria-label={t.canvas_zoom_to}
-                // Rises from the trigger. The zoom control sits at the foot of
-                // the rail now, so a menu anchored to its top ran off the
-                // bottom of the window — the presets nearest the bottom were
-                // the ones you could not reach.
-                className={`absolute bottom-0 right-full mr-2 max-h-[min(22rem,60vh)] min-w-[170px] overflow-y-auto py-1.5 ${PILL_GLASS}`}
+                // Opens beside the bar and rises from the trigger: it sits near
+                // the bar's foot, so a menu anchored to its top would run off
+                // the bottom of the window.
+                className={`absolute bottom-0 left-full z-50 ml-3 max-h-[min(22rem,60vh)] min-w-[170px] overflow-y-auto py-1.5 ${PILL_GLASS}`}
                 style={{ borderRadius: 14, cornerShape: "squircle" } as React.CSSProperties}
               >
                 {/* Step controls live here rather than as two more 40px targets
@@ -246,6 +237,8 @@ export function ViewControls() {
             <GridViewIcon />
           </button>
         </div>
+        {/* Apart from Settings below. */}
+        <div className="my-1.5 h-px w-6 bg-[var(--border)]" aria-hidden="true" />
     </div>
   );
 }

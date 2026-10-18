@@ -6,7 +6,6 @@ import { addProjectFromDirectoryPath } from "./canvas/sceneCommands";
 import { TitleStrip } from "./toolbar/TitleStrip";
 import { SettingsModal } from "./components/SettingsModal";
 import { useSettingsModalStore } from "./stores/settingsModalStore";
-import { ViewControls } from "./toolbar/ViewControls";
 import { NodeTray } from "./toolbar/NodeTray";
 import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
@@ -1219,7 +1218,6 @@ export function App() {
       <TitleStrip />
       <SettingsModalHost />
       <LeftRail />
-      <ViewControls />
       <WorkdeskView />
       <NodeTray />
       <LeftPanel />

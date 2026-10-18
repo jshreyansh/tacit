@@ -10,6 +10,7 @@ import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
 import { IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
+import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import tacitMark from "../assets/tacit-mark.png";
@@ -261,6 +262,8 @@ export function LeftRail() {
           nothing on the canvas and belongs to no panel, so it keeps the corner
           furthest from everything you reach for while working. */}
       <div className="relative mt-auto flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
+        {/* How you look at the canvas: zoom, Fit, Focus, Canvas or Grid. */}
+        <ViewControls />
         {/* Update, and only when there is one. */}
         {updateStatus !== "idle" && (
           <UpdateStatusButton status={updateStatus} t={t} onClick={() => setShowUpdate(true)} />
