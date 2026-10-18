@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "../i18n/useT";
 import { addBrowser, addNote, addTerminal } from "../actions/dockActions";
 import { DOCK_ENTRIES, DockIcon, useDockAvailability, type DockEntry } from "../toolbar/dockEntries";
@@ -56,11 +57,13 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("root");
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const identities = useIdentityStore((s) => s.identities);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     const esc = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -107,8 +110,10 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
           <path d="M8 3v10M3 8h10" />
         </svg>
       </button>
-      {open && (
-        <div role="menu" aria-label={t.workdesk_add} className="tc-float pointer-events-auto fixed z-[60] w-[240px] p-1.5" style={{ borderRadius: 11, ...menuPosition(ref.current) }}>
+      {/* On the page itself: inside the view's blurred panel a fixed menu
+          would be placed against the panel, not the window. */}
+      {open && createPortal(
+        <div ref={menuRef} role="menu" aria-label={t.workdesk_add} className="tc-float pointer-events-auto fixed z-[1000] w-[240px] p-1.5" style={{ borderRadius: 11, ...menuPosition(ref.current) }}>
           {step !== "root" && (
             <button
               type="button"
@@ -185,7 +190,8 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                 <span className="truncate">{profile.name}</span>
               </Row>
             ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -195,5 +201,5 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
 function menuPosition(anchor: HTMLElement | null): React.CSSProperties {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return {};
-  return { top: rect.bottom + 2, left: Math.min(rect.left, window.innerWidth - 248) };
+  return { top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)) };
 }

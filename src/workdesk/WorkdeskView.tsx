@@ -505,10 +505,12 @@ export function WorkdeskView() {
       </div>
 
       {openCard && (
-        <div className={`flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] px-2 ${browserWindow ? barGlass : "bg-[color-mix(in_srgb,var(--bg)_40%,transparent)]"}`} role="tablist">
-          {/* Add an agent, terminal, browser, task or note; it opens here. */}
+        <div className={`flex h-10 shrink-0 items-center border-b border-[var(--border)] px-2 ${browserWindow ? barGlass : "bg-[color-mix(in_srgb,var(--bg)_40%,transparent)]"}`}>
+          {/* Add an agent, terminal, browser, task or note; it opens here.
+              It stays put while the tabs scroll. */}
           <AddNodeMenu onAdded={(node) => setOpenNode(node)} />
-          <span className="mx-1 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
+          <span className="mx-1.5 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
+          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
           {tabCards.map((card) => {
             const active = card === openCard;
             const icon = card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : null;
@@ -552,6 +554,7 @@ export function WorkdeskView() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
