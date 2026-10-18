@@ -93,6 +93,23 @@ function escapeLabel(text: string): string {
  * Terminal ids in an agent's text become links that read as the terminal's
  * name, which the chat draws as chips. Fenced code is left alone.
  */
+/**
+ * A reply as one plain line for a preview (the line above the pill, a
+ * card): terminal ids read as the terminals' names, as the chat draws them,
+ * and Markdown's marks dropped.
+ */
+export function previewLine(text: string, nameOf: (id: string) => string | null, max = 120): string {
+  const named = text.replace(TERMINAL_ID_PATTERN, (match, id: string) => nameOf(id) ?? match);
+  const plain = named
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}\s+|[-*+]\s+|>\s?)/gm, "")
+    .replace(/(\*\*|__|`)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain;
+}
+
 export function linkNodeIds(text: string, describe: (id: string) => NodeDescription | null): string {
   return text
     .split(/(```[\s\S]*?```)/g)

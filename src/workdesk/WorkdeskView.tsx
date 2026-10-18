@@ -37,6 +37,8 @@ import {
   type TabCard,
   type WorkdeskFilter,
 } from "./workdeskModel";
+import { TERMINAL_ID_PATTERN } from "../toolbar/sessionReaderModel";
+import { terminalName } from "../actions/terminalLookup";
 
 /**
  * The workdesk view (T7): every node on the canvas on screen as a card, in
@@ -123,7 +125,11 @@ function lastReply(transcript: ChatTranscript | undefined): string[] {
     const m = transcript.messages[i];
     if (m.role !== "assistant") continue;
     const text = [...m.parts].reverse().find((p) => p.type === "text" && p.text.trim());
-    if (text && text.type === "text") return cleanTailLines(text.text.split("\n"), TAIL_LINES);
+    // Terminal ids read as names, as in the chat.
+    if (text && text.type === "text") {
+      const named = text.text.replace(TERMINAL_ID_PATTERN, (match, id: string) => terminalName(id) ?? match);
+      return cleanTailLines(named.split("\n"), TAIL_LINES);
+    }
   }
   return [];
 }

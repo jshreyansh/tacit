@@ -17,6 +17,8 @@ import {
   WORKSPACE_MANAGER_BRIEFING,
   isWorkspaceManagerBriefing,
 } from "../../shared/manager-role";
+import { previewLine } from "./sessionReaderModel";
+import { terminalName } from "../actions/terminalLookup";
 
 /**
  * The parts of the Project Chat control that deal with the conversation.
@@ -129,7 +131,7 @@ export function useManagerConversation(
     for (let i = timeline.events.length - 1; i >= 0; i -= 1) {
       const ev = timeline.events[i];
       if (ev.type === "assistant_text" && ev.textPreview.trim()) {
-        return firstLine(ev.textPreview);
+        return firstLine(previewLine(ev.textPreview, terminalName, 400));
       }
     }
     return null;

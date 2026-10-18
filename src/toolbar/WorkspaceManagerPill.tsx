@@ -30,6 +30,8 @@ import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSend
 import { ComposerBox, useAttachments } from "./chat/Composer";
 import { PaperclipIcon } from "./chat/Attachments";
 import { TaskControl } from "./TaskControl";
+import { previewLine } from "./sessionReaderModel";
+import { terminalName } from "../actions/terminalLookup";
 import { withMentions } from "../../shared/chat-attachments";
 import type { ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
@@ -784,7 +786,8 @@ export function WorkspaceManagerPill() {
       const m = transcript.messages[i];
       if (m.role !== "assistant") continue;
       const text = [...m.parts].reverse().find((p) => p.type === "text" && p.text.trim());
-      if (text && text.type === "text") return text.text.replace(/\s+/g, " ").trim().slice(0, 120);
+      // Terminal ids read as names, as in the chat.
+      if (text && text.type === "text") return previewLine(text.text, terminalName);
     }
     return null;
   }, [transcript.messages]);

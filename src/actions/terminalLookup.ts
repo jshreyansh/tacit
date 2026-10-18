@@ -29,3 +29,9 @@ export function getLivePtyId(terminalId: string): number | null {
   const patch = useTerminalRuntimeStateStore.getState().terminals[terminalId];
   return patch && "ptyId" in patch ? (patch.ptyId ?? null) : null;
 }
+
+/** A terminal's name as the chat shows it, or null when it's gone. */
+export function terminalName(terminalId: string): string | null {
+  const found = findTerminal(terminalId);
+  return found ? found.terminal.customTitle?.trim() || found.terminal.title : null;
+}

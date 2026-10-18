@@ -62,3 +62,15 @@ test("terminal ids in an agent's text become chips by name; closed ones say so; 
   // A name with brackets can't break the link.
   assert.ok(linkNodeIds("1792004559435-3", () => ({ label: "a [b]", open: true })).startsWith("[a \\[b\\]]"));
 });
+
+test("a preview line reads terminal ids as names and drops Markdown's marks", async () => {
+  const { previewLine } = await import("../src/toolbar/sessionReaderModel");
+  const names: Record<string, string> = { "1792010924415-1": "claude · gym plan" };
+  assert.equal(
+    previewLine("**Done.** Worker `1792010924415-1` is on it; see [the plan](file:///p.md).\n\n- next", (id) => names[id] ?? null),
+    "Done. Worker claude · gym plan is on it; see the plan. next",
+  );
+  // A closed terminal keeps its id; long text is cut.
+  assert.equal(previewLine("ask 1792000000000-3", () => null), "ask 1792000000000-3");
+  assert.equal(previewLine("x".repeat(200), () => null, 10), "xxxxxxxxx…");
+});
