@@ -83,3 +83,23 @@ test("a folded run of tools reads as its first few names, repeats counted", () =
   );
   assert.equal(toolRunSummary([]), "");
 });
+
+test("the wait before a reply is drawn once: sent or briefed, running, nothing back yet", async () => {
+  const { isAwaitingReply } = await import("../src/toolbar/chat/threadMessages");
+  const user = { role: "user" as const, id: "u", text: "hi", at: "2026-10-18T10:00:00Z" };
+  const briefing = { role: "note" as const, id: "b", kind: "briefing" as const, text: "You are the manager" };
+  const reply = { role: "assistant" as const, id: "a", parts: [], done: false };
+  assert.equal(isAwaitingReply({ messages: [user], running: true, failure: null }), true);
+  assert.equal(isAwaitingReply({ messages: [briefing], running: true, failure: null }), true);
+  // History ending with the person's message: not waiting.
+  assert.equal(isAwaitingReply({ messages: [user], running: false, failure: null }), false);
+  // The reply has begun: it draws its own dots.
+  assert.equal(isAwaitingReply({ messages: [user, reply], running: true, failure: null }), false);
+});
+
+test("the manager briefing reads as a line, not as a reply", async () => {
+  const { toThreadMessages } = await import("../src/toolbar/chat/threadMessages");
+  const [m] = toThreadMessages([{ role: "note", id: "b", kind: "briefing", text: "You are the manager" }]);
+  assert.deepEqual(m.content, [{ type: "data-briefing", data: { text: "You are the manager" } }]);
+  assert.equal(m.metadata?.custom.note, true);
+});

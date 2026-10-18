@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatPart } from "../../../shared/chat-transcript";
+import type { ChatMessage, ChatPart, ChatTranscript } from "../../../shared/chat-transcript";
 
 /**
  * The conversation as assistant-ui messages (ThreadMessageLike), for its
@@ -24,7 +24,8 @@ export type ThreadPart =
   /** How a turn ended when it didn't finish: stopped, or failed and why. */
   | { readonly type: "data-turn-note"; readonly data: { readonly kind: "interrupted" | "error"; readonly error?: string } }
   /** A line between messages: earlier turns summarized to make room. */
-  | { readonly type: "data-compacted"; readonly data: { readonly preTokens?: number } };
+  | { readonly type: "data-compacted"; readonly data: { readonly preTokens?: number } }
+  | { readonly type: "data-briefing"; readonly data: { readonly text: string } };
 
 export type ThreadStatus =
   | { readonly type: "running" }
@@ -82,7 +83,10 @@ export function toThreadMessages(messages: readonly ChatMessage[]): ThreadMessag
       return {
         id: m.id,
         role: "assistant",
-        content: [{ type: "data-compacted", data: m.preTokens !== undefined ? { preTokens: m.preTokens } : {} }],
+        content:
+          m.kind === "briefing"
+            ? [{ type: "data-briefing", data: { text: m.text ?? "" } }]
+            : [{ type: "data-compacted", data: m.preTokens !== undefined ? { preTokens: m.preTokens } : {} }],
         status: { type: "complete", reason: "stop" },
         metadata: { custom: { note: true } },
       };
@@ -190,4 +194,10 @@ export function askedAnswers(result: string | undefined): Record<string, string>
   if (!result) return out;
   for (const m of result.matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) out[m[1]] = m[2];
   return out;
+}
+
+/** Sent (or briefed) and nothing back yet: the wait before the agent's first event. */
+export function isAwaitingReply(t: Pick<ChatTranscript, "messages" | "running" | "failure">): boolean {
+  const last = t.messages[t.messages.length - 1];
+  return t.running && !t.failure && (last?.role === "user" || (last?.role === "note" && last.kind === "briefing"));
 }

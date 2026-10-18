@@ -106,6 +106,7 @@ export const zh = {
   chat_limit_wait: (resets: string) => `等到 ${resets}`,
   chat_limit_waiting: (resets: string, queued: number) => (queued > 0 ? `等到 ${resets}，然后发送 ${queued} 条排队消息` : `等到 ${resets}`),
   chat_limit_hand_to: (agent: string) => `把席位交给 ${agent}`,
+  chat_briefing_sent: "已发送管理者简报",
   chat_compacted: "更早的轮次已总结",
   chat_compacted_from: (tokens: string) => `更早的轮次已总结 · 原 ${tokens} tokens`,
   chat_placeholder_queued: "给管理者发消息…（排队，等这一轮结束）",

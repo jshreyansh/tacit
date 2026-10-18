@@ -15,7 +15,7 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { askedAnswers, createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { askedAnswers, createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
 import { claudeQuestions } from "../../../shared/chat-stream-claude";
 import { usePinStore } from "../../stores/pinStore";
 import { openPinFull } from "../../tasks/TasksView";
@@ -476,14 +476,29 @@ function PendingReply({ agent, label }: { agent: string; label: string }) {
 /** A line between messages, not a reply: earlier turns summarized. */
 function NoteMessage() {
   const t = useT();
-  const preTokens = useAuiState((s) => {
-    const part = s.message.parts[0] as { data?: { preTokens?: number } } | undefined;
-    return part?.data?.preTokens;
-  });
+  const part = useAuiState((s) => s.message.parts[0] as { type?: string; data?: { preTokens?: number; text?: string } } | undefined);
   return (
     <MessageAnchor className="flex flex-col">
-      <CompactedDivider preTokens={preTokens} t={t} />
+      {part?.type === "data-briefing" ? <BriefingLine text={part.data?.text ?? ""} /> : <CompactedDivider preTokens={part?.data?.preTokens} t={t} />}
     </MessageAnchor>
+  );
+}
+
+/** The role briefing Tacit sent when the agent took the seat: a line, opened to read it. */
+function BriefingLine({ text }: { text: string }) {
+  const t = useT();
+  return (
+    <details className="group mb-4 text-[11.5px] text-[var(--text-muted)]">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-[var(--text-secondary)]">
+        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" className="transition-transform group-open:rotate-90" aria-hidden="true">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+        {t.chat_briefing_sent}
+      </summary>
+      <div className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap rounded-[9px] border border-[var(--border)] px-2.5 py-2 text-[11.5px] leading-relaxed text-[var(--text-secondary)]">
+        {text}
+      </div>
+    </details>
   );
 }
 
@@ -645,10 +660,14 @@ export function ChatThread({
 }) {
   const t = useT();
   const messages = useMemo(() => toThreadMessages(transcript.messages), [transcript.messages]);
+  // Sent (or briefed), and nothing back yet: the agent's first event makes
+  // the reply. Until then the waiting row is ours alone; the runtime isn't
+  // told it's running, or it would draw a second empty reply of its own.
+  const awaitingReply = isAwaitingReply(transcript);
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages: messages as unknown as ThreadMessageLike[],
     convertMessage: (m) => m,
-    isRunning: transcript.running,
+    isRunning: transcript.running && !awaitingReply,
     onNew: async (message) => {
       const text = message.content
         .map((part) => (part.type === "text" ? part.text : ""))
@@ -661,9 +680,6 @@ export function ChatThread({
   const agentName = findAgentAdapter(agent)?.displayName ?? agent;
   const replyLabel = replyLabelOverride ?? t.chat_from_manager(agentName.split(" ")[0]);
   const AssistantMessage = useMemo(() => makeAssistantMessage(agent, replyLabel), [agent, replyLabel]);
-  // Sent, and nothing back yet: the agent's first event makes the reply.
-  const last = transcript.messages[transcript.messages.length - 1];
-  const awaitingReply = last?.role === "user" && transcript.running && !transcript.failure;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

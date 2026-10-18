@@ -107,6 +107,7 @@ export const en = {
   chat_limit_waiting: (resets: string, queued: number) =>
     queued > 0 ? `Waiting until ${resets}, then sending ${queued === 1 ? "the queued message" : `${queued} queued messages`}` : `Waiting until ${resets}`,
   chat_limit_hand_to: (agent: string) => `Hand the seat to ${agent}`,
+  chat_briefing_sent: "Sent the manager briefing",
   chat_compacted: "Earlier turns summarized",
   chat_compacted_from: (tokens: string) => `Earlier turns summarized · from ${tokens} tokens`,
   chat_placeholder_queued: "Message the manager… (queued until its turn ends)",

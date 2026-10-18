@@ -622,7 +622,11 @@ export function WorkspaceManagerPill() {
     if (chatMode && managerTerminal) void ensureManagerChat(managerTerminal.id);
   }, [chatMode, managerTerminal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const chatMessages = useMemo(
-    () => transcript.messages.filter((m) => !(m.role === "user" && isWorkspaceManagerBriefing(m.text))),
+    // The briefing sent on taking the seat shows as a line, not as a message from the person.
+    () =>
+      transcript.messages.map((m) =>
+        m.role === "user" && isWorkspaceManagerBriefing(m.text) ? { role: "note" as const, id: m.id, kind: "briefing" as const, text: m.text } : m,
+      ),
     [transcript.messages],
   );
   const lastChatReply = useMemo(() => {

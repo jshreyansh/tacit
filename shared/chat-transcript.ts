@@ -40,8 +40,10 @@ export interface ChatUserMessage {
 export interface ChatNoteMessage {
   role: "note";
   id: string;
-  kind: "compacted";
+  /** `briefing`: the role briefing Tacit sent the agent, shown as a line. */
+  kind: "compacted" | "briefing";
   preTokens?: number;
+  text?: string;
 }
 
 export interface ChatAssistantMessage {
