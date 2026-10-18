@@ -11,7 +11,7 @@ import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from 
  * notes. Pure, so the grouping and ordering are tested without React.
  */
 
-export type WorkdeskFilter = "all" | "agents" | "browsers" | "tasks" | "other";
+export type WorkdeskFilter = "all" | "agents" | "terminals" | "browsers" | "tasks" | "notes";
 
 export interface TerminalCard {
   kind: "terminal";
@@ -75,7 +75,9 @@ export interface WorkdeskSections {
   browserGroups: BrowserGroup[];
   /** Whoever needs the person first, then work under way. */
   tasks: TaskCard[];
-  other: Array<TerminalCard | NoteCard>;
+  /** Plain terminals: shells and anything that isn't an agent. */
+  terminals: TerminalCard[];
+  notes: NoteCard[];
   counts: Record<WorkdeskFilter, number>;
   runningAgents: number;
 }
@@ -177,19 +179,20 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
       };
     });
 
-  const other = [...otherTerminals, ...notes];
   const browserCount = input.browsers.length;
   return {
     agents,
     browserGroups,
     tasks,
-    other,
+    terminals: otherTerminals,
+    notes,
     counts: {
-      all: agents.length + browserCount + tasks.length + other.length,
+      all: agents.length + otherTerminals.length + browserCount + tasks.length + notes.length,
       agents: agents.length,
+      terminals: otherTerminals.length,
       browsers: browserCount,
       tasks: tasks.length,
-      other: other.length,
+      notes: notes.length,
     },
     runningAgents: agents.filter((a) => a.state === "active").length,
   };

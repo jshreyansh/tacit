@@ -57,11 +57,12 @@ test("agents, terminals, tasks and notes go to their groups; minimized and stash
   assert.equal(s.agents[0].isManager && s.agents[0].chatMode, true);
   assert.equal(s.agents[1].title, "lint-job");
   // A pin from before kinds sat on the canvas (a note) or only in the list (a task).
-  assert.deepEqual(s.other.map((c) => c.id), ["shell-1", "n1", "n3"]);
+  assert.deepEqual(s.terminals.map((c) => c.id), ["shell-1"]);
+  assert.deepEqual(s.notes.map((c) => c.id), ["n1", "n3"]);
   // Whoever needs you first; dropped ones aren't shown.
   assert.deepEqual(s.tasks.map((c) => c.id), ["t1", "n2"]);
   assert.equal(s.tasks[0].current, "0.9 or 1.0?");
-  assert.deepEqual(s.counts, { all: 8, agents: 3, browsers: 0, tasks: 2, other: 3 });
+  assert.deepEqual(s.counts, { all: 8, agents: 3, terminals: 1, browsers: 0, tasks: 2, notes: 2 });
 });
 
 test("an agent that needs you comes first, then the working ones; the running turn's start is kept", () => {

@@ -19,7 +19,7 @@ import type { ChatTranscript } from "../../shared/chat-transcript";
 import { CanvasViewIcon, GridViewIcon } from "./viewIcons";
 import { cleanTailLines } from "./terminalTail";
 import { useBrowserSnapshots } from "./browserSnapshots";
-import { WorkdeskTab } from "./WorkdeskTab";
+import { showOnCanvas, WorkdeskTab } from "./WorkdeskTab";
 import { STATUS_COLOR } from "../tasks/taskModel";
 import { statusLabel, useOwnerView } from "../tasks/TaskParts";
 import { createTask } from "../tasks/taskActions";
@@ -323,11 +323,11 @@ export function WorkdeskView() {
 
   // The cards' last lines, read from each terminal's screen while the grid shows.
   const terminalIds = useMemo(
-    () => [...sections.agents, ...sections.other].filter((c): c is TerminalCard => c.kind === "terminal").map((c) => c.id),
+    () => [...sections.agents, ...sections.terminals].map((c) => c.id),
     [sections],
   );
   const allCards = useMemo<WorkdeskCard[]>(
-    () => [...sections.agents, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.tasks, ...sections.other],
+    () => [...sections.agents, ...sections.terminals, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.tasks, ...sections.notes],
     [sections],
   );
   const openCard = openNode ? (allCards.find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null) : null;
@@ -371,13 +371,15 @@ export function WorkdeskView() {
   const left = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatDockOffset(chatDock, CHROME_GAP);
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
   const show = (f: WorkdeskFilter) => filter === "all" || filter === f;
-  const filters: WorkdeskFilter[] = ["all", "agents", "browsers", "tasks", "other"];
+  // Tasks and notes sit together, as they're kept together.
+  const filters: WorkdeskFilter[] = ["all", "agents", "terminals", "browsers", "tasks", "notes"];
   const filterLabel: Record<WorkdeskFilter, string> = {
     all: t.workdesk_filter_all,
     agents: t.workdesk_filter_agents,
+    terminals: t.workdesk_filter_terminals,
     browsers: t.workdesk_filter_browsers,
     tasks: t.workdesk_tasks,
-    other: t.workdesk_filter_other,
+    notes: t.workdesk_filter_notes,
   };
   const empty = sections.counts.all === 0;
   const browserWindow = openCard?.kind === "browser";
@@ -406,39 +408,54 @@ export function WorkdeskView() {
       }}
     >
       <div className={`flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5 ${barGlass}`}>
-        {filters.map((f) => (
-          <button
-            key={f}
-            type="button"
-            className="tc-rail-btn flex h-8 items-center px-2.5 text-[12.5px]"
-            data-on={filter === f ? "" : undefined}
-            aria-pressed={filter === f}
-            onClick={() => setFilter(f)}
-            style={{ color: filter === f ? "var(--text-primary)" : "var(--text-muted)" }}
-          >
-            {filterLabel[f]}
-            <span className="ml-1.5 text-[var(--text-faint)]">{sections.counts[f]}</span>
-          </button>
-        ))}
+        {/* Filters are rounded chips, apart from the square view switcher. */}
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+          {filters.map((f) => {
+            const on = filter === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                className="flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-[12.5px] outline-none hover:text-[var(--text-primary)] focus-visible:border-[var(--accent)]"
+                aria-pressed={on}
+                onClick={() => setFilter(f)}
+                style={{
+                  color: on ? "var(--text-primary)" : "var(--text-muted)",
+                  borderColor: on ? "var(--border-hover)" : "transparent",
+                  background: on ? "var(--surface-hover)" : undefined,
+                }}
+              >
+                {filterLabel[f]}
+                <span className="ml-1.5 tabular-nums" style={{ color: on ? "var(--text-secondary)" : "var(--text-faint)" }}>
+                  {sections.counts[f]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         <div className="flex-1" />
         <div className="flex gap-0.5 rounded-[9px] border border-[var(--border)] p-0.5" role="group" aria-label={t.workdesk_view_switch}>
+          {/* With a node open, Canvas shows that node there; from the grid it
+              goes back to the canvas as it was. */}
           <button
             type="button"
-            className="tc-rail-btn flex h-7 items-center gap-1.5 px-2.5 text-[12px] text-[var(--text-muted)]"
-            onClick={() => setMode("canvas")}
+            className="tc-rail-btn flex h-7 w-8 items-center justify-center text-[var(--text-muted)]"
+            onClick={() => (openCard ? void showOnCanvas(openCard) : setMode("canvas"))}
             aria-pressed={false}
+            aria-label={openCard ? t.workdesk_show_on_canvas : t.workdesk_view_canvas_short}
+            title={openCard ? t.workdesk_show_on_canvas : t.workdesk_view_canvas_short}
           >
             <CanvasViewIcon size={14} />
-            {t.workdesk_view_canvas_short}
           </button>
           <button
             type="button"
-            className="tc-rail-btn flex h-7 items-center gap-1.5 px-2.5 text-[12px] text-[var(--text-primary)]"
+            className="tc-rail-btn flex h-7 w-8 items-center justify-center text-[var(--text-primary)]"
             data-on=""
             aria-pressed={true}
+            aria-label={t.workdesk_view_grid_short}
+            title={t.workdesk_view_grid_short}
           >
             <GridViewIcon size={14} />
-            {t.workdesk_view_grid_short}
           </button>
         </div>
       </div>
@@ -508,6 +525,16 @@ export function WorkdeskView() {
               </div>
             </>
           )}
+          {show("terminals") && sections.terminals.length > 0 && (
+            <>
+              <SectionHead title={t.workdesk_section_terminals} summary={String(sections.terminals.length)} />
+              <div className={gridCols}>
+                {sections.terminals.map((card) => (
+                  <TerminalCardView key={card.id} card={card} lines={linesOf(card)} now={now} t={t} />
+                ))}
+              </div>
+            </>
+          )}
           {show("browsers") && sections.browserGroups.length > 0 && (
             <>
               <SectionHead
@@ -560,17 +587,13 @@ export function WorkdeskView() {
               )}
             </>
           )}
-          {show("other") && sections.other.length > 0 && (
+          {show("notes") && sections.notes.length > 0 && (
             <>
-              <SectionHead title={t.workdesk_section_other} summary={String(sections.other.length)} />
+              <SectionHead title={t.workdesk_section_notes} summary={String(sections.notes.length)} />
               <div className={gridCols}>
-                {sections.other.map((card) =>
-                  card.kind === "note" ? (
-                    <NoteCardView key={card.id} card={card} t={t} />
-                  ) : (
-                    <TerminalCardView key={card.id} card={card} lines={linesOf(card)} now={now} t={t} />
-                  ),
-                )}
+                {sections.notes.map((card) => (
+                  <NoteCardView key={card.id} card={card} t={t} />
+                ))}
               </div>
             </>
           )}

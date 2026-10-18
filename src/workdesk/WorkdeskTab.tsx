@@ -28,16 +28,20 @@ const NOTE_SAVE_MS = 500;
 /** The app's own text size: a terminal in a tab reads like the chat beside it. */
 const TAB_FONT_SIZE = 13;
 
-export function showOnCanvas(card: WorkdeskCard): void {
+/** The canvas, on this node: a task or note not on it yet is put there. */
+export async function showOnCanvas(card: WorkdeskCard): Promise<void> {
+  if (card.kind === "task" || card.kind === "note") {
+    const pin = (usePinStore.getState().pinsByProject[card.projectPath] ?? []).find((p) => p.id === card.id);
+    if (pin) return showPinOnCanvas(pin);
+    useWorkdeskViewStore.getState().setMode("canvas");
+    return;
+  }
   useWorkdeskViewStore.getState().setMode("canvas");
   if (card.kind === "terminal") {
     panToTerminal(card.id);
-  } else if (card.kind === "browser") {
+  } else {
     const data = useBrowserCardStore.getState().cards[card.id];
     if (data) flyToBounds(data.x, data.y, data.w, data.h);
-  } else {
-    const pin = (usePinStore.getState().pinsByProject[card.projectPath] ?? []).find((p) => p.id === card.id);
-    if (pin && typeof pin.x === "number" && typeof pin.y === "number") flyToBounds(pin.x, pin.y, pin.w ?? 280, pin.h ?? 200);
   }
 }
 
@@ -82,11 +86,6 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
             {t.chat_mode_show_chat}
           </button>
         </div>
-        <Footer hint={card.title}>
-          <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
-            {t.workdesk_show_on_canvas}
-          </button>
-        </Footer>
       </>
     );
   }
@@ -101,8 +100,8 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
           </div>
         )}
       </div>
-      <Footer hint={card.subtitle}>
-        {card.isManager && hasChatMode(card.type) && (
+      {card.isManager && hasChatMode(card.type) && (
+        <Footer hint={card.subtitle}>
           <button
             type="button"
             className={footButton}
@@ -113,11 +112,8 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
           >
             {t.workdesk_open_as_chat}
           </button>
-        )}
-        <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
-          {t.workdesk_show_on_canvas}
-        </button>
-      </Footer>
+        </Footer>
+      )}
     </>
   );
 }
@@ -149,13 +145,6 @@ function BrowserTab({ card, t }: { card: BrowserCard; t: Dict }) {
   return (
     <>
       <div ref={setHole} className="pointer-events-none min-h-0 flex-1" />
-      <div className="pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:blur(22px)_saturate(1.6)]">
-        <Footer hint={t.workdesk_browser_hint}>
-          <button type="button" className={footButton} onClick={() => showOnCanvas(card)}>
-            {t.workdesk_show_on_canvas}
-          </button>
-        </Footer>
-      </div>
     </>
   );
 }
@@ -239,7 +228,6 @@ function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
   const pin = usePin(card.projectPath, card.id);
   const [armDelete, setArmDelete] = useState(false);
   if (!pin) return null;
-  const onCanvas = typeof pin.x === "number" && typeof pin.y === "number";
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -258,9 +246,6 @@ function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
             {t.task_hand}
           </button>
         )}
-        <button type="button" className={footButton} onClick={() => void showPinOnCanvas(pin)}>
-          {onCanvas ? t.task_show_on_canvas : t.task_put_on_canvas}
-        </button>
         <button type="button" className={footButton} onClick={() => void makeNote(pin)}>
           {t.task_make_note}
         </button>
@@ -283,7 +268,6 @@ function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
 function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
   const pin = usePin(card.projectPath, card.id);
   if (!pin) return null;
-  const onCanvas = typeof pin.x === "number" && typeof pin.y === "number";
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -295,9 +279,6 @@ function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
       <Footer hint={t.workdesk_note}>
         <button type="button" className={footButton} onClick={() => void makeTask(pin)}>
           {t.note_make_task}
-        </button>
-        <button type="button" className={footButton} onClick={() => void showPinOnCanvas(pin)}>
-          {onCanvas ? t.task_show_on_canvas : t.task_put_on_canvas}
         </button>
       </Footer>
     </>
