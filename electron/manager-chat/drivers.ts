@@ -201,8 +201,8 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     answerQuestion: (requestId, answers) => {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
-      if (answers === null) write(claudeApprovalLine(requestId, false, undefined, "The person skipped these questions."));
-      else write(claudeApprovalLine(requestId, true, claudeAnswerInput(pending?.input, answers)));
+      // Skipped: answered with nothing, which Claude reads as skipped.
+      write(claudeApprovalLine(requestId, true, claudeAnswerInput(pending?.input, answers ?? {})));
       options.emit({ kind: "question_settled", requestId });
     },
     configure: (change) => {

@@ -144,3 +144,11 @@ test("a past question shows the answers Claude got back", () => {
     { "What is your favourite colour?": "Blue", "Which fruits do you like?": "Apple, Kiwi" },
   );
 });
+
+test("an answer with a comma stays one answer; skipping answers with nothing, which Claude reads as skipped", async () => {
+  const { joinAnswers } = await import("../shared/chat-stream-claude");
+  assert.equal(joinAnswers(["Apple", "Redis, not Memcached", 'say "hi"']), 'Apple, "Redis, not Memcached", "say \\"hi\\""');
+  // A single choice is never quoted or joined.
+  assert.deepEqual(claudeAnswerInput(ASK, { "What is your favourite colour?": ["Teal, a bit green"] }).answers, { "What is your favourite colour?": "Teal, a bit green" });
+  assert.deepEqual(claudeAnswerInput(ASK, {}).answers, {});
+});

@@ -45,6 +45,7 @@ import {
   requestManagerMove,
   sendToManagerChat,
   answerChatQuestion,
+  configureChat,
 } from "../actions/managerChatMode";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
@@ -721,6 +722,7 @@ export function WorkspaceManagerPill() {
                 glass={PILL_GLASS}
                 approvals={transcript.approvals}
                 onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+                onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
               />
             </div>
           )}
@@ -1134,6 +1136,7 @@ export function WorkspaceManagerPill() {
         <ApprovalCards
           approvals={transcript.approvals}
           onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+          onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
         />
       )}
 

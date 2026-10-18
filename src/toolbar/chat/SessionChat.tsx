@@ -5,6 +5,7 @@ import { useManagerTranscript } from "../../stores/managerChatStore";
 import {
   answerChatQuestion,
   answerManagerApproval,
+  configureChat,
   ensureManagerChat,
   interruptManagerChat,
   sendToManagerChat,
@@ -157,7 +158,11 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
           onSkip={() => void answerChatQuestion(terminalId, transcript.questions[0].requestId, null)}
         />
       )}
-      <ApprovalCards approvals={transcript.approvals} onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)} />
+      <ApprovalCards
+        approvals={transcript.approvals}
+        onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)}
+        onPlanMode={(mode) => void configureChat(terminalId, { mode })}
+      />
       <PlanCard transcript={transcript} />
       <LimitCard terminalId={terminalId} transcript={transcript} agentName={agentName} />
       <QueuedMessages terminalId={terminalId} onSendNow={(text) => void sendNow(text)} />

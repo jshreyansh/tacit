@@ -531,12 +531,15 @@ export function ApprovalCards({
   onAnswer,
   floating = false,
   glass = "",
+  onPlanMode,
 }: {
   approvals: readonly PendingApproval[];
   onAnswer: (requestId: string, decision: ApprovalDecision) => void;
   /** Above the pill, over the canvas: the first request only, on glass. */
   floating?: boolean;
   glass?: string;
+  /** A plan accepted with how to go on: the mode to work in from here. */
+  onPlanMode?: (mode: string) => void;
 }) {
   const t = useT();
   if (approvals.length === 0) return null;
@@ -545,6 +548,43 @@ export function ApprovalCards({
     <div className={floating ? "flex w-full flex-col" : "flex flex-col gap-2 px-3 pb-2"}>
       {shown.map((a) => {
         const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
+        // Claude's plan, done in plan mode: start on it, and how, or keep planning.
+        if (a.toolName === "ExitPlanMode") {
+          const plan = typeof input.plan === "string" ? input.plan : "";
+          const accept = (mode: string) => {
+            onAnswer(a.requestId, "allow_once");
+            onPlanMode?.(mode);
+          };
+          return (
+            <div
+              key={a.requestId}
+              role="alertdialog"
+              aria-label={t.chat_plan_ready}
+              className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
+              style={{ borderColor: "color-mix(in srgb, var(--cyan) 45%, transparent)", ...(floating ? { borderRadius: 16 } : { background: "color-mix(in srgb, var(--cyan) 5%, transparent)" }) }}
+            >
+              <div className="text-[12.5px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
+              {plan && (
+                <div
+                  className={`${markdownClassName} mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2`}
+                  style={{ fontSize: "var(--text-sm)" }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(plan) }}
+                />
+              )}
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => accept("acceptEdits")}>
+                  {t.chat_plan_go_accept}
+                </button>
+                <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => accept("default")}>
+                  {t.chat_plan_go_ask}
+                </button>
+                <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
+                  {t.chat_plan_keep}
+                </button>
+              </div>
+            </div>
+          );
+        }
         const what = typeof input.command === "string" ? input.command : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
         return (
           <div

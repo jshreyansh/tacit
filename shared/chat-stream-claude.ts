@@ -303,13 +303,27 @@ export function claudeQuestions(input: unknown): ChatQuestion[] {
     }));
 }
 
-/** The tool's input with the person's answers: each by its question, several joined. */
+/**
+ * Several answers to one question, joined the way Claude's own question UI
+ * joins them: ", " between them, and an answer that itself holds ", " or a
+ * quote JSON-quoted, so "Redis, not Memcached" stays one answer when the
+ * tool splits them back.
+ */
+export function joinAnswers(items: readonly string[]): string {
+  return items.map((item) => (item.includes(", ") || item.includes('"') ? JSON.stringify(item) : item)).join(", ");
+}
+
+/**
+ * The tool's input with the person's answers, each by its question. No
+ * answers (skipped) tells Claude the person skipped, rather than refusing
+ * the tool.
+ */
 export function claudeAnswerInput(input: unknown, answers: ChatAnswers): Json {
   const base = isObject(input) ? input : {};
   const out: Record<string, string> = {};
   for (const q of claudeQuestions(base)) {
     const picked = answers[q.id] ?? [];
-    if (picked.length) out[q.question] = picked.join(", ");
+    if (picked.length) out[q.question] = q.multiSelect ? joinAnswers(picked) : picked[0];
   }
   return { ...base, answers: out };
 }
