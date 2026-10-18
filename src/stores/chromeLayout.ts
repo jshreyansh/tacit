@@ -1,6 +1,8 @@
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH, useCanvasStore } from "./canvasStore";
 import { chatDockOffset, useChatDockStore } from "./chatDockStore";
 import { useHubStore } from "./hubStore";
+import { useSidebarDragStore } from "./sidebarDragStore";
+import { PANEL_SHIFT_TRANSITION } from "../utils/panelAnimation";
 
 /**
  * Where the open chrome on the left ends: the rail, the docked chat, then
@@ -40,4 +42,15 @@ export function useLeftChromeInset(): number {
   const codePanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const hubOpen = useHubStore((s) => s.open);
   return leftChromeInset({ chat, leftPanelCollapsed, leftPanelWidth, codePanelCollapsed, codePanelWidth, hubOpen });
+}
+
+/**
+ * How a surface laid out after the left chrome moves with it: sliding on
+ * the panels' curve, or not at all while a panel's or the chat's edge is
+ * being dragged, so it tracks the pointer.
+ */
+export function useLeftChromeShift(): string | undefined {
+  const panelDrag = useSidebarDragStore((s) => s.active);
+  const chatDrag = useChatDockStore((s) => s.resizing);
+  return panelDrag || chatDrag ? undefined : PANEL_SHIFT_TRANSITION;
 }

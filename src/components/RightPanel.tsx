@@ -30,6 +30,8 @@ import {
   type RepoContextOption,
 } from "./RightPanel/repoContext";
 import { openFileInView } from "../actions/openSession";
+import { panelContentStyle, panelTransition } from "../utils/panelAnimation";
+import { usePanelPresence } from "../utils/usePanelPresence";
 
 // ── Tab icon SVGs (14×14, matching the minimal aesthetic) ──
 
@@ -339,7 +341,11 @@ export function RightPanel() {
   // that reopens it, and a second strip next to the rail is exactly the
   // edge-crowding the rail exists to remove.
   const displayedWidth = collapsed ? 0 : width;
-  const widthTransition = dragging ? undefined : PANEL_REVEAL_TRANSITION;
+  const chatResizing = useChatDockStore((st) => st.resizing);
+  // Unfolds like the others, and slides along when the chat beside it opens or closes.
+  const widthTransition = panelTransition(dragging || chatResizing);
+  // The contents stay through the fold, so it doesn't close as an empty box.
+  const { mounted: contentMounted, revealed: contentRevealed } = usePanelPresence(!collapsed);
 
   const chatOffset = useChatDockStore((st) => chatDockOffset(st, CHROME_GAP));
 
@@ -370,13 +376,13 @@ export function RightPanel() {
           expanded surface's component state (FilesContent's tree model,
           expansion, scroll, ignored stream cache) across panel collapses,
           so re-expanding is instant rather than a fresh load. */}
-      <div style={{ display: collapsed ? "none" : "contents" }}>
+      <div style={{ display: contentMounted ? "contents" : "none" }}>
         {/* Expanded surface — laid out at the user-configured width so
             content does not reflow while the outer width animates;
             the outer overflow-hidden clips it during the transition. */}
         <div
-          className="absolute inset-y-0 right-0 flex flex-col"
-          style={{ width }}
+          className="absolute inset-y-0 left-0 flex flex-col"
+          style={{ width, ...panelContentStyle(contentRevealed) }}
         >
       {/* Files, Diff and Git share one rail button, so their tabs sit here;
           Memory has its own button and just its name. */}

@@ -65,6 +65,9 @@ interface ChatDockStore {
   toggle: () => void;
   /** While dragging: moves the edge without saving on every frame. */
   setWidth: (width: number) => void;
+  /** Its edge is being dragged: what sits beside it follows 1:1, unanimated. */
+  resizing: boolean;
+  setResizing: (resizing: boolean) => void;
   /** At the end of a drag: keeps the width for next time. */
   commitWidth: () => void;
 }
@@ -72,6 +75,8 @@ interface ChatDockStore {
 export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   open: false,
   width: loadChatWidth(),
+  resizing: false,
+  setResizing: (resizing) => set({ resizing }),
   face: "chat",
   setOpen: (open) => set({ open }),
   setFace: (face) => set({ face }),

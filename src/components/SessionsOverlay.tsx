@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { CHROME_GAP, useCanvasStore } from "../stores/canvasStore";
-import { useLeftChromeInset } from "../stores/chromeLayout";
+import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
+import { PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS } from "../utils/panelAnimation";
 import {
   getRightPanelInset,
 } from "../canvas/viewportBounds";
@@ -46,6 +47,7 @@ export function SessionsOverlay() {
   // It opens to the right of the docked chat, and follows its edge while
   // you drag it.
   const chromeLeft = useLeftChromeInset();
+  const leftShift = useLeftChromeShift();
   const t = useT();
 
   useEffect(() => {
@@ -87,6 +89,7 @@ export function SessionsOverlay() {
         left: leftInset,
         height: CHROME_HEIGHT,
         width: `calc(100vw - ${leftInset}px - ${rightInset}px)`,
+        transition: leftShift ? `${leftShift}, width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}` : undefined,
       }}
       role="dialog"
       aria-modal="false"

@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 // Shared timing / easing for left-panel and right-panel expand-collapse.
 //
 // The same curve drives four things that must stay in lockstep while a
@@ -84,3 +86,31 @@ export const PANEL_TRANSITION_EASING_FN = makeCubicBezierEasing(
  */
 export const PANEL_REVEAL_TRANSITION =
   `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, opacity 180ms ease`;
+
+/**
+ * Where a surface beside the rail starts moves when something before it
+ * opens or closes (the docked chat, a panel): it slides there on the same
+ * curve as that surface unfolds, rather than jumping. Not while a width is
+ * being dragged, where it has to track the pointer.
+ */
+export const PANEL_SHIFT_TRANSITION = `left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`;
+
+/** A panel's reveal plus its slide, for a surface that both unfolds and follows. */
+export function panelTransition(dragging: boolean): string | undefined {
+  return dragging ? undefined : `${PANEL_REVEAL_TRANSITION}, ${PANEL_SHIFT_TRANSITION}`;
+}
+
+/**
+ * The contents of an unfolding panel settle in a beat behind the box: a
+ * short fade and a few pixels of travel from the hinge, so the panel reads
+ * as opening rather than being uncovered. Closing, they fade first.
+ */
+export function panelContentStyle(revealed: boolean): CSSProperties {
+  return {
+    opacity: revealed ? 1 : 0,
+    transform: revealed ? "translateX(0)" : "translateX(-10px)",
+    transition: revealed
+      ? `opacity 200ms ease 60ms, transform ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS} 40ms`
+      : "opacity 120ms ease, transform 160ms ease",
+  };
+}

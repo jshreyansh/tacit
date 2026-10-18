@@ -7,7 +7,7 @@ import { useIdentityStore } from "../stores/identityStore";
 import { usePinStore } from "../stores/pinStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore } from "../stores/chatDockStore";
-import { useLeftChromeInset } from "../stores/chromeLayout";
+import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { tabKey, useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import { closeTerminalInScene } from "../actions/terminalSceneActions";
@@ -331,6 +331,7 @@ export function WorkdeskView() {
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const transcripts = useManagerChatStore((s) => s.transcripts);
   const leftInset = useLeftChromeInset();
+  const leftShift = useLeftChromeShift();
   const [tails, setTails] = useState<Record<string, string[]>>({});
   const [now, setNow] = useState(() => Date.now());
 
@@ -472,6 +473,7 @@ export function WorkdeskView() {
       style={{
         left,
         right: CHROME_INSET,
+        transition: leftShift,
         top: TITLE_STRIP_HEIGHT + CHROME_INSET,
         bottom: CHROME_INSET,
         // A browser tab is a window onto the tile laid under it: the panel

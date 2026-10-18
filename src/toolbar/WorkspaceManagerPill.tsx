@@ -56,6 +56,8 @@ import { ManagerMark } from "./ManagerMark";
 import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { useChatDockStore } from "../stores/chatDockStore";
+import { usePanelPresence } from "../utils/usePanelPresence";
+import { PANEL_REVEAL_TRANSITION, panelContentStyle } from "../utils/panelAnimation";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
@@ -175,6 +177,9 @@ export function WorkspaceManagerPill() {
    * box over the middle of the canvas, which is where your work is.
    */
   const dockOpen = useChatDockStore((s) => s.open);
+  // The dock unfolds and folds like the panels beside it, so it stays in
+  // the page while it closes.
+  const { mounted: dockMounted, revealed: dockRevealed } = usePanelPresence(dockOpen);
   const dockWidth = useChatDockStore((s) => s.width);
   const setDockOpen = useChatDockStore((s) => s.setOpen);
   const [draft, setDraft] = useState("");
@@ -579,12 +584,14 @@ export function WorkspaceManagerPill() {
     const startWidth = useChatDockStore.getState().width;
     target.setPointerCapture(e.pointerId);
     setDragging(true);
+    useChatDockStore.getState().setResizing(true);
     const move = (ev: PointerEvent) => useChatDockStore.getState().setWidth(startWidth + ev.clientX - startX);
     const up = () => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
       useChatDockStore.getState().commitWidth();
+      useChatDockStore.getState().setResizing(false);
       setDragging(false);
     };
     target.addEventListener("pointermove", move);
@@ -704,12 +711,11 @@ export function WorkspaceManagerPill() {
     "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
 
   // ── Resting: the pill at the bottom, the recording chip beside it ──────
-  if (!dockOpen) {
-    return (
+  const restingPill = !dockOpen && (
       <div
         // The context chip and the pill share one row, centred together, so
         // what is being recorded sits beside who you are talking to.
-        className="pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
+        className="tc-enter-fade-up pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
         style={{ bottom: bottomOffset }}
       >
         <TaskControl />
@@ -798,20 +804,28 @@ export function WorkspaceManagerPill() {
           )}
         </div>
       </div>
-    );
-  }
+  );
 
   // ── Open: docked full height on the left, beside the bar ───────────────
   return (
+    <>
+    {restingPill}
+    {dockMounted && (
     <aside
-      className="tc-float fixed z-[44] flex flex-col overflow-hidden"
+      className="tc-float fixed z-[44] overflow-hidden"
       aria-label={t.project_chat_title}
+      aria-hidden={!dockOpen}
       style={
         {
           top: TITLE_STRIP_HEIGHT + CHROME_INSET,
           bottom: CHROME_INSET,
           left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
-          width: dockWidth,
+          // Unfolds from the rail like the panels do: the box opens while the
+          // contents, laid out at full width, settle in behind its edge.
+          width: dockRevealed ? dockWidth : 0,
+          opacity: dockRevealed ? 1 : 0,
+          pointerEvents: dockRevealed ? undefined : "none",
+          transition: dragging ? undefined : PANEL_REVEAL_TRANSITION,
           borderRadius: 20,
           // Reading a predecessor shows their colour on the lit top edge.
           "--seat-hue": speakingHue,
@@ -824,6 +838,7 @@ export function WorkspaceManagerPill() {
         }
       }}
     >
+      <div className="absolute inset-y-0 left-0 flex flex-col" style={{ width: dockWidth, ...panelContentStyle(dockRevealed) }}>
       {/* The lit edge, in the colour of whoever holds the seat. */}
       <span
         aria-hidden="true"
@@ -1240,6 +1255,9 @@ export function WorkspaceManagerPill() {
           style={{ background: dragging ? "var(--cyan)" : "color-mix(in srgb, var(--text-muted) 55%, transparent)" }}
         />
       </div>
+      </div>
     </aside>
+    )}
+    </>
   );
 }

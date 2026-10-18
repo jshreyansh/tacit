@@ -15,7 +15,7 @@ import {
 } from "../canvas/viewportBounds";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { usePinStore } from "../stores/pinStore";
-import { useLeftChromeInset } from "../stores/chromeLayout";
+import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import {
   PANEL_TRANSITION_DURATION_MS,
   PANEL_TRANSITION_EASING_CSS,
@@ -230,6 +230,7 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
   const chromeLeft = useLeftChromeInset();
+  const leftShift = useLeftChromeShift();
   const theme = useThemeStore((s) => s.theme);
 
   const [content, setContent] = useState("");
@@ -398,7 +399,8 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
               left: leftInset,
               height: CHROME_HEIGHT,
               width: widthStyle,
-              transition: animateLayout
+              // Its left edge follows the chrome beside it; its width animates on maximize.
+              transition: animateLayout || leftShift
                 ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
                 : undefined,
             }

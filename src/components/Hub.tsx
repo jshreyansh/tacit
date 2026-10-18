@@ -59,6 +59,8 @@ import type {
 // column, so a slimmer drawer leaves more canvas visible past the curtain.
 export { HUB_WIDTH } from "../stores/chromeLayout";
 import { HUB_WIDTH } from "../stores/chromeLayout";
+import { panelContentStyle, panelTransition } from "../utils/panelAnimation";
+import { usePanelPresence } from "../utils/usePanelPresence";
 /** Hinges on the left rail, beside the button that opens it and in the same
  *  place as every other surface that rail opens. */
 const HUB_LEFT = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP;
@@ -597,6 +599,8 @@ export function Hub() {
     : null;
 
   const chatOffset = useChatDockStore((st) => chatDockOffset(st, CHROME_GAP));
+  const chatResizing = useChatDockStore((st) => st.resizing);
+  const contentRevealed = usePanelPresence(open).revealed;
 
   return (
     <div
@@ -615,7 +619,8 @@ export function Hub() {
         height: CHROME_HEIGHT,
         width: open ? HUB_WIDTH : 0,
         opacity: open ? 1 : 0,
-        transition: PANEL_REVEAL_TRANSITION,
+        // Unfolds like the panels, and slides along when the chat beside it opens or closes.
+        transition: panelTransition(chatResizing),
         pointerEvents: open ? "auto" : "none",
       }}
     >
@@ -623,7 +628,7 @@ export function Hub() {
           does not reflow while the outer width animates. */}
       <div
         className="absolute inset-y-0 left-0 flex flex-col"
-        style={{ width: HUB_WIDTH }}
+        style={{ width: HUB_WIDTH, ...panelContentStyle(contentRevealed) }}
       >
       <header
         className="flex items-center justify-between px-4 pt-3 pb-3"

@@ -27,6 +27,8 @@ import { ProjectTree } from "./ProjectTree";
 import { TerminalCard, HistorySection, StashedSection } from "./SessionsPanel";
 import { openPastSession } from "../actions/openSession";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { panelContentStyle, panelTransition } from "../utils/panelAnimation";
+import { usePanelPresence } from "../utils/usePanelPresence";
 
 /*
  * Left panel — project management + session history.
@@ -232,7 +234,10 @@ export function LeftPanel() {
   // handle that reopens it, and a second 32px strip beside the rail would be
   // exactly the edge-crowding the rail moved away from.
   const displayedWidth = collapsed ? 0 : width;
-  const widthTransition = dragging ? undefined : PANEL_REVEAL_TRANSITION;
+  const chatResizing = useChatDockStore((s) => s.resizing);
+  // Unfolds like the others, and slides along when the chat beside it opens or closes.
+  const widthTransition = panelTransition(dragging || chatResizing);
+  const contentRevealed = usePanelPresence(!collapsed).revealed;
 
   const renderTerminal = useCallback(
     (item: CanvasTerminalItem) => (
@@ -273,7 +278,7 @@ export function LeftPanel() {
             during the transition. */}
         <div
           className="absolute inset-y-0 left-0 flex flex-col"
-          style={{ width }}
+          style={{ width, ...panelContentStyle(contentRevealed) }}
         >
           {/* No tab strip: the rail has a button per surface, and it is the
               only place that says which one you are on. Two ways to switch the
