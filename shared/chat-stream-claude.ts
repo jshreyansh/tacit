@@ -1,4 +1,4 @@
-import type { ChatEvent, PlanStep } from "./chat-events";
+import type { ChatAnswers, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
 
 /**
  * Claude Code's stream-json output, one line at a time, as chat events.
@@ -236,6 +236,11 @@ export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEve
 
     case "control_request": {
       const request = isObject(msg.request) ? msg.request : null;
+      // Its question tool asks the person, not for permission.
+      if (request?.subtype === "can_use_tool" && request.tool_name === "AskUserQuestion" && typeof msg.request_id === "string") {
+        const questions = claudeQuestions(request.input);
+        if (questions.length > 0) return [{ kind: "question_request", requestId: msg.request_id, questions }];
+      }
       if (request?.subtype === "can_use_tool" && typeof msg.request_id === "string") {
         return [
           {
@@ -276,4 +281,66 @@ export function claudeApprovalLine(requestId: string, allow: boolean, input: unk
     ? { behavior: "allow", updatedInput: input ?? {} }
     : { behavior: "deny", message: message ?? "The person declined this in Tacit." };
   return `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response } })}\n`;
+}
+
+/** AskUserQuestion's questions, keyed by their text (the answer goes back that way). */
+export function claudeQuestions(input: unknown): ChatQuestion[] {
+  if (!isObject(input) || !Array.isArray(input.questions)) return [];
+  return input.questions
+    .filter((q): q is Json => isObject(q) && typeof q.question === "string")
+    .map((q) => ({
+      id: q.question as string,
+      header: typeof q.header === "string" ? q.header : "",
+      question: q.question as string,
+      options: Array.isArray(q.options)
+        ? q.options
+            .filter((o): o is Json => isObject(o) && typeof o.label === "string")
+            .map((o) => ({ label: o.label as string, ...(typeof o.description === "string" ? { description: o.description } : {}) }))
+        : null,
+      multiSelect: q.multiSelect === true,
+      allowOther: true,
+      secret: false,
+    }));
+}
+
+/** The tool's input with the person's answers: each by its question, several joined. */
+export function claudeAnswerInput(input: unknown, answers: ChatAnswers): Json {
+  const base = isObject(input) ? input : {};
+  const out: Record<string, string> = {};
+  for (const q of claudeQuestions(base)) {
+    const picked = answers[q.id] ?? [];
+    if (picked.length) out[q.question] = picked.join(", ");
+  }
+  return { ...base, answers: out };
+}
+
+const CLAUDE_MODES: Array<ChatModeOption & { needsAuto?: boolean }> = [
+  { id: "default", label: "Ask before edits", description: "Asks before changing files or running commands" },
+  { id: "acceptEdits", label: "Accept edits", description: "Edits files without asking; still asks for commands" },
+  { id: "plan", label: "Plan", description: "Reads and plans; changes nothing until you approve" },
+  { id: "auto", label: "Auto", description: "Decides for itself what's safe to run", needsAuto: true },
+];
+
+/** What Claude's initialize reply offers: its models with their efforts, and the modes. */
+export function claudeCapabilities(reply: unknown): { models: ChatModelOption[]; modes: ChatModeOption[]; settings: ChatSettings } {
+  const r = isObject(reply) ? reply : {};
+  const raw = Array.isArray(r.models) ? r.models.filter(isObject) : [];
+  const models: ChatModelOption[] = raw
+    .filter((m) => typeof m.value === "string")
+    .map((m) => ({
+      id: m.value as string,
+      label: typeof m.displayName === "string" ? m.displayName : (m.value as string),
+      ...(typeof m.description === "string" ? { description: m.description } : {}),
+      efforts: m.supportsEffort === true && Array.isArray(m.supportedEffortLevels) ? m.supportedEffortLevels.filter((e): e is string => typeof e === "string") : [],
+      isDefault: m.value === "default",
+    }));
+  const auto = raw.some((m) => m.supportsAutoMode === true);
+  const modes = CLAUDE_MODES.filter((m) => !m.needsAuto || auto).map(({ needsAuto: _n, ...mode }) => mode);
+  const mode = typeof r.current_permission_mode === "string" ? r.current_permission_mode : null;
+  return { models, modes, settings: { model: null, effort: null, mode } };
+}
+
+/** A control request line for the running chat (set_model and the like). */
+export function claudeControlLine(requestId: string, request: Json): string {
+  return `${JSON.stringify({ type: "control_request", request_id: requestId, request })}\n`;
 }

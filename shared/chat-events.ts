@@ -39,6 +39,16 @@ export type ChatEvent =
    * out until `resetsAt` (ISO time).
    */
   | { kind: "rate_limit"; status: "ok" | "warning" | "limited"; resetsAt?: string; usedPercent?: number; window?: string }
+  /**
+   * The agent asks the person something (Claude's AskUserQuestion, Codex's
+   * request_user_input): one or more questions, answered together.
+   */
+  | { kind: "question_request"; requestId: string; questions: ChatQuestion[] }
+  | { kind: "question_settled"; requestId: string }
+  /** What this agent offers to choose: its models (each with its efforts) and modes. */
+  | { kind: "capabilities"; models: ChatModelOption[]; modes: ChatModeOption[] }
+  /** The model, effort and mode now in use (null: the agent's default). */
+  | { kind: "settings"; settings: ChatSettings }
   /** The agent process ended. A non-zero code or an error means it failed. */
   | { kind: "exited"; code: number | null; error?: string };
 
@@ -47,4 +57,44 @@ export type ApprovalDecision = "allow_once" | "allow_always" | "deny";
 export interface PlanStep {
   text: string;
   status: "pending" | "active" | "done";
+}
+
+export interface ChatQuestion {
+  /** What the answer is keyed by when it goes back. */
+  id: string;
+  /** A short label, e.g. "Colour". */
+  header: string;
+  question: string;
+  /** null: answered in the person's own words. */
+  options: { label: string; description?: string }[] | null;
+  multiSelect: boolean;
+  /** An "Other" answer in the person's own words is allowed. */
+  allowOther: boolean;
+  /** The answer is a secret: typed hidden, and not shown afterwards. */
+  secret: boolean;
+}
+
+/** Answers by question id; several for a multi-select. */
+export type ChatAnswers = Record<string, string[]>;
+
+export interface ChatModelOption {
+  id: string;
+  label: string;
+  description?: string;
+  /** Effort levels this model takes, low to high; empty when it has none. */
+  efforts: string[];
+  defaultEffort?: string;
+  isDefault?: boolean;
+}
+
+export interface ChatModeOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface ChatSettings {
+  model: string | null;
+  effort: string | null;
+  mode: string | null;
 }

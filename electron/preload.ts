@@ -259,6 +259,10 @@ contextBridge.exposeInMainWorld("tacit", {
     interrupt: (terminalId: string) => ipcRenderer.invoke("chat:interrupt", terminalId) as Promise<void>,
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) =>
       ipcRenderer.invoke("chat:answer", terminalId, requestId, decision) as Promise<void>,
+    answerQuestion: (terminalId: string, requestId: string, answers: Record<string, string[]> | null) =>
+      ipcRenderer.invoke("chat:answer-question", terminalId, requestId, answers) as Promise<void>,
+    configure: (terminalId: string, settings: { model?: string | null; effort?: string | null; mode?: string | null }) =>
+      ipcRenderer.invoke("chat:configure", terminalId, settings) as Promise<void>,
     stop: (terminalId: string) => ipcRenderer.invoke("chat:stop", terminalId) as Promise<void>,
     forget: (terminalId: string) => ipcRenderer.invoke("chat:forget", terminalId) as Promise<void>,
     snapshot: (terminalId: string) =>

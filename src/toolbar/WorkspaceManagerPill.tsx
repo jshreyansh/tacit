@@ -30,6 +30,8 @@ import { usePinStore } from "../stores/pinStore";
 import { ContextMeter, LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
+import { QuestionForm } from "./chat/QuestionForm";
+import { ComposerSettings } from "./chat/ComposerSettings";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
 import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
 import {
@@ -42,6 +44,7 @@ import {
   moveManagerToTerminal,
   requestManagerMove,
   sendToManagerChat,
+  answerChatQuestion,
 } from "../actions/managerChatMode";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
@@ -700,6 +703,17 @@ export function WorkspaceManagerPill() {
               thing it said. */}
           {/* A request waiting on you is answered right here, chat open or not:
               answering it is what the pill is kept for. */}
+          {managerTerminal && chatMode && transcript.questions[0] && (
+            <div className={`w-[min(34rem,calc(100vw-2rem))] rounded-[14px] py-2 ${PILL_GLASS}`}>
+              <QuestionForm
+                key={transcript.questions[0].requestId}
+                pending={transcript.questions[0]}
+                agentName={agentName(managerTerminal.type)}
+                onSubmit={(answers) => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, answers)}
+                onSkip={() => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, null)}
+              />
+            </div>
+          )}
           {managerTerminal && chatMode && transcript.approvals.length > 0 && (
             <div className="w-[min(34rem,calc(100vw-2rem))]">
               <ApprovalCards
@@ -1106,7 +1120,16 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {/* The status line and the composer. */}
+      {/* The agent's questions, then approvals, then the status line and the composer. */}
+      {view === "chat" && chatMode && managerTerminal && transcript.questions[0] && (
+        <QuestionForm
+          key={transcript.questions[0].requestId}
+          pending={transcript.questions[0]}
+          agentName={agentName(managerTerminal.type)}
+          onSubmit={(answers) => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, answers)}
+          onSkip={() => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, null)}
+        />
+      )}
       {view === "chat" && chatMode && managerTerminal && (
         <ApprovalCards
           approvals={transcript.approvals}
@@ -1220,6 +1243,7 @@ export function WorkspaceManagerPill() {
               >
                 {t.project_chat_mention_file}
               </button>
+              {chatMode && <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} />}
               <div className="flex-1" />
               <button
                 type="button"

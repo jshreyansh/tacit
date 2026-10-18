@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApprovalDecision, ChatEvent } from "../../shared/chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatSettings } from "../../shared/chat-events";
 import { startClaudeDriver, startCodexDriver, type ChatDriver, type SpawnFn } from "./drivers";
 
 /**
@@ -53,6 +53,8 @@ interface ChatSession {
   driver: ChatDriver | null;
   events: ChatEvent[];
   sessionId: string | null;
+  /** What the person picked (model, effort, mode), set again when the agent restarts. */
+  chosen?: Partial<ChatSettings>;
 }
 
 /** Events kept per chat; the oldest go first. Deltas are merged, so this is a long conversation. */
@@ -126,7 +128,7 @@ export class ChatEngine {
       return;
     }
     const start = request.agent === "codex" ? startCodexDriver : startClaudeDriver;
-    session.driver = start({
+    const driver = start({
       command: launch.command,
       bridgeArgs: launch.bridgeArgs,
       cwd: request.cwd,
@@ -136,6 +138,8 @@ export class ChatEngine {
       emit: (event) => this.record(request.terminalId, event),
       log: this.deps.log,
     });
+    session.driver = driver;
+    if (session.chosen && Object.keys(session.chosen).length > 0) driver.configure(session.chosen);
   }
 
   private record(terminalId: string, event: ChatEvent): void {
@@ -163,6 +167,18 @@ export class ChatEngine {
 
   answer(terminalId: string, requestId: string, decision: ApprovalDecision): void {
     this.sessions.get(terminalId)?.driver?.answer(requestId, decision);
+  }
+
+  answerQuestion(terminalId: string, requestId: string, answers: ChatAnswers | null): void {
+    this.sessions.get(terminalId)?.driver?.answerQuestion(requestId, answers);
+  }
+
+  /** The model, effort or mode the person picked; kept, and set again if the agent restarts. */
+  configure(terminalId: string, settings: Partial<ChatSettings>): void {
+    const session = this.sessions.get(terminalId);
+    if (!session) return;
+    session.chosen = { ...session.chosen, ...settings };
+    session.driver?.configure(settings);
   }
 
   /** Stops the agent; the conversation so far is kept for the chat to show. */

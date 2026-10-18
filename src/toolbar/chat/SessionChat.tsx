@@ -3,6 +3,7 @@ import { useT } from "../../i18n/useT";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { useManagerTranscript } from "../../stores/managerChatStore";
 import {
+  answerChatQuestion,
   answerManagerApproval,
   ensureManagerChat,
   interruptManagerChat,
@@ -10,6 +11,8 @@ import {
 } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { ApprovalCards, ChatThread } from "./ChatThread";
+import { QuestionForm } from "./QuestionForm";
+import { ComposerSettings } from "./ComposerSettings";
 import { LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./LongRunning";
 import { useManagerChatStore } from "../../stores/managerChatStore";
 
@@ -26,12 +29,15 @@ export function ChatComposer({
   onSend,
   onStop,
   compact = false,
+  settings,
 }: {
   running: boolean;
   placeholder: string;
   onSend: (text: string) => Promise<boolean>;
   onStop: () => void;
   compact?: boolean;
+  /** The model, effort and mode chips, under the text. */
+  settings?: React.ReactNode;
 }) {
   const t = useT();
   const [draft, setDraft] = useState("");
@@ -48,8 +54,8 @@ export function ChatComposer({
   };
   return (
     <div className={compact ? "shrink-0 px-2 pb-2" : "shrink-0 px-3 pb-3"}>
-      <div className="flex items-end gap-2 rounded-[12px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2 focus-within:border-[var(--border-hover)]">
-        <label className="min-w-0 flex-1">
+      <div className="flex flex-col gap-1.5 rounded-[12px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2 focus-within:border-[var(--border-hover)]">
+        <label className="min-w-0">
           <span className="sr-only">{placeholder}</span>
           <textarea
             value={draft}
@@ -67,6 +73,8 @@ export function ChatComposer({
             className="block max-h-40 w-full resize-none bg-transparent text-[13px] leading-[1.5] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
         </label>
+        <div className="flex items-center gap-2">
+        <span className="-ml-2 flex min-w-0 flex-1">{settings}</span>
         {running && (
           <button
             type="button"
@@ -92,6 +100,7 @@ export function ChatComposer({
             </svg>
           </button>
         )}
+        </div>
       </div>
     </div>
   );
@@ -139,6 +148,15 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
           {transcript.failure}
         </div>
       )}
+      {transcript.questions[0] && (
+        <QuestionForm
+          key={transcript.questions[0].requestId}
+          pending={transcript.questions[0]}
+          agentName={agentName}
+          onSubmit={(answers) => void answerChatQuestion(terminalId, transcript.questions[0].requestId, answers)}
+          onSkip={() => void answerChatQuestion(terminalId, transcript.questions[0].requestId, null)}
+        />
+      )}
       <ApprovalCards approvals={transcript.approvals} onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)} />
       <PlanCard transcript={transcript} />
       <LimitCard terminalId={terminalId} transcript={transcript} agentName={agentName} />
@@ -149,6 +167,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         onSend={send}
         onStop={() => void interruptManagerChat(terminalId)}
         compact={compact}
+        settings={<ComposerSettings terminalId={terminalId} transcript={transcript} />}
       />
     </div>
   );

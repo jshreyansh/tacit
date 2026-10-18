@@ -1,4 +1,4 @@
-import type { ChatEvent, PlanStep } from "./chat-events";
+import type { ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
 
 /**
  * The conversation on screen, built from chat events alone (T6.2).
@@ -78,6 +78,16 @@ export interface ChatTranscript {
   plan: PlanStep[] | null;
   /** Where the account stands against its usage limit, once the agent has said. */
   limit: { status: "ok" | "warning" | "limited"; resetsAt?: string; usedPercent?: number; window?: string } | null;
+  /** Questions the agent waits on the person to answer. */
+  questions: PendingQuestion[];
+  /** The models and modes this agent offers, once it has said. */
+  capabilities: { models: ChatModelOption[]; modes: ChatModeOption[] } | null;
+  settings: ChatSettings;
+}
+
+export interface PendingQuestion {
+  requestId: string;
+  questions: ChatQuestion[];
 }
 
 export const EMPTY_TRANSCRIPT: ChatTranscript = {
@@ -90,6 +100,9 @@ export const EMPTY_TRANSCRIPT: ChatTranscript = {
   context: null,
   plan: null,
   limit: null,
+  questions: [],
+  capabilities: null,
+  settings: { model: null, effort: null, mode: null },
 };
 
 let assistantSeq = 0;
@@ -175,6 +188,19 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
     case "plan":
       return { ...t, plan: event.steps };
 
+    case "question_request":
+      if (t.questions.some((q) => q.requestId === event.requestId)) return t;
+      return { ...t, questions: [...t.questions, { requestId: event.requestId, questions: event.questions }] };
+
+    case "question_settled":
+      return { ...t, questions: t.questions.filter((q) => q.requestId !== event.requestId) };
+
+    case "capabilities":
+      return { ...t, capabilities: { models: event.models, modes: event.modes } };
+
+    case "settings":
+      return { ...t, settings: event.settings };
+
     case "rate_limit":
       return {
         ...t,
@@ -252,20 +278,20 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
       if (current) {
         const messages = t.messages.slice();
         messages[current.index] = settle(current.message);
-        return { ...t, messages, running: false, approvals: [] };
+        return { ...t, messages, running: false, approvals: [], questions: [] };
       }
       // A turn that produced nothing still ends, and an error says why.
       if (event.outcome !== "success") {
         const empty: ChatAssistantMessage = settle({ role: "assistant", id: `a${++assistantSeq}`, parts: [], done: false });
-        return { ...t, messages: [...t.messages, empty], running: false, approvals: [] };
+        return { ...t, messages: [...t.messages, empty], running: false, approvals: [], questions: [] };
       }
-      return { ...t, running: false, approvals: [] };
+      return { ...t, running: false, approvals: [], questions: [] };
     }
 
     case "exited": {
       const failed = event.error || (event.code !== null && event.code !== 0);
       const ended = t.running ? reduceChat(t, { kind: "turn_ended", outcome: failed ? "error" : "interrupted", ...(event.error ? { error: event.error } : {}) }) : t;
-      return { ...ended, running: false, approvals: [], failure: failed ? (event.error ?? `The agent exited with code ${event.code}`) : null };
+      return { ...ended, running: false, approvals: [], questions: [], failure: failed ? (event.error ?? `The agent exited with code ${event.code}`) : null };
     }
   }
 }

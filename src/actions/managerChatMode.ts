@@ -125,3 +125,11 @@ export function installManagerChatListener(): () => void {
     }
   });
 }
+
+export function answerChatQuestion(terminalId: string, requestId: string, answers: Record<string, string[]> | null): Promise<void> {
+  return window.tacit.chat.answerQuestion(terminalId, requestId, answers);
+}
+
+export function configureChat(terminalId: string, settings: { model?: string | null; effort?: string | null; mode?: string | null }): Promise<void> {
+  return window.tacit.chat.configure(terminalId, settings);
+}

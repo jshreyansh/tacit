@@ -771,6 +771,10 @@ export interface TacitAPI {
     send: (terminalId: string, text: string) => Promise<boolean>;
     interrupt: (terminalId: string) => Promise<void>;
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision) => Promise<void>;
+    /** Answers the agent's questions, by question id; null skips them. */
+    answerQuestion: (terminalId: string, requestId: string, answers: Record<string, string[]> | null) => Promise<void>;
+    /** Picks the model, effort or mode for the chat from its next step. */
+    configure: (terminalId: string, settings: { model?: string | null; effort?: string | null; mode?: string | null }) => Promise<void>;
     stop: (terminalId: string) => Promise<void>;
     /** The manager's terminal was closed: stops its chat agent and drops the chat. */
     forget: (terminalId: string) => Promise<void>;

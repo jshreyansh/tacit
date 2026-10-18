@@ -1,15 +1,21 @@
 import { randomUUID } from "node:crypto";
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "node:child_process";
-import type { ApprovalDecision, ChatEvent } from "../../shared/chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatSettings } from "../../shared/chat-events";
 import {
+  claudeAnswerInput,
   claudeApprovalLine,
+  claudeCapabilities,
+  claudeControlLine,
   claudeInterruptLine,
   claudeUserLine,
   createClaudeStreamState,
   parseClaudeLine,
 } from "../../shared/chat-stream-claude";
 import {
+  CODEX_MODES,
   codexApprovalResult,
+  codexCapabilities,
+  codexQuestionResult,
   codexUserInput,
   createCodexStreamState,
   parseCodexMessage,
@@ -46,8 +52,14 @@ export interface ChatDriver {
   send(text: string): void;
   interrupt(): void;
   answer(requestId: string, decision: ApprovalDecision): void;
+  /** Answers the agent's questions; null skips them. */
+  answerQuestion(requestId: string, answers: ChatAnswers | null): void;
+  /** Changes the model, effort or mode from the next thing the agent does. */
+  configure(settings: Partial<ChatSettings>): void;
   stop(): void;
 }
+
+const INIT_REQUEST = "tacit-initialize";
 
 /** Splits a stream into lines, keeping a partial last line for the next chunk. */
 function lineReader(onLine: (line: string) => void): (chunk: Buffer | string) => void {
@@ -130,6 +142,17 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
           request_id?: string;
           request?: { subtype?: string; tool_name?: string; input?: unknown; permission_suggestions?: unknown };
         };
+        // What Claude offers (its models and modes), asked for at start.
+        const reply = raw as { type?: string; response?: { request_id?: string; subtype?: string; response?: unknown } };
+        if (reply.type === "control_response" && reply.response?.request_id === INIT_REQUEST) {
+          if (reply.response.subtype === "success") {
+            const caps = claudeCapabilities(reply.response.response);
+            options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
+            settings = { ...caps.settings, ...withoutNulls(settings) };
+            options.emit({ kind: "settings", settings });
+          }
+          return;
+        }
         if (raw.type === "control_request" && raw.request?.subtype === "can_use_tool" && raw.request_id) {
           const toolName = raw.request.tool_name ?? "tool";
           // Allowed always earlier in this chat: answered without asking again.
@@ -168,9 +191,27 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
   const write = (line: string) => {
     if (!exited && child.stdin.writable) child.stdin.write(line);
   };
+  let settings: ChatSettings = { model: null, effort: null, mode: null };
+  let controlSeq = 0;
+  const control = (request: Record<string, unknown>) => write(claudeControlLine(`tacit-control-${++controlSeq}`, request));
+  write(claudeControlLine(INIT_REQUEST, { subtype: "initialize" }));
 
   return {
     send: (text) => write(claudeUserLine(text)),
+    answerQuestion: (requestId, answers) => {
+      const pending = pendingInputs.get(requestId);
+      pendingInputs.delete(requestId);
+      if (answers === null) write(claudeApprovalLine(requestId, false, undefined, "The person skipped these questions."));
+      else write(claudeApprovalLine(requestId, true, claudeAnswerInput(pending?.input, answers)));
+      options.emit({ kind: "question_settled", requestId });
+    },
+    configure: (change) => {
+      if (change.model !== undefined && change.model !== settings.model && change.model) control({ subtype: "set_model", model: change.model });
+      if (change.effort !== undefined && change.effort !== settings.effort && change.effort) control({ subtype: "apply_flag_settings", settings: { effortLevel: change.effort } });
+      if (change.mode !== undefined && change.mode !== settings.mode && change.mode) control({ subtype: "set_permission_mode", mode: change.mode });
+      settings = { ...settings, ...change };
+      options.emit({ kind: "settings", settings });
+    },
     interrupt: () => {
       interrupting = true;
       write(claudeInterruptLine(`interrupt-${randomUUID()}`));
@@ -226,6 +267,19 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
 
   const fail = (message: string) => options.emit({ kind: "turn_ended", outcome: "error", error: message });
 
+  let settings: ChatSettings = { model: null, effort: null, mode: null };
+  /** What the person picked; the thread keeps the rest as it was. */
+  let chosen: Partial<ChatSettings> = {};
+  /** What a turn sets: only what the person picked (Codex keeps it for later turns too). */
+  const turnOverrides = (): Record<string, unknown> => {
+    const mode = CODEX_MODES.find((m) => m.id === chosen.mode);
+    return {
+      ...(chosen.model ? { model: chosen.model } : {}),
+      ...(chosen.effort ? { effort: chosen.effort } : {}),
+      ...(mode ? { approvalPolicy: mode.approvalPolicy, sandboxPolicy: mode.sandboxPolicy } : {}),
+    };
+  };
+
   const startTurn = async (text: string) => {
     if (!state.threadId) return;
     const input = codexUserInput(text);
@@ -234,7 +288,7 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
       const steered = await request("turn/steer", { threadId: state.threadId, input, expectedTurnId: state.turnId });
       if (!steered.error) return;
     }
-    const started = await request("turn/start", { threadId: state.threadId, input });
+    const started = await request("turn/start", { threadId: state.threadId, input, ...turnOverrides() });
     if (started.error) fail(started.error.message ?? "Codex didn't start the turn.");
   };
 
@@ -292,6 +346,12 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     }
     state.threadId = thread.id;
     options.emit({ kind: "session", sessionId: thread.id });
+    // What it offers, and what this thread is on now.
+    const listed = await request("model/list", {});
+    const caps = codexCapabilities(listed.result, opened.result);
+    options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
+    settings = { ...caps.settings, ...withoutNulls(settings) };
+    options.emit({ kind: "settings", settings });
     ready = true;
     for (const text of queued.splice(0)) await startTurn(text);
   })();
@@ -314,10 +374,27 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
       writeMessage({ id: target.rpcId, result: codexApprovalResult(target.method, decision) });
       options.emit({ kind: "approval_settled", requestId });
     },
+    answerQuestion: (requestId, answers) => {
+      const target = state.approvals.get(requestId);
+      if (!target) return;
+      state.approvals.delete(requestId);
+      writeMessage({ id: target.rpcId, result: codexQuestionResult(answers) });
+      options.emit({ kind: "question_settled", requestId });
+    },
+    configure: (change) => {
+      chosen = { ...chosen, ...change };
+      settings = { ...settings, ...change };
+      options.emit({ kind: "settings", settings });
+    },
     stop: () => {
       if (exited) return;
       child.stdin.end();
       child.kill("SIGTERM");
     },
   };
+}
+
+/** Only the settings someone chose (null is "the agent's default"). */
+function withoutNulls(settings: ChatSettings): Partial<ChatSettings> {
+  return Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== null)) as Partial<ChatSettings>;
 }

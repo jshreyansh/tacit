@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ChatEvent, PlanStep } from "./chat-events";
+import type { ApprovalDecision, ChatAnswers, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
 
 /**
  * Codex's app-server protocol (JSON-RPC over stdio) as chat events.
@@ -118,6 +118,14 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
   const method = typeof message.method === "string" ? message.method : null;
   const params = isObject(message.params) ? message.params : {};
 
+  // A question for the person (request_user_input).
+  if (method === "item/tool/requestUserInput" && "id" in message && (typeof message.id === "string" || typeof message.id === "number")) {
+    const questions = codexQuestions(params);
+    if (questions.length === 0) return [];
+    const requestId = `codex-${message.id}`;
+    state.approvals.set(requestId, { rpcId: message.id, method });
+    return [{ kind: "question_request", requestId, questions }];
+  }
   // A request from the server: an approval we can show, or nothing.
   if (method && "id" in message && (typeof message.id === "string" || typeof message.id === "number")) {
     const view = APPROVAL_METHODS[method];
@@ -245,4 +253,73 @@ export function codexApprovalResult(method: string, decision: ApprovalDecision):
 /** The `turn/start` input for a message. */
 export function codexUserInput(text: string): Json[] {
   return [{ type: "text", text, text_elements: [] }];
+}
+
+export function codexQuestions(params: Json): ChatQuestion[] {
+  const list = Array.isArray(params.questions) ? params.questions : [];
+  return list
+    .filter((q): q is Json => isObject(q) && typeof q.id === "string" && typeof q.question === "string")
+    .map((q) => ({
+      id: q.id as string,
+      header: typeof q.header === "string" ? q.header : "",
+      question: q.question as string,
+      options: Array.isArray(q.options)
+        ? q.options
+            .filter((o): o is Json => isObject(o) && typeof o.label === "string")
+            .map((o) => ({ label: o.label as string, ...(typeof o.description === "string" && o.description ? { description: o.description } : {}) }))
+        : null,
+      multiSelect: false,
+      allowOther: q.isOther === true,
+      secret: q.isSecret === true,
+    }));
+}
+
+/** The reply to request_user_input: each answer by its question id. */
+export function codexQuestionResult(answers: ChatAnswers | null): Json {
+  const out: Record<string, { answers: string[] }> = {};
+  for (const [id, picked] of Object.entries(answers ?? {})) out[id] = { answers: picked };
+  return { answers: out };
+}
+
+/** Codex's ways of working, as its own app names them, and what each sets on a turn. */
+export const CODEX_MODES: Array<ChatModeOption & { approvalPolicy: string; sandboxPolicy: Json }> = [
+  { id: "read-only", label: "Read only", description: "Reads and answers; asks before changing anything", approvalPolicy: "on-request", sandboxPolicy: { type: "readOnly" } },
+  { id: "auto", label: "Auto", description: "Works in this folder; asks before going outside it", approvalPolicy: "on-request", sandboxPolicy: { type: "workspaceWrite" } },
+  { id: "full-access", label: "Full access", description: "Runs anything without asking", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } },
+];
+
+/** The mode a thread is in, from its approval policy and sandbox. */
+export function codexModeOf(approvalPolicy: unknown, sandbox: unknown): string | null {
+  const type = isObject(sandbox) ? sandbox.type : sandbox;
+  if (approvalPolicy === "never" && (type === "dangerFullAccess" || type === "danger-full-access")) return "full-access";
+  if (type === "readOnly" || type === "read-only") return "read-only";
+  if (type === "workspaceWrite" || type === "workspace-write") return "auto";
+  return null;
+}
+
+/** What model/list offers, without the hidden ones, and the thread's current choice. */
+export function codexCapabilities(modelList: unknown, thread: unknown): { models: ChatModelOption[]; modes: ChatModeOption[]; settings: ChatSettings } {
+  const data = isObject(modelList) && Array.isArray(modelList.data) ? modelList.data.filter(isObject) : [];
+  const models: ChatModelOption[] = data
+    .filter((m) => m.hidden !== true && typeof m.model === "string")
+    .map((m) => ({
+      id: m.model as string,
+      label: typeof m.displayName === "string" ? m.displayName : (m.model as string),
+      ...(typeof m.description === "string" ? { description: m.description } : {}),
+      efforts: Array.isArray(m.supportedReasoningEfforts)
+        ? m.supportedReasoningEfforts.map((e) => (isObject(e) ? e.reasoningEffort : e)).filter((e): e is string => typeof e === "string")
+        : [],
+      ...(typeof m.defaultReasoningEffort === "string" ? { defaultEffort: m.defaultReasoningEffort } : {}),
+      isDefault: m.isDefault === true,
+    }));
+  const t = isObject(thread) ? thread : {};
+  return {
+    models,
+    modes: CODEX_MODES.map(({ approvalPolicy: _a, sandboxPolicy: _s, ...mode }) => mode),
+    settings: {
+      model: typeof t.model === "string" ? t.model : null,
+      effort: typeof t.reasoningEffort === "string" ? t.reasoningEffort : null,
+      mode: codexModeOf(t.approvalPolicy, t.sandbox),
+    },
+  };
 }

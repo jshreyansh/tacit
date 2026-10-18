@@ -8,6 +8,11 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { ChatEngine, appendEvent } from "../electron/manager-chat/chat-engine";
 import type { ChatEvent } from "../shared/chat-events";
 
+/** What Tacit wrote to Claude after asking what it offers (the initialize request it sends at start). */
+function sentToClaude(child: { written: string[] }): Array<Record<string, any>> {
+  return child.written.map((l) => JSON.parse(l)).filter((m) => !(m.type === "control_request" && m.request?.subtype === "initialize"));
+}
+
 /** A stand-in agent process: what Tacit writes is kept, what it prints is ours to feed. */
 class FakeChild extends EventEmitter {
   stdout = new PassThrough();
@@ -93,7 +98,7 @@ test("a message is written to Claude's stdin and shown at once as the person's",
   const { child, events, engine, started } = setup("claude");
   await started;
   assert.equal(engine.send("t1", "hello"), true);
-  assert.deepEqual(JSON.parse(child.written[0]), { type: "user", message: { role: "user", content: [{ type: "text", text: "hello" }] } });
+  assert.deepEqual(sentToClaude(child)[0], { type: "user", message: { role: "user", content: [{ type: "text", text: "hello" }] } });
   const shown = events.find((e) => e.kind === "user_message");
   assert.ok(shown && shown.kind === "user_message" && shown.text === "hello" && shown.at === "2026-10-17T12:00:00.000Z");
   assert.equal(engine.send("nobody", "hi"), false);
@@ -103,7 +108,7 @@ test("Stop interrupts Claude, and the turn it ends reads as interrupted", async 
   const { child, events, engine, started } = setup("claude");
   await started;
   engine.interrupt("t1");
-  const req = JSON.parse(child.written[0]);
+  const req = sentToClaude(child)[0];
   assert.equal(req.type, "control_request");
   assert.deepEqual(req.request, { subtype: "interrupt" });
   child.print({ type: "result", subtype: "success", is_error: false });
@@ -122,7 +127,7 @@ test("an approval is answered with the tool's own input, and 'always' passes on 
   assert.equal(events.filter((e) => e.kind === "approval_request").length, 2);
   engine.answer("t1", "r1", "allow_always");
   engine.answer("t1", "r2", "deny");
-  const [always, deny] = child.written.map((l) => JSON.parse(l));
+  const [always, deny] = sentToClaude(child);
   assert.deepEqual(always.response.response, { behavior: "allow", updatedInput: { command: "git push" }, updatedPermissions: suggestions });
   assert.equal(always.response.request_id, "r1");
   assert.equal(deny.response.response.behavior, "deny");
@@ -148,7 +153,12 @@ function codexServer(child: FakeChild, opts: { threadId?: string } = {}) {
     const msg = JSON.parse(line);
     requests.push(msg);
     if (msg.method === "initialize") child.print({ id: msg.id, result: { platformOs: "macos" } });
-    if (msg.method === "thread/start" || msg.method === "thread/resume") child.print({ id: msg.id, result: { thread: { id: opts.threadId ?? "thread-1" } } });
+    if (msg.method === "thread/start" || msg.method === "thread/resume") {
+      child.print({ id: msg.id, result: { thread: { id: opts.threadId ?? "thread-1" }, model: "gpt-5.3", reasoningEffort: "medium", approvalPolicy: "on-request", sandbox: { type: "workspaceWrite" } } });
+    }
+    if (msg.method === "model/list") {
+      child.print({ id: msg.id, result: { data: [{ model: "gpt-5.3", displayName: "GPT-5.3", hidden: false, isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }, { reasoningEffort: "high" }] }] } });
+    }
     if (msg.method === "turn/start" || msg.method === "turn/steer" || msg.method === "turn/interrupt") child.print({ id: msg.id, result: {} });
   };
   return requests;
@@ -161,7 +171,7 @@ test("Codex starts app-server with the bridge, opens a thread in the terminal's 
   assert.deepEqual(spawned[0].args, ["app-server", "--mcp-config", "/tmp/tacit-mcp-t1.json"]);
   engine.send("t1", "early message");
   for (let i = 0; i < 10; i++) await tick();
-  assert.deepEqual(requests.map((r) => r.method).filter(Boolean), ["initialize", "initialized", "thread/start", "turn/start"]);
+  assert.deepEqual(requests.map((r) => r.method).filter(Boolean), ["initialize", "initialized", "thread/start", "model/list", "turn/start"]);
   assert.deepEqual(requests.find((r) => r.method === "thread/start")?.params, { cwd: "/repo" });
   assert.deepEqual(requests.find((r) => r.method === "turn/start")?.params, {
     threadId: "thread-1",
@@ -290,4 +300,73 @@ test("Claude: Always allow covers the next ask for that tool (or that exact comm
   ask("r5", "Bash", { command: "rm -rf build" });
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(events.filter((e) => e.kind === "approval_request").map((e) => (e as { requestId: string }).requestId), ["r1", "r3", "r5"]);
+});
+
+test("Codex: what it offers comes from model/list and the thread; a change applies to the next turn", async () => {
+  const { child, events, engine, started } = setup("codex");
+  const requests = codexServer(child);
+  await started;
+  for (let i = 0; i < 8; i++) await tick();
+  const caps = events.find((e) => e.kind === "capabilities");
+  assert.ok(caps && caps.kind === "capabilities" && caps.models[0].id === "gpt-5.3");
+  assert.deepEqual(
+    [...events].reverse().find((e) => e.kind === "settings"),
+    { kind: "settings", settings: { model: "gpt-5.3", effort: "medium", mode: "auto" } },
+  );
+  engine.configure("t1", { effort: "high", mode: "full-access" });
+  engine.send("t1", "go");
+  for (let i = 0; i < 4; i++) await tick();
+  const turn = requests.find((r) => r.method === "turn/start");
+  assert.equal(turn?.params?.effort, "high");
+  // Only what was picked: the model stays the thread's own.
+  assert.equal(turn?.params?.model, undefined);
+  assert.equal(turn?.params?.approvalPolicy, "never");
+  assert.deepEqual(turn?.params?.sandboxPolicy, { type: "dangerFullAccess" });
+});
+
+test("Codex: a question is answered by id", async () => {
+  const { child, events, engine, started } = setup("codex");
+  const requests = codexServer(child);
+  await started;
+  for (let i = 0; i < 6; i++) await tick();
+  child.print({ id: 55, method: "item/tool/requestUserInput", params: { threadId: "thread-1", turnId: "u", itemId: "i", isBlocking: true, questions: [{ id: "env", header: "Env", question: "Which?", options: [{ label: "Prod", description: "" }] }] } });
+  await tick();
+  assert.ok(events.some((e) => e.kind === "question_request" && e.requestId === "codex-55"));
+  engine.answerQuestion("t1", "codex-55", { env: ["Prod"] });
+  await tick();
+  assert.deepEqual(requests.find((r) => r.id === 55)?.result, { answers: { env: { answers: ["Prod"] } } });
+  assert.ok(events.some((e) => e.kind === "question_settled" && e.requestId === "codex-55"));
+});
+
+test("Claude: asks what it offers at start, switches model, effort and mode at once, and answers questions in its form", async () => {
+  const { child, events, engine, started } = setup("claude");
+  await started;
+  await new Promise((r) => setTimeout(r, 5));
+  assert.ok(child.written[0].includes('"subtype":"initialize"'));
+  child.print({
+    type: "control_response",
+    response: { subtype: "success", request_id: "tacit-initialize", response: { current_permission_mode: "default", models: [{ value: "default", displayName: "Default", supportsEffort: true, supportedEffortLevels: ["low", "high"] }] } },
+  });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.ok(events.some((e) => e.kind === "capabilities"));
+  engine.configure("t1", { model: "sonnet", effort: "high", mode: "plan" });
+  await new Promise((r) => setTimeout(r, 5));
+  const controls = child.written.map((l) => JSON.parse(l)).filter((m) => m.type === "control_request").map((m) => m.request);
+  assert.deepEqual(controls.slice(1), [
+    { subtype: "set_model", model: "sonnet" },
+    { subtype: "apply_flag_settings", settings: { effortLevel: "high" } },
+    { subtype: "set_permission_mode", mode: "plan" },
+  ]);
+  child.print({
+    type: "control_request",
+    request_id: "q1",
+    request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", input: { questions: [{ question: "Colour?", header: "C", options: [{ label: "Blue" }], multiSelect: false }] } },
+  });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.ok(events.some((e) => e.kind === "question_request" && e.requestId === "q1"));
+  engine.answerQuestion("t1", "q1", { "Colour?": ["Blue"] });
+  await new Promise((r) => setTimeout(r, 5));
+  const reply = child.written.map((l) => JSON.parse(l)).find((m) => m.type === "control_response" && m.response.request_id === "q1");
+  assert.equal(reply.response.response.behavior, "allow");
+  assert.deepEqual(reply.response.response.updatedInput.answers, { "Colour?": "Blue" });
 });

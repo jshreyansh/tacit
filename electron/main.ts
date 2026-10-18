@@ -2229,6 +2229,34 @@ function setupIpc() {
     if (!CHAT_DECISIONS.includes(decision as ApprovalDecision)) return;
     chatEngine.answer(terminalId, requestId, decision as ApprovalDecision);
   });
+  // The person's answers to the agent's questions: ids and texts, bounded.
+  ipcMain.handle("chat:answer-question", (event, terminalId: unknown, requestId: unknown, answers: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof requestId !== "string" || requestId.length > 256) return;
+    if (answers === null) return chatEngine.answerQuestion(terminalId, requestId, null);
+    if (typeof answers !== "object" || answers === undefined || Array.isArray(answers)) return;
+    const entries = Object.entries(answers as Record<string, unknown>);
+    if (entries.length > 12) return;
+    const clean: Record<string, string[]> = {};
+    for (const [id, picked] of entries) {
+      if (id.length > 1000 || !Array.isArray(picked) || picked.length > 20) return;
+      if (!picked.every((a) => typeof a === "string" && a.length <= 4000)) return;
+      clean[id] = picked as string[];
+    }
+    chatEngine.answerQuestion(terminalId, requestId, clean);
+  });
+  // The model, effort or mode picked in the chat: short names only.
+  ipcMain.handle("chat:configure", (event, terminalId: unknown, settings: unknown) => {
+    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof settings !== "object" || settings === null) return;
+    const NAME = /^[A-Za-z0-9._:\[\] -]{1,80}$/;
+    const out: Record<string, string | null> = {};
+    for (const key of ["model", "effort", "mode"] as const) {
+      const value = (settings as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      if (value !== null && (typeof value !== "string" || !NAME.test(value))) return;
+      out[key] = value as string | null;
+    }
+    chatEngine.configure(terminalId, out);
+  });
   ipcMain.handle("chat:stop", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.stop(terminalId);
   });

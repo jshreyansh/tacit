@@ -15,7 +15,8 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { askedAnswers, createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { claudeQuestions } from "../../../shared/chat-stream-claude";
 import { usePinStore } from "../../stores/pinStore";
 import { openPinFull } from "../../tasks/TasksView";
 import { parseAnswerMessage } from "../../tasks/taskModel";
@@ -160,6 +161,29 @@ function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent:
   );
 }
 
+/** The agent's questions, as asked, with the answers given. */
+function AskedCard({ props, t }: { props: ToolCardProps; t: Dict }) {
+  const questions = claudeQuestions(props.args);
+  const answers = askedAnswers(typeof props.result === "string" ? props.result : undefined);
+  const status = statusOf(props);
+  return (
+    <div className="my-1 flex flex-col gap-1.5 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
+      <span className="flex items-center gap-2 text-[12.5px] text-[var(--text-primary)]">
+        {t.chat_question_asked}
+        <span className="ml-auto">
+          <StatusMark status={status} />
+        </span>
+      </span>
+      {questions.map((q) => (
+        <span key={q.id} className="flex flex-col gap-0.5 text-[12px] leading-snug">
+          <span className="text-[var(--text-secondary)]">{q.question}</span>
+          {answers[q.question] && <span className="text-[var(--text-primary)]">→ {answers[q.question]}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** Opens a task by id, wherever it is. */
 function openTaskById(id: string): void {
   const pin = Object.values(usePinStore.getState().pinsByProject)
@@ -245,6 +269,7 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
   const taskView = taskTool(props.toolName, props.args);
   if (taskView) return <TaskToolCard props={props} view={taskView} t={t} />;
+  if (props.toolName === "AskUserQuestion") return <AskedCard props={props} t={t} />;
   // Claude's todo list reads as its plan, as it does live.
   const plan = props.toolName === "TodoWrite" ? todoPlan(props.args) : null;
   if (plan) {
@@ -320,7 +345,7 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
   // Kept in view while folded: workers started, and a task made or a question asked.
   const isWorker = (p: RunPart | undefined) => {
     if (!p?.toolName) return false;
-    if (workerSpawn(p.toolName, p.args ?? {}) !== null) return true;
+    if (workerSpawn(p.toolName, p.args ?? {}) !== null || p.toolName === "AskUserQuestion") return true;
     const view = taskTool(p.toolName, p.args ?? {});
     return view?.kind === "create" || view?.kind === "ask";
   };

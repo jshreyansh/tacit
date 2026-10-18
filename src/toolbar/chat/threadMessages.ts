@@ -183,3 +183,11 @@ export function createdTaskId(result: string | undefined): string | null {
     return /"id"\s*:\s*"([a-z0-9][a-z0-9-]*)"/.exec(result)?.[1] ?? null;
   }
 }
+
+/** The answers in AskUserQuestion's result, by question: `"Q"="A", "Q2"="B"`. */
+export function askedAnswers(result: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!result) return out;
+  for (const m of result.matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) out[m[1]] = m[2];
+  return out;
+}
