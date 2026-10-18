@@ -199,6 +199,8 @@ export function TasksView() {
       setFilter("all");
       setExpanded(made.id);
       setJustMade(made.id);
+      // A new task opens full size, beside the chat, to write it out.
+      openPinFull(made);
     }
   };
 

@@ -28,7 +28,7 @@ import { useT } from "../i18n/useT";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { pinKind } from "../../shared/pin";
 import { StatusChip, TaskSections } from "../tasks/TaskParts";
-import { makeNote, makeTask, updateTask } from "../tasks/taskActions";
+import { NEW_NOTE_TITLE, NEW_TASK_TITLE, makeNote, makeTask, updateTask } from "../tasks/taskActions";
 
 
 
@@ -523,7 +523,7 @@ export function PinDetailDrawer() {
                     placeholder={t["pin.titlePlaceholder"]}
                   />
                 ) : pin ? (
-                  <TitleInput pin={pin} />
+                  <TitleInput key={pin.id} pin={pin} />
                 ) : null}
               </div>
 
@@ -675,6 +675,7 @@ export function PinDetailDrawer() {
 /** The title, editable in place: saved when you leave it or press Enter. */
 function TitleInput({ pin }: { pin: Pin }) {
   const t = useT();
+  const untitled = pin.title === NEW_TASK_TITLE || pin.title === NEW_NOTE_TITLE;
   const [title, setTitle] = useState(pin.title);
   useEffect(() => setTitle(pin.title), [pin.id, pin.title]);
   const commit = () => {
@@ -687,6 +688,11 @@ function TitleInput({ pin }: { pin: Pin }) {
       <span className="sr-only">{pinKind(pin) === "task" ? t.task_title_placeholder : t.note_title_placeholder}</span>
       <input
         className="tc-display w-full break-words rounded-md bg-transparent outline-none focus:bg-[var(--surface-hover)]"
+        // A new one opens ready to name.
+        autoFocus={untitled}
+        onFocus={(e) => {
+          if (untitled) e.target.select();
+        }}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onBlur={commit}

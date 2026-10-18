@@ -269,3 +269,25 @@ test("a new chat with no session reads no history", async () => {
   await started;
   assert.equal(asked, false);
 });
+
+test("Claude: Always allow covers the next ask for that tool (or that exact command) without asking again", async () => {
+  const { child, events, engine, started } = setup("claude");
+  await started;
+  const ask = (id: string, tool: string, input: object) =>
+    child.print({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: tool, input } });
+  ask("r1", "mcp__tacit__update_task", { id: "a" });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(events.filter((e) => e.kind === "approval_request").length, 1);
+  engine.answer("t1", "r1", "allow_always");
+  ask("r2", "mcp__tacit__update_task", { id: "b" });
+  ask("r3", "Bash", { command: "npm test" });
+  await new Promise((r) => setTimeout(r, 10));
+  // The second update_task was answered for you; the shell command still asks.
+  assert.deepEqual(events.filter((e) => e.kind === "approval_request").map((e) => (e as { requestId: string }).requestId), ["r1", "r3"]);
+  assert.ok(child.written.some((l) => l.includes('"request_id":"r2"') && l.includes('"behavior":"allow"')));
+  engine.answer("t1", "r3", "allow_always");
+  ask("r4", "Bash", { command: "npm test" });
+  ask("r5", "Bash", { command: "rm -rf build" });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(events.filter((e) => e.kind === "approval_request").map((e) => (e as { requestId: string }).requestId), ["r1", "r3", "r5"]);
+});

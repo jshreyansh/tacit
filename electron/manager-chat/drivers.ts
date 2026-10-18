@@ -75,6 +75,14 @@ function stderrTail(): { push: (chunk: Buffer | string) => void; text: () => str
   };
 }
 
+/** What an Always allow covers: a shell command exactly, any other tool by name. */
+export function allowKey(toolName: string, input: unknown): string {
+  if (toolName === "Bash" && input && typeof input === "object" && typeof (input as { command?: unknown }).command === "string") {
+    return `Bash:${(input as { command: string }).command}`;
+  }
+  return toolName;
+}
+
 export function claudeArgs(sessionId: string | null, bridgeArgs: readonly string[]): string[] {
   return [
     "-p",
@@ -96,7 +104,14 @@ export function claudeArgs(sessionId: string | null, bridgeArgs: readonly string
 export function startClaudeDriver(options: DriverOptions): ChatDriver {
   const state = createClaudeStreamState();
   /** Inputs and suggested rules of pending approvals, to answer them. */
-  const pendingInputs = new Map<string, { input: unknown; suggestions: unknown }>();
+  const pendingInputs = new Map<string, { input: unknown; suggestions: unknown; toolName: string }>();
+  /**
+   * What the person chose Always allow for, for the rest of this chat: a
+   * tool by name, or a shell command exactly. Claude's own suggested rule
+   * is sent too, but not every ask has one (Tacit's tools don't), and
+   * without this "always" would ask again next time.
+   */
+  const alwaysAllowed = new Set<string>();
   let interrupting = false;
   let exited = false;
   const err = stderrTail();
@@ -110,9 +125,19 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     "data",
     lineReader((line) => {
       try {
-        const raw = JSON.parse(line) as { type?: string; request_id?: string; request?: { subtype?: string; input?: unknown; permission_suggestions?: unknown } };
+        const raw = JSON.parse(line) as {
+          type?: string;
+          request_id?: string;
+          request?: { subtype?: string; tool_name?: string; input?: unknown; permission_suggestions?: unknown };
+        };
         if (raw.type === "control_request" && raw.request?.subtype === "can_use_tool" && raw.request_id) {
-          pendingInputs.set(raw.request_id, { input: raw.request.input, suggestions: raw.request.permission_suggestions });
+          const toolName = raw.request.tool_name ?? "tool";
+          // Allowed always earlier in this chat: answered without asking again.
+          if (alwaysAllowed.has(allowKey(toolName, raw.request.input))) {
+            write(claudeApprovalLine(raw.request_id, true, raw.request.input));
+            return;
+          }
+          pendingInputs.set(raw.request_id, { input: raw.request.input, suggestions: raw.request.permission_suggestions, toolName });
         }
       } catch {
         // parseClaudeLine ignores it too.
@@ -153,6 +178,7 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     answer: (requestId, decision) => {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
+      if (decision === "allow_always" && pending) alwaysAllowed.add(allowKey(pending.toolName, pending.input));
       if (decision === "deny") {
         write(claudeApprovalLine(requestId, false, undefined));
       } else if (decision === "allow_always" && Array.isArray(pending?.suggestions) && pending.suggestions.length > 0) {

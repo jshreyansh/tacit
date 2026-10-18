@@ -104,3 +104,9 @@ export function tasksNeedingYou(pinsByProject: Readonly<Record<string, readonly 
     .flat()
     .filter((pin) => isTask(pin) && pin.status === "needs_you");
 }
+
+/** An answer the person sent from a task (answerMessage), read back for the chat. */
+export function parseAnswerMessage(text: string): { title: string; question: string | null; answer: string } | null {
+  const match = /^Answer from the user on the task "([\s\S]*?)" \([a-z0-9-]+\)\.(?: You asked: "([\s\S]*?)")? Their answer: ([\s\S]*)$/.exec(text.trim());
+  return match ? { title: match[1], question: match[2] ?? null, answer: match[3] } : null;
+}

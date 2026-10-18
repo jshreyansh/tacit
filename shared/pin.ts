@@ -147,7 +147,9 @@ export function describeTaskChange(before: Pin, after: Pin, answer?: string): st
   if (before.title !== after.title) lines.push(`renamed it “${after.title}”`);
   if (answer !== undefined) lines.push(`answered: ${answer}`);
   else if (after.ask && after.ask.reason !== before.ask?.reason) lines.push(`asked: ${after.ask.reason}`);
-  if (before.status !== after.status && !(after.ask && after.status === "needs_you")) {
+  // Asking sets Needs you and answering ends it; neither needs its own line.
+  const askedOrAnswered = (after.ask && after.status === "needs_you") || (answer !== undefined && before.status === "needs_you" && after.status === "in_progress");
+  if (before.status !== after.status && !askedOrAnswered) {
     lines.push(`set it to ${STATUS_WORDS[after.status]}`);
   }
   const beforeSteps = before.steps ?? [];

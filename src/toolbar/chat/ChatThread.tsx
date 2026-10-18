@@ -15,7 +15,12 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "./threadMessages";
+import { createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { usePinStore } from "../../stores/pinStore";
+import { openPinFull } from "../../tasks/TasksView";
+import { parseAnswerMessage } from "../../tasks/taskModel";
+import { parsePinStatus } from "../../../shared/pin";
+import { statusLabel } from "../../tasks/TaskParts";
 import { findTerminal } from "../../actions/terminalLookup";
 import { linkNodeIds, NODE_CHIP_HREF, type NodeDescription } from "../sessionReaderModel";
 import { todoPlan } from "../../../shared/chat-stream-claude";
@@ -155,11 +160,91 @@ function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent:
   );
 }
 
+/** Opens a task by id, wherever it is. */
+function openTaskById(id: string): void {
+  const pin = Object.values(usePinStore.getState().pinsByProject)
+    .flat()
+    .find((p) => p.id === id);
+  if (pin) openPinFull(pin);
+}
+
+/**
+ * The task tools read as what they did: a task made, a question asked
+ * (kept in view, with its choices), the task moved on, the list read.
+ */
+function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskToolView; t: Dict }) {
+  const status = statusOf(props);
+  const taskIcon = (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 4l1.2 1.2L6 3M2.5 8l1.2 1.2L6 7M2.5 12h0.01M8 4h5.5M8 8h5.5M8 12h5.5" />
+    </svg>
+  );
+  if (view.kind === "create" || view.kind === "ask") {
+    const id = view.kind === "create" ? createdTaskId(typeof props.result === "string" ? props.result : undefined) : view.taskId;
+    const ask = view.kind === "ask";
+    return (
+      <div
+        className="my-1 flex flex-col gap-1.5 rounded-[10px] border px-3 py-2.5"
+        style={{ borderColor: ask ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
+      >
+        <span className="flex items-center gap-2 text-[12.5px]">
+          <span className="text-[var(--text-muted)]">{taskIcon}</span>
+          <span className="min-w-0 flex-1 text-[var(--text-primary)]">
+            {ask ? t.chat_task_asked : t.chat_task_made}
+            {view.kind === "create" && view.title && <span className="text-[var(--text-secondary)]"> · {view.title}</span>}
+          </span>
+          {view.kind === "create" && view.steps > 0 && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_task_steps(view.steps)}</span>}
+          <StatusMark status={status} />
+          {id && (
+            <button
+              type="button"
+              className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-0.5 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              onClick={() => openTaskById(id)}
+            >
+              {t.chat_task_open}
+            </button>
+          )}
+        </span>
+        {ask && view.question && <span className="pl-[22px] text-[12.5px] leading-snug" style={{ color: "var(--amber)" }}>{view.question}</span>}
+        {ask && view.choices.length > 0 && (
+          <span className="flex flex-wrap gap-1 pl-[22px]">
+            {view.choices.map((c) => (
+              <span key={c} className="rounded-full border border-[var(--border)] px-2 text-[11px] text-[var(--text-muted)]">
+                {c}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    );
+  }
+  const detail =
+    view.kind === "list"
+      ? null
+      : [
+          view.total > 0 ? t.chat_task_progress(view.done, view.total) : null,
+          view.status && parsePinStatus(view.status) ? statusLabel(parsePinStatus(view.status)!, t) : null,
+          view.notes ? t.chat_task_notes : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+  return (
+    <div className="my-0.5 flex items-center gap-1.5 py-0.5 text-[12px]">
+      <span className="text-[var(--text-faint)]">{taskIcon}</span>
+      <span className="text-[var(--text-secondary)]">{view.kind === "list" ? t.chat_task_read : t.chat_task_updated}</span>
+      {detail && <span className="min-w-0 truncate text-[var(--text-muted)]">{detail}</span>}
+      <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
+    </div>
+  );
+}
+
 const ToolCard: FC<ToolCardProps> = (props) => {
   const t = useT();
   const [open, setOpen] = useState(false);
   const spawn = workerSpawn(props.toolName, props.args);
   if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
+  const taskView = taskTool(props.toolName, props.args);
+  if (taskView) return <TaskToolCard props={props} view={taskView} t={t} />;
   // Claude's todo list reads as its plan, as it does live.
   const plan = props.toolName === "TodoWrite" ? todoPlan(props.args) : null;
   if (plan) {
@@ -232,7 +317,13 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
   const parts = useAuiState((s) => s.message.parts) as readonly RunPart[];
   const run = parts.slice(startIndex, endIndex + 1);
   const rows = Children.toArray(children);
-  const isWorker = (p: RunPart | undefined) => !!p?.toolName && workerSpawn(p.toolName, p.args ?? {}) !== null;
+  // Kept in view while folded: workers started, and a task made or a question asked.
+  const isWorker = (p: RunPart | undefined) => {
+    if (!p?.toolName) return false;
+    if (workerSpawn(p.toolName, p.args ?? {}) !== null) return true;
+    const view = taskTool(p.toolName, p.args ?? {});
+    return view?.kind === "create" || view?.kind === "ask";
+  };
   const plain = run.filter((p) => !isWorker(p));
   if (plain.length < FOLD_AT) return <>{children}</>;
   const running = plain.some((p) => p.artifact?.status === "running");
@@ -279,6 +370,19 @@ function MessageAnchor({ children, className }: PropsWithChildren<{ className: s
   );
 }
 
+/** What the person wrote; an answer sent from a task reads as just the answer. */
+const UserText: FC<{ text: string }> = ({ text }) => {
+  const t = useT();
+  const answer = parseAnswerMessage(text);
+  if (!answer) return <>{text}</>;
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="text-[11px] text-[var(--text-muted)]">{answer.question ? t.chat_task_answer_to(answer.question) : t.chat_task_answer_on(answer.title)}</span>
+      <span>{answer.answer}</span>
+    </span>
+  );
+};
+
 /** Sent while a turn ran: said above the message, since it changed that turn. */
 function SteeredLabel() {
   const t = useT();
@@ -293,7 +397,7 @@ const UserMessage: FC = () => (
       className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
       style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
     >
-      <MessagePrimitive.Parts components={{ Text: ({ text }) => <>{text}</> }} />
+      <MessagePrimitive.Parts components={{ Text: UserText }} />
     </div>
   </MessageAnchor>
 );

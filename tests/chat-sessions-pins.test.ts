@@ -93,3 +93,22 @@ test("a pin handed to the manager says it is context, then gives its title and b
   // Chinese pins get the Chinese instruction.
   assert.match(pinHandoffText({ title: "导出上下文", body: "" }), /^这是一个已有的 Tacit pin/);
 });
+
+test("the chat reads task tools as what they did, and a sent answer as just the answer", async () => {
+  const { taskTool, createdTaskId } = await import("../src/toolbar/chat/threadMessages");
+  const { parseAnswerMessage } = await import("../src/tasks/taskModel");
+  assert.deepEqual(taskTool("mcp__tacit__ask_user", { id: "t-1", question: "A or B?", choices: ["A", "B"] }), { kind: "ask", taskId: "t-1", question: "A or B?", choices: ["A", "B"] });
+  assert.deepEqual(taskTool("mcp__tacit__update_task", { id: "t-1", steps: [{ text: "x", status: "done" }, { text: "y" }], status: "in_progress" }), {
+    kind: "update",
+    taskId: "t-1",
+    done: 1,
+    total: 2,
+    status: "in_progress",
+    notes: false,
+  });
+  assert.equal(taskTool("Bash", {}), null);
+  assert.equal(createdTaskId('{"task":{"id":"improve-health-6f3f"}}'), "improve-health-6f3f");
+  const sent = answerMessage({ id: "pick-ab12", title: "Pick", ask: { reason: "A or B?", at: "x" } }, "A");
+  assert.deepEqual(parseAnswerMessage(sent), { title: "Pick", question: "A or B?", answer: "A" });
+  assert.equal(parseAnswerMessage("just a message"), null);
+});

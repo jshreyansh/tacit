@@ -88,3 +88,11 @@ test("statuses and steps as people and agents type them", () => {
   assert.equal(statusFromSteps("needs_you", [{ text: "a", status: "done" }]), "needs_you");
   assert.equal(statusFromSteps("done", [{ text: "a", status: "pending" }]), "in_progress");
 });
+
+test("an answer records just the answer, not also that the task went back in progress", () => {
+  const { store, repo } = freshStore();
+  const t = store.create({ title: "Pick", repo });
+  store.update(repo, t.id, { ask: { reason: "A or B?" } }, "terminal:x1");
+  const answered = store.update(repo, t.id, { answer: "A" });
+  assert.deepEqual(answered.activity?.slice(-1).map((a) => a.text), ["answered: A"]);
+});

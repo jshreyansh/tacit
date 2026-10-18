@@ -136,3 +136,50 @@ export function spawnedTerminalId(result: string | undefined): string | null {
     return match?.[1] ?? null;
   }
 }
+
+/** A Tacit task tool, and what to show for it. */
+export type TaskToolView =
+  | { kind: "create"; title: string; steps: number }
+  | { kind: "ask"; taskId: string; question: string; choices: string[] }
+  | { kind: "update"; taskId: string; done: number; total: number; status: string | null; notes: boolean }
+  | { kind: "list" };
+
+export function taskTool(toolName: string, args: JsonObject): TaskToolView | null {
+  const tool = /^mcp__tacit__(.+)$/.exec(toolName)?.[1];
+  const steps = Array.isArray(args.steps) ? (args.steps as Array<{ status?: unknown }>) : null;
+  switch (tool) {
+    case "create_task":
+      return { kind: "create", title: typeof args.title === "string" ? args.title : "", steps: steps?.length ?? 0 };
+    case "ask_user":
+      return {
+        kind: "ask",
+        taskId: typeof args.id === "string" ? args.id : "",
+        question: typeof args.question === "string" ? args.question : "",
+        choices: Array.isArray(args.choices) ? args.choices.filter((c): c is string => typeof c === "string") : [],
+      };
+    case "update_task":
+      return {
+        kind: "update",
+        taskId: typeof args.id === "string" ? args.id : "",
+        done: steps ? steps.filter((s) => s?.status === "done").length : 0,
+        total: steps?.length ?? 0,
+        status: typeof args.status === "string" ? args.status : null,
+        notes: typeof args.body === "string",
+      };
+    case "list_tasks":
+      return { kind: "list" };
+    default:
+      return null;
+  }
+}
+
+/** The task id a create_task result names. */
+export function createdTaskId(result: string | undefined): string | null {
+  if (!result) return null;
+  try {
+    const parsed = JSON.parse(result) as { task?: { id?: unknown } };
+    return typeof parsed.task?.id === "string" ? parsed.task.id : null;
+  } catch {
+    return /"id"\s*:\s*"([a-z0-9][a-z0-9-]*)"/.exec(result)?.[1] ?? null;
+  }
+}
