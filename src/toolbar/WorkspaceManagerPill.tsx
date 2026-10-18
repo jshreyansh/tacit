@@ -27,7 +27,7 @@ import { TaskBar } from "../tasks/TaskParts";
 import { managerTask } from "../tasks/taskModel";
 import { openPinFull } from "../tasks/TasksView";
 import { usePinStore } from "../stores/pinStore";
-import { ContextMeter, LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
+import { LimitCard, PlanCard, QueuedMessages, useQueue, useQueueSender } from "./chat/LongRunning";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { QuestionForm } from "./chat/QuestionForm";
@@ -840,7 +840,6 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
-        {chatMode && <ContextMeter transcript={transcript} agent={managerTerminal?.type ?? null} />}
         {/* Sessions and Pins each open in place of the conversation; the lit
             icon takes you back. */}
         <button
@@ -877,20 +876,7 @@ export function WorkspaceManagerPill() {
             <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
           )}
         </button>
-        {managerTerminal && chatMode && (
-          <button
-            type="button"
-            className={iconButton}
-            onClick={() => requestManagerMove(managerTerminal.id, "terminal", running)}
-            title={t.chat_mode_open_terminal_hint}
-            aria-label={t.chat_mode_back_to_terminal}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M9.5 2.5h4v4M13.5 2.5L8 8" />
-              <path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" />
-            </svg>
-          </button>
-        )}
+        {/* The terminal itself: its tile there offers Open in terminal. */}
         {managerTerminal && (
           <button type="button" className={iconButton} onClick={flyToManager} title={t.project_chat_go_to} aria-label={t.project_chat_go_to}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1250,7 +1236,7 @@ export function WorkspaceManagerPill() {
               >
                 {t.project_chat_mention_file}
               </button>
-              {chatMode && <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} />}
+              {chatMode && <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} agent={managerTerminal.type} />}
               <div className="flex-1" />
               <button
                 type="button"

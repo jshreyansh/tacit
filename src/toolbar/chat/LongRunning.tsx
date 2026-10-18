@@ -154,12 +154,34 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
  */
 const TONE_COLOR = { muted: "var(--text-muted)", amber: "var(--amber)", red: "var(--red)" } as const;
 
+/** A small ring filled to a percentage. */
+function Ring({ percent, color }: { percent: number; color: string }) {
+  const r = 6;
+  const length = 2 * Math.PI * r;
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="-rotate-90">
+      <circle cx="8" cy="8" r={r} fill="none" stroke="var(--surface-hover)" strokeWidth="2.2" />
+      <circle
+        cx="8"
+        cy="8"
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeDasharray={`${(Math.max(percent, 3) / 100) * length} ${length}`}
+      />
+    </svg>
+  );
+}
+
 /**
- * How full the agent's context is and how much of its usage limit is used,
- * both at a glance, with the agent's logo so it's clear whose they are (a
- * swapped manager starts on its own numbers).
+ * How much of the usage limit is used, as a ring beside the composer's
+ * chips; hovering tells whose limit it is, when it resets, and how full
+ * the context is. Before the agent has reported its usage, the ring shows
+ * the context.
  */
-export function ContextMeter({ transcript, agent }: { transcript: ChatTranscript; agent: string | null }) {
+export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; agent: string | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const context = transcript.context;
@@ -167,64 +189,56 @@ export function ContextMeter({ transcript, agent }: { transcript: ChatTranscript
   const limit = transcript.limit;
   const used = limit?.usedPercent;
   if ((percent === null || !context) && used === undefined) return null;
-  const tone = percent === null ? undefined : percent >= 85 ? "var(--red)" : percent >= 65 ? "var(--amber)" : "var(--text-muted)";
-  const usedTone = used !== undefined ? TONE_COLOR[limitTone(used)] : undefined;
+  const tone = percent === null ? "var(--text-muted)" : percent >= 85 ? "var(--red)" : percent >= 65 ? "var(--amber)" : "var(--text-muted)";
+  const usedTone = used !== undefined ? (limitTone(used) === "muted" ? "var(--accent)" : TONE_COLOR[limitTone(used)]) : tone;
   const resets = resetLabel(limit?.resetsAt);
   const windowMinutes = limitWindowMinutes(limit?.window);
   const icon = agentIcon(agent) ?? null;
   const agentName = agent ? (findAgentAdapter(agent)?.displayName ?? agent) : null;
   const summary = percent !== null && context ? t.chat_context_detail(percent, formatTokens(context.used), formatTokens(context.window ?? 0)) : null;
-  const limitSummary = used !== undefined ? t.chat_limit_detail(used, resets ?? "") : null;
-  const label = [summary, limitSummary].filter(Boolean).join(" · ");
+  const limitTitle = windowMinutes ? t.chat_limit_window_title(t.chat_limit_window(windowMinutes)) : t.chat_usage_limit;
+  const label = [used !== undefined ? `${limitTitle}: ${used}%` : null, summary].filter(Boolean).join(" · ");
   return (
     <span className="relative flex shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
-        className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] tabular-nums text-[var(--text-muted)] hover:bg-[var(--surface-hover)]"
+        className="tc-rail-btn flex h-7 w-7 items-center justify-center"
         aria-label={label}
         aria-expanded={open}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onClick={() => setOpen((v) => !v)}
       >
-        {percent !== null && (
-          <>
-            <span aria-hidden="true" className="block h-1 w-9 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-              <span className="block h-1 rounded-full" style={{ width: `${percent}%`, background: tone }} />
-            </span>
-            {percent}%
-          </>
-        )}
-        {percent !== null && used !== undefined && <span aria-hidden="true" className="h-3 w-px bg-[var(--border)]" />}
-        {used !== undefined && <span style={{ color: usedTone }}>{t.chat_meter_used(used)}</span>}
+        <Ring percent={used ?? percent ?? 0} color={used !== undefined ? usedTone : tone} />
       </button>
       {open && (
-        <div role="tooltip" className="tc-float absolute right-0 top-full z-20 mt-1.5 flex w-[260px] flex-col gap-2 p-3 text-left" style={{ borderRadius: 12 }}>
+        <div
+          role="tooltip"
+          className="tc-float absolute bottom-full left-1/2 z-30 mb-2 flex w-[250px] -translate-x-1/2 flex-col gap-2 p-3 text-left"
+          style={{ borderRadius: 12 }}
+        >
           {agentName && (
             <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-primary)]">
               {icon && <img src={icon} alt="" className="h-3.5 w-3.5 object-contain" draggable={false} />}
               <span>{agentName}</span>
             </div>
           )}
-          {percent !== null && summary && (
-            <div className="flex flex-col gap-1">
+          {used !== undefined && (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[13px] text-[var(--text-primary)]">
+                {limitTitle}: <span className="tabular-nums" style={{ color: limitTone(used) === "muted" ? undefined : usedTone }}>{used}%</span>
+              </span>
+              {resets && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_limit_resets(resets)}</span>}
+            </div>
+          )}
+          {summary && percent !== null && (
+            <div className={`flex flex-col gap-1 ${used !== undefined ? "border-t border-[var(--border)] pt-2" : ""}`}>
               <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_context}</span>
               <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
                 <span className="block h-1.5 rounded-full" style={{ width: `${percent}%`, background: tone }} />
               </span>
               <span className="text-[12px] text-[var(--text-secondary)]">{summary}</span>
               <span className="text-[11px] leading-snug text-[var(--text-muted)]">{t.chat_context_hint}</span>
-            </div>
-          )}
-          {used !== undefined && limitSummary && (
-            <div className={`flex flex-col gap-1 ${percent !== null ? "border-t border-[var(--border)] pt-2" : ""}`}>
-              <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                {windowMinutes ? `${t.chat_usage_limit} · ${t.chat_limit_window(windowMinutes)}` : t.chat_usage_limit}
-              </span>
-              <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
-                <span className="block h-1.5 rounded-full" style={{ width: `${Math.max(used, 2)}%`, background: usedTone }} />
-              </span>
-              <span className="text-[12px] text-[var(--text-secondary)]">{limitSummary}</span>
             </div>
           )}
         </div>

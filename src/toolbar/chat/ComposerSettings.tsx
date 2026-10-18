@@ -3,6 +3,7 @@ import { useT } from "../../i18n/useT";
 import type { ChatTranscript } from "../../../shared/chat-transcript";
 import { configureChat } from "../../actions/managerChatMode";
 import { effortLabel, settingsView } from "./composerSettingsModel";
+import { UsageMeter } from "./LongRunning";
 
 /**
  * The model, effort and mode for this chat, as small chips under the
@@ -66,10 +67,10 @@ function Chip({ label, title, items, selected, onPick }: { label: string; title:
   );
 }
 
-export function ComposerSettings({ terminalId, transcript }: { terminalId: string; transcript: ChatTranscript }) {
+export function ComposerSettings({ terminalId, transcript, agent }: { terminalId: string; transcript: ChatTranscript; agent: string }) {
   const t = useT();
   const view = settingsView(transcript);
-  if (!view) return null;
+  if (!view) return <UsageMeter transcript={transcript} agent={agent} />;
   return (
     <span className="flex min-w-0 items-center">
       {view.models.length > 0 && (
@@ -99,6 +100,7 @@ export function ComposerSettings({ terminalId, transcript }: { terminalId: strin
           onPick={(id) => void configureChat(terminalId, { mode: id })}
         />
       )}
+      <UsageMeter transcript={transcript} agent={agent} />
     </span>
   );
 }

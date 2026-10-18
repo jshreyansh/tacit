@@ -172,7 +172,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         onSend={send}
         onStop={() => void interruptManagerChat(terminalId)}
         compact={compact}
-        settings={<ComposerSettings terminalId={terminalId} transcript={transcript} />}
+        settings={<ComposerSettings terminalId={terminalId} transcript={transcript} agent={agent} />}
       />
     </div>
   );
