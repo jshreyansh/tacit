@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "node:child_process";
 import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatSettings } from "../../shared/chat-events";
 import { withMentions } from "../../shared/chat-attachments";
+import { elicitationResult, type Elicitation } from "../../shared/chat-elicitation";
 import {
   claudeAnswerInput,
   claudeApprovalLine,
+  claudeElicitation,
+  claudeElicitationLine,
   claudeCapabilities,
   claudeControlLine,
   claudeInterruptLine,
@@ -12,7 +15,18 @@ import {
   createClaudeStreamState,
   parseClaudeLine,
 } from "../../shared/chat-stream-claude";
-import { CODEX_MODES, codexApprovalResult, codexCapabilities, codexQuestionResult, codexRateLimit, codexUserInput, createCodexStreamState, parseCodexMessage } from "../../shared/chat-stream-codex";
+import {
+  CODEX_MODES,
+  CODEX_PLAN_PREFIX,
+  codexApprovalResult,
+  codexCapabilities,
+  codexElicitationResult,
+  codexQuestionResult,
+  codexRateLimit,
+  codexUserInput,
+  createCodexStreamState,
+  parseCodexMessage,
+} from "../../shared/chat-stream-codex";
 
 /**
  * The agent process behind a chat, one per manager in chat mode (T6.2).
@@ -110,7 +124,7 @@ export function claudeArgs(sessionId: string | null, bridgeArgs: readonly string
 export function startClaudeDriver(options: DriverOptions): ChatDriver {
   const state = createClaudeStreamState();
   /** Inputs and suggested rules of pending approvals, to answer them. */
-  const pendingInputs = new Map<string, { input: unknown; suggestions: unknown; toolName: string }>();
+  const pendingInputs = new Map<string, { input: unknown; suggestions: unknown; toolName: string; elicitation?: Elicitation }>();
   /**
    * What the person chose Always allow for, for the rest of this chat: a
    * tool by name, or a shell command exactly. Claude's own suggested rule
@@ -146,6 +160,9 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
             options.emit({ kind: "settings", settings });
           }
           return;
+        }
+        if (raw.type === "control_request" && raw.request?.subtype === "elicitation" && raw.request_id) {
+          pendingInputs.set(raw.request_id, { input: null, suggestions: null, toolName: "elicitation", elicitation: claudeElicitation(raw.request as Record<string, unknown>) });
         }
         if (raw.type === "control_request" && raw.request?.subtype === "can_use_tool" && raw.request_id) {
           const toolName = raw.request.tool_name ?? "tool";
@@ -196,6 +213,12 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     answerQuestion: (requestId, answers) => {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
+      if (pending?.elicitation) {
+        // An MCP server's question: accepted with the values, or declined when skipped.
+        write(claudeElicitationLine(requestId, elicitationResult(pending.elicitation, answers)));
+        options.emit({ kind: "question_settled", requestId });
+        return;
+      }
       // Skipped: answered with nothing, which Claude reads as skipped.
       write(claudeApprovalLine(requestId, true, claudeAnswerInput(pending?.input, answers ?? {})));
       options.emit({ kind: "question_settled", requestId });
@@ -265,14 +288,42 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
   let settings: ChatSettings = { model: null, effort: null, mode: null };
   /** What the person picked; the thread keeps the rest as it was. */
   let chosen: Partial<ChatSettings> = {};
+  /** The mode before Plan, to go back to when a plan is carried out. */
+  let beforePlan: string | null = null;
+  /** The thread was last set to plan collaboration, so leaving it has to be said. */
+  let planning = false;
+  /** An approved plan, carried out once the mode to work in has been picked (or shortly after). */
+  let implementTimer: ReturnType<typeof setTimeout> | null = null;
   /** What a turn sets: only what the person picked (Codex keeps it for later turns too). */
   const turnOverrides = (): Record<string, unknown> => {
     const mode = CODEX_MODES.find((m) => m.id === chosen.mode);
+    const model = chosen.model ?? settings.model;
+    const wantsPlan = chosen.mode === "plan";
+    // Plan mode is Codex's plan collaboration mode, which needs the model to plan with.
+    const collaboration =
+      model && (wantsPlan || planning)
+        ? { collaborationMode: { mode: wantsPlan ? "plan" : "default", settings: { model, reasoning_effort: chosen.effort ?? settings.effort ?? null, developer_instructions: null } } }
+        : {};
+    if (model) planning = wantsPlan;
     return {
       ...(chosen.model ? { model: chosen.model } : {}),
       ...(chosen.effort ? { effort: chosen.effort } : {}),
       ...(mode ? { approvalPolicy: mode.approvalPolicy, sandboxPolicy: mode.sandboxPolicy } : {}),
+      ...collaboration,
     };
+  };
+  /** Carries out the approved plan: out of Plan, into the mode picked, with Codex's own words for it. */
+  const implementPlan = () => {
+    if (implementTimer) clearTimeout(implementTimer);
+    implementTimer = null;
+    if (chosen.mode === "plan") {
+      chosen = { ...chosen, mode: beforePlan ?? "auto" };
+      settings = { ...settings, mode: chosen.mode ?? null };
+      options.emit({ kind: "settings", settings });
+    }
+    const text = "Implement the plan.";
+    options.emit({ kind: "user_message", id: randomUUID(), text, at: new Date().toISOString() });
+    void startTurn(text);
   };
 
   const startTurn = async (text: string, attachments: readonly ChatAttachment[] = []) => {
@@ -329,7 +380,11 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
   });
 
   void (async () => {
-    const init = await request("initialize", { clientInfo: { name: "tacit", title: "Tacit", version: "1" }, capabilities: null });
+    // Experimental API for plan mode (collaboration modes and plan items).
+    const init = await request("initialize", {
+      clientInfo: { name: "tacit", title: "Tacit", version: "1" },
+      capabilities: { experimentalApi: true, requestAttestation: false },
+    });
     if (init.error) return fail(init.error.message ?? "Codex didn't start.");
     writeMessage({ method: "initialized" });
     const opened = options.sessionId
@@ -369,23 +424,33 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
       if (state.threadId && state.turnId) void request("turn/interrupt", { threadId: state.threadId, turnId: state.turnId });
     },
     answer: (requestId, decision) => {
+      // A proposed plan is ours to act on: carry it out, or keep planning.
+      if (requestId.startsWith(CODEX_PLAN_PREFIX)) {
+        options.emit({ kind: "approval_settled", requestId });
+        // The card picks the mode to work in right after; carried out then,
+        // or after a moment in the mode from before Plan.
+        if (decision !== "deny") implementTimer = setTimeout(implementPlan, 400);
+        return;
+      }
       const target = state.approvals.get(requestId);
       if (!target) return;
       state.approvals.delete(requestId);
-      writeMessage({ id: target.rpcId, result: codexApprovalResult(target.method, decision) });
+      writeMessage({ id: target.rpcId, result: codexApprovalResult(target.method, decision, target) });
       options.emit({ kind: "approval_settled", requestId });
     },
     answerQuestion: (requestId, answers) => {
       const target = state.approvals.get(requestId);
       if (!target) return;
       state.approvals.delete(requestId);
-      writeMessage({ id: target.rpcId, result: codexQuestionResult(answers) });
+      writeMessage({ id: target.rpcId, result: target.elicitation ? codexElicitationResult(target.elicitation, answers) : codexQuestionResult(answers) });
       options.emit({ kind: "question_settled", requestId });
     },
     configure: (change) => {
+      if (change.mode === "plan" && chosen.mode !== "plan") beforePlan = chosen.mode ?? settings.mode ?? null;
       chosen = { ...chosen, ...change };
       settings = { ...settings, ...change };
       options.emit({ kind: "settings", settings });
+      if (implementTimer && change.mode && change.mode !== "plan") implementPlan();
     },
     stop: () => {
       if (exited) return;

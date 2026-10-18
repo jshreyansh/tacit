@@ -1,4 +1,5 @@
 import type { ChatAnswers, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
+import { elicitationOf, elicitationQuestions, type Elicitation } from "./chat-elicitation";
 
 /**
  * Claude Code's stream-json output, one line at a time, as chat events.
@@ -236,6 +237,10 @@ export function parseClaudeLine(state: ClaudeStreamState, line: string): ChatEve
 
     case "control_request": {
       const request = isObject(msg.request) ? msg.request : null;
+      // An MCP server asking the person something: its form, as questions.
+      if (request?.subtype === "elicitation" && typeof msg.request_id === "string") {
+        return [{ kind: "question_request", requestId: msg.request_id, questions: elicitationQuestions(claudeElicitation(request)) }];
+      }
       // Its question tool asks the person, not for permission.
       if (request?.subtype === "can_use_tool" && request.tool_name === "AskUserQuestion" && typeof msg.request_id === "string") {
         const questions = claudeQuestions(request.input);
@@ -280,6 +285,23 @@ export function claudeApprovalLine(requestId: string, allow: boolean, input: unk
   const response = allow
     ? { behavior: "allow", updatedInput: input ?? {} }
     : { behavior: "deny", message: message ?? "The person declined this in Tacit." };
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response } })}\n`;
+}
+
+/** An MCP elicitation as Claude passes it on. */
+export function claudeElicitation(request: Json): Elicitation {
+  return elicitationOf({
+    server: request.display_name ?? request.mcp_server_name,
+    message: request.message,
+    url: request.mode === "url" ? request.url : undefined,
+    schema: request.requested_schema,
+    order: request.property_order,
+  });
+}
+
+/** The stdin line that answers an MCP elicitation: accepted with its values, or declined. */
+export function claudeElicitationLine(requestId: string, result: { action: string; content: Record<string, unknown> | null }): string {
+  const response = result.content ? { action: result.action, content: result.content } : { action: result.action };
   return `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response } })}\n`;
 }
 

@@ -157,6 +157,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         approvals={transcript.approvals}
         onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)}
         onPlanMode={(mode) => void configureChat(terminalId, { mode })}
+        agent={agent}
       />
       <PlanCard transcript={transcript} />
       <LimitCard terminalId={terminalId} transcript={transcript} agentName={agentName} />

@@ -244,6 +244,7 @@ export const zh = {
   chat_started_worker: "启动了一个工作者",
   chat_show_on_canvas: "在画布上显示",
   chat_subagent_steps: (n: number) => `子代理执行了 ${n} 步`,
+  chat_approval_permissions: "需要超出沙箱的权限",
   chat_approval_title: (tool: string) => `想要使用 ${tool}`,
   chat_approval_allow_once: "允许一次",
   chat_approval_allow_always: "始终允许",

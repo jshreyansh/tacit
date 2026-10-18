@@ -101,7 +101,7 @@ test("Claude offers its models with their efforts and its modes; auto only when 
   assert.ok(!claudeCapabilities({ models: [{ value: "x" }] }).modes.some((m) => m.id === "auto"));
 });
 
-test("Codex offers its visible models and three modes, read from the thread it's on", () => {
+test("Codex offers its visible models and its modes (Plan among them), read from the thread it's on", () => {
   const caps = codexCapabilities(
     {
       data: [
@@ -112,7 +112,7 @@ test("Codex offers its visible models and three modes, read from the thread it's
     { model: "gpt-5.3", reasoningEffort: "high", approvalPolicy: "on-request", sandbox: { type: "workspaceWrite" } },
   );
   assert.deepEqual(caps.models.map((m) => [m.id, m.efforts, m.defaultEffort]), [["gpt-5.3", ["low", "medium", "high"], "medium"]]);
-  assert.deepEqual(caps.modes.map((m) => m.id), ["read-only", "auto", "full-access"]);
+  assert.deepEqual(caps.modes.map((m) => m.id), ["read-only", "auto", "full-access", "plan"]);
   assert.deepEqual(caps.settings, { model: "gpt-5.3", effort: "high", mode: "auto" });
   assert.equal(codexModeOf("never", { type: "dangerFullAccess" }), "full-access");
   assert.equal(codexModeOf("on-request", { type: "readOnly" }), "read-only");

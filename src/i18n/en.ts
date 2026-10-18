@@ -245,6 +245,7 @@ export const en = {
   chat_started_worker: "Started a worker",
   chat_show_on_canvas: "Show on canvas",
   chat_subagent_steps: (n: number) => `${n} ${n === 1 ? "step" : "steps"} by its subagent`,
+  chat_approval_permissions: "Wants more access than its sandbox",
   chat_approval_title: (tool: string) => `Wants to use ${tool}`,
   chat_approval_allow_once: "Allow once",
   chat_approval_allow_always: "Always allow",

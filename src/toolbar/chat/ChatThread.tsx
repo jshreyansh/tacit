@@ -551,6 +551,12 @@ const TurnNote: FC<{ data: unknown }> = ({ data }) => {
   );
 };
 
+/** How a plan goes on, in each agent's own modes: making changes, or asking first. */
+const PLAN_GO_MODES: Record<string, { go: string; ask: string }> = {
+  claude: { go: "acceptEdits", ask: "default" },
+  codex: { go: "auto", ask: "read-only" },
+};
+
 /** Approvals the manager waits on, stuck above the composer. */
 export function ApprovalCards({
   approvals,
@@ -558,6 +564,7 @@ export function ApprovalCards({
   floating = false,
   glass = "",
   onPlanMode,
+  agent = "claude",
 }: {
   approvals: readonly PendingApproval[];
   onAnswer: (requestId: string, decision: ApprovalDecision) => void;
@@ -566,6 +573,8 @@ export function ApprovalCards({
   glass?: string;
   /** A plan accepted with how to go on: the mode to work in from here. */
   onPlanMode?: (mode: string) => void;
+  /** Whose modes a plan goes on in: Claude's accept-edits or ask, Codex's auto or read-only. */
+  agent?: string;
 }) {
   const t = useT();
   if (approvals.length === 0) return null;
@@ -598,10 +607,10 @@ export function ApprovalCards({
                 />
               )}
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => accept("acceptEdits")}>
+                <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => accept(PLAN_GO_MODES[agent]?.go ?? "acceptEdits")}>
                   {t.chat_plan_go_accept}
                 </button>
-                <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => accept("default")}>
+                <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => accept(PLAN_GO_MODES[agent]?.ask ?? "default")}>
                   {t.chat_plan_go_ask}
                 </button>
                 <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
@@ -611,12 +620,14 @@ export function ApprovalCards({
             </div>
           );
         }
-        const what = typeof input.command === "string" ? input.command : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
+        // A command as it will run; access asked for as its summary; else the subject.
+        const what =
+          typeof input.command === "string" ? input.command : typeof input.summary === "string" ? input.summary : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
         return (
           <div
             key={a.requestId}
             role="alertdialog"
-            aria-label={t.chat_approval_title(toolVerb(a.toolName))}
+            aria-label={a.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(a.toolName))}
             className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
             style={{
               borderColor: "color-mix(in srgb, var(--amber) 50%, transparent)",
@@ -629,7 +640,7 @@ export function ApprovalCards({
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
                 <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
               </svg>
-              {t.chat_approval_title(toolVerb(a.toolName))}
+              {a.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(a.toolName))}
               {floating && approvals.length > 1 && (
                 <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.chat_approval_more(approvals.length - 1)}</span>
               )}

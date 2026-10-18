@@ -1,5 +1,6 @@
 import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatModeOption, ChatModelOption, ChatQuestion, ChatSettings, PlanStep } from "./chat-events";
 import { withMentions } from "./chat-attachments";
+import { elicitationOf, elicitationQuestions, elicitationResult, type Elicitation } from "./chat-elicitation";
 
 /**
  * Codex's app-server protocol (JSON-RPC over stdio) as chat events.
@@ -24,12 +25,34 @@ function isObject(value: unknown): value is Json {
 export interface CodexStreamState {
   threadId: string | null;
   turnId: string | null;
-  /** Approval requests by our request id, with the JSON-RPC id and method to answer. */
-  approvals: Map<string, { rpcId: string | number; method: string }>;
+  /**
+   * Requests waiting on the person, by our request id: the JSON-RPC id and
+   * method to answer, and what the answer needs (an MCP form; the access asked for).
+   */
+  approvals: Map<string, { rpcId: string | number; method: string; elicitation?: Elicitation; permissions?: Json; toolApproval?: boolean }>;
+  /** A plan written in plan mode, offered for approval once its turn ends. */
+  proposedPlan: { itemId: string; text: string } | null;
 }
 
 export function createCodexStreamState(): CodexStreamState {
-  return { threadId: null, turnId: null, approvals: new Map() };
+  return { threadId: null, turnId: null, approvals: new Map(), proposedPlan: null };
+}
+
+/** A plan Codex proposed, waiting on Implement or Keep planning: answered by the driver, not Codex. */
+export const CODEX_PLAN_PREFIX = "codex-plan-";
+
+/** The access Codex asks for beyond its sandbox, in a line or two. */
+function permissionsSummary(permissions: Json): string {
+  const lines: string[] = [];
+  const network = isObject(permissions.network) ? permissions.network : null;
+  if (network?.enabled) lines.push("Network access");
+  const fs = isObject(permissions.fileSystem) ? permissions.fileSystem : null;
+  const paths = (v: unknown) => (Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : []);
+  const write = paths(fs?.write);
+  const read = paths(fs?.read);
+  if (write.length) lines.push(`Write: ${write.join(", ")}`);
+  if (read.length) lines.push(`Read: ${read.join(", ")}`);
+  return lines.join("\n") || "More access than its sandbox allows";
 }
 
 interface ToolView {
@@ -127,6 +150,53 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
     state.approvals.set(requestId, { rpcId: message.id, method });
     return [{ kind: "question_request", requestId, questions }];
   }
+  const rpcId = "id" in message && (typeof message.id === "string" || typeof message.id === "number") ? message.id : null;
+  // An MCP server asking the person something: its form, as questions.
+  if (method === "mcpServer/elicitation/request" && rpcId !== null) {
+    // Codex asks to run an MCP tool this way too: that's an approval, not a question.
+    const meta = isObject(params._meta) ? params._meta : null;
+    if (meta?.codex_approval_kind === "mcp_tool_call") {
+      const requestId = `codex-${rpcId}`;
+      state.approvals.set(requestId, { rpcId, method, toolApproval: true });
+      const message = typeof params.message === "string" ? params.message : "";
+      const tool = /tool "([^"]+)"/.exec(message)?.[1];
+      const server = typeof params.serverName === "string" ? params.serverName : "mcp";
+      const description = typeof meta.tool_description === "string" ? meta.tool_description : "";
+      return [
+        {
+          kind: "approval_request",
+          requestId,
+          toolName: tool ? `mcp__${server}__${tool}` : server,
+          input: { summary: [message, description].filter(Boolean).join("\n") },
+        },
+      ];
+    }
+    const elicitation = elicitationOf({
+      server: params.serverName,
+      message: params.message,
+      url: params.mode === "url" ? params.url : undefined,
+      schema: params.requestedSchema,
+    });
+    const requestId = `codex-${rpcId}`;
+    state.approvals.set(requestId, { rpcId, method, elicitation });
+    return [{ kind: "question_request", requestId, questions: elicitationQuestions(elicitation) }];
+  }
+  // More access than its sandbox allows (network, folders), for this turn or the session.
+  if (method === "item/permissions/requestApproval" && rpcId !== null) {
+    const permissions = isObject(params.permissions) ? params.permissions : {};
+    const requestId = `codex-${rpcId}`;
+    state.approvals.set(requestId, { rpcId, method, permissions });
+    const reason = typeof params.reason === "string" ? params.reason : null;
+    return [
+      {
+        kind: "approval_request",
+        requestId,
+        toolName: "Permissions",
+        input: { summary: [permissionsSummary(permissions), reason].filter(Boolean).join("\n\n"), ...(reason ? { reason } : {}) },
+        ...(typeof params.itemId === "string" ? { toolCallId: params.itemId } : {}),
+      },
+    ];
+  }
   // A request from the server: an approval we can show, or nothing.
   if (method && "id" in message && (typeof message.id === "string" || typeof message.id === "number")) {
     const view = APPROVAL_METHODS[method];
@@ -173,12 +243,17 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
     case "item/started": {
       const item = isObject(params.item) ? params.item : null;
       if (!item || typeof item.id !== "string") return [];
-      if (item.type === "agentMessage") return [{ kind: "block_start", key: item.id, block: "text" }];
+      if (item.type === "agentMessage" || item.type === "plan") return [{ kind: "block_start", key: item.id, block: "text" }];
       if (item.type === "reasoning") return [{ kind: "block_start", key: item.id, block: "thinking" }];
       const tool = toolView(item);
       if (!tool) return [];
       return [{ kind: "block_start", key: item.id, block: "tool", toolCallId: item.id, toolName: tool.name }];
     }
+    // The plan written in plan mode, streaming.
+    case "item/plan/delta":
+      return typeof params.itemId === "string" && typeof params.delta === "string" && params.delta
+        ? [{ kind: "text_delta", key: params.itemId, text: params.delta }]
+        : [];
     case "item/agentMessage/delta":
       return typeof params.itemId === "string" && typeof params.delta === "string" && params.delta
         ? [{ kind: "text_delta", key: params.itemId, text: params.delta }]
@@ -192,6 +267,11 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       const item = isObject(params.item) ? params.item : null;
       if (!item || typeof item.id !== "string") return [];
       if (item.type === "agentMessage") return [{ kind: "block_done", key: item.id, text: typeof item.text === "string" ? item.text : undefined }];
+      if (item.type === "plan") {
+        const text = typeof item.text === "string" ? item.text : "";
+        if (text.trim()) state.proposedPlan = { itemId: item.id, text };
+        return [{ kind: "block_start", key: item.id, block: "text" }, { kind: "block_done", key: item.id, text }];
+      }
       if (item.type === "reasoning") return [{ kind: "block_done", key: item.id, text: reasoningText(item) }];
       if (item.type === "contextCompaction") return [{ kind: "compacted" }];
       const tool = toolView(item);
@@ -216,6 +296,13 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       const durationMs = typeof turn?.durationMs === "number" ? turn.durationMs : undefined;
       const outcome = status === "completed" ? "success" : status === "interrupted" ? "interrupted" : "error";
       const limited: ChatEvent[] = outcome === "error" && isUsageLimit(turn?.error) ? [{ kind: "rate_limit", status: "limited" }] : [];
+      // A plan written in plan mode asks, once its turn is over, whether to carry it out.
+      const plan = state.proposedPlan;
+      state.proposedPlan = null;
+      const offer: ChatEvent[] =
+        outcome === "success" && plan
+          ? [{ kind: "approval_request", requestId: `${CODEX_PLAN_PREFIX}${plan.itemId}`, toolName: "ExitPlanMode", input: { plan: plan.text } }]
+          : [];
       return [
         ...limited,
         {
@@ -224,6 +311,7 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
           ...(outcome === "error" ? { error: error ?? `The turn ended: ${String(status)}` } : {}),
           ...(durationMs !== undefined ? { durationMs } : {}),
         },
+        ...offer,
       ];
     }
     default:
@@ -231,8 +319,24 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
   }
 }
 
-/** The JSON-RPC result that answers an approval request. */
-export function codexApprovalResult(method: string, decision: ApprovalDecision): Json {
+/**
+ * The JSON-RPC result that answers an approval request. `held.permissions`:
+ * the access asked for, granted as asked or not at all; `held.toolApproval`:
+ * an MCP tool run, asked as an elicitation (always: for this session).
+ */
+export function codexApprovalResult(method: string, decision: ApprovalDecision, held: { permissions?: Json; toolApproval?: boolean } = {}): Json {
+  if (held.toolApproval) {
+    if (decision === "deny") return { action: "decline", content: null, _meta: null };
+    return { action: "accept", content: null, _meta: decision === "allow_always" ? { persist: "session" } : null };
+  }
+  const permissions = held.permissions;
+  if (method === "item/permissions/requestApproval") {
+    if (decision === "deny") return { permissions: {}, scope: "turn" };
+    const granted: Json = {};
+    if (isObject(permissions?.network)) granted.network = permissions.network;
+    if (isObject(permissions?.fileSystem)) granted.fileSystem = permissions.fileSystem;
+    return { permissions: granted, scope: decision === "allow_always" ? "session" : "turn" };
+  }
   if (method === "execCommandApproval" || method === "applyPatchApproval") {
     return { decision: decision === "deny" ? { denied: { rejection: "Declined in Tacit." } } : decision === "allow_always" ? "approved_for_session" : "approved" };
   }
@@ -268,6 +372,12 @@ export function codexQuestions(params: Json): ChatQuestion[] {
 }
 
 /** The reply to request_user_input: each answer by its question id. */
+/** The answer to an MCP server's question: accepted with its values, or declined when skipped. */
+export function codexElicitationResult(elicitation: Elicitation, answers: ChatAnswers | null): Json {
+  const { action, content } = elicitationResult(elicitation, answers);
+  return { action, content, _meta: null };
+}
+
 export function codexQuestionResult(answers: ChatAnswers | null): Json {
   const out: Record<string, { answers: string[] }> = {};
   for (const [id, picked] of Object.entries(answers ?? {})) out[id] = { answers: picked };
@@ -279,6 +389,8 @@ export const CODEX_MODES: Array<ChatModeOption & { approvalPolicy: string; sandb
   { id: "read-only", label: "Read only", short: "Read", description: "Reads and answers; asks before changing anything", approvalPolicy: "on-request", sandboxPolicy: { type: "readOnly" } },
   { id: "auto", label: "Auto", description: "Works in this folder; asks before going outside it", approvalPolicy: "on-request", sandboxPolicy: { type: "workspaceWrite" } },
   { id: "full-access", label: "Full access", short: "Full", description: "Runs anything without asking", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } },
+  // Codex's plan collaboration mode, read-only while it plans.
+  { id: "plan", label: "Plan", description: "Reads and plans; changes nothing until you approve", approvalPolicy: "on-request", sandboxPolicy: { type: "readOnly" } },
 ];
 
 /** The mode a thread is in, from its approval policy and sandbox. */

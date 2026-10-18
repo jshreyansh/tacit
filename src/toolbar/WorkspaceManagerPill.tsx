@@ -880,6 +880,7 @@ export function WorkspaceManagerPill() {
                 approvals={transcript.approvals}
                 onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
                 onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
+                agent={managerTerminal.type}
               />
             </div>
           )}
@@ -1413,6 +1414,7 @@ export function WorkspaceManagerPill() {
           approvals={transcript.approvals}
           onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
           onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
+          agent={managerTerminal.type}
         />
       )}
 
