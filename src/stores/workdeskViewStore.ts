@@ -25,6 +25,30 @@ function saveMode(mode: WorkdeskMode): void {
   }
 }
 
+const HIDDEN_KEY = "tacit.workdeskView.hiddenTabs.v1";
+
+function loadHidden(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHidden(keys: string[]): void {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(keys));
+  } catch {
+    // Not kept for next time; the strip still hides it now.
+  }
+}
+
+/** A tab's key in the strip: `task:<id>`. */
+export function tabKey(node: OpenNode): string {
+  return `${node.kind}:${node.id}`;
+}
+
 /** A node opened full size in the workdesk view's tabs. */
 export interface OpenNode {
   kind: "terminal" | "browser" | "task" | "note";
@@ -51,6 +75,12 @@ interface WorkdeskViewStore {
   setMode: (mode: WorkdeskMode) => void;
   toggleMode: () => void;
   setFilter: (filter: WorkdeskFilter) => void;
+  /**
+   * Tasks and notes closed from the tab strip: still in the grid, and back
+   * in the strip once opened again.
+   */
+  hiddenTabs: string[];
+  hideTab: (node: OpenNode) => void;
 }
 
 export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
@@ -59,7 +89,23 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
   openNode: null,
   projection: null,
   setProjection: (projection) => set({ projection }),
-  setOpenNode: (openNode) => set({ openNode }),
+  hiddenTabs: loadHidden(),
+  hideTab: (node) => {
+    const hiddenTabs = [...new Set([...get().hiddenTabs, tabKey(node)])];
+    saveHidden(hiddenTabs);
+    set({ hiddenTabs });
+  },
+  // Opening a node puts its tab back in the strip.
+  setOpenNode: (openNode) => {
+    const hidden = get().hiddenTabs;
+    if (openNode && hidden.includes(tabKey(openNode))) {
+      const hiddenTabs = hidden.filter((k) => k !== tabKey(openNode));
+      saveHidden(hiddenTabs);
+      set({ openNode, hiddenTabs });
+      return;
+    }
+    set({ openNode });
+  },
   // Back on the canvas, the grid opens on its cards next time.
   setMode: (mode) => {
     saveMode(mode);

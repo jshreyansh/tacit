@@ -107,6 +107,16 @@ export function pickChatAttachments(terminalId: string): Promise<ChatAttachResul
   return window.tacit.chat.pickAttachments(terminalId);
 }
 
+/** Where the chat's viewer reads an attached file from. */
+export function attachmentUrl(id: string): string {
+  return `tc-attachment://chat/${encodeURIComponent(id)}`;
+}
+
+/** Opens an attached file in Quick Look; rejects when it's gone. */
+export function quickLookAttachment(id: string): Promise<void> {
+  return window.tacit.chat.quickLook(id);
+}
+
 /** Files dropped or pasted on the message box; paths when they come from the Files panel. */
 export function attachChatFiles(files: File[] | { paths: string[] }): Promise<ChatAttachResult> {
   return Array.isArray(files) ? window.tacit.chat.attachFiles(files) : window.tacit.chat.attachPaths(files.paths);

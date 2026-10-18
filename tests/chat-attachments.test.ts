@@ -10,6 +10,7 @@ import { timelineToChatEvents } from "../shared/chat-history";
 import { replayChat } from "../shared/chat-transcript";
 import { ChatAttachments, imageExtension } from "../electron/manager-chat/chat-attachments";
 import { toThreadMessages } from "../src/toolbar/chat/threadMessages";
+import { previewKind } from "../src/toolbar/chat/attachmentPreview";
 import type { TimelineEvent } from "../shared/sessions";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -62,34 +63,49 @@ test("a message reopened from history shows its files again, as assistant-ui att
   assert.deepEqual(user.attachments, [{ name: "shot.png", path: "/r/shot.png", kind: "image" }]);
   const [thread] = toThreadMessages([{ ...user, attachments: [{ name: "shot.png", path: "/r/shot.png", kind: "image", preview: "data:image/png;base64,AA" }] }]);
   assert.deepEqual(thread.attachments, [
-    { id: `${user.id}-a0`, type: "image", name: "shot.png", status: { type: "complete" }, content: [{ type: "image", image: "data:image/png;base64,AA" }] },
+    { id: `unheld:${user.id}-0`, type: "image", name: "shot.png", status: { type: "complete" }, content: [{ type: "image", image: "data:image/png;base64,AA" }] },
   ]);
   // Only files: no text bubble.
   assert.deepEqual(toThreadMessages([{ ...user, text: "" }])[0].content, []);
 });
 
-test("only files the person chose can be sent, by id; a pasted image is saved as a file", () => {
+test("only files the person chose can be sent, by id; a pasted image is saved as a file", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-attach-"));
   try {
     const file = path.join(dir, "notes.md");
     fs.writeFileSync(file, "hello");
-    const store = new ChatAttachments({ dir: path.join(dir, "pasted"), preview: (p) => (p.endsWith(".png") ? "data:image/png;base64,AA" : undefined) });
-    const picked = store.addPath(file);
+    const store = new ChatAttachments({ dir: path.join(dir, "pasted"), preview: async (p) => (p.endsWith(".png") ? "data:image/png;base64,AA" : undefined) });
+    const picked = await store.addPath(file);
     assert.deepEqual([picked.name, picked.kind, picked.size, picked.preview], ["notes.md", "file", 5, undefined]);
-    assert.throws(() => store.addPath("relative/notes.md"), /not a file path/);
-    assert.throws(() => store.addPath(dir), /isn't a file/);
-    const pasted = store.addImage("", PNG);
+    await assert.rejects(store.addPath("relative/notes.md"), /not a file path/);
+    await assert.rejects(store.addPath(dir), /isn't a file/);
+    const pasted = await store.addImage("", PNG);
     assert.equal(pasted.kind, "image");
     assert.equal(pasted.preview, "data:image/png;base64,AA");
     assert.ok(pasted.path.startsWith(path.join(dir, "pasted")) && fs.existsSync(pasted.path));
-    assert.throws(() => store.addImage("x.png", new Uint8Array([1, 2, 3])), /only PNG/);
-    assert.deepEqual(store.resolve([picked.id]), [{ name: "notes.md", path: file, kind: "file" }]);
+    await assert.rejects(store.addImage("x.png", new Uint8Array([1, 2, 3])), /only PNG/);
+    assert.deepEqual(store.resolve([picked.id]), [{ id: picked.id, name: "notes.md", path: file, kind: "file" }]);
     assert.deepEqual(store.resolve(undefined), []);
     assert.throws(() => store.resolve(["nope"]), /no longer available/);
+    assert.equal(store.get(picked.id)?.path, file);
+    assert.equal(store.get("nope"), null);
+    // A file a reopened chat mentions is held again, under the same id once held.
+    assert.equal((await store.rehold({ name: "notes.md", path: file, kind: "file" })).id, picked.id);
+    const other = path.join(dir, "other.txt");
+    fs.writeFileSync(other, "x");
+    assert.ok((await store.rehold({ name: "other.txt", path: other, kind: "file" })).id);
+    assert.equal((await store.rehold({ name: "gone.txt", path: path.join(dir, "gone.txt"), kind: "file" })).id, undefined);
     assert.equal(imageExtension(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])), "jpg");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("each file opens the way it can be shown: in the chat's viewer, or Quick Look", () => {
+  assert.deepEqual(
+    ["a.MP4", "b.mov", "c.mp3", "README.md", "x.ts", "deck.pptx", "paper.pdf", "shot.png", "noext"].map(previewKind),
+    ["video", "video", "audio", "markdown", "text", "quicklook", "quicklook", "image", "quicklook"],
+  );
 });
 
 test("Claude's default model chip says which model it is", () => {

@@ -56,6 +56,8 @@ export type ApprovalDecision = "allow_once" | "allow_always" | "deny";
 
 /** A file sent with a message; the agent reads it from its path. */
 export interface ChatAttachment {
+  /** Set while Tacit holds the file, so the chat can open it. */
+  id?: string;
   name: string;
   path: string;
   kind: "image" | "file";

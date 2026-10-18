@@ -774,6 +774,8 @@ export interface TacitAPI {
     pickAttachments: (terminalId: string) => Promise<import("../../shared/chat-events").ChatAttachResult>;
     /** Files dragged from Tacit's own Files panel, by path. */
     attachPaths: (paths: string[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
+    /** An attached file in the Mac's Quick Look (elsewhere, its default app). */
+    quickLook: (attachmentId: string) => Promise<void>;
     /** Files dropped or pasted on the message box. */
     attachFiles: (files: File[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
     interrupt: (terminalId: string) => Promise<void>;

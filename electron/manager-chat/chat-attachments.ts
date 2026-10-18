@@ -8,7 +8,8 @@ import { attachmentKind, baseName } from "../../shared/chat-attachments";
  * The files a chat message can carry. Only files the person chose reach an
  * agent: picked in the open dialog, dropped on the message box, or pasted
  * (a pasted image is saved first, since both agents read files by path).
- * Each gets an id; a message names its files by id, never by path.
+ * Each gets an id; a message names its files by id, never by path, and
+ * the chat's viewer reads a file by its id too.
  */
 
 export type AttachmentInfo = ChatAttachmentInfo;
@@ -36,15 +37,15 @@ export class ChatAttachments {
     private readonly deps: {
       /** Where pasted images are saved. */
       dir: string;
-      /** A picture of an image file, as a data URL; undefined when it can't be read. */
-      preview: (filePath: string) => string | undefined;
+      /** A picture of the file (an image, a PDF's first page, a video frame…), as a data URL; undefined when there's none. */
+      preview: (filePath: string) => Promise<string | undefined>;
       now?: () => number;
       log?: (line: string) => void;
     },
   ) {}
 
   /** A file the person picked or dropped: an existing file, by absolute path. */
-  addPath(filePath: unknown): AttachmentInfo {
+  async addPath(filePath: unknown): Promise<AttachmentInfo> {
     if (typeof filePath !== "string" || filePath.length > 4096 || !path.isAbsolute(filePath)) throw new Error("not a file path");
     const stat = fs.statSync(filePath, { throwIfNoEntry: false });
     if (!stat?.isFile()) throw new Error(`${baseName(filePath)} isn't a file`);
@@ -52,7 +53,7 @@ export class ChatAttachments {
   }
 
   /** A pasted image, saved so the agent can read it. */
-  addImage(name: unknown, bytes: unknown): AttachmentInfo {
+  async addImage(name: unknown, bytes: unknown): Promise<AttachmentInfo> {
     if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) throw new Error("no image");
     if (bytes.byteLength > MAX_PASTED_BYTES) throw new Error("the image is over 20 MB");
     const ext = imageExtension(bytes);
@@ -71,8 +72,26 @@ export class ChatAttachments {
     return ids.map((id) => {
       const held = typeof id === "string" ? this.held.get(id) : undefined;
       if (!held) throw new Error("an attached file is no longer available; attach it again");
-      return { name: held.name, path: held.path, kind: held.kind, ...(held.preview ? { preview: held.preview } : {}) };
+      return { id: held.id, name: held.name, path: held.path, kind: held.kind, ...(held.preview ? { preview: held.preview } : {}) };
     });
+  }
+
+  /** The file behind an id, for the chat's viewer and Quick Look. */
+  get(id: unknown): AttachmentInfo | null {
+    return (typeof id === "string" && this.held.get(id)) || null;
+  }
+
+  /**
+   * A file a reopened conversation mentions, so it can be viewed again:
+   * held under an id like a fresh one, when it still exists.
+   */
+  async rehold(attachment: ChatAttachment): Promise<ChatAttachment> {
+    const known = [...this.held.values()].find((h) => h.path === attachment.path);
+    if (known) return { ...attachment, id: known.id, ...(known.preview ? { preview: known.preview } : {}) };
+    const stat = fs.statSync(attachment.path, { throwIfNoEntry: false });
+    if (!stat?.isFile()) return attachment;
+    const held = await this.hold(attachment.path, attachment.name, stat.size);
+    return { ...attachment, id: held.id, ...(held.preview ? { preview: held.preview } : {}) };
   }
 
   /** Removes pasted images older than a week. */
@@ -94,9 +113,9 @@ export class ChatAttachments {
     }
   }
 
-  private hold(filePath: string, name: string, size: number): AttachmentInfo {
+  private async hold(filePath: string, name: string, size: number): Promise<AttachmentInfo> {
     const kind = attachmentKind(name);
-    const preview = kind === "image" ? this.deps.preview(filePath) : undefined;
+    const preview = await this.deps.preview(filePath);
     const info: AttachmentInfo = { id: randomUUID(), name, path: filePath, kind, size, ...(preview ? { preview } : {}) };
     this.held.set(info.id, info);
     if (this.held.size > MAX_HELD) this.held.delete(this.held.keys().next().value!);

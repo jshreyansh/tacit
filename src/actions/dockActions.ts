@@ -36,7 +36,8 @@ export function visibleCanvasCenter(): { x: number; y: number } {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
 
-export function addTerminal(type: TerminalType) {
+/** Adds a terminal (or an agent's) to the canvas; its id, or null with no project open. */
+export function addTerminal(type: TerminalType): string | null {
   const { focusedProjectId, focusedWorktreeId, projects } =
     useProjectStore.getState();
   let projectId = focusedProjectId;
@@ -44,20 +45,21 @@ export function addTerminal(type: TerminalType) {
   if (!projectId || !worktreeId) {
     const fallbackProject = projects[0];
     const fallbackWorktree = fallbackProject?.worktrees[0];
-    if (!fallbackProject || !fallbackWorktree) return;
+    if (!fallbackProject || !fallbackWorktree) return null;
     projectId = fallbackProject.id;
     worktreeId = fallbackWorktree.id;
   }
-  createTerminalInScene({
+  return createTerminalInScene({
     projectId,
     worktreeId,
     type,
     position: visibleCanvasCenter(),
-  });
+  }).id;
 }
 
-export function addBrowser() {
-  addBrowserCardToScene(visibleCanvasCenter());
+/** Adds a browser, in the given profile or the default one; its id. */
+export function addBrowser(identityId?: string): string {
+  return addBrowserCardToScene(visibleCanvasCenter(), undefined, "user", identityId);
 }
 
 export function addTask() {
@@ -68,10 +70,11 @@ export function addTask() {
   void createTaskInScene(project.path, visibleCanvasCenter());
 }
 
-export function addNote() {
+/** Adds a note to the canvas; resolves to its id, or null with no project open. */
+export function addNote(): Promise<string | null> {
   const { focusedProjectId, projects } = useProjectStore.getState();
   const project =
     projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-  if (!project) return;
-  void createNoteInScene(project.path, visibleCanvasCenter());
+  if (!project) return Promise.resolve(null);
+  return createNoteInScene(project.path, visibleCanvasCenter()).then((pin) => pin.id);
 }

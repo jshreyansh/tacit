@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
@@ -8,7 +8,11 @@ import { usePinStore } from "../stores/pinStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
 import { useManagerChatStore } from "../stores/managerChatStore";
-import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { tabKey, useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
+import { closeTerminalInScene } from "../actions/terminalSceneActions";
+import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { AddNodeMenu } from "./AddNodeMenu";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { agentIcon } from "../toolbar/agentIcons";
@@ -285,6 +289,9 @@ export function WorkdeskView() {
   const setMode = useWorkdeskViewStore((s) => s.setMode);
   const openNode = useWorkdeskViewStore((s) => s.openNode);
   const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
+  const hiddenTabs = useWorkdeskViewStore((s) => s.hiddenTabs);
+  const hideTab = useWorkdeskViewStore((s) => s.hideTab);
+  const [closing, setClosing] = useState<WorkdeskCard | null>(null);
   // A new task from the grid opens in its tab, ready to name.
   const addGridTask = async () => {
     const { focusedProjectId, projects: all } = useProjectStore.getState();
@@ -331,9 +338,12 @@ export function WorkdeskView() {
     [sections],
   );
   const openCard = openNode ? (allCards.find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null) : null;
-  // A node closed while its tab was open: back to the grid.
+  // A node closed while its tab was open: back to the grid. One just added
+  // may not be listed yet, so only a node that was seen counts as closed.
+  const seenOpen = useRef<string | null>(null);
   useEffect(() => {
-    if (openNode && !openCard) setOpenNode(null);
+    if (openCard) seenOpen.current = tabKey(openCard);
+    else if (openNode && seenOpen.current === tabKey(openNode)) setOpenNode(null);
   }, [openNode, openCard, setOpenNode]);
   // The grid opens with the manager's chat docked on its left, as the pill
   // has nowhere to sit over the cards; back on the canvas the chat is left
@@ -367,6 +377,35 @@ export function WorkdeskView() {
   }, [mode, terminalIds, openCard]);
 
   if (mode !== "grid") return null;
+
+  // The strip: every terminal and browser, and the tasks and notes not
+  // closed from it (the open one always shows).
+  const tabCards = allCards.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c)));
+  /** Closing a tab moves to the one beside it, as a browser does. */
+  const nextAfter = (card: WorkdeskCard): OpenNode | null => {
+    if (card !== openCard) return openNode;
+    const at = tabCards.indexOf(card);
+    const next = tabCards[at + 1] ?? tabCards[at - 1];
+    return next ? { kind: next.kind, id: next.id } : null;
+  };
+  const closeTab = (card: WorkdeskCard) => {
+    if (card.kind === "task" || card.kind === "note") {
+      const next = nextAfter(card);
+      hideTab({ kind: card.kind, id: card.id });
+      setOpenNode(next);
+      return;
+    }
+    setClosing(card);
+  };
+  const confirmClose = () => {
+    const card = closing;
+    setClosing(null);
+    if (!card) return;
+    const next = nextAfter(card);
+    if (card.kind === "terminal") closeTerminalInScene(card.projectId, card.worktreeId, card.id);
+    else if (card.kind === "browser") removeBrowserCardFromScene(card.id);
+    setOpenNode(next);
+  };
 
   const left = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatDockOffset(chatDock, CHROME_GAP);
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
@@ -418,7 +457,11 @@ export function WorkdeskView() {
                 type="button"
                 className="flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-[12.5px] outline-none hover:text-[var(--text-primary)] focus-visible:border-[var(--accent)]"
                 aria-pressed={on}
-                onClick={() => setFilter(f)}
+                // From a tab too: back to the grid, showing that kind.
+                onClick={() => {
+                  setFilter(f);
+                  setOpenNode(null);
+                }}
                 style={{
                   color: on ? "var(--text-primary)" : "var(--text-muted)",
                   borderColor: on ? "var(--border-hover)" : "transparent",
@@ -452,6 +495,7 @@ export function WorkdeskView() {
             className="tc-rail-btn flex h-7 w-8 items-center justify-center text-[var(--text-primary)]"
             data-on=""
             aria-pressed={true}
+            onClick={() => setOpenNode(null)}
             aria-label={t.workdesk_view_grid_short}
             title={t.workdesk_view_grid_short}
           >
@@ -462,42 +506,50 @@ export function WorkdeskView() {
 
       {openCard && (
         <div className={`flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] px-2 ${browserWindow ? barGlass : "bg-[color-mix(in_srgb,var(--bg)_40%,transparent)]"}`} role="tablist">
-          <button
-            type="button"
-            className="tc-rail-btn flex h-[30px] shrink-0 items-center gap-1.5 px-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            onClick={() => setOpenNode(null)}
-            aria-label={t.workdesk_back_to_grid}
-          >
-            <GridViewIcon size={13} />
-            {t.workdesk_view_grid_short}
-          </button>
+          {/* Add an agent, terminal, browser, task or note; it opens here. */}
+          <AddNodeMenu onAdded={(node) => setOpenNode(node)} />
           <span className="mx-1 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
-          {allCards.map((card) => {
+          {tabCards.map((card) => {
             const active = card === openCard;
             const icon = card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : null;
             return (
-              <button
+              <div
                 key={`${card.kind}:${card.id}`}
-                type="button"
                 role="tab"
                 aria-selected={active}
-                className="tc-rail-btn flex h-[30px] max-w-[200px] shrink-0 items-center gap-1.5 px-2.5 text-[12px]"
+                className="group/tab tc-rail-btn flex h-[30px] max-w-[210px] shrink-0 items-center gap-1.5 pl-2.5 pr-1 text-[12px]"
                 data-on={active ? "" : undefined}
                 style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
-                onClick={() => setOpenNode({ kind: card.kind, id: card.id })}
               >
-                {icon ? (
-                  <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
-                ) : (
-                  <span className="flex shrink-0">
-                    {card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : card.kind === "task" ? <TaskIcon /> : <ShellIcon />}
-                  </span>
-                )}
-                <span className="truncate">{card.title}</span>
-                {card.kind === "terminal" && card.state === "active" && (
-                  <span className="tc-live-pip inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />
-                )}
-              </button>
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-1.5 outline-none"
+                  onClick={() => setOpenNode({ kind: card.kind, id: card.id })}
+                >
+                  {icon ? (
+                    <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
+                  ) : (
+                    <span className="flex shrink-0">
+                      {card.kind === "browser" ? <GlobeIcon /> : card.kind === "note" ? <NoteIcon /> : card.kind === "task" ? <TaskIcon /> : <ShellIcon />}
+                    </span>
+                  )}
+                  <span className="truncate">{card.title}</span>
+                  {card.kind === "terminal" && card.state === "active" && (
+                    <span className="tc-live-pip inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 ${active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"}`}
+                  onClick={() => closeTab(card)}
+                  aria-label={card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(card.title) : t.workdesk_tab_close(card.title)}
+                  title={card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(card.title) : t.workdesk_tab_close(card.title)}
+                >
+                  <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -600,6 +652,21 @@ export function WorkdeskView() {
         </div>
       </div>
       )}
+      <ConfirmDialog
+        open={closing !== null}
+        title={closing ? t.workdesk_close_title(closing.title) : ""}
+        body={
+          closing?.kind === "browser"
+            ? t.workdesk_close_browser_body
+            : closing?.kind === "terminal" && closing.isAgent
+              ? t.workdesk_close_agent_body
+              : t.workdesk_close_terminal_body
+        }
+        confirmLabel={t.close}
+        confirmTone="danger"
+        onCancel={() => setClosing(null)}
+        onConfirm={confirmClose}
+      />
     </section>
   );
 }

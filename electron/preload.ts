@@ -259,6 +259,7 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("chat:send", terminalId, text, attachmentIds ?? []) as Promise<boolean>,
     pickAttachments: (terminalId: string) => ipcRenderer.invoke("chat:attach-pick", terminalId) as Promise<ChatAttachResult>,
     attachPaths: (paths: string[]) => ipcRenderer.invoke("chat:attach-paths", paths) as Promise<ChatAttachResult>,
+    quickLook: (attachmentId: string) => ipcRenderer.invoke("chat:quick-look", attachmentId) as Promise<void>,
     // A dropped file goes by its path; a pasted image has none, so its bytes go.
     attachFiles: async (files: File[]): Promise<ChatAttachResult> => {
       const results: ChatAttachResult[] = [];

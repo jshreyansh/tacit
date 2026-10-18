@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatPart, ChatTranscript } from "../../../shared/chat-transcript";
+import { UNHELD_PREFIX } from "./attachmentPreview";
 
 /**
  * The conversation as assistant-ui messages (ThreadMessageLike), for its
@@ -89,7 +90,8 @@ export function toThreadMessages(messages: readonly ChatMessage[]): ThreadMessag
         ...(m.attachments?.length
           ? {
               attachments: m.attachments.map((a, i) => ({
-                id: `${m.id}-a${i}`,
+                // The held file's id, so the tile can open it.
+                id: a.id ?? `${UNHELD_PREFIX}${m.id}-${i}`,
                 type: a.kind,
                 name: a.name,
                 status: { type: "complete" as const },

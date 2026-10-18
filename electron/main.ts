@@ -104,6 +104,7 @@ import { findSessionFile } from "./manager-chat/session-file";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
 import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
+import { attachmentKind } from "../shared/chat-attachments";
 import type { ApprovalDecision } from "../shared/chat-events";
 import {
   createDefaultComposerSubmitDeps,
@@ -481,16 +482,35 @@ const chatEngine = new ChatEngine({
     const file = findSessionFile(agent, sessionId, os.homedir());
     if (!file) return null;
     const replay = await sessionScanner.loadReplay(file);
-    return timelineToChatEvents(replay.events);
+    // Files the conversation sent are held again, so the chat can open them.
+    return Promise.all(
+      timelineToChatEvents(replay.events).map(async (event) =>
+        event.kind === "user_message" && event.attachments?.length
+          ? { ...event, attachments: await Promise.all(event.attachments.map((a) => chatAttachments.rehold(a))) }
+          : event,
+      ),
+    );
   },
   log: (line) => dbg(line),
 });
 
-/** A picture of an attached image for the chat: at most 480px, small enough to keep with the message. */
-function attachmentPreview(filePath: string): string | undefined {
-  if ((fs.statSync(filePath, { throwIfNoEntry: false })?.size ?? Infinity) > 40 * 1024 * 1024) return undefined;
-  const image = nativeImage.createFromPath(filePath);
-  if (image.isEmpty()) return undefined;
+/**
+ * A picture of an attached file for the chat, at most 480px: Quick Look's
+ * thumbnail where there is one (a PDF's first page, a slide, a video frame,
+ * an image), small enough to keep with the message.
+ */
+async function attachmentPreview(filePath: string): Promise<string | undefined> {
+  if ((fs.statSync(filePath, { throwIfNoEntry: false })?.size ?? Infinity) > 2 * 1024 * 1024 * 1024) return undefined;
+  let image: Electron.NativeImage | null = null;
+  if (process.platform === "darwin" || process.platform === "win32") {
+    try {
+      image = await nativeImage.createThumbnailFromPath(filePath, { width: 480, height: 480 });
+    } catch {
+      image = null; // No thumbnail for this kind of file.
+    }
+  }
+  if (!image || image.isEmpty()) image = attachmentKind(filePath) === "image" ? nativeImage.createFromPath(filePath) : null;
+  if (!image || image.isEmpty()) return undefined;
   const { width, height } = image.getSize();
   const scale = Math.min(1, 480 / Math.max(width, height));
   const small = scale < 1 ? image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: "good" }) : image;
@@ -2251,12 +2271,12 @@ function setupIpc() {
   // Attaching files: picked in the open dialog (starting in the chat's
   // folder), dropped on the message box, or a pasted image.
   chatAttachments.prune();
-  const attachEach = (items: unknown[], add: (item: unknown) => AttachmentInfo) => {
+  const attachEach = async (items: unknown[], add: (item: unknown) => Promise<AttachmentInfo>) => {
     const attachments: AttachmentInfo[] = [];
     const errors: string[] = [];
     for (const item of items) {
       try {
-        attachments.push(add(item));
+        attachments.push(await add(item));
       } catch (error) {
         errors.push(error instanceof Error ? error.message : String(error));
       }
@@ -2280,6 +2300,18 @@ function setupIpc() {
   ipcMain.handle("chat:attach-image", (event, name: unknown, bytes: unknown) => {
     if (!isMainWindowSender(event)) return { attachments: [], errors: [] };
     return attachEach([bytes], (b) => chatAttachments.addImage(name, b));
+  });
+  // Opens an attached file in the Mac's Quick Look (PDFs, slides,
+  // documents); elsewhere, in the app the system picks for it.
+  ipcMain.handle("chat:quick-look", async (event, id: unknown) => {
+    if (!isMainWindowSender(event) || !mainWindow) return;
+    const held = chatAttachments.get(id);
+    if (!held) throw new Error("that file is no longer available");
+    if (process.platform === "darwin") mainWindow.previewFile(held.path, held.name);
+    else {
+      const failed = await shell.openPath(held.path);
+      if (failed) throw new Error(failed);
+    }
   });
   ipcMain.handle("chat:interrupt", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.interrupt(terminalId);
@@ -3886,6 +3918,13 @@ app.whenReady().then(async () => {
   protocol.handle("tc-attachment", async (request) => {
     try {
       const url = new URL(request.url);
+      // A chat attachment, by the id main gave it: tc-attachment://chat/<id>.
+      // Range requests pass through, so a video can seek.
+      if (url.host === "chat") {
+        const held = chatAttachments.get(decodeURIComponent(url.pathname.slice(1)));
+        if (!held) return new Response("not found", { status: 404 });
+        return await net.fetch(pathToFileURL(held.path).toString(), { headers: request.headers });
+      }
       const requestedPath = decodeURIComponent(url.pathname);
       const resolved = path.resolve(requestedPath);
       const allowed = LOCAL_MEDIA_ROOTS.some(
