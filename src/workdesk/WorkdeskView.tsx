@@ -27,7 +27,6 @@ import { useBrowserSnapshots } from "./browserSnapshots";
 import { showOnCanvas, WorkdeskTab } from "./WorkdeskTab";
 import { STATUS_COLOR } from "../tasks/taskModel";
 import { statusLabel, useOwnerView } from "../tasks/TaskParts";
-import { createTask } from "../tasks/taskActions";
 import {
   buildWorkdeskSections,
   minutesSince,
@@ -314,14 +313,6 @@ export function WorkdeskView() {
   const [closing, setClosing] = useState<WorkdeskCard | null>(null);
   const sessionTabs = useWorkdeskViewStore((s) => s.sessionTabs);
   const fileTabs = useWorkdeskViewStore((s) => s.fileTabs);
-  // A new task from the grid opens in its tab, ready to name.
-  const addGridTask = async () => {
-    const { focusedProjectId, projects: all } = useProjectStore.getState();
-    const project = all.find((p) => p.id === focusedProjectId) ?? all[0];
-    if (!project) return;
-    const made = await createTask(project.path);
-    if (made) setOpenNode({ kind: "task", id: made.id });
-  };
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -673,29 +664,14 @@ export function WorkdeskView() {
               ))}
             </>
           )}
-          {show("tasks") && (
+          {show("tasks") && sections.tasks.length > 0 && (
             <>
-              <div className="flex items-center gap-2">
-                <SectionHead title={t.workdesk_tasks} summary={String(sections.tasks.length)} />
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-[var(--text-secondary)] text-[var(--bg)] hover:bg-[var(--text-primary)]"
-                  title={t.tasks_new}
-                  aria-label={t.tasks_new}
-                  onClick={() => void addGridTask()}
-                >
-                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-                    <path d="M8 3v10M3 8h10" />
-                  </svg>
-                </button>
+              <SectionHead title={t.workdesk_tasks} summary={String(sections.tasks.length)} />
+              <div className={gridCols}>
+                {sections.tasks.map((card) => (
+                  <TaskCardView key={card.id} card={card} t={t} />
+                ))}
               </div>
-              {sections.tasks.length > 0 && (
-                <div className={gridCols}>
-                  {sections.tasks.map((card) => (
-                    <TaskCardView key={card.id} card={card} t={t} />
-                  ))}
-                </div>
-              )}
             </>
           )}
           {show("notes") && sections.notes.length > 0 && (
