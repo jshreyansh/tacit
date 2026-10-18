@@ -11,15 +11,7 @@ import {
   createClaudeStreamState,
   parseClaudeLine,
 } from "../../shared/chat-stream-claude";
-import {
-  CODEX_MODES,
-  codexApprovalResult,
-  codexCapabilities,
-  codexQuestionResult,
-  codexUserInput,
-  createCodexStreamState,
-  parseCodexMessage,
-} from "../../shared/chat-stream-codex";
+import { CODEX_MODES, codexApprovalResult, codexCapabilities, codexQuestionResult, codexRateLimit, codexUserInput, createCodexStreamState, parseCodexMessage } from "../../shared/chat-stream-codex";
 
 /**
  * The agent process behind a chat, one per manager in chat mode (T6.2).
@@ -352,6 +344,12 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
     settings = { ...caps.settings, ...withoutNulls(settings) };
     options.emit({ kind: "settings", settings });
+    // How much of the usage limit is used, known before the first turn
+    // (the rolling updates only come with turns).
+    void request("account/rateLimits/read", { excludeResetCreditDetails: true }).then((read) => {
+      const limit = codexRateLimit((read.result as { rateLimits?: unknown } | undefined)?.rateLimits);
+      if (limit) options.emit(limit);
+    });
     ready = true;
     for (const text of queued.splice(0)) await startTurn(text);
   })();

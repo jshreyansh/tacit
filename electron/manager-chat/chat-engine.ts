@@ -44,8 +44,25 @@ export interface ChatEngineDeps {
    * the record has everything, including what was said outside the chat.
    */
   loadHistory?: (agent: ChatAgent, sessionId: string) => Promise<ChatEvent[] | null>;
+  /**
+   * The agent's last usage-limit reading, kept across chats and restarts:
+   * the limit is the account's, and Claude only reports it during a turn.
+   */
+  limits?: {
+    get: (agent: ChatAgent) => ChatLimitEvent | null;
+    set: (agent: ChatAgent, limit: ChatLimitEvent) => void;
+  };
   log?: (line: string) => void;
   now?: () => Date;
+}
+
+export type ChatLimitEvent = Extract<ChatEvent, { kind: "rate_limit" }>;
+
+/** A kept reading still holds until its window resets. */
+export function limitStillHolds(limit: ChatLimitEvent, now: Date): boolean {
+  if (!limit.resetsAt) return false;
+  const at = Date.parse(limit.resetsAt);
+  return Number.isFinite(at) && at > now.getTime();
 }
 
 interface ChatSession {
@@ -120,6 +137,8 @@ export class ChatEngine {
         this.deps.log?.(`[chat] history for ${request.terminalId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    const kept = this.deps.limits?.get(request.agent);
+    if (kept && limitStillHolds(kept, this.deps.now?.() ?? new Date())) this.record(request.terminalId, kept);
     let launch: ChatLaunch;
     try {
       launch = await this.deps.prepare(request);
@@ -147,6 +166,7 @@ export class ChatEngine {
     if (!session) return;
     if (event.kind === "session") session.sessionId = event.sessionId;
     if (event.kind === "exited") session.driver = null;
+    if (event.kind === "rate_limit") this.deps.limits?.set(session.agent, event);
     appendEvent(session.events, event);
     this.deps.onEvent(terminalId, event);
     if (event.kind === "turn_ended") this.deps.onTurnEnded?.(terminalId, session.sessionId);

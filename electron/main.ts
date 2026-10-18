@@ -102,6 +102,7 @@ import { spawn as spawnChild } from "node:child_process";
 import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
 import { findSessionFile } from "./manager-chat/session-file";
 import { timelineToChatEvents } from "../shared/chat-history";
+import { chatLimitStore } from "./manager-chat/chat-limits";
 import type { ApprovalDecision } from "../shared/chat-events";
 import {
   createDefaultComposerSubmitDeps,
@@ -474,6 +475,7 @@ const chatEngine = new ChatEngine({
     telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
   // The agent's own record of the session, so the chat shows what was said
   // in the terminal and before a restart, as the terminal does.
+  limits: chatLimitStore(path.join(TACIT_DIR, "chat-limits.json")),
   loadHistory: async (agent, sessionId) => {
     const file = findSessionFile(agent, sessionId, os.homedir());
     if (!file) return null;

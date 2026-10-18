@@ -152,20 +152,8 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       return [{ kind: "context", used: last.totalTokens, ...(window ? { window } : {}) }];
     }
     case "account/rateLimits/updated": {
-      const limits = isObject(params.rateLimits) ? params.rateLimits : null;
-      const primary = isObject(limits?.primary) ? limits.primary : null;
-      if (!limits || !primary) return [];
-      const used = typeof primary.usedPercent === "number" ? primary.usedPercent : undefined;
-      const status = limits.rateLimitReachedType ? "limited" : used !== undefined && used >= 80 ? "warning" : "ok";
-      return [
-        {
-          kind: "rate_limit",
-          status,
-          ...(typeof primary.resetsAt === "number" ? { resetsAt: new Date(primary.resetsAt * 1000).toISOString() } : {}),
-          ...(used !== undefined ? { usedPercent: Math.round(used) } : {}),
-          ...(typeof primary.windowDurationMins === "number" ? { window: `${primary.windowDurationMins}m` } : {}),
-        },
-      ];
+      const event = codexRateLimit(params.rateLimits);
+      return event ? [event] : [];
     }
     case "turn/plan/updated": {
       const plan = Array.isArray(params.plan) ? params.plan : [];
@@ -321,5 +309,24 @@ export function codexCapabilities(modelList: unknown, thread: unknown): { models
       effort: typeof t.reasoningEffort === "string" ? t.reasoningEffort : null,
       mode: codexModeOf(t.approvalPolicy, t.sandbox),
     },
+  };
+}
+
+/**
+ * A Codex usage snapshot (from `account/rateLimits/read` at start, or the
+ * rolling `account/rateLimits/updated`) as the chat's limit: its primary window.
+ */
+export function codexRateLimit(snapshot: unknown): ChatEvent | null {
+  const limits = isObject(snapshot) ? snapshot : null;
+  const primary = isObject(limits?.primary) ? limits.primary : null;
+  if (!limits || !primary) return null;
+  const used = typeof primary.usedPercent === "number" ? primary.usedPercent : undefined;
+  const status = limits.rateLimitReachedType ? "limited" : used !== undefined && used >= 80 ? "warning" : "ok";
+  return {
+    kind: "rate_limit",
+    status,
+    ...(typeof primary.resetsAt === "number" ? { resetsAt: new Date(primary.resetsAt * 1000).toISOString() } : {}),
+    ...(used !== undefined ? { usedPercent: Math.round(used) } : {}),
+    ...(typeof primary.windowDurationMins === "number" ? { window: `${primary.windowDurationMins}m` } : {}),
   };
 }

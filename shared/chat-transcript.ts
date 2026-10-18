@@ -206,16 +206,20 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
     case "settings":
       return { ...t, settings: event.settings };
 
-    case "rate_limit":
+    case "rate_limit": {
+      // A reading of the same window without a figure keeps the last figure.
+      const same = t.limit && (!event.window || t.limit.window === event.window);
       return {
         ...t,
         limit: {
+          ...(same ? t.limit : {}),
           status: event.status,
           ...(event.resetsAt ? { resetsAt: event.resetsAt } : {}),
           ...(event.usedPercent !== undefined ? { usedPercent: event.usedPercent } : {}),
           ...(event.window ? { window: event.window } : {}),
         },
       };
+    }
 
     case "block_start":
       return withAssistant(t, (m) => {

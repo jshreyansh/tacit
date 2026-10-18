@@ -171,7 +171,7 @@ test("Codex starts app-server with the bridge, opens a thread in the terminal's 
   assert.deepEqual(spawned[0].args, ["app-server", "--mcp-config", "/tmp/tacit-mcp-t1.json"]);
   engine.send("t1", "early message");
   for (let i = 0; i < 10; i++) await tick();
-  assert.deepEqual(requests.map((r) => r.method).filter(Boolean), ["initialize", "initialized", "thread/start", "model/list", "turn/start"]);
+  assert.deepEqual(requests.map((r) => r.method).filter(Boolean), ["initialize", "initialized", "thread/start", "model/list", "account/rateLimits/read", "turn/start"]);
   assert.deepEqual(requests.find((r) => r.method === "thread/start")?.params, { cwd: "/repo" });
   assert.deepEqual(requests.find((r) => r.method === "turn/start")?.params, {
     threadId: "thread-1",
