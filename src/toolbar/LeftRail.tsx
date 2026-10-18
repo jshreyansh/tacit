@@ -140,36 +140,10 @@ export function LeftRail() {
         width: LEFT_RAIL_WIDTH,
       }}
     >
-      {/* The Hub takes the top: it is the one button here that opens the whole
-          app rather than one surface of it, and the one you reach for without
-          first looking at the canvas. */}
+      {/* What you open beside the rail: the manager's chat, the code panel
+          (Files, Diff, Git) and Memory. Always in view, however short the
+          window. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
-        <button
-          className={`${buttonCls} text-[var(--text-muted)]`}
-          // The Hub's outside-click handler exempts this attribute so a click
-          // on its own trigger toggles instead of closing-then-reopening.
-          data-hub-trigger="true"
-          data-on={hubOpen ? "" : undefined}
-          onClick={() => {
-            // The other half of the exclusivity canvasStore enforces: opening
-            // a panel closes the Hub, so opening the Hub closes the panels.
-            // Without this the Hub simply paints over whichever was open.
-            if (!hubOpen) setCodeCollapsed(true);
-            toggleHub();
-          }}
-          title={hubLabel}
-          aria-label={hubLabel}
-          aria-pressed={hubOpen}
-        >
-          <HubIcon />
-        </button>
-      </div>
-
-      {/* The six panel surfaces, in one scrolling column because they all open
-          the same panel and only one can win it. Sessions and History are
-          where you have been; Files, Diff, Git and Memory are what the work
-          produced — a divider between them and no further explanation. */}
-      <div className="tc-rail-scroll flex min-h-0 flex-col items-center gap-0.5 overflow-y-auto">
         {/* The workdesk manager's chat. Sessions and History moved into it
             (its Sessions view), along with Pins. */}
         <button
@@ -187,11 +161,6 @@ export function LeftRail() {
             <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
           )}
         </button>
-
-        <div
-          aria-hidden="true"
-          className="my-1.5 h-px w-6 shrink-0 bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
-        />
 
         {/* Files, Diff and Git are one button; the panel's tabs switch
             between them, and it opens on the one you were last on. */}
@@ -236,15 +205,11 @@ export function LeftRail() {
           );
         })}
 
-        {/* The dock: what you add to the canvas. Only pinned nodes sit here;
-            the All Nodes tray holds every kind and is where you pin. */}
-        <div
-          aria-hidden="true"
-          className="my-1.5 h-px w-6 shrink-0 bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
-        />
-        {pinned.map((id) => (
-          <DockRailButton key={id} entry={dockEntry(id)} />
-        ))}
+      </div>
+
+      {/* The dock: what you add to the canvas, the only part that scrolls when
+          the window is short. All Nodes leads; what you pin from it follows. */}
+      <div className="tc-rail-scroll flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2">
         <button
           className={buttonCls}
           data-on={trayOpen ? "" : undefined}
@@ -256,18 +221,39 @@ export function LeftRail() {
         >
           <AllNodesIcon size={30} />
         </button>
+        {pinned.map((id) => (
+          <DockRailButton key={id} entry={dockEntry(id)} />
+        ))}
       </div>
 
-      {/* Settings, alone at the far end. It is the one control here that opens
-          nothing on the canvas and belongs to no panel, so it keeps the corner
-          furthest from everything you reach for while working. */}
-      <div className="relative mt-auto flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
-        {/* How you look at the canvas: zoom, Fit, Focus, Canvas or Grid. */}
+      {/* The foot, always in view: how you look at the canvas (zoom, Fit,
+          Focus, Canvas or Grid), then the Hub, then Settings in the corner. */}
+      <div className="relative flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
         <ViewControls />
         {/* Update, and only when there is one. */}
         {updateStatus !== "idle" && (
           <UpdateStatusButton status={updateStatus} t={t} onClick={() => setShowUpdate(true)} />
         )}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          // The Hub's outside-click handler exempts this attribute so a click
+          // on its own trigger toggles instead of closing-then-reopening.
+          data-hub-trigger="true"
+          data-on={hubOpen ? "" : undefined}
+          onClick={() => {
+            // The other half of the exclusivity canvasStore enforces: opening
+            // a panel closes the Hub, so opening the Hub closes the panels.
+            // Without this the Hub simply paints over whichever was open.
+            if (!hubOpen) setCodeCollapsed(true);
+            toggleHub();
+          }}
+          title={hubLabel}
+          aria-label={hubLabel}
+          aria-pressed={hubOpen}
+        >
+          <HubIcon />
+        </button>
+
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           onClick={() => openSettings()}

@@ -215,7 +215,6 @@ export function ViewControls() {
         </div>
 
         {/* Canvas or Grid: the same nodes, laid out freely or as cards. */}
-        <div className="my-1.5 h-px w-6 bg-[var(--border)]" aria-hidden="true" />
         <div className="flex flex-col gap-0.5" role="group" aria-label={t.workdesk_view_switch}>
           <button
             className={buttonCls}
@@ -237,8 +236,6 @@ export function ViewControls() {
             <GridViewIcon />
           </button>
         </div>
-        {/* Apart from Settings below. */}
-        <div className="my-1.5 h-px w-6 bg-[var(--border)]" aria-hidden="true" />
     </div>
   );
 }
