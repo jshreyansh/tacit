@@ -144,3 +144,16 @@ test("the queue sends when the agent is free and the last turn went well, and ho
   assert.equal(formatTokens(38_400), "38k");
   assert.equal(formatTokens(1_000_000), "1M");
 });
+
+test("the usage limit names its window, from Claude's name or Codex's length, and warns as it fills", async () => {
+  const { limitTone, limitWindowMinutes } = await import("../src/toolbar/chat/longRunningModel");
+  const { en } = await import("../src/i18n/en");
+  assert.equal(limitWindowMinutes("five_hour"), 300);
+  assert.equal(limitWindowMinutes("seven_day_opus"), 7 * 1440);
+  assert.equal(limitWindowMinutes("300m"), 300);
+  assert.equal(limitWindowMinutes("overage"), null);
+  assert.equal(limitWindowMinutes(undefined), null);
+  assert.equal(en.chat_limit_window(300), "5-hour");
+  assert.equal(en.chat_limit_window(10080), "weekly");
+  assert.deepEqual([limitTone(1), limitTone(80), limitTone(95)], ["muted", "amber", "red"]);
+});

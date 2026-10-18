@@ -3,7 +3,9 @@ import { useT } from "../../i18n/useT";
 import type { ChatTranscript } from "../../../shared/chat-transcript";
 import type { PlanStep } from "../../../shared/chat-events";
 import { useManagerChatStore, type QueuedMessage } from "../../stores/managerChatStore";
-import { contextPercent, formatTokens, lastOutcome, resetLabel, shouldSendQueued } from "./longRunningModel";
+import { contextPercent, formatTokens, lastOutcome, limitTone, limitWindowMinutes, resetLabel, shouldSendQueued } from "./longRunningModel";
+import { agentIcon } from "../agentIcons";
+import { findAgentAdapter } from "../../../shared/agent-adapters";
 
 /**
  * A chat that runs long (Phase L): messages written while the agent works
@@ -150,33 +152,59 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
  * How full the context is: a small bar and the percent. Hovering or
  * focusing it opens a card with the tokens and the usage limit.
  */
-export function ContextMeter({ transcript }: { transcript: ChatTranscript }) {
+const TONE_COLOR = { muted: "var(--text-muted)", amber: "var(--amber)", red: "var(--red)" } as const;
+
+/**
+ * How full the agent's context is and how much of its usage limit is used,
+ * both at a glance, with the agent's logo so it's clear whose they are (a
+ * swapped manager starts on its own numbers).
+ */
+export function ContextMeter({ transcript, agent }: { transcript: ChatTranscript; agent: string | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const percent = contextPercent(transcript.context);
   if (percent === null || !transcript.context) return null;
   const limit = transcript.limit;
+  const used = limit?.usedPercent;
   const tone = percent >= 85 ? "var(--red)" : percent >= 65 ? "var(--amber)" : "var(--text-muted)";
+  const usedTone = used !== undefined ? TONE_COLOR[limitTone(used)] : undefined;
   const resets = resetLabel(limit?.resetsAt);
+  const windowMinutes = limitWindowMinutes(limit?.window);
+  const icon = agentIcon(agent) ?? null;
+  const agentName = agent ? (findAgentAdapter(agent)?.displayName ?? agent) : null;
   const summary = t.chat_context_detail(percent, formatTokens(transcript.context.used), formatTokens(transcript.context.window ?? 0));
+  const label = used !== undefined ? `${summary} · ${t.chat_limit_detail(used, resets ?? "")}` : summary;
   return (
     <span className="relative flex shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
         className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] tabular-nums text-[var(--text-muted)] hover:bg-[var(--surface-hover)]"
-        aria-label={summary}
+        aria-label={label}
         aria-expanded={open}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onClick={() => setOpen((v) => !v)}
       >
+        {icon && <img src={icon} alt="" className="h-3 w-3 object-contain" draggable={false} />}
         <span aria-hidden="true" className="block h-1 w-9 overflow-hidden rounded-full bg-[var(--surface-hover)]">
           <span className="block h-1 rounded-full" style={{ width: `${percent}%`, background: tone }} />
         </span>
         {percent}%
+        {used !== undefined && (
+          <>
+            <span aria-hidden="true" className="h-3 w-px bg-[var(--border)]" />
+            <span style={{ color: usedTone }}>{t.chat_meter_used(used)}</span>
+          </>
+        )}
       </button>
       {open && (
         <div role="tooltip" className="tc-float absolute right-0 top-full z-20 mt-1.5 flex w-[260px] flex-col gap-2 p-3 text-left" style={{ borderRadius: 12 }}>
+          {agentName && (
+            <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-primary)]">
+              {icon && <img src={icon} alt="" className="h-3.5 w-3.5 object-contain" draggable={false} />}
+              <span>{agentName}</span>
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_context}</span>
             <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
@@ -185,10 +213,15 @@ export function ContextMeter({ transcript }: { transcript: ChatTranscript }) {
             <span className="text-[12px] text-[var(--text-secondary)]">{summary}</span>
             <span className="text-[11px] leading-snug text-[var(--text-muted)]">{t.chat_context_hint}</span>
           </div>
-          {limit?.usedPercent !== undefined && (
+          {used !== undefined && (
             <div className="flex flex-col gap-1 border-t border-[var(--border)] pt-2">
-              <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_usage_limit}</span>
-              <span className="text-[12px] text-[var(--text-secondary)]">{t.chat_limit_detail(limit.usedPercent, resets ?? "")}</span>
+              <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                {windowMinutes ? `${t.chat_usage_limit} · ${t.chat_limit_window(windowMinutes)}` : t.chat_usage_limit}
+              </span>
+              <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
+                <span className="block h-1.5 rounded-full" style={{ width: `${Math.max(used, 2)}%`, background: usedTone }} />
+              </span>
+              <span className="text-[12px] text-[var(--text-secondary)]">{t.chat_limit_detail(used, resets ?? "")}</span>
             </div>
           )}
         </div>

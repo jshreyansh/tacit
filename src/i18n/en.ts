@@ -113,6 +113,9 @@ export const en = {
   chat_placeholder_queued: "Message the manager… (queued until its turn ends)",
   chat_context: "Context",
   chat_context_hint: "When it fills up, the agent summarizes earlier turns to make room.",
+  chat_meter_used: (percent: number) => `${percent}% used`,
+  chat_limit_window: (minutes: number) =>
+    minutes === 7 * 1440 ? "weekly" : minutes % 1440 === 0 ? `${minutes / 1440}-day` : minutes % 60 === 0 ? `${minutes / 60}-hour` : `${minutes}-minute`,
   chat_usage_limit: "Usage limit",
   tasks_title: "Tasks",
   tasks_needs_you: (n: number) => `Tasks: ${n} ${n === 1 ? "needs" : "need"} you`,

@@ -58,3 +58,20 @@ export function resetLabel(iso: string | undefined, now = new Date()): string | 
   const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return at.toDateString() === now.toDateString() ? time : `${at.toLocaleDateString([], { weekday: "short" })} ${time}`;
 }
+
+/**
+ * How long a usage limit's window runs, in minutes: Claude names it
+ * (`five_hour`, `seven_day`, `seven_day_opus`), Codex gives its length.
+ */
+export function limitWindowMinutes(window: string | undefined): number | null {
+  if (!window) return null;
+  if (window.startsWith("five_hour")) return 300;
+  if (window.startsWith("seven_day")) return 7 * 1440;
+  const minutes = /^(\d+)m$/.exec(window);
+  return minutes ? Number(minutes[1]) : null;
+}
+
+/** The usage limit's tone: calm, getting close, nearly out. */
+export function limitTone(usedPercent: number): "muted" | "amber" | "red" {
+  return usedPercent >= 90 ? "red" : usedPercent >= 75 ? "amber" : "muted";
+}

@@ -112,6 +112,9 @@ export const zh = {
   chat_placeholder_queued: "给管理者发消息…（排队，等这一轮结束）",
   chat_context: "上下文",
   chat_context_hint: "满了之后，代理会总结更早的轮次来腾出空间。",
+  chat_meter_used: (percent: number) => `已用 ${percent}%`,
+  chat_limit_window: (minutes: number) =>
+    minutes === 7 * 1440 ? "每周" : minutes % 1440 === 0 ? `${minutes / 1440} 天` : minutes % 60 === 0 ? `${minutes / 60} 小时` : `${minutes} 分钟`,
   chat_usage_limit: "用量上限",
   tasks_title: "任务",
   tasks_needs_you: (n: number) => `任务：${n} 个在等你`,

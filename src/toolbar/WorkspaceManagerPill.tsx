@@ -840,7 +840,7 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
-        {chatMode && <ContextMeter transcript={transcript} />}
+        {chatMode && <ContextMeter transcript={transcript} agent={managerTerminal?.type ?? null} />}
         {/* Sessions and Pins each open in place of the conversation; the lit
             icon takes you back. */}
         <button
