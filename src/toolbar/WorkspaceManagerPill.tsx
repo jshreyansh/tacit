@@ -447,6 +447,20 @@ export function WorkspaceManagerPill() {
 
   const sendWorkspaceManagerBriefing = useCallback(
     async (terminalId: string) => {
+      // A tile in chat mode runs no shell to type into: the briefing is a
+      // message in its chat, as it is for a new manager.
+      if (findTerminalById(terminalId)?.chatMode) {
+        try {
+          await ensureManagerChat(terminalId);
+          if (await sendToManagerChat(terminalId, WORKSPACE_MANAGER_BRIEFING)) return;
+        } catch {
+          // Warned about below.
+        }
+        useNotificationStore
+          .getState()
+          .notify("warn", "Couldn't brief the new manager in its chat. It still has the role; just ask it to call get_workspace_summary directly.");
+        return;
+      }
       const found = await waitForTerminalReady(terminalId);
       const ptyId = found ? getLivePtyId(terminalId) : null;
       if (!found || ptyId == null) {
@@ -476,7 +490,7 @@ export function WorkspaceManagerPill() {
           );
       }
     },
-    [],
+    [findTerminalById],
   );
 
   const assignWorkspaceManager = useCallback(
