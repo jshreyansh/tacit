@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   buildCaptureEnvelope,
+  maskCaptureSecrets,
   captureFileNameFor,
   truncateCaptureText,
   type CaptureEntry,
@@ -10,7 +11,6 @@ import {
   type CaptureHealth,
   type CaptureRecordContext,
 } from "../shared/capture";
-import { maskSecrets } from "../shared/secret-mask";
 
 /**
  * Writes the decision record. See shared/capture.ts for what belongs in it.
@@ -93,7 +93,7 @@ export class CaptureService {
   ): boolean {
     try {
       // Before anything reads it: an automatic run is named from the prompt.
-      event = maskEventSecrets(event);
+      event = maskCaptureSecrets(event);
       // Asked before building: a prompt with no run open starts one, whose
       // run_started is written first. An entry that may repeat is
       // housekeeping, which never starts or extends a run.
@@ -310,26 +310,3 @@ export function getCaptureDir(tacitDir: string): string {
   return path.join(tacitDir, "record");
 }
 
-/** The event with secrets masked in the text a person or agent wrote. */
-function maskEventSecrets(event: CaptureEvent): CaptureEvent {
-  if (event.kind === "prompt" && typeof event.text === "string") {
-    const text = maskSecrets(event.text);
-    return text === event.text ? event : { ...event, text };
-  }
-  if ((event.kind === "run_started" || event.kind === "run_named") && typeof event.goal === "string") {
-    const goal = maskSecrets(event.goal);
-    return goal === event.goal ? event : { ...event, goal };
-  }
-  if (event.kind === "journal_write") {
-    // A URL can carry a token in its query string.
-    return {
-      ...event,
-      title: maskSecrets(event.title),
-      taint_sources: event.taint_sources.map((read) => (read.url ? { ...read, url: maskSecrets(read.url) } : read)),
-    };
-  }
-  if (event.kind === "handoff" && event.files) {
-    return { ...event, files: event.files.map((file) => ({ ...file, path: maskSecrets(file.path) })) };
-  }
-  return event;
-}

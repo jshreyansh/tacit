@@ -1194,7 +1194,7 @@ contextBridge.exposeInMainWorld("tacit", {
     observationSummary: () =>
       ipcRenderer.invoke(
         "browser-observations:summary",
-      ) as Promise<import("../src/types").BrowserObservationSummary>,
+      ) as Promise<import("../shared/browser-observation").BrowserObservationSummary>,
     /** Erase recorded activity, for one profile or for every profile. */
     clearObservations: (identityId?: string) =>
       ipcRenderer.invoke("browser-observations:clear", {

@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { resolveTacitPortFile } from "../shared/tacit-instance";
 import { parsePinStatus, pinKind } from "../shared/pin";
+import { RECORD_USAGE, runRecordCommand } from "./record";
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
@@ -1018,12 +1019,15 @@ async function main() {
           "  browser rm <id>",
         );
       }
+    } else if (group === "record") {
+      // Read from the record's files, so it works with the app closed.
+      process.exitCode = runRecordCommand(command, rest, { stdout: (s) => process.stdout.write(s), stderr: (s) => process.stderr.write(s) }, jsonFlag);
     } else if (group === "state") {
       const state = await request("GET", "/state");
       console.log(JSON.stringify(state, null, 2));
     } else {
       console.log(
-        "Usage: tacit <project|workflow|worktree|terminal|telemetry|task|browser|diff|state> <command> [args]",
+        "Usage: tacit <project|workflow|worktree|terminal|telemetry|task|browser|diff|record|state> <command> [args]",
       );
       console.log("");
       console.log("Commands:");
@@ -1152,6 +1156,7 @@ async function main() {
       console.log(
         "  browser rm <id>                            Remove a browser tile",
       );
+      console.log(RECORD_USAGE);
       console.log(
         "  state                                       Full canvas state",
       );

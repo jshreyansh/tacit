@@ -1,3 +1,4 @@
+import { maskSecrets } from "./secret-mask";
 /**
  * The decision record — an append-only spine of the choices made on a canvas.
  *
@@ -487,6 +488,34 @@ function inferredIntent(event: CaptureEvent): CaptureIntent {
 }
 
 /** Upgrade a persisted v1 line in memory. Files remain append-only. */
+/**
+ * The event with secrets masked in the text a person or agent wrote: done
+ * when an entry is written, and again on export for entries written before
+ * masking was.
+ */
+export function maskCaptureSecrets<E extends CaptureEvent>(event: E): E {
+  if (event.kind === "prompt" && typeof event.text === "string") {
+    const text = maskSecrets(event.text);
+    return text === event.text ? event : { ...event, text } as E;
+  }
+  if ((event.kind === "run_started" || event.kind === "run_named") && typeof event.goal === "string") {
+    const goal = maskSecrets(event.goal);
+    return goal === event.goal ? event : { ...event, goal } as E;
+  }
+  if (event.kind === "journal_write") {
+    // A URL can carry a token in its query string.
+    return {
+      ...event,
+      title: maskSecrets(event.title),
+      taint_sources: event.taint_sources.map((read) => (read.url ? { ...read, url: maskSecrets(read.url) } : read)),
+    } as E;
+  }
+  if (event.kind === "handoff" && event.files) {
+    return { ...event, files: event.files.map((file) => ({ ...file, path: maskSecrets(file.path) })) } as E;
+  }
+  return event;
+}
+
 export function normalizeCaptureEntry(
   raw: CaptureEntry | LegacyCaptureEntry,
 ): CaptureEntry {
