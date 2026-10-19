@@ -463,6 +463,8 @@ export const en = {
   task_new: "Record a new context",
   task_new_hint: "Ends this one and starts recording a new context",
   task_start_recording: "Start recording",
+  task_record_click: "Click to name it and start recording.",
+  task_stop_label: (name: string, time: string) => `Recording · ${name} · ${time} · click to stop`,
   task_show_activity: "Show in Activity",
   task_notice_started: (who: string, goal: string) => `${who} started recording “${goal}”`,
   task_notice_named: (who: string, goal: string) => `${who} named this context “${goal}”`,
