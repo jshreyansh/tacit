@@ -91,6 +91,8 @@ export interface ChatTranscript {
 export interface PendingQuestion {
   requestId: string;
   questions: ChatQuestion[];
+  /** Waits past the end of its turn; the next message answers or passes it. */
+  afterTurn?: boolean;
 }
 
 export const EMPTY_TRANSCRIPT: ChatTranscript = {
@@ -174,6 +176,8 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
         ...t,
         running: true,
         failure: null,
+        // A question asked as the last turn ended is answered by this message, or passed over.
+        questions: t.questions.filter((q) => !q.afterTurn),
         ...(steered ? {} : { plan: null }),
         messages: [
           ...t.messages,
@@ -206,7 +210,10 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
 
     case "question_request":
       if (t.questions.some((q) => q.requestId === event.requestId)) return t;
-      return { ...t, questions: [...t.questions, { requestId: event.requestId, questions: event.questions }] };
+      return {
+        ...t,
+        questions: [...t.questions, { requestId: event.requestId, questions: event.questions, ...(event.afterTurn ? { afterTurn: true } : {}) }],
+      };
 
     case "question_settled":
       return { ...t, questions: t.questions.filter((q) => q.requestId !== event.requestId) };
@@ -298,14 +305,14 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
       if (current) {
         const messages = t.messages.slice();
         messages[current.index] = settle(current.message);
-        return { ...t, messages, running: false, approvals: [], questions: [] };
+        return { ...t, messages, running: false, approvals: [], questions: t.questions.filter((q) => q.afterTurn) };
       }
       // A turn that produced nothing still ends, and an error says why.
       if (event.outcome !== "success") {
         const empty: ChatAssistantMessage = settle({ role: "assistant", id: `a${++assistantSeq}`, parts: [], done: false });
-        return { ...t, messages: [...t.messages, empty], running: false, approvals: [], questions: [] };
+        return { ...t, messages: [...t.messages, empty], running: false, approvals: [], questions: t.questions.filter((q) => q.afterTurn) };
       }
-      return { ...t, running: false, approvals: [], questions: [] };
+      return { ...t, running: false, approvals: [], questions: t.questions.filter((q) => q.afterTurn) };
     }
 
     case "exited": {

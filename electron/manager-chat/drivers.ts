@@ -17,8 +17,10 @@ import {
 } from "../../shared/chat-stream-claude";
 import {
   CODEX_MODES,
+  CODEX_ASYNC_QUESTION_PREFIX,
   CODEX_PLAN_PREFIX,
   codexApprovalResult,
+  codexAsyncAnswerText,
   codexCapabilities,
   codexElicitationResult,
   codexQuestionResult,
@@ -439,6 +441,19 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
       options.emit({ kind: "approval_settled", requestId });
     },
     answerQuestion: (requestId, answers) => {
+      // Asked as its turn ended: the answer is the next message (skipped, nothing is sent).
+      if (requestId.startsWith(CODEX_ASYNC_QUESTION_PREFIX)) {
+        const asked = state.asyncQuestions.get(requestId);
+        if (!asked) return;
+        state.asyncQuestions.delete(requestId);
+        options.emit({ kind: "question_settled", requestId });
+        const text = answers ? codexAsyncAnswerText(asked, answers) : "";
+        if (text) {
+          options.emit({ kind: "user_message", id: randomUUID(), text, at: new Date().toISOString() });
+          void startTurn(text);
+        }
+        return;
+      }
       const target = state.approvals.get(requestId);
       if (!target) return;
       state.approvals.delete(requestId);

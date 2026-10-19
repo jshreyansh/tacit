@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { claudeAnswerInput, claudeCapabilities, claudeQuestions, createClaudeStreamState, parseClaudeLine } from "../shared/chat-stream-claude";
-import { codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexMessage } from "../shared/chat-stream-codex";
+import { codexAsyncAnswerText, codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexMessage } from "../shared/chat-stream-codex";
 import { replayChat } from "../shared/chat-transcript";
 import { answersFor, canGoOn } from "../src/toolbar/chat/questionModel";
 import { settingsView } from "../src/toolbar/chat/composerSettingsModel";
@@ -59,6 +59,53 @@ test("Codex's request_user_input comes as questions; the answer goes back by id"
   assert.ok(state.approvals.has("codex-7"));
   assert.deepEqual(codexQuestionResult({ env: ["Prod"], token: ["abc"] }), { answers: { env: { answers: ["Prod"] }, token: { answers: ["abc"] } } });
   assert.deepEqual(codexQuestionResult(null), { answers: {} });
+});
+
+// As codex-cli 0.163.0 sent it: request_user_input_async posts the questions
+// in a message and ends the turn.
+const ASYNC_ASK = {
+  method: "item/completed",
+  params: {
+    threadId: "t",
+    turnId: "u",
+    item: {
+      type: "agentMessage",
+      id: "call_1",
+      text: "What kind of lunch sounds good?\n- A salad\n- A sandwich\n\nAnything to avoid?",
+      phase: "final_answer",
+      delivery: "async",
+      questions: [
+        { title: "What kind of lunch sounds good?", options: ["A salad", "A sandwich"] },
+        { title: "Anything to avoid?", options: null },
+      ],
+    },
+  },
+};
+
+test("Codex's request_user_input_async shows as the question form, not its message written out", () => {
+  const state = createCodexStreamState();
+  const events = parseCodexMessage(state, ASYNC_ASK);
+  assert.deepEqual(events[0], { kind: "block_done", key: "call_1", text: "" });
+  const asked = events[1];
+  assert.equal(asked.kind, "question_request");
+  if (asked.kind !== "question_request") return;
+  assert.equal(asked.afterTurn, true);
+  assert.deepEqual(asked.questions.map((q) => [q.id, q.question, q.allowOther, q.options?.map((o) => o.label) ?? null]), [
+    ["q0", "What kind of lunch sounds good?", true, ["A salad", "A sandwich"]],
+    ["q1", "Anything to avoid?", false, null],
+  ]);
+  assert.equal(codexAsyncAnswerText(asked.questions, { q0: ["A salad"], q1: ["Nuts"] }), "What kind of lunch sounds good?\nA salad\n\nAnything to avoid?\nNuts");
+  // An ordinary message is still just text.
+  const plain = parseCodexMessage(state, { method: "item/completed", params: { item: { type: "agentMessage", id: "m", text: "Hi", delivery: null, questions: null } } });
+  assert.deepEqual(plain, [{ kind: "block_done", key: "m", text: "Hi" }]);
+});
+
+test("a question asked as the turn ends waits past it, until the next message", () => {
+  const asked = { kind: "question_request" as const, requestId: "a1", questions: [], afterTurn: true };
+  const ended = replayChat([asked, { kind: "turn_ended", outcome: "success" }]);
+  assert.equal(ended.questions.length, 1);
+  const next = replayChat([asked, { kind: "turn_ended", outcome: "success" }, { kind: "user_message", id: "u", text: "pizza", at: "" }]);
+  assert.equal(next.questions.length, 0);
 });
 
 test("the chat holds a question until it's answered or the turn ends", () => {

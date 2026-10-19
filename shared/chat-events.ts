@@ -43,7 +43,13 @@ export type ChatEvent =
    * The agent asks the person something (Claude's AskUserQuestion, Codex's
    * request_user_input): one or more questions, answered together.
    */
-  | { kind: "question_request"; requestId: string; questions: ChatQuestion[] }
+  | {
+      kind: "question_request";
+      requestId: string;
+      questions: ChatQuestion[];
+      /** Asked as the turn ends (Codex's request_user_input_async): waits past it, and the answer is the next message. */
+      afterTurn?: boolean;
+    }
   | { kind: "question_settled"; requestId: string }
   /** What this agent offers to choose: its models (each with its efforts) and modes. */
   | { kind: "capabilities"; models: ChatModelOption[]; modes: ChatModeOption[] }

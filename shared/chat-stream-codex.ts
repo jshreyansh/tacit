@@ -32,14 +32,22 @@ export interface CodexStreamState {
   approvals: Map<string, { rpcId: string | number; method: string; elicitation?: Elicitation; permissions?: Json; toolApproval?: boolean }>;
   /** A plan written in plan mode, offered for approval once its turn ends. */
   proposedPlan: { itemId: string; text: string } | null;
+  /** Questions asked with request_user_input_async, by our request id: what each asked, to answer them by. */
+  asyncQuestions: Map<string, ChatQuestion[]>;
 }
 
 export function createCodexStreamState(): CodexStreamState {
-  return { threadId: null, turnId: null, approvals: new Map(), proposedPlan: null };
+  return { threadId: null, turnId: null, approvals: new Map(), proposedPlan: null, asyncQuestions: new Map() };
 }
 
 /** A plan Codex proposed, waiting on Implement or Keep planning: answered by the driver, not Codex. */
 export const CODEX_PLAN_PREFIX = "codex-plan-";
+
+/**
+ * Questions asked with request_user_input_async. Codex posts them in a
+ * message and ends its turn; the answer is the person's next message.
+ */
+export const CODEX_ASYNC_QUESTION_PREFIX = "codex-ask-";
 
 /** The access Codex asks for beyond its sandbox, in a line or two. */
 function permissionsSummary(permissions: Json): string {
@@ -266,7 +274,17 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
     case "item/completed": {
       const item = isObject(params.item) ? params.item : null;
       if (!item || typeof item.id !== "string") return [];
-      if (item.type === "agentMessage") return [{ kind: "block_done", key: item.id, text: typeof item.text === "string" ? item.text : undefined }];
+      if (item.type === "agentMessage") {
+        const asked = item.delivery === "async" ? codexAsyncQuestions(item.questions) : [];
+        if (asked.length === 0) return [{ kind: "block_done", key: item.id, text: typeof item.text === "string" ? item.text : undefined }];
+        // The message is the questions written out: the form shows them instead.
+        const requestId = `${CODEX_ASYNC_QUESTION_PREFIX}${item.id}`;
+        state.asyncQuestions.set(requestId, asked);
+        return [
+          { kind: "block_done", key: item.id, text: "" },
+          { kind: "question_request", requestId, questions: asked, afterTurn: true },
+        ];
+      }
       if (item.type === "plan") {
         const text = typeof item.text === "string" ? item.text : "";
         if (text.trim()) state.proposedPlan = { itemId: item.id, text };
@@ -371,13 +389,40 @@ export function codexQuestions(params: Json): ChatQuestion[] {
     }));
 }
 
-/** The reply to request_user_input: each answer by its question id. */
+/** The questions of a request_user_input_async message: a title, and options or the person's own words. */
+function codexAsyncQuestions(raw: unknown): ChatQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((q): q is Json => isObject(q) && typeof q.title === "string" && q.title.trim() !== "")
+    .map((q, i) => {
+      const options = Array.isArray(q.options) ? q.options.filter((o): o is string => typeof o === "string" && o !== "") : [];
+      return {
+        id: `q${i}`,
+        header: "",
+        question: q.title as string,
+        options: options.length ? options.map((label) => ({ label })) : null,
+        multiSelect: false,
+        allowOther: options.length > 0,
+        secret: false,
+      };
+    });
+}
+
+/** The person's answers to request_user_input_async, as the message that carries them: each question, then what they picked. */
+export function codexAsyncAnswerText(questions: readonly ChatQuestion[], answers: ChatAnswers): string {
+  return questions
+    .filter((q) => answers[q.id]?.length)
+    .map((q) => `${q.question}\n${answers[q.id].join(", ")}`)
+    .join("\n\n");
+}
+
 /** The answer to an MCP server's question: accepted with its values, or declined when skipped. */
 export function codexElicitationResult(elicitation: Elicitation, answers: ChatAnswers | null): Json {
   const { action, content } = elicitationResult(elicitation, answers);
   return { action, content, _meta: null };
 }
 
+/** The reply to request_user_input: each answer by its question id. */
 export function codexQuestionResult(answers: ChatAnswers | null): Json {
   const out: Record<string, { answers: string[] }> = {};
   for (const [id, picked] of Object.entries(answers ?? {})) out[id] = { answers: picked };

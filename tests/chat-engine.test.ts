@@ -338,6 +338,30 @@ test("Codex: a question is answered by id", async () => {
   assert.ok(events.some((e) => e.kind === "question_settled" && e.requestId === "codex-55"));
 });
 
+test("Codex: an async question is answered with the next message; skipped, nothing is sent", async () => {
+  const { child, events, engine, started } = setup("codex");
+  const requests = codexServer(child);
+  await started;
+  for (let i = 0; i < 6; i++) await tick();
+  const ask = (id: string) =>
+    child.print({ method: "item/completed", params: { threadId: "thread-1", turnId: "u", item: { type: "agentMessage", id, text: "Lunch?", delivery: "async", questions: [{ title: "Lunch?", options: ["Salad"] }] } } });
+  ask("c1");
+  await tick();
+  assert.ok(events.some((e) => e.kind === "question_request" && e.requestId === "codex-ask-c1"));
+  engine.answerQuestion("t1", "codex-ask-c1", { q0: ["Salad"] });
+  for (let i = 0; i < 4; i++) await tick();
+  assert.ok(events.some((e) => e.kind === "question_settled" && e.requestId === "codex-ask-c1"));
+  assert.ok(events.some((e) => e.kind === "user_message" && e.text === "Lunch?\nSalad"));
+  const turns = () => requests.filter((r) => r.method === "turn/start" || r.method === "turn/steer").length;
+  const before = turns();
+  assert.ok(before >= 1);
+  ask("c2");
+  await tick();
+  engine.answerQuestion("t1", "codex-ask-c2", null);
+  for (let i = 0; i < 4; i++) await tick();
+  assert.equal(turns(), before);
+});
+
 test("Claude: asks what it offers at start, switches model, effort and mode at once, and answers questions in its form", async () => {
   const { child, events, engine, started } = setup("claude");
   await started;
