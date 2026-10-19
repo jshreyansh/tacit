@@ -34,7 +34,6 @@ export interface FocusModeState {
  * driven by `fileEditorPath` below.
  */
 export type RightPanelTab = "files" | "diff" | "git" | "memory";
-export type LeftPanelTab = "sessions" | "history";
 export interface CanvasViewportAdapter {
   setViewport: (viewport: Viewport, options?: { duration?: number }) => void;
   getViewport: () => Viewport;
@@ -76,7 +75,6 @@ interface CanvasStore {
   rightPanelActiveTab: RightPanelTab;
   rightPanelWidth: number;
   leftPanelCollapsed: boolean;
-  leftPanelActiveTab: LeftPanelTab;
   leftPanelWidth: number;
   /**
    * File path currently open in the full-canvas Monaco drawer.
@@ -126,7 +124,6 @@ interface CanvasStore {
   toggleSessionsOverlayExpanded: () => void;
   setSessionsOverlayExpanded: (expanded: boolean) => void;
   setLeftPanelCollapsed: (collapsed: boolean) => void;
-  setLeftPanelActiveTab: (tab: LeftPanelTab) => void;
   setLeftPanelWidth: (width: number) => void;
   animateTo: (
     x: number,
@@ -214,7 +211,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   rightPanelActiveTab: "files" as RightPanelTab,
   rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH,
   leftPanelCollapsed: true,
-  leftPanelActiveTab: "sessions" as LeftPanelTab,
   leftPanelWidth: 280,
   fileEditorPath: null,
   fileEditorExpanded: true,
@@ -350,10 +346,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : { leftPanelCollapsed: false, rightPanelCollapsed: true },
     );
     if (!collapsed) closeHubForPanel();
-    markDirty();
-  },
-  setLeftPanelActiveTab: (tab) => {
-    set({ leftPanelActiveTab: tab });
     markDirty();
   },
   setLeftPanelWidth: (width) => {

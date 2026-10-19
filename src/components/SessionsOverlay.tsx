@@ -13,10 +13,9 @@ import { SessionReader } from "../toolbar/SessionReader";
 /*
  * Session replay drawer — left-anchored.
  *
- * The list side of the old SessionsOverlay moved to the LEFT panel's
- * HistorySection: clicking a past session row there calls
- * openSessionsOverlay + loadReplay, and this drawer slides out from
- * the right edge of the left panel to show the transcript.
+ * The list of past sessions is the manager chat's Sessions view:
+ * clicking a past session there calls openSessionsOverlay + loadReplay,
+ * and this drawer slides out beside the chat to show the transcript.
  *
  * Geometry mirrors FileEditorDrawer but anchored left:
  *   level-1: min(60vw, canvas-gap) — replay + other surfaces visible

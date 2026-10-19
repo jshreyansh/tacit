@@ -33,15 +33,6 @@ export function getActionDefs(): ActionDef[] {
       },
     },
     {
-      id: "toggle-left-panel",
-      titleKey: "search_action_toggle_left_panel",
-      keywords: ["panel", "sidebar", "files", "git", "面板"],
-      perform: () => {
-        const s = useCanvasStore.getState();
-        s.setLeftPanelCollapsed(!s.leftPanelCollapsed);
-      },
-    },
-    {
       id: "tab-files",
       titleKey: "search_action_tab_files",
       keywords: ["files", "explorer", "文件"],

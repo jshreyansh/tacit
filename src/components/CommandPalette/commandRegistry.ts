@@ -209,20 +209,6 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
           ),
     },
     {
-      id: "toggle-left-panel",
-      section: "action",
-      title: canvas.leftPanelCollapsed
-        ? t["palette.cmd.show_left_panel"]
-        : t["palette.cmd.hide_left_panel"],
-      keywords: ["sidebar", "projects", "tree"],
-      perform: () =>
-        useCanvasStore
-          .getState()
-          .setLeftPanelCollapsed(
-            !useCanvasStore.getState().leftPanelCollapsed,
-          ),
-    },
-    {
       id: "show-files-tab",
       section: "action",
       title: t.search_action_tab_files,

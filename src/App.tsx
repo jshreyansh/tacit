@@ -15,7 +15,6 @@ import { useNotificationStore } from "./stores/notificationStore";
 import { startAgentAvailability } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
 import { useIdentityManagerStore } from "./stores/identityManagerStore";
-import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
 import { PinDetailDrawer } from "./components/PinDetailDrawer";
@@ -1220,7 +1219,6 @@ export function App() {
       <LeftRail />
       <WorkdeskView />
       <NodeTray />
-      <LeftPanel />
       <RightPanel />
       <CanvasRoot />
       <OnboardingModal />
