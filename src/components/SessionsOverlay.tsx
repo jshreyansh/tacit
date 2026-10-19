@@ -53,8 +53,8 @@ export function SessionsOverlay() {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // No second step any more — the list lives in the left panel
-        // and stays visible regardless. Esc just closes the replay.
+        // The list lives in the chat's Sessions view and stays put.
+        // Esc just closes the replay.
         e.preventDefault();
         e.stopPropagation();
         close();
