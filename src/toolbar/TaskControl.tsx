@@ -27,9 +27,11 @@ const HOVER_LEAVE_MS = 180;
  * `icon`: a record button, right of the manager's pill (`shell: "pill"`)
  * or in the open chat's message box, left of the usage ring (`shell:
  * "composer"`); its cards open upward either way. Hovering says what it is;
- * a click asks what the context is about, then starts. While it records it
- * is a stop button: a click ends the context, and hovering shows its card
- * (name, what's recorded, End, Show in Activity).
+ * a click asks what the context is about, then starts. While it records the
+ * same logo pulses and its dot turns from gray to red; hovering or clicking
+ * shows the context's card (name, what's recorded, End, Show in Activity).
+ * It never turns into a stop button, which would read as stopping the
+ * agent: the chat's own Stop sits beside it.
  * `pill`: the chip beside the manager's pill, its card opening upward.
  * `strip`: the context line under the docked chat's header, its card
  * opening downward over the conversation.
@@ -108,7 +110,7 @@ export function TaskControl({
   const name = run?.goal ?? t.task_untitled;
 
   if (variant === "icon") {
-    const label = run ? t.task_stop_label(name, elapsed(run.started_at)) : t.task_record_title;
+    const label = run ? t.task_recording_label(name, elapsed(run.started_at)) : t.task_record_title;
     const pill = shell === "pill";
     const placement = pill ? "above-right" : "above-box";
     // Hovering shows what it is (or, while recording, the context's card);
@@ -136,18 +138,22 @@ export function TaskControl({
           }
           style={pill && run ? { borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" } : undefined}
           data-on={open ? "" : undefined}
-          // Recording, a click stops it; otherwise it asks what the context
-          // is about, then starts.
+          // Recording, a click shows the context's card (End is there);
+          // otherwise it asks what the context is about, then starts.
           onClick={() => {
+            if (run) {
+              setQuiet(false);
+              setHovered(true);
+              return;
+            }
             setQuiet(true);
-            if (run) void window.tacit.run.end();
-            else setOpen((v) => !v);
+            setOpen((v) => !v);
           }}
           aria-expanded={run ? undefined : open}
           aria-haspopup={run ? undefined : "dialog"}
           aria-label={label}
         >
-          {run ? <StopIcon size={pill ? 20 : 17} /> : <RecordIcon size={pill ? 22 : 18} />}
+          <RecordIcon size={pill ? 22 : 18} recording={!!run} />
           {run && pill && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
         </button>
         {/* Started on its own when you first typed to an agent: said beside it.
@@ -251,10 +257,10 @@ export function TaskControl({
   );
 }
 
-/** Record: a dotted screen with a red record dot at its corner. */
-function RecordIcon({ size }: { size: number }) {
+/** Record: a dotted screen with a record dot at its corner, gray until it records; then red, and the logo pulses. */
+function RecordIcon({ size, recording }: { size: number; recording: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={recording ? "animate-pulse" : undefined} aria-hidden="true">
       <path
         d="M16.8 17.5H4.7A2.7 2.7 0 0 1 2 14.8V5.7A2.7 2.7 0 0 1 4.7 3h13.6A2.7 2.7 0 0 1 21 5.7v5.1"
         stroke="currentColor"
@@ -265,22 +271,9 @@ function RecordIcon({ size }: { size: number }) {
       />
       <path d="M5 6.1h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <path d="M7 14.1h7.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="18" cy="15.5" r="4.5" fill="var(--red)" />
+      <circle cx="18" cy="15.5" r="4.5" fill={recording ? "var(--red)" : "var(--text-muted)"} />
       <circle cx="18" cy="15.5" r="2.9" stroke="white" strokeOpacity="0.75" strokeWidth="1.15" />
     </svg>
-  );
-}
-
-/** Recording: a light disc with a stop square, a red pulse behind it. */
-function StopIcon({ size }: { size: number }) {
-  return (
-    <span className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <span className="absolute inset-[-2px] animate-ping rounded-full opacity-25" style={{ background: "var(--red)", animationDuration: "2s" }} />
-      <svg width={size} height={size} viewBox="0 0 20 20" className="relative" aria-hidden="true">
-        <circle cx="10" cy="10" r="9" fill="var(--text-primary)" />
-        <rect x="6.6" y="6.6" width="6.8" height="6.8" rx="1.6" fill="var(--bg)" />
-      </svg>
-    </span>
   );
 }
 

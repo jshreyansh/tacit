@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatTranscript } from "../../../shared/chat-transcript";
 import { configureChat } from "../../actions/managerChatMode";
-import { effortLabel, settingsView } from "./composerSettingsModel";
+import { MENU_WIDTH, effortLabel, menuPlace, settingsView } from "./composerSettingsModel";
 
 /**
  * The model, effort and mode for this chat, as small chips under the
@@ -17,8 +17,6 @@ import { effortLabel, settingsView } from "./composerSettingsModel";
  */
 
 type Item = { id: string; label: string; description?: string };
-
-const MENU_WIDTH = 250;
 
 function Chip({
   icon,
@@ -39,7 +37,9 @@ function Chip({
   hideLabelClass: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
+  // Where the menu sits, against the chip: it stays inside the message
+  // box, which a narrow chat cuts off at its edge.
+  const [place, setPlace] = useState({ left: 0, width: MENU_WIDTH });
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -59,8 +59,9 @@ function Chip({
         aria-label={`${title}: ${label}`}
         title={`${title}: ${label}`}
         onClick={() => {
-          const rect = ref.current?.getBoundingClientRect();
-          setAlignRight(!!rect && rect.left + MENU_WIDTH > window.innerWidth - 8);
+          const chip = ref.current?.getBoundingClientRect();
+          const box = ref.current?.closest("[data-composer-box]")?.getBoundingClientRect();
+          if (chip) setPlace(menuPlace(chip.left, box ? { left: box.left, right: box.right } : { left: 8, right: window.innerWidth - 8 }));
           setOpen((v) => !v);
         }}
       >
@@ -71,8 +72,8 @@ function Chip({
         <div
           role="menu"
           aria-label={title}
-          className={`tc-float absolute bottom-9 z-30 max-h-[min(360px,60vh)] overflow-y-auto p-1.5 ${alignRight ? "right-0" : "left-0"}`}
-          style={{ borderRadius: 11, width: MENU_WIDTH }}
+          className="tc-float absolute bottom-9 z-30 max-h-[min(360px,60vh)] overflow-y-auto p-1.5"
+          style={{ borderRadius: 11, left: place.left, width: place.width }}
         >
           <div className="px-2.5 pb-1 pt-0.5 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-faint)]">{title}</div>
           {items.map((item) => (

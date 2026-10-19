@@ -465,7 +465,7 @@ export const zh = {
   task_new_hint: "结束当前上下文并开始记录新的上下文",
   task_start_recording: "开始记录",
   task_record_click: "点击命名并开始记录。",
-  task_stop_label: (name: string, time: string) => `记录中 · ${name} · ${time} · 点击停止`,
+  task_recording_label: (name: string, time: string) => `记录中 · ${name} · ${time}`,
   task_show_activity: "在活动中查看",
   task_notice_started: (who: string, goal: string) => `${who} 开始记录「${goal}」`,
   task_notice_named: (who: string, goal: string) => `${who} 将上下文命名为「${goal}」`,

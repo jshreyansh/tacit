@@ -97,6 +97,7 @@ export function ComposerBox({
   const takesDrop = (e: React.DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-tacit-file");
   return (
     <div
+      data-composer-box=""
       className="@container relative flex flex-col gap-1.5 border px-3 pb-2 pt-2 transition-colors"
       style={{
         borderRadius: compact ? 12 : 14,

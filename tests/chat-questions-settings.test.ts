@@ -4,7 +4,7 @@ import { claudeAnswerInput, claudeCapabilities, claudeQuestions, createClaudeStr
 import { codexAsyncReply, codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexAsyncReply, parseCodexMessage } from "../shared/chat-stream-codex";
 import { replayChat } from "../shared/chat-transcript";
 import { answersFor, canGoOn } from "../src/toolbar/chat/questionModel";
-import { settingsView } from "../src/toolbar/chat/composerSettingsModel";
+import { MENU_WIDTH, menuPlace, settingsView } from "../src/toolbar/chat/composerSettingsModel";
 import { askedAnswers } from "../src/toolbar/chat/threadMessages";
 
 // As claude 2.1.302 sent it in a live run.
@@ -202,6 +202,16 @@ test("the chips show the choice in use, or the agent's default", () => {
   assert.equal(haiku.effort, null);
   assert.equal(haiku.mode?.label, "Plan");
   assert.equal(settingsView({ capabilities: null, settings: { model: null, effort: null, mode: null } }), null);
+});
+
+test("a chip's menu stays inside the message box, however narrow the chat", () => {
+  const box = { left: 100, right: 500 };
+  // Room to the right: it opens from the chip.
+  assert.deepEqual(menuPlace(120, box), { left: 0, width: MENU_WIDTH });
+  // The mode chip near the box's right end: it slides left to end at the edge.
+  assert.deepEqual(menuPlace(400, box), { left: 500 - MENU_WIDTH - 400, width: MENU_WIDTH });
+  // A box narrower than the menu: it fills the box.
+  assert.deepEqual(menuPlace(300, { left: 200, right: 400 }), { left: -100, width: 200 });
 });
 
 test("a past question shows the answers Claude got back", () => {

@@ -46,3 +46,17 @@ export function effortLabel(effort: string, t: EffortDict): string {
   };
   return known[effort] ?? effort;
 }
+
+/** The settings menus' width, when there is room for it. */
+export const MENU_WIDTH = 250;
+
+/**
+ * The menu's left edge (from the chip's) and width: it opens from the chip
+ * and slides left as far as it must to end inside the bounds, narrowing
+ * only when the bounds are narrower than the menu.
+ */
+export function menuPlace(chipLeft: number, bounds: { left: number; right: number }): { left: number; width: number } {
+  const width = Math.min(MENU_WIDTH, Math.max(0, bounds.right - bounds.left));
+  const start = Math.max(bounds.left, Math.min(chipLeft, bounds.right - width));
+  return { left: start - chipLeft, width };
+}
