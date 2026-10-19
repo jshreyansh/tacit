@@ -31,3 +31,18 @@ export function answersFor(questions: readonly ChatQuestion[], drafts: readonly 
   });
   return out;
 }
+
+/**
+ * Skip on question `index`: that one goes unanswered and the form moves
+ * on; on the last, what was answered goes back, or, with nothing
+ * answered, the whole set is skipped.
+ */
+export function skipStep(
+  questions: readonly ChatQuestion[],
+  drafts: readonly QuestionDraft[],
+  index: number,
+): { next: number } | { submit: ChatAnswers } | { skipAll: true } {
+  if (index < questions.length - 1) return { next: index + 1 };
+  const answers = answersFor(questions, drafts.map((d, i) => (i === index ? { picked: [], other: "", otherOn: false } : d)));
+  return Object.keys(answers).length > 0 ? { submit: answers } : { skipAll: true };
+}

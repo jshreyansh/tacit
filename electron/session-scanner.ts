@@ -537,6 +537,8 @@ export class SessionScanner {
             if (typeof input.command === "string")
               return `$ ${input.command.slice(0, 180)}`;
             if (typeof input.file_path === "string") return input.file_path;
+            // A question tool's questions, whole: the chat shows them with their answers.
+            if (Array.isArray(input.questions)) return JSON.stringify(input).slice(0, REPLAY_TEXT_MAX_CHARS);
           }
         }
       }

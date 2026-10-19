@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { claudeAnswerInput, claudeCapabilities, claudeQuestions, createClaudeStreamState, parseClaudeLine } from "../shared/chat-stream-claude";
-import { codexAsyncAnswerText, codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexMessage } from "../shared/chat-stream-codex";
+import { codexAsyncReply, codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexAsyncReply, parseCodexMessage } from "../shared/chat-stream-codex";
 import { replayChat } from "../shared/chat-transcript";
 import { answersFor, canGoOn } from "../src/toolbar/chat/questionModel";
 import { settingsView } from "../src/toolbar/chat/composerSettingsModel";
@@ -35,7 +35,7 @@ test("Claude's question tool comes as questions, not a permission; answers go ba
 
 test("Codex's request_user_input comes as questions; the answer goes back by id", () => {
   const state = createCodexStreamState();
-  const [event] = parseCodexMessage(state, {
+  const events = parseCodexMessage(state, {
     id: 7,
     method: "item/tool/requestUserInput",
     params: {
@@ -49,6 +49,10 @@ test("Codex's request_user_input comes as questions; the answer goes back by id"
       ],
     },
   });
+  // The questions stay in the thread as a call of the tool, then the form asks them.
+  assert.deepEqual(events[0], { kind: "block_start", key: "ask-i", block: "tool", toolCallId: "i", toolName: "request_user_input" });
+  assert.equal(events[1].kind, "block_done");
+  const event = events[2];
   assert.equal(event.kind, "question_request");
   if (event.kind !== "question_request") return;
   assert.equal(event.requestId, "codex-7");
@@ -86,7 +90,9 @@ test("Codex's request_user_input_async shows as the question form, not its messa
   const state = createCodexStreamState();
   const events = parseCodexMessage(state, ASYNC_ASK);
   assert.deepEqual(events[0], { kind: "block_done", key: "call_1", text: "" });
-  const asked = events[1];
+  assert.deepEqual(events[1], { kind: "block_start", key: "ask-call_1", block: "tool", toolCallId: "call_1", toolName: "request_user_input_async" });
+  assert.deepEqual(events[2], { kind: "block_done", key: "ask-call_1", input: { questions: ASYNC_ASK.params.item.questions } });
+  const asked = events[3];
   assert.equal(asked.kind, "question_request");
   if (asked.kind !== "question_request") return;
   assert.equal(asked.afterTurn, true);
@@ -94,7 +100,20 @@ test("Codex's request_user_input_async shows as the question form, not its messa
     ["q0", "What kind of lunch sounds good?", true, ["A salad", "A sandwich"]],
     ["q1", "Anything to avoid?", false, null],
   ]);
-  assert.equal(codexAsyncAnswerText(asked.questions, { q0: ["A salad"], q1: ["Nuts"] }), "What kind of lunch sounds good?\nA salad\n\nAnything to avoid?\nNuts");
+  // The answer goes back in Codex's own envelope, each naming its question
+  // as Codex's apps do; the chat shows the answers.
+  const reply = codexAsyncReply("call_1", asked.questions, { q1: ["Nuts"], q0: ["A salad"] });
+  assert.equal(
+    reply?.text,
+    '<send_user_message_question_reply>\n[{"answer":"A salad","question":"What kind of lunch sounds good?","questionItemId":"[\\"request_user_input_async\\",\\"call_1\\",0]"},{"answer":"Nuts","question":"Anything to avoid?","questionItemId":"[\\"request_user_input_async\\",\\"call_1\\",1]"}]\n</send_user_message_question_reply>',
+  );
+  assert.equal(reply?.shown, "A salad\nNuts");
+  assert.deepEqual(parseCodexAsyncReply(reply!.text), [
+    { answer: "A salad", question: "What kind of lunch sounds good?", index: 0 },
+    { answer: "Nuts", question: "Anything to avoid?", index: 1 },
+  ]);
+  assert.equal(codexAsyncReply("call_1", asked.questions, {}), null);
+  assert.equal(parseCodexAsyncReply("just a message"), null);
   // An ordinary message is still just text.
   const plain = parseCodexMessage(state, { method: "item/completed", params: { item: { type: "agentMessage", id: "m", text: "Hi", delivery: null, questions: null } } });
   assert.deepEqual(plain, [{ kind: "block_done", key: "m", text: "Hi" }]);

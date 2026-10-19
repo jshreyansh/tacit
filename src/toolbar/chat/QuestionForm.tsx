@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatQuestion } from "../../../shared/chat-events";
 import type { PendingQuestion } from "../../../shared/chat-transcript";
-import { answersFor, canGoOn, type QuestionDraft } from "./questionModel";
+import { answersFor, canGoOn, skipStep, type QuestionDraft } from "./questionModel";
 
 /**
  * The agent's questions (Claude's AskUserQuestion, Codex's
  * request_user_input), one at a time: choose one, or several where the
  * agent allows it, or answer in your own words; Back and Next move through
- * them and Submit sends them all, the way the agent's own terminal does.
+ * them and Submit sends them all, the way the agent's own terminal does;
+ * Skip passes over one.
  * A follow-up that depends on the answer comes as the agent's next question.
  */
 
@@ -145,7 +146,20 @@ export function QuestionForm({
       </div>
       <QuestionStep key={question.id} question={question} draft={drafts[index]} onChange={(d) => setDrafts((prev) => prev.map((x, i) => (i === index ? d : x)))} />
       <div className="flex items-center gap-1.5">
-        <button type="button" className={`${button} text-[var(--text-muted)] hover:text-[var(--text-primary)]`} onClick={onSkip}>
+        {/* Skips this question only: what was answered before it still goes back. */}
+        <button
+          type="button"
+          className={`${button} text-[var(--text-muted)] hover:text-[var(--text-primary)]`}
+          onClick={() => {
+            const step = skipStep(questions, drafts, index);
+            if ("next" in step) {
+              setDrafts((prev) => prev.map((d, i) => (i === index ? { picked: [], other: "", otherOn: false } : d)));
+              setIndex(step.next);
+            }
+            else if ("submit" in step) onSubmit(step.submit);
+            else onSkip();
+          }}
+        >
           {t.chat_question_skip}
         </button>
         <span className="flex-1" />

@@ -336,6 +336,8 @@ test("Codex: a question is answered by id", async () => {
   await tick();
   assert.deepEqual(requests.find((r) => r.id === 55)?.result, { answers: { env: { answers: ["Prod"] } } });
   assert.ok(events.some((e) => e.kind === "question_settled" && e.requestId === "codex-55"));
+  // The card in the thread gets the answer.
+  assert.ok(events.some((e) => e.kind === "tool_result" && e.toolCallId === "i" && e.output === JSON.stringify({ answers: { env: { answers: ["Prod"] } } })));
 });
 
 test("Codex: an async question is answered with the next message; skipped, nothing is sent", async () => {
@@ -351,7 +353,11 @@ test("Codex: an async question is answered with the next message; skipped, nothi
   engine.answerQuestion("t1", "codex-ask-c1", { q0: ["Salad"] });
   for (let i = 0; i < 4; i++) await tick();
   assert.ok(events.some((e) => e.kind === "question_settled" && e.requestId === "codex-ask-c1"));
-  assert.ok(events.some((e) => e.kind === "user_message" && e.text === "Lunch?\nSalad"));
+  assert.ok(events.some((e) => e.kind === "tool_result" && e.toolCallId === "c1" && e.output === JSON.stringify({ answers: { q0: { answers: ["Salad"] } } })));
+  assert.ok(events.some((e) => e.kind === "user_message" && e.text === "Salad"));
+  // Codex gets the answer in its own envelope.
+  const sent = JSON.stringify(requests.filter((r) => r.method === "turn/start" || r.method === "turn/steer").at(-1)?.params?.input);
+  assert.ok(sent.includes("<send_user_message_question_reply>") && sent.includes("request_user_input_async"), sent);
   const turns = () => requests.filter((r) => r.method === "turn/start" || r.method === "turn/steer").length;
   const before = turns();
   assert.ok(before >= 1);

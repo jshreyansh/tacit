@@ -15,8 +15,8 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { askedAnswers, createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
-import { claudeQuestions } from "../../../shared/chat-stream-claude";
+import { createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { askedView, isAskedTool, type AskedView } from "./askedModel";
 import { usePinStore } from "../../stores/pinStore";
 import { openPinFull } from "../../tasks/TasksView";
 import { parseAnswerMessage } from "../../tasks/taskModel";
@@ -162,25 +162,68 @@ function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent:
   );
 }
 
-/** The agent's questions, as asked, with the answers given. */
-function AskedCard({ props, t }: { props: ToolCardProps; t: Dict }) {
-  const questions = claudeQuestions(props.args);
-  const answers = askedAnswers(typeof props.result === "string" ? props.result : undefined);
+/**
+ * The agent's questions, kept in the thread once answered (as Claude Code
+ * and Codex keep them): each question and what was said to it, and what
+ * it offered behind Show options.
+ */
+function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; t: Dict }) {
+  const [showOptions, setShowOptions] = useState(false);
   const status = statusOf(props);
+  const total = view.questions.length;
+  const state = view.settled
+    ? view.answered === 0
+      ? t.chat_question_skipped
+      : t.chat_question_answered_count(view.answered, total)
+    : status === "running"
+      ? t.chat_question_waiting_short
+      : t.chat_question_not_answered;
+  const hasOptions = view.questions.some((q) => q.options.length > 0);
   return (
-    <div className="my-1 flex flex-col gap-1.5 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
+    <div className="my-1 flex flex-col gap-2 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
       <span className="flex items-center gap-2 text-[12.5px] text-[var(--text-primary)]">
         {t.chat_question_asked}
-        <span className="ml-auto">
-          <StatusMark status={status} />
-        </span>
+        <span className="text-[11.5px] text-[var(--text-muted)]">· {state}</span>
+        {view.settled && view.answered > 0 && (
+          <span className="ml-auto">
+            <StatusMark status="done" />
+          </span>
+        )}
       </span>
-      {questions.map((q) => (
-        <span key={q.id} className="flex flex-col gap-0.5 text-[12px] leading-snug">
+      {view.questions.map((q) => (
+        <span key={q.id} className="flex flex-col gap-1 text-[12px] leading-snug">
           <span className="text-[var(--text-secondary)]">{q.question}</span>
-          {answers[q.question] && <span className="text-[var(--text-primary)]">→ {answers[q.question]}</span>}
+          {q.answer.length > 0 ? (
+            <span className="text-[var(--text-primary)]">→ {q.secret ? "••••••" : q.answer.join(", ")}</span>
+          ) : (
+            view.settled && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_question_skipped}</span>
+          )}
+          {showOptions && q.options.length > 0 && (
+            <span className="ml-1 flex flex-col gap-0.5 border-l border-[var(--border)] pl-2.5">
+              {q.options.map((o) => {
+                const picked = q.answer.includes(o.label);
+                return (
+                  <span key={o.label} className={picked ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
+                    {picked ? "✓ " : ""}
+                    {o.label}
+                    {o.description && <span className="text-[var(--text-faint)]"> — {o.description}</span>}
+                  </span>
+                );
+              })}
+            </span>
+          )}
         </span>
       ))}
+      {hasOptions && (
+        <button
+          type="button"
+          className="self-start text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          onClick={() => setShowOptions((v) => !v)}
+          aria-expanded={showOptions}
+        >
+          {showOptions ? t.chat_question_hide_options : t.chat_question_show_options}
+        </button>
+      )}
     </div>
   );
 }
@@ -270,7 +313,8 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
   const taskView = taskTool(props.toolName, props.args);
   if (taskView) return <TaskToolCard props={props} view={taskView} t={t} />;
-  if (props.toolName === "AskUserQuestion") return <AskedCard props={props} t={t} />;
+  const asked = askedView(props.toolName, props.args, props.result);
+  if (asked) return <AskedCard props={props} view={asked} t={t} />;
   // Claude's todo list reads as its plan, as it does live.
   const plan = props.toolName === "TodoWrite" ? todoPlan(props.args) : null;
   if (plan) {
@@ -346,7 +390,7 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
   // Kept in view while folded: workers started, and a task made or a question asked.
   const isWorker = (p: RunPart | undefined) => {
     if (!p?.toolName) return false;
-    if (workerSpawn(p.toolName, p.args ?? {}) !== null || p.toolName === "AskUserQuestion") return true;
+    if (workerSpawn(p.toolName, p.args ?? {}) !== null || isAskedTool(p.toolName)) return true;
     const view = taskTool(p.toolName, p.args ?? {});
     return view?.kind === "create" || view?.kind === "ask";
   };

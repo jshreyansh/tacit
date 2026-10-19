@@ -29,11 +29,11 @@ export interface CodexStreamState {
    * Requests waiting on the person, by our request id: the JSON-RPC id and
    * method to answer, and what the answer needs (an MCP form; the access asked for).
    */
-  approvals: Map<string, { rpcId: string | number; method: string; elicitation?: Elicitation; permissions?: Json; toolApproval?: boolean }>;
+  approvals: Map<string, { rpcId: string | number; method: string; elicitation?: Elicitation; permissions?: Json; toolApproval?: boolean; toolCallId?: string }>;
   /** A plan written in plan mode, offered for approval once its turn ends. */
   proposedPlan: { itemId: string; text: string } | null;
-  /** Questions asked with request_user_input_async, by our request id: what each asked, to answer them by. */
-  asyncQuestions: Map<string, ChatQuestion[]>;
+  /** Questions asked with request_user_input_async, by our request id: the message they came in, and what each asked. */
+  asyncQuestions: Map<string, { itemId: string; questions: ChatQuestion[] }>;
 }
 
 export function createCodexStreamState(): CodexStreamState {
@@ -48,6 +48,14 @@ export const CODEX_PLAN_PREFIX = "codex-plan-";
  * message and ends its turn; the answer is the person's next message.
  */
 export const CODEX_ASYNC_QUESTION_PREFIX = "codex-ask-";
+
+/** Codex's question tools, by the names its record of the session uses. */
+export const CODEX_ASK_TOOL = "request_user_input";
+export const CODEX_ASK_ASYNC_TOOL = "request_user_input_async";
+
+/** Codex's own envelope for answers to request_user_input_async (as its desktop and terminal apps send them). */
+const ASYNC_REPLY_OPEN = "<send_user_message_question_reply>";
+const ASYNC_REPLY_CLOSE = "</send_user_message_question_reply>";
 
 /** The access Codex asks for beyond its sandbox, in a line or two. */
 function permissionsSummary(permissions: Json): string {
@@ -155,8 +163,16 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
     const questions = codexQuestions(params);
     if (questions.length === 0) return [];
     const requestId = `codex-${message.id}`;
-    state.approvals.set(requestId, { rpcId: message.id, method });
-    return [{ kind: "question_request", requestId, questions }];
+    // The questions stay in the thread as a call of the tool, answered when
+    // the person replies, as Codex's own app keeps them.
+    const toolCallId = typeof params.itemId === "string" && params.itemId ? params.itemId : requestId;
+    state.approvals.set(requestId, { rpcId: message.id, method, toolCallId });
+    const key = `ask-${toolCallId}`;
+    return [
+      { kind: "block_start", key, block: "tool", toolCallId, toolName: CODEX_ASK_TOOL },
+      { kind: "block_done", key, input: { questions: params.questions } },
+      { kind: "question_request", requestId, questions },
+    ];
   }
   const rpcId = "id" in message && (typeof message.id === "string" || typeof message.id === "number") ? message.id : null;
   // An MCP server asking the person something: its form, as questions.
@@ -277,11 +293,15 @@ export function parseCodexMessage(state: CodexStreamState, message: unknown): Ch
       if (item.type === "agentMessage") {
         const asked = item.delivery === "async" ? codexAsyncQuestions(item.questions) : [];
         if (asked.length === 0) return [{ kind: "block_done", key: item.id, text: typeof item.text === "string" ? item.text : undefined }];
-        // The message is the questions written out: the form shows them instead.
+        // The message is the questions written out: they show as the
+        // question form, and stay in the thread as a call of the tool.
         const requestId = `${CODEX_ASYNC_QUESTION_PREFIX}${item.id}`;
-        state.asyncQuestions.set(requestId, asked);
+        state.asyncQuestions.set(requestId, { itemId: item.id, questions: asked });
+        const key = `ask-${item.id}`;
         return [
           { kind: "block_done", key: item.id, text: "" },
+          { kind: "block_start", key, block: "tool", toolCallId: item.id, toolName: CODEX_ASK_ASYNC_TOOL },
+          { kind: "block_done", key, input: { questions: item.questions } },
           { kind: "question_request", requestId, questions: asked, afterTurn: true },
         ];
       }
@@ -390,7 +410,7 @@ export function codexQuestions(params: Json): ChatQuestion[] {
 }
 
 /** The questions of a request_user_input_async message: a title, and options or the person's own words. */
-function codexAsyncQuestions(raw: unknown): ChatQuestion[] {
+export function codexAsyncQuestions(raw: unknown): ChatQuestion[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((q): q is Json => isObject(q) && typeof q.title === "string" && q.title.trim() !== "")
@@ -408,12 +428,48 @@ function codexAsyncQuestions(raw: unknown): ChatQuestion[] {
     });
 }
 
-/** The person's answers to request_user_input_async, as the message that carries them: each question, then what they picked. */
-export function codexAsyncAnswerText(questions: readonly ChatQuestion[], answers: ChatAnswers): string {
-  return questions
-    .filter((q) => answers[q.id]?.length)
-    .map((q) => `${q.question}\n${answers[q.id].join(", ")}`)
-    .join("\n\n");
+/**
+ * The person's answers to request_user_input_async: `text` is the message
+ * Codex gets, in its own reply envelope, each answer naming its question
+ * the way Codex's apps do; `shown` is what the chat shows of it (the
+ * answers, the questions being on the card above).
+ */
+export function codexAsyncReply(itemId: string, questions: readonly ChatQuestion[], answers: ChatAnswers): { text: string; shown: string } | null {
+  const replies = questions
+    .map((q, index) => ({ q, index, picked: answers[q.id] ?? [] }))
+    .filter(({ picked }) => picked.length > 0)
+    .map(({ q, index, picked }) => ({
+      answer: picked.join(", "),
+      question: q.question,
+      questionItemId: JSON.stringify([CODEX_ASK_ASYNC_TOOL, itemId, index]),
+    }));
+  if (replies.length === 0) return null;
+  return {
+    text: `${ASYNC_REPLY_OPEN}\n${JSON.stringify(replies)}\n${ASYNC_REPLY_CLOSE}`,
+    shown: replies.map((r) => r.answer).join("\n"),
+  };
+}
+
+/** A message that answers request_user_input_async questions: each answer and the index of its question, or null when it's not one. */
+export function parseCodexAsyncReply(text: string): { answer: string; question: string; index: number | null }[] | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(ASYNC_REPLY_OPEN) || !trimmed.endsWith(ASYNC_REPLY_CLOSE)) return null;
+  try {
+    const replies = JSON.parse(trimmed.slice(ASYNC_REPLY_OPEN.length, -ASYNC_REPLY_CLOSE.length)) as unknown;
+    if (!Array.isArray(replies)) return null;
+    return replies.filter(isObject).map((r) => {
+      let index: number | null = null;
+      try {
+        const id = typeof r.questionItemId === "string" ? (JSON.parse(r.questionItemId) as unknown) : null;
+        if (Array.isArray(id) && typeof id[2] === "number") index = id[2];
+      } catch {
+        // An id we don't read: matched by its question instead.
+      }
+      return { answer: typeof r.answer === "string" ? r.answer : "", question: typeof r.question === "string" ? r.question : "", index };
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** The answer to an MCP server's question: accepted with its values, or declined when skipped. */

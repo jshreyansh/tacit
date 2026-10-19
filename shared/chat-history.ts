@@ -1,6 +1,7 @@
-import type { ChatEvent } from "./chat-events";
 import { splitMentions } from "./chat-attachments";
 import type { TimelineEvent } from "./sessions";
+import type { ChatAnswers, ChatEvent, ChatQuestion } from "./chat-events";
+import { CODEX_ASK_ASYNC_TOOL, codexAsyncQuestions, codexQuestionResult, parseCodexAsyncReply } from "./chat-stream-codex";
 
 /**
  * A session's history, read from the agent's own record of it (Claude's
@@ -117,6 +118,8 @@ export function splitCarriedTools(text: string): CarriedPart[] {
 export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefix = "h"): ChatEvent[] {
   const out: ChatEvent[] = [];
   const openCalls: string[] = [];
+  // Codex's request_user_input_async questions, answered by a later message.
+  let asked: { callId: string; questions: ChatQuestion[]; answers: ChatAnswers } | null = null;
   let inTurn = false;
   let block = 0;
   const endTurn = (outcome: "success" | "interrupted" = "success") => {
@@ -137,6 +140,22 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
         }
         endTurn();
         {
+          // Answers to Codex's async questions go on their card; the
+          // message shows the answers.
+          const replies = asked ? parseCodexAsyncReply(ev.textPreview) : null;
+          if (asked && replies) {
+            const { callId, questions, answers } = asked;
+            for (const reply of replies) {
+              const index = reply.index ?? questions.findIndex((q) => q.question === reply.question);
+              if (questions[index]) answers[questions[index].id] = [reply.answer];
+            }
+            out.push(
+              { kind: "tool_result", toolCallId: callId, isError: false, output: JSON.stringify(codexQuestionResult(answers)) },
+              { kind: "user_message", id: `${idPrefix}u${ev.index}`, text: replies.map((r) => r.answer).join("\n"), at: ev.timestamp },
+            );
+            inTurn = true;
+            break;
+          }
           // Files sent with it are mentions on its last lines.
           const { text, attachments } = splitMentions(ev.textPreview);
           out.push({ kind: "user_message", id: `${idPrefix}u${ev.index}`, text, at: ev.timestamp, ...(attachments.length ? { attachments } : {}) });
@@ -180,6 +199,7 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
           { kind: "block_start", key, block: "tool", toolCallId: callId, toolName: unwrapped?.name ?? ev.toolName ?? "tool" },
           { kind: "block_done", key, input },
         );
+        if (ev.toolName === CODEX_ASK_ASYNC_TOOL) asked = { callId, questions: codexAsyncQuestions(input.questions), answers: {} };
         break;
       }
       case "tool_result": {

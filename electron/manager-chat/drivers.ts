@@ -20,7 +20,7 @@ import {
   CODEX_ASYNC_QUESTION_PREFIX,
   CODEX_PLAN_PREFIX,
   codexApprovalResult,
-  codexAsyncAnswerText,
+  codexAsyncReply,
   codexCapabilities,
   codexElicitationResult,
   codexQuestionResult,
@@ -447,18 +447,22 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
         if (!asked) return;
         state.asyncQuestions.delete(requestId);
         options.emit({ kind: "question_settled", requestId });
-        const text = answers ? codexAsyncAnswerText(asked, answers) : "";
-        if (text) {
-          options.emit({ kind: "user_message", id: randomUUID(), text, at: new Date().toISOString() });
-          void startTurn(text);
+        options.emit({ kind: "tool_result", toolCallId: asked.itemId, isError: false, output: JSON.stringify(codexQuestionResult(answers)) });
+        const reply = answers ? codexAsyncReply(asked.itemId, asked.questions, answers) : null;
+        if (reply) {
+          options.emit({ kind: "user_message", id: randomUUID(), text: reply.shown, at: new Date().toISOString() });
+          void startTurn(reply.text);
         }
         return;
       }
       const target = state.approvals.get(requestId);
       if (!target) return;
       state.approvals.delete(requestId);
-      writeMessage({ id: target.rpcId, result: target.elicitation ? codexElicitationResult(target.elicitation, answers) : codexQuestionResult(answers) });
+      const result = target.elicitation ? codexElicitationResult(target.elicitation, answers) : codexQuestionResult(answers);
+      writeMessage({ id: target.rpcId, result });
       options.emit({ kind: "question_settled", requestId });
+      // The questions' card in the thread gets the answers.
+      if (target.toolCallId) options.emit({ kind: "tool_result", toolCallId: target.toolCallId, isError: false, output: JSON.stringify(result) });
     },
     configure: (change) => {
       if (change.mode === "plan" && chosen.mode !== "plan") beforePlan = chosen.mode ?? settings.mode ?? null;
