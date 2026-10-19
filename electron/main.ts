@@ -100,7 +100,7 @@ import {
 import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import { spawn as spawnChild } from "node:child_process";
 import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
-import { findSessionFile } from "./manager-chat/session-file";
+import { findSessionFile, isSessionFile } from "./manager-chat/session-file";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
 import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
@@ -2501,18 +2501,26 @@ function setupIpc() {
   ipcMain.handle("hook:get-socket-path", () => hookSocketPath);
   ipcMain.handle("hook:get-health", () => hookReceiver.getHealth());
 
-  ipcMain.handle("sessions:load-replay", async (_event, filePath: string) => {
+  // Only the app's own window, and only an agent's session record: the path
+  // comes from the renderer, so it can't name any other file.
+  ipcMain.handle("sessions:load-replay", async (event, filePath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("sessions:load-replay is only for the app's window");
+    if (!isSessionFile(filePath, os.homedir())) throw new Error("Not an agent session file");
     return sessionScanner.loadReplay(filePath);
   });
 
   ipcMain.handle(
     "sessions:fork",
     async (
-      _event,
-      sourceFilePath: string,
-      turnIndex: number,
-      targetProvider?: "claude" | "codex",
+      event,
+      sourceFilePath: unknown,
+      turnIndex: unknown,
+      targetProvider?: unknown,
     ) => {
+      if (!isMainWindowSender(event)) throw new Error("sessions:fork is only for the app's window");
+      if (!isSessionFile(sourceFilePath, os.homedir())) throw new Error("Not an agent session file");
+      if (typeof turnIndex !== "number" || !Number.isInteger(turnIndex) || turnIndex < 0) throw new Error("Invalid turn");
+      if (targetProvider !== undefined && targetProvider !== "claude" && targetProvider !== "codex") throw new Error("Invalid provider");
       const { forkSession } = await import("./session-fork.js");
       return forkSession(sourceFilePath, turnIndex, targetProvider);
     },
