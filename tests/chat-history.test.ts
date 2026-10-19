@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { replayChat } from "../shared/chat-transcript";
 import type { TimelineEvent } from "../shared/sessions";
+import { extractUserPromptText } from "../electron/session-scanner.ts";
 
 let n = 0;
 const ev = (type: TimelineEvent["type"], textPreview = "", extra: Partial<TimelineEvent> = {}): TimelineEvent => ({
@@ -130,4 +131,32 @@ test("a session carried over into Codex shows the other agent's tool calls as ca
       ["text", "Done."],
     ],
   );
+});
+
+test("a Codex message keeps every file it was sent with: images come after its text, not as mentions", () => {
+  // As Codex records a message with a PDF and an image attached.
+  const line = {
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "What's in these two files?\n\n@/Users/me/Downloads/deck.pdf" },
+        { type: "input_text", text: '<image name=[Image #1] path="/Users/me/Downloads/photo.JPG">' },
+        { type: "input_image", image_url: "data:image/jpeg;base64,AAAA" },
+        { type: "input_text", text: "</image>" },
+      ],
+    },
+  };
+  const [message] = timelineToChatEvents([ev("user_prompt", extractUserPromptText(line))]);
+  assert.equal(message.kind, "user_message");
+  assert.equal(message.kind === "user_message" && message.text, "What's in these two files?");
+  assert.deepEqual(
+    message.kind === "user_message" && message.attachments?.map((a) => [a.kind, a.name]),
+    [["file", "deck.pdf"], ["image", "photo.JPG"]],
+  );
+  // Only an image, no text: the message is the image, not Codex's tag.
+  const imageOnly = { type: "response_item", payload: { type: "message", role: "user", content: line.payload.content.slice(1) } };
+  const [only] = timelineToChatEvents([ev("user_prompt", extractUserPromptText(imageOnly))]);
+  assert.deepEqual(only.kind === "user_message" && [only.text, only.attachments?.map((a) => a.name)], ["", ["photo.JPG"]]);
 });

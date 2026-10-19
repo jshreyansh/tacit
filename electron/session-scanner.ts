@@ -7,6 +7,7 @@ import {
   parseSessionTelemetryLine,
   type SessionType,
 } from "./session-watcher.ts";
+import { splitMentions, withMentions } from "../shared/chat-attachments.ts";
 import { isFailedToolResult } from "../shared/sessions.ts";
 import type {
   SessionInfo,
@@ -109,6 +110,9 @@ function getObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** Codex's tag before an image sent with a message: `<image name=[Image #1] path="/abs/path.png">`. */
+const CODEX_IMAGE_OPEN = /^<image\b[^>]*\bpath="([^"]+)"[^>]*>$/;
+
 /**
  * Extract the prose a user typed for a single JSONL entry.
  *
@@ -156,6 +160,12 @@ export function extractUserPromptText(raw: Record<string, unknown>): string {
   ) {
     const content = payload.content;
     if (Array.isArray(content)) {
+      // An image sent with the message comes after its text, wrapped in
+      // `<image name=[Image #1] path="…">` and `</image>` around the
+      // image itself. It's written back as a mention, as the files are,
+      // so the message keeps every file it was sent with.
+      let prompt = "";
+      const images: string[] = [];
       for (const block of content) {
         if (!block || typeof block !== "object") continue;
         const entry = block as Record<string, unknown>;
@@ -166,10 +176,18 @@ export function extractUserPromptText(raw: Record<string, unknown>): string {
               ? entry.content
               : "";
         if (!text) continue;
-        const cleaned = stripSyntheticUserBlocks(text);
-        if (cleaned) return cleaned.slice(0, REPLAY_TEXT_MAX_CHARS);
+        const image = CODEX_IMAGE_OPEN.exec(text.trim());
+        if (image) {
+          images.push(image[1]);
+          continue;
+        }
+        if (text.trim() === "</image>" || prompt) continue;
+        prompt = stripSyntheticUserBlocks(text).slice(0, REPLAY_TEXT_MAX_CHARS);
       }
-      return "";
+      if (images.length === 0) return prompt;
+      // After the files the text already mentions, so they stay one block.
+      const sent = splitMentions(prompt);
+      return withMentions(sent.text, [...sent.attachments.map((a) => a.path), ...images]);
     }
     if (typeof content === "string") {
       const cleaned = stripSyntheticUserBlocks(content);
