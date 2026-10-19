@@ -52,11 +52,11 @@ test("panels opening after the chat move by its width and a gap, only while it i
   assert.equal(chatDockOffset({ open: false, width: 440 }, 8), 0);
 });
 
-test("only a docked chat takes room beside the bar; floating, full screen and on canvas take none", async () => {
+test("only a docked chat takes room beside the bar; floating and full screen take none", async () => {
   const { chatDockOffset } = await import("../src/stores/chatDockStore");
   assert.equal(chatDockOffset({ open: true, width: 440, placement: "dock" }, 8), 448);
   assert.equal(chatDockOffset({ open: true, width: 440 }, 8), 448);
-  for (const placement of ["float", "full", "canvas"] as const) assert.equal(chatDockOffset({ open: true, width: 440, placement }, 8), 0);
+  for (const placement of ["float", "full"] as const) assert.equal(chatDockOffset({ open: true, width: 440, placement }, 8), 0);
   assert.equal(chatDockOffset({ open: false, width: 440, placement: "dock" }, 8), 0);
 });
 

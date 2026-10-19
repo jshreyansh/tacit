@@ -204,7 +204,6 @@ export const en = {
   chat_place_dock: "Dock to the side",
   chat_place_float: "Pop out",
   chat_place_full: "Full screen",
-  chat_place_canvas: "Show on canvas",
   chat_pill_open: "Open the chat",
   chat_attach: "Attach files",
   chat_attach_hint: "Attach files (or drop them here, or paste an image)",

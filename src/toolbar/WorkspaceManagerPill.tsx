@@ -62,10 +62,8 @@ import { useChatDockStore } from "../stores/chatDockStore";
 import { usePanelPresence } from "../utils/usePanelPresence";
 import { PANEL_REVEAL_TRANSITION, PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS, panelContentStyle } from "../utils/panelAnimation";
 import { clampFloatRect, defaultFloatRect, FLOAT_MIN } from "../stores/chatDockStore";
-import { useManagerChatHost } from "../stores/managerChatHostStore";
 import { ChatPlacementMenu } from "./chat/ChatPlacementMenu";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
-import { createPortal } from "react-dom";
 import { useWindowSize } from "../utils/useWindowSize";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
@@ -608,10 +606,9 @@ export function WorkspaceManagerPill() {
     target.addEventListener("pointercancel", up);
   }, []);
 
-  // ── Where the chat lives: docked, popped out, full screen, on the canvas ──
+  // ── Where the chat lives: docked, popped out or full screen ──
   const placement = useChatDockStore((s) => s.placement);
   const storedFloat = useChatDockStore((s) => s.floatRect);
-  const chatHost = useManagerChatHost();
   const viewSize = useWindowSize();
   const floatRect = clampFloatRect(storedFloat ?? defaultFloatRect(viewSize), viewSize);
   const [nearDock, setNearDock] = useState(false);
@@ -711,28 +708,6 @@ export function WorkspaceManagerPill() {
     },
     [floatRect],
   );
-
-  // On the canvas, opening the chat goes to it: the manager's tile, or its
-  // tab in the grid.
-  const wasOpen = useRef(dockOpen);
-  useEffect(() => {
-    const opened = dockOpen && !wasOpen.current;
-    wasOpen.current = dockOpen;
-    if (!opened || placement !== "canvas" || !managerTerminal) return;
-    const view = useWorkdeskViewStore.getState();
-    if (view.mode === "grid") view.setOpenNode({ kind: "terminal", id: managerTerminal.id });
-    else flyToManager();
-  }, [dockOpen, placement, managerTerminal, flyToManager]);
-  // Moved onto the canvas from elsewhere: go there too.
-  const lastPlacement = useRef(placement);
-  useEffect(() => {
-    const moved = placement !== lastPlacement.current;
-    lastPlacement.current = placement;
-    if (!moved || placement !== "canvas" || !managerTerminal) return;
-    const view = useWorkdeskViewStore.getState();
-    if (view.mode === "grid") view.setOpenNode({ kind: "terminal", id: managerTerminal.id });
-    else flyToManager();
-  }, [placement, managerTerminal, flyToManager]);
 
   /** Esc to the manager's terminal: how Claude and Codex stop a turn. */
   const stopTurn = useCallback(() => {
@@ -1053,8 +1028,6 @@ export function WorkspaceManagerPill() {
     frameStyle = { opacity: shown ? 1 : 0, transition: "opacity 180ms ease" };
     innerStyle = {};
   }
-  /** On the canvas the chat goes into the manager's tile (or tab); elsewhere it floats over the app. */
-  const inPlace = (node: React.ReactNode) => (placement === "canvas" ? (chatHost ? createPortal(node, chatHost) : null) : node);
 
 
   return (
@@ -1068,9 +1041,9 @@ export function WorkspaceManagerPill() {
         style={{ top: TITLE_STRIP_HEIGHT + CHROME_INSET, bottom: CHROME_INSET, left: railEdge, width: dockWidth, borderColor: "color-mix(in srgb, var(--cyan) 60%, transparent)", background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
       />
     )}
-    {dockMounted && inPlace(
+    {dockMounted && (
     <aside
-      className={placement === "canvas" ? "absolute inset-0 overflow-hidden" : `tc-float fixed overflow-hidden ${placement === "float" ? "z-[70]" : placement === "full" ? "z-[39]" : "z-[44]"}`}
+      className={`tc-float fixed overflow-hidden ${placement === "float" ? "z-[70]" : placement === "full" ? "z-[39]" : "z-[44]"}`}
       aria-label={t.project_chat_title}
       aria-hidden={!dockOpen}
       style={
@@ -1162,20 +1135,8 @@ export function WorkspaceManagerPill() {
         </button>
         {/* Recording, here while the pill is away. */}
         <TaskControl variant="icon" shell="header" />
-        {/* Where the chat lives, and taking the manager to its terminal. */}
-        <ChatPlacementMenu
-          buttonClass={iconButton}
-          extras={
-            managerTerminal
-              ? [
-                  { label: t.project_chat_go_to, onClick: flyToManager },
-                  ...(chatMode && hasChatMode(managerTerminal.type)
-                    ? [{ label: t.chat_mode_open_terminal, onClick: () => requestManagerMove(managerTerminal.id, "terminal", running), disabled: pendingMove === "terminal" }]
-                    : []),
-                ]
-              : []
-          }
-        />
+        {/* Where the chat lives, and going to the manager's tile. */}
+        <ChatPlacementMenu buttonClass={iconButton} extras={managerTerminal ? [{ label: t.project_chat_go_to, onClick: flyToManager }] : []} />
         <button
           type="button"
           className={iconButton}

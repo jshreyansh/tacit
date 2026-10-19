@@ -203,7 +203,6 @@ export const zh = {
   chat_place_dock: "停靠在侧边",
   chat_place_float: "弹出窗口",
   chat_place_full: "全屏",
-  chat_place_canvas: "在画布中显示",
   chat_pill_open: "打开聊天",
   chat_attach: "附加文件",
   chat_attach_hint: "附加文件（也可拖到这里，或粘贴图片）",

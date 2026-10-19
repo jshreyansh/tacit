@@ -4,10 +4,9 @@ import { useT } from "../../i18n/useT";
 import { useChatDockStore, type ChatPlacement } from "../../stores/chatDockStore";
 
 /**
- * The chat header's ⋮: where the chat lives (docked, popped out, full
- * screen, or on the canvas in the manager's tile), and the moves that take
- * the manager elsewhere. The menu is laid on the page, so it opens whole
- * even from a small tile on the canvas.
+ * The chat header's ⋮: where the chat lives (docked, popped out or full
+ * screen), and going to the manager's tile. The menu is laid on the page,
+ * so the chat's clipped frame doesn't cut it off.
  */
 
 type Extra = { label: string; onClick: () => void; disabled?: boolean };
@@ -33,14 +32,6 @@ function PlacementIcon({ placement }: { placement: ChatPlacement }) {
       return (
         <svg {...common} strokeLinecap="round">
           <path d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10" />
-        </svg>
-      );
-    case "canvas":
-      return (
-        <svg {...common}>
-          <rect x="1.75" y="4" width="6" height="4.5" rx="1" />
-          <rect x="8.75" y="7.5" width="5.5" height="5" rx="1" />
-          <path d="M7.75 6.25h2.5v1.25" strokeLinecap="round" />
         </svg>
       );
   }
@@ -77,7 +68,6 @@ export function ChatPlacementMenu({ buttonClass, extras }: { buttonClass: string
     { id: "dock", label: t.chat_place_dock },
     { id: "float", label: t.chat_place_float },
     { id: "full", label: t.chat_place_full },
-    { id: "canvas", label: t.chat_place_canvas },
   ];
   const rect = open ? buttonRef.current?.getBoundingClientRect() : undefined;
   const item = "tc-rail-btn flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-[12.5px] text-[var(--text-primary)] disabled:opacity-45";

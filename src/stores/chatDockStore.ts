@@ -46,11 +46,9 @@ export function loadChatWidth(): number {
  *   resized from its edges; it pushes nothing aside.
  * - `full`: over everything right of the bar, the conversation in one
  *   readable column.
- * - `canvas`: inside the manager's tile, panning and zooming with the canvas
- *   (in the grid, the manager's tab).
  * ⌘J, the bar's chat button and the pill open it wherever it was last put.
  */
-export type ChatPlacement = "dock" | "float" | "full" | "canvas";
+export type ChatPlacement = "dock" | "float" | "full";
 
 const PLACEMENT_KEY = "tacit.chatDock.placement.v1";
 const FLOAT_KEY = "tacit.chatDock.float.v1";
@@ -67,7 +65,8 @@ export const FLOAT_MIN = { w: 340, h: 360 };
 export function loadPlacement(): ChatPlacement {
   try {
     const raw = storage()?.getItem(PLACEMENT_KEY);
-    return raw === "float" || raw === "full" || raw === "canvas" ? raw : "dock";
+    // "canvas" (the chat inside the manager's tile) is gone: it opens docked.
+    return raw === "float" || raw === "full" ? raw : "dock";
   } catch {
     return "dock";
   }
