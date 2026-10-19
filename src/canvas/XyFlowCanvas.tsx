@@ -1,3 +1,4 @@
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -994,6 +995,7 @@ function XyFlowCanvasInner() {
     };
   }, [isPanMode, isPanning]);
 
+  const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
   const canvasBgStyle: React.CSSProperties = {
     ...(IS_MAC && canvasOpacity < 100
       ? {
@@ -1019,7 +1021,10 @@ function XyFlowCanvasInner() {
       ref={canvasContainerRef}
       // Full-bleed. The chrome floats over the canvas rather than squeezing
       // it, so there is no edge for an unpainted corner to appear at.
-      className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass}`}
+      // Under the grid view only the dotted background shows: the tiles,
+      // wires and handles would ghost through the grid's glass. The browser
+      // layer stays, for a browser laid over its grid tab.
+      className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass} ${gridMode ? "[&>*:not(#canvas-card-layer)]:invisible" : ""}`}
       data-activity-heatmap={activityHeatmapEnabled ? "true" : undefined}
       style={canvasBgStyle}
       onMouseDownCapture={handleContainerMouseDown}
@@ -1138,13 +1143,18 @@ function XyFlowCanvasInner() {
         </LayerErrorBoundary>
       )}
 
-      <LayerErrorBoundary name="Worktree labels">
-        <WorktreeLabelLayer />
-      </LayerErrorBoundary>
+      {/* Laid on the page, above the grid view's panel: canvas only. */}
+      {!gridMode && (
+        <LayerErrorBoundary name="Worktree labels">
+          <WorktreeLabelLayer />
+        </LayerErrorBoundary>
+      )}
 
-      <LayerErrorBoundary name="Waypoints">
-        <SpatialWaypointsLayer />
-      </LayerErrorBoundary>
+      {!gridMode && (
+        <LayerErrorBoundary name="Waypoints">
+          <SpatialWaypointsLayer />
+        </LayerErrorBoundary>
+      )}
 
       <LayerErrorBoundary name="Agent tree">
         <FamilyTreeOverlay />
@@ -1167,10 +1177,12 @@ function XyFlowCanvasInner() {
 }
 
 export function XyFlowCanvas() {
+  // The caret is laid on the page, above the grid view's panel: canvas only.
+  const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
   return (
     <ReactFlowProvider>
       <XyFlowCanvasInner />
-      <FocusCaretOverlay />
+      {!gridMode && <FocusCaretOverlay />}
     </ReactFlowProvider>
   );
 }

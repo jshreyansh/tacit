@@ -17,6 +17,8 @@ export function CanvasCardLayer() {
   // layer's scaled space so that, scaled back by 1/scale, it lands on the
   // tab's rectangle at 100%.
   const projection = useWorkdeskViewStore((state) => state.projection);
+  // Under the grid view only the one laid over its tab shows.
+  const gridMode = useWorkdeskViewStore((state) => state.mode === "grid");
   const layerRef = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   useLayoutEffect(() => {
@@ -63,7 +65,11 @@ export function CanvasCardLayer() {
           return (
             <div
               key={card.id}
-              style={{ pointerEvents: "auto", ...(layout ? { position: "relative", zIndex: 1 } : {}) }}
+              style={{
+                pointerEvents: "auto",
+                ...(layout ? { position: "relative", zIndex: 1 } : {}),
+                ...(gridMode && !layout ? { visibility: "hidden" } : {}),
+              }}
               data-record-node={`browser:${card.id}`}
             >
               <BrowserCard card={card} projectedLayout={layout} />
