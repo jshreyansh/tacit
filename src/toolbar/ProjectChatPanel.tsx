@@ -82,7 +82,9 @@ export function useManagerConversation(
   );
 
   const load = useCallback(async () => {
-    if (!sessionFilePath) {
+    // Only a transcript can be replayed: OpenCode keeps its sessions in a
+    // database, which the main process rightly refuses to read as one.
+    if (!sessionFilePath || !sessionFilePath.endsWith(".jsonl")) {
       setTimeline(null);
       return;
     }
