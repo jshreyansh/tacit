@@ -150,10 +150,12 @@ export function TaskControl({
           {run ? <StopIcon size={pill ? 20 : 17} /> : <RecordIcon size={pill ? 22 : 18} />}
           {run && pill && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
         </button>
-        {/* Started on its own when you first typed to an agent: said beside it. */}
+        {/* Started on its own when you first typed to an agent: said beside it.
+            In the message box, over the box's left end: the chat's Stop sits
+            over its right end. */}
         {autoHint && !open && !showCard && (
           <div
-            className="tc-float tc-enter-fade pointer-events-none absolute bottom-full right-0 z-50 mb-2 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)]"
+            className={`tc-float tc-enter-fade pointer-events-none absolute bottom-full z-50 mb-2 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)] ${pill ? "right-0" : "left-0"}`}
             style={{ borderRadius: 10 }}
           >
             {t.task_auto_hint}
