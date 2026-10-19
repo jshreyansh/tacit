@@ -821,16 +821,14 @@ export function WorkspaceManagerPill() {
   const iconButton =
     "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
 
-  // ── Resting: the pill at the bottom, the recording chip beside it ──────
+  // ── Resting: the pill at the bottom, the record button right of it ─────
   const restingPill = !dockOpen && (
       <div
-        // The context chip and the pill share one row, centred together, so
+        // The pill and its record button share one row, centred together, so
         // what is being recorded sits beside who you are talking to.
         className="tc-enter-fade-up pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
         style={{ bottom: bottomOffset }}
       >
-        {/* Recording what you work on, beside the pill. */}
-        <TaskControl variant="icon" shell="pill" />
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           {/* One line above the pill: what the manager is doing, or the last
               thing it said. */}
@@ -970,6 +968,8 @@ export function WorkspaceManagerPill() {
             </button>
           )}
         </div>
+        {/* Recording what you work on, right of the pill. */}
+        <TaskControl variant="icon" shell="pill" />
       </div>
   );
 
@@ -1133,8 +1133,6 @@ export function WorkspaceManagerPill() {
             <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
           )}
         </button>
-        {/* Recording, here while the pill is away. */}
-        <TaskControl variant="icon" shell="header" />
         {/* Where the chat lives, and going to the manager's tile. */}
         <ChatPlacementMenu buttonClass={iconButton} extras={managerTerminal ? [{ label: t.project_chat_go_to, onClick: flyToManager }] : []} />
         <button
@@ -1456,6 +1454,7 @@ export function WorkspaceManagerPill() {
             attachments={attachments}
             settings={chatMode ? <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} /> : undefined}
             meter={chatMode ? <UsageMeter transcript={transcript} agent={managerTerminal.type} /> : undefined}
+            record={<TaskControl variant="icon" shell="composer" />}
             canSend={(!!draft.trim() || attachments.items.length > 0) && !attachments.busy && !sending}
           />
         </div>

@@ -66,6 +66,7 @@ export function ComposerBox({
   attachments,
   settings,
   meter,
+  record,
   trailing,
   showSend = true,
   canSend,
@@ -83,6 +84,8 @@ export function ComposerBox({
   settings?: ReactNode;
   /** The usage ring, beside send. */
   meter?: ReactNode;
+  /** The record button, left of the usage ring (the manager's chat only). */
+  record?: ReactNode;
   /** Stop, while a turn runs. */
   trailing?: ReactNode;
   showSend?: boolean;
@@ -161,6 +164,7 @@ export function ComposerBox({
           {attachments.busy ? <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : <PaperclipIcon size={15} />}
         </button>
         <span className="flex min-w-0 flex-1 items-center">{settings}</span>
+        {record}
         {meter && <span className="flex shrink-0 items-center">{meter}</span>}
         {trailing}
         {showSend && (
