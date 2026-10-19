@@ -99,7 +99,7 @@ import {
 } from "./hydra-project.ts";
 import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import { spawn as spawnChild } from "node:child_process";
-import { ChatEngine, type ChatAgent } from "./manager-chat/chat-engine";
+import { ChatEngine, chatSettingsChange, type ChatAgent } from "./manager-chat/chat-engine";
 import { findSessionFile, isSessionFile } from "./manager-chat/session-file";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
@@ -2351,16 +2351,13 @@ function setupIpc() {
   });
   // The model, effort or mode picked in the chat: short names only.
   ipcMain.handle("chat:configure", (event, terminalId: unknown, settings: unknown) => {
-    if (!isMainWindowSender(event) || !chatId(terminalId) || typeof settings !== "object" || settings === null) return;
-    const NAME = /^[A-Za-z0-9._:\[\] -]{1,80}$/;
-    const out: Record<string, string | null> = {};
-    for (const key of ["model", "effort", "mode"] as const) {
-      const value = (settings as Record<string, unknown>)[key];
-      if (value === undefined) continue;
-      if (value !== null && (typeof value !== "string" || !NAME.test(value))) return;
-      out[key] = value as string | null;
+    if (!isMainWindowSender(event) || !chatId(terminalId)) return;
+    const change = chatSettingsChange(settings);
+    if (!change) {
+      dbg(`[chat] settings change for ${terminalId} refused: ${JSON.stringify(settings).slice(0, 200)}`);
+      return;
     }
-    chatEngine.configure(terminalId, out);
+    chatEngine.configure(terminalId, change);
   });
   ipcMain.handle("chat:stop", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.stop(terminalId);

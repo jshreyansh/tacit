@@ -229,6 +229,7 @@ export const zh = {
   chat_plan_ready: "计划好了。开始执行吗？",
   chat_plan_go_accept: "开始，并自动接受编辑",
   chat_plan_go_ask: "开始，但编辑前先问",
+  chat_plan_go: "开始执行",
   chat_plan_keep: "继续规划",
   chat_plan_change_placeholder: "需要改什么？（可选）",
   chat_plan_back: "返回",

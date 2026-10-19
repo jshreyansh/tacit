@@ -9,6 +9,7 @@ import {
   acpPrompt,
   acpStopOutcome,
   acpTurnEnded,
+  ACP_PLAN_PREFIX,
   createAcpStreamState,
   parseAcpPermission,
   parseAcpUpdate,
@@ -525,8 +526,15 @@ export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
   /** While a session loads, its replay is collected here rather than shown. */
   let replay: ChatEvent[] | null = null;
   let configOptions: unknown = null;
+  /** Each model's efforts, as seen while it was in use (OpenCode lists the current model's only). */
+  const knownEfforts = new Map<string, string[]>();
   let settings: ChatSettings = { model: null, effort: null, mode: null };
   let chosen: Partial<ChatSettings> = {};
+  /** The mode before Plan, to go back to when a plan is carried out. */
+  let beforePlan: string | null = null;
+  let planSeq = 0;
+  /** An approved plan, carried out once the mode to work in is set (or shortly after). */
+  let implementTimer: ReturnType<typeof setTimeout> | null = null;
   const queued: Array<{ text: string; attachments: readonly ChatAttachment[] }> = [];
   const pending = new Map<number, (result: { result?: unknown; error?: { message?: string } }) => void>();
   const err = stderrTail();
@@ -548,26 +556,57 @@ export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
   };
   const fail = (message: string) => options.emit({ kind: "turn_ended", outcome: "error", error: message });
 
-  /** Sets what the person picked on the session, and says what's now in use. */
-  const applyChosen = async (change: Partial<ChatSettings>) => {
-    for (const { configId, value } of acpConfigChanges(configOptions, change)) {
-      const set = await request("session/set_config_option", { sessionId: state.sessionId, configId, value });
-      if (set.error) {
-        fail(set.error.message ?? `OpenCode didn't change its ${configId}.`);
-        continue;
-      }
-      const next = (set.result as { configOptions?: unknown } | undefined)?.configOptions;
-      if (next) configOptions = next;
-    }
-    settings = acpCapabilities(configOptions).settings;
+  /** What the session offers and what's in use, said again after it changes (a model brings its own efforts). */
+  const announce = () => {
+    const caps = acpCapabilities(configOptions, knownEfforts);
+    options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
+    settings = caps.settings;
     options.emit({ kind: "settings", settings });
+  };
+
+  /**
+   * Sets what the person picked on the session: the model first, then each
+   * other option against the options as they then stand.
+   */
+  const applyChosen = async (change: Partial<ChatSettings>) => {
+    if (change.mode === "plan" && settings.mode !== "plan") beforePlan = settings.mode;
+    for (const key of ["model", "effort", "mode"] as const) {
+      if (change[key] === undefined) continue;
+      for (const { configId, value } of acpConfigChanges(configOptions, { [key]: change[key] })) {
+        const set = await request("session/set_config_option", { sessionId: state.sessionId, configId, value });
+        if (set.error) {
+          fail(set.error.message ?? `OpenCode didn't change its ${configId}.`);
+          continue;
+        }
+        const next = (set.result as { configOptions?: unknown } | undefined)?.configOptions;
+        if (next) configOptions = next;
+      }
+    }
+    announce();
+  };
+
+  /** Carries out the approved plan: out of Plan, then Codex's and Claude's words for it. */
+  const implementPlan = async () => {
+    if (implementTimer) clearTimeout(implementTimer);
+    implementTimer = null;
+    if (settings.mode === "plan") await applyChosen({ mode: beforePlan && beforePlan !== "plan" ? beforePlan : "build" });
+    const text = "Implement the plan.";
+    options.emit({ kind: "user_message", id: randomUUID(), text, at: new Date().toISOString() });
+    send(text, []);
   };
 
   const prompt = async (text: string, attachments: readonly ChatAttachment[]) => {
     running = true;
+    state.lastReply = "";
+    const planning = settings.mode === "plan";
     const done = await request("session/prompt", { sessionId: state.sessionId, prompt: acpPrompt(text, attachments) });
     const stop = done.error ? { outcome: "error" as const, error: done.error.message ?? "OpenCode couldn't run the turn." } : acpStopOutcome((done.result as { stopReason?: unknown } | undefined)?.stopReason);
     emitAll(acpTurnEnded(state, stop.outcome, stop.error));
+    // A turn in Plan that ends with a reply is a plan: offered to start on,
+    // as Claude's and Codex's are. OpenCode itself asks nothing.
+    if (planning && stop.outcome === "success" && state.lastReply.trim() && queued.length === 0) {
+      options.emit({ kind: "approval_request", requestId: `${ACP_PLAN_PREFIX}${++planSeq}`, toolName: "ExitPlanMode", input: { plan: state.lastReply.trim() } });
+    }
     running = false;
     const next = queued.shift();
     if (next) void prompt(next.text, next.attachments);
@@ -638,24 +677,23 @@ export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
     }
     options.emit({ kind: "session", sessionId: state.sessionId! });
     configOptions = (opened.result as { configOptions?: unknown } | undefined)?.configOptions ?? null;
-    const caps = acpCapabilities(configOptions);
-    options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
-    settings = caps.settings;
-    options.emit({ kind: "settings", settings });
+    announce();
     if (Object.keys(chosen).length > 0) await applyChosen(chosen);
     ready = true;
     const next = queued.shift();
     if (next) void prompt(next.text, next.attachments);
   })();
 
+  const send = (text: string, attachments: readonly ChatAttachment[]) => {
+    if (!ready || running) {
+      queued.push({ text, attachments });
+      return;
+    }
+    void prompt(text, attachments);
+  };
+
   return {
-    send: (text, attachments = []) => {
-      if (!ready || running) {
-        queued.push({ text, attachments });
-        return;
-      }
-      void prompt(text, attachments);
-    },
+    send: (text, attachments = []) => send(text, attachments),
     interrupt: () => {
       if (!state.sessionId) return;
       writeMessage({ method: "session/cancel", params: { sessionId: state.sessionId } });
@@ -667,7 +705,19 @@ export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
       state.permissions.clear();
       queued.length = 0;
     },
-    answer: (requestId, decision) => {
+    answer: (requestId, decision, note) => {
+      // The plan offered after a turn in Plan: start on it, or keep planning.
+      if (requestId.startsWith(ACP_PLAN_PREFIX)) {
+        options.emit({ kind: "approval_settled", requestId });
+        // The card picks the mode to work in right after; carried out then,
+        // or after a moment in the mode from before Plan.
+        if (decision !== "deny") implementTimer = setTimeout(() => void implementPlan(), 400);
+        else if (note?.trim()) {
+          options.emit({ kind: "user_message", id: randomUUID(), text: note.trim(), at: new Date().toISOString() });
+          send(note.trim(), []);
+        }
+        return;
+      }
       const ask = state.permissions.get(requestId);
       if (!ask) return;
       state.permissions.delete(requestId);
@@ -678,7 +728,14 @@ export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
     answerQuestion: () => {},
     configure: (change) => {
       chosen = { ...chosen, ...change };
-      if (ready) void applyChosen(change);
+      if (!ready) return;
+      const applied = applyChosen(change);
+      // The plan's card picked the mode to work in: carry it out once that's set.
+      if (implementTimer && change.mode && change.mode !== "plan") {
+        clearTimeout(implementTimer);
+        implementTimer = null;
+        void applied.then(implementPlan);
+      }
     },
     stop: () => {
       if (exited) return;

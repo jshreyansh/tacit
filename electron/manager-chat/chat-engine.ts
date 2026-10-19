@@ -59,6 +59,22 @@ export interface ChatEngineDeps {
   now?: () => Date;
 }
 
+/** A model, effort or mode name: OpenCode's models name their provider (`opencode/big-pickle`). */
+const SETTING_NAME = /^[A-Za-z0-9._:[\]/@ -]{1,120}$/;
+
+/** A settings change from the renderer, checked: null when it isn't one, so nothing of it applies. */
+export function chatSettingsChange(settings: unknown): Partial<ChatSettings> | null {
+  if (typeof settings !== "object" || settings === null) return null;
+  const out: Partial<ChatSettings> = {};
+  for (const key of ["model", "effort", "mode"] as const) {
+    const value = (settings as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    if (value !== null && (typeof value !== "string" || !SETTING_NAME.test(value))) return null;
+    out[key] = value;
+  }
+  return out;
+}
+
 export type ChatLimitEvent = Extract<ChatEvent, { kind: "rate_limit" }>;
 
 /** A kept reading still holds until its window resets. */

@@ -53,3 +53,32 @@ test("a replayed history replaces the conversation in the window, and keeps what
   assert.deepEqual(after.settings, { model: "m", effort: null, mode: "build" });
   assert.equal(after.capabilities?.models[0].id, "m");
 });
+
+test("code calling several of Tacit's tools says which on its card; a replayed message keeps the files it linked", async () => {
+  const { createAcpStreamState: make, parseAcpUpdate: parse } = await import("../shared/chat-stream-acp");
+  const state = make();
+  const code = "const a = await tools.tacit.start_task({}); const b = await tools.tacit.create_task({}); await tools.tacit.start_task({});";
+  const events = [
+    ...parse(state, { sessionUpdate: "tool_call", toolCallId: "c1", name: "execute", kind: "other", status: "pending", rawInput: {} }),
+    ...parse(state, { sessionUpdate: "tool_call_update", toolCallId: "c1", status: "in_progress", kind: "other", title: "execute", rawInput: { code } }),
+  ];
+  assert.deepEqual(events.find((e) => e.kind === "block_done"), { kind: "block_done", key: "tool-c1", input: { code, description: "tacit.start_task, tacit.create_task" } });
+
+  const replay = make();
+  const messages = [
+    ...parse(replay, { sessionUpdate: "user_message_chunk", messageId: "u1", content: { type: "text", text: "What's in these?" } }),
+    ...parse(replay, { sessionUpdate: "user_message_chunk", messageId: "u1", content: { type: "resource_link", uri: "file:///Users/me/My%20Notes/note.txt", name: "note.txt" } }),
+    ...parse(replay, { sessionUpdate: "user_message_chunk", messageId: "u1", content: { type: "resource_link", uri: "file:///Users/me/shot.png", name: "shot.png" } }),
+    ...parse(replay, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "A note and a picture." } }),
+  ];
+  assert.deepEqual(messages.find((e) => e.kind === "user_message"), {
+    kind: "user_message",
+    id: "u1",
+    text: "What's in these?",
+    at: "",
+    attachments: [
+      { name: "note.txt", path: "/Users/me/My Notes/note.txt", kind: "file" },
+      { name: "shot.png", path: "/Users/me/shot.png", kind: "image" },
+    ],
+  });
+});

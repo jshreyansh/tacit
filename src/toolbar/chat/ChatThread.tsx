@@ -595,10 +595,15 @@ const TurnNote: FC<{ data: unknown }> = ({ data }) => {
   );
 };
 
-/** How a plan goes on, in each agent's own modes: making changes, or asking first. */
-const PLAN_GO_MODES: Record<string, { go: string; ask: string }> = {
+/**
+ * How a plan goes on, in each agent's own modes: making changes, or asking
+ * first. OpenCode has the one mode to work in (Build; what it asks is its
+ * settings'), so its plan has the one way to start.
+ */
+const PLAN_GO_MODES: Record<string, { go: string; ask?: string }> = {
   claude: { go: "acceptEdits", ask: "default" },
   codex: { go: "auto", ask: "read-only" },
+  opencode: { go: "build" },
 };
 
 /**
@@ -611,12 +616,15 @@ function PlanCard({
   floating,
   glass,
   onGo,
+  canAsk,
   onKeepPlanning,
 }: {
   plan: string;
   floating: boolean;
   glass: string;
   onGo: (how: "go" | "ask") => void;
+  /** Whether there's a mode that asks before edits to start in; without one there's a single Yes. */
+  canAsk: boolean;
   onKeepPlanning: (note: string | undefined) => void;
 }) {
   const t = useT();
@@ -672,11 +680,13 @@ function PlanCard({
       ) : (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => onGo("go")}>
-            {t.chat_plan_go_accept}
+            {canAsk ? t.chat_plan_go_accept : t.chat_plan_go}
           </button>
-          <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onGo("ask")}>
-            {t.chat_plan_go_ask}
-          </button>
+          {canAsk && (
+            <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onGo("ask")}>
+              {t.chat_plan_go_ask}
+            </button>
+          )}
           <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => setKeeping(true)}>
             {t.chat_plan_keep}
           </button>
@@ -721,9 +731,11 @@ export function ApprovalCards({
               plan={typeof input.plan === "string" ? input.plan : ""}
               floating={floating}
               glass={glass}
+              canAsk={PLAN_GO_MODES[agent]?.ask !== undefined}
               onGo={(how) => {
                 onAnswer(a.requestId, "allow_once");
-                onPlanMode?.(PLAN_GO_MODES[agent]?.[how] ?? (how === "go" ? "acceptEdits" : "default"));
+                const modes = PLAN_GO_MODES[agent];
+                onPlanMode?.((how === "ask" ? modes?.ask : modes?.go) ?? (how === "go" ? "acceptEdits" : "default"));
               }}
               onKeepPlanning={(note) => onAnswer(a.requestId, "deny", note)}
             />

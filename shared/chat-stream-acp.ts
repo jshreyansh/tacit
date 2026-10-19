@@ -1,3 +1,4 @@
+import { attachmentKind, baseName } from "./chat-attachments";
 import type { ApprovalDecision, ChatAttachment, ChatEvent, ChatModeOption, ChatModelOption, ChatSettings, PlanStep } from "./chat-events";
 
 /**
@@ -27,12 +28,14 @@ export interface AcpStreamState {
   open: { key: string; kind: "text" | "thinking"; text: string } | null;
   /** Tool calls by id: whether their card has its input yet, and the input last seen. */
   tools: Map<string, { key: string; inputDone: boolean; input: Json; resulted: boolean }>;
-  /** The person's message being replayed, merged from its chunks. */
-  user: { id: string; text: string } | null;
+  /** The person's message being replayed, merged from its chunks, with the files it linked. */
+  user: { id: string; text: string; attachments: ChatAttachment[] } | null;
   /** Whether the agent has said anything since the last turn ended (for replayed history). */
   inTurn: boolean;
   /** Permission asks by our request id: the JSON-RPC id to answer and the options offered. */
   permissions: Map<string, { rpcId: number | string; options: AcpPermissionOption[] }>;
+  /** The turn's last written reply, whole: in Plan, the plan. */
+  lastReply: string;
 }
 
 export interface AcpPermissionOption {
@@ -41,11 +44,13 @@ export interface AcpPermissionOption {
 }
 
 export function createAcpStreamState(): AcpStreamState {
-  return { sessionId: null, open: null, tools: new Map(), user: null, inTurn: false, permissions: new Map() };
+  return { sessionId: null, open: null, tools: new Map(), user: null, inTurn: false, permissions: new Map(), lastReply: "" };
 }
 
 /** Our request id for a permission ask, kept apart from Claude's and Codex's. */
 export const ACP_PERMISSION_PREFIX = "acp-";
+/** A plan offered after a turn in Plan: answered by the driver, not OpenCode. */
+export const ACP_PLAN_PREFIX = "acp-plan-";
 
 /** Tool names by ACP's kind of tool, as the cards already know them from Claude and Codex. */
 const KIND_NAMES: Record<string, string> = {
@@ -64,12 +69,17 @@ const KIND_NAMES: Record<string, string> = {
  * `execute` tool, `tools.tacit.get_workspace_summary()`), so code that
  * calls one tool is named after it, as Claude and Codex name MCP tools.
  */
+/** The MCP tools a piece of OpenCode's code calls, in order, each once (`tacit.start_task`). */
+export function acpCodeCalls(input: Json): string[] {
+  const code = typeof input.code === "string" ? input.code : "";
+  return [...new Set([...code.matchAll(/\btools\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)\s*\(/g)].map((c) => `${c[1]}.${c[2]}`))];
+}
+
 export function acpToolName(name: unknown, kind: unknown, input: Json): string {
-  const code = typeof input.code === "string" ? input.code : null;
-  if (code) {
-    const calls = [...code.matchAll(/\btools\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)\s*\(/g)];
-    const distinct = new Set(calls.map((c) => `${c[1]}.${c[2]}`));
-    if (distinct.size === 1) return `mcp__${calls[0][1]}__${calls[0][2]}`;
+  const calls = acpCodeCalls(input);
+  if (calls.length === 1) {
+    const [server, tool] = calls[0].split(".");
+    return `mcp__${server}__${tool}`;
   }
   if (typeof kind === "string" && KIND_NAMES[kind]) return KIND_NAMES[kind];
   return typeof name === "string" && name ? name : "tool";
@@ -93,6 +103,7 @@ function closeOpen(state: AcpStreamState): ChatEvent[] {
   const open = state.open;
   if (!open) return [];
   state.open = null;
+  if (open.kind === "text" && open.text.trim()) state.lastReply = open.text;
   return [{ kind: "block_done", key: open.key, text: open.text }];
 }
 
@@ -100,7 +111,21 @@ function closeUser(state: AcpStreamState): ChatEvent[] {
   const user = state.user;
   if (!user) return [];
   state.user = null;
-  return [{ kind: "user_message", id: user.id, text: user.text, at: "" }];
+  return [{ kind: "user_message", id: user.id, text: user.text, at: "", ...(user.attachments.length ? { attachments: user.attachments } : {}) }];
+}
+
+/** A file the person linked in a message, as the chat shows one sent with it. */
+function linkedFile(content: Json): ChatAttachment | null {
+  const uri = content.type === "resource_link" && typeof content.uri === "string" ? content.uri : isObject(content.resource) && typeof content.resource.uri === "string" ? content.resource.uri : null;
+  if (!uri?.startsWith("file://")) return null;
+  let filePath: string;
+  try {
+    filePath = decodeURI(uri.slice("file://".length));
+  } catch {
+    return null;
+  }
+  const name = typeof content.name === "string" && content.name ? content.name : baseName(filePath);
+  return { name, path: filePath, kind: attachmentKind(name) };
 }
 
 /** The turn's end: open blocks close and tools still running settle. */
@@ -146,13 +171,16 @@ export function parseAcpUpdate(state: AcpStreamState, update: Json): ChatEvent[]
   switch (update.sessionUpdate) {
     case "user_message_chunk": {
       // Only when a loaded session replays: the live message is the engine's own.
-      const text = isObject(update.content) && typeof update.content.text === "string" ? update.content.text : "";
+      const content = isObject(update.content) ? update.content : {};
+      const text = typeof content.text === "string" ? content.text : "";
+      const file = linkedFile(content);
       const id = typeof update.messageId === "string" ? update.messageId : `u${Date.now()}`;
       const out: ChatEvent[] = [];
       if (state.user && state.user.id !== id) out.push(...closeUser(state));
       if (state.inTurn) out.push(...acpTurnEnded(state, "success"));
       out.push(...closeOpen(state));
-      state.user = state.user ? { ...state.user, text: state.user.text + text } : { id, text };
+      const user = state.user ?? { id, text: "", attachments: [] };
+      state.user = { ...user, text: user.text + text, attachments: file ? [...user.attachments, file] : user.attachments };
       return out;
     }
     case "agent_message_chunk":
@@ -187,7 +215,10 @@ export function parseAcpUpdate(state: AcpStreamState, update: Json): ChatEvent[]
       if (!tool.inputDone && (status === "in_progress" || status === "completed" || status === "failed")) {
         tool.inputDone = true;
         const name = acpToolName(update.name, update.kind, tool.input);
-        out.push({ kind: "block_done", key: tool.key, input: { ...tool.input, ...(name.startsWith("mcp__") ? {} : typeof update.title === "string" && !tool.input.command && !tool.input.code ? { description: update.title } : {}) } });
+        const calls = acpCodeCalls(tool.input);
+        // What the card says it's about: the tools its code calls, or OpenCode's title for it.
+        const about = calls.length > 1 ? calls.join(", ") : !name.startsWith("mcp__") && typeof update.title === "string" && !tool.input.command && !tool.input.code ? update.title : null;
+        out.push({ kind: "block_done", key: tool.key, input: { ...tool.input, ...(about ? { description: about } : {}) } });
       }
       if (!tool.resulted && (status === "completed" || status === "failed")) {
         tool.resulted = true;
@@ -242,8 +273,13 @@ export function acpPermissionOutcome(options: readonly AcpPermissionOption[], de
   return { outcome: { outcome: "cancelled" } };
 }
 
-/** What the session offers to choose, from its config options: models (each with the efforts), Build or Plan, and what's in use. */
-export function acpCapabilities(configOptions: unknown): { models: ChatModelOption[]; modes: ChatModeOption[]; settings: ChatSettings } {
+/**
+ * What the session offers to choose, from its config options: models, Build
+ * or Plan, and what's in use. OpenCode lists the efforts of the model in
+ * use only (none for a model without them), so each model's are what was
+ * seen while it was in use: `knownEfforts`, which this adds to.
+ */
+export function acpCapabilities(configOptions: unknown, knownEfforts: Map<string, string[]> = new Map()): { models: ChatModelOption[]; modes: ChatModeOption[]; settings: ChatSettings } {
   const options = (Array.isArray(configOptions) ? configOptions : []).filter(isObject);
   const select = (category: string) => options.find((o) => o.category === category || o.id === category);
   const choices = (o: Json | undefined) =>
@@ -252,9 +288,10 @@ export function acpCapabilities(configOptions: unknown): { models: ChatModelOpti
   const effort = select("thought_level") ?? select("effort");
   const mode = select("mode");
   const efforts = choices(effort).map((c) => c.value).filter((v) => v !== "default");
+  if (typeof model?.currentValue === "string") knownEfforts.set(model.currentValue, efforts);
   const models = choices(model).map((c) => {
     const name = typeof c.name === "string" ? c.name : c.value;
-    return { id: c.value, label: name, short: name.replace(/^[^/]+\//, ""), efforts, ...(c.value === model?.currentValue ? { isDefault: true } : {}) };
+    return { id: c.value, label: name, short: name.replace(/^[^/]+\//, ""), efforts: knownEfforts.get(c.value) ?? [], ...(c.value === model?.currentValue ? { isDefault: true } : {}) };
   });
   const modes = choices(mode).map((c) => ({ id: c.value, label: typeof c.name === "string" ? c.name : c.value, ...(typeof c.description === "string" ? { description: c.description } : {}) }));
   const current = (o: Json | undefined) => (typeof o?.currentValue === "string" ? o.currentValue : null);
@@ -266,17 +303,24 @@ export function acpCapabilities(configOptions: unknown): { models: ChatModelOpti
   };
 }
 
-/** The config option ids a change sets, as OpenCode names them. */
+/**
+ * The config options a change sets, as OpenCode names them, model first
+ * (it decides which efforts there are). One the session doesn't have now
+ * (an effort, on a model without them) isn't set.
+ */
 export function acpConfigChanges(configOptions: unknown, change: Partial<ChatSettings>): Array<{ configId: string; value: string }> {
   const options = (Array.isArray(configOptions) ? configOptions : []).filter(isObject);
-  const idOf = (category: string, fallback: string) => {
-    const o = options.find((x) => x.category === category || x.id === category);
-    return typeof o?.id === "string" ? o.id : fallback;
+  const idOf = (...categories: string[]) => {
+    const o = options.find((x) => categories.includes(x.category as string) || categories.includes(x.id as string));
+    return typeof o?.id === "string" ? o.id : null;
   };
   const out: Array<{ configId: string; value: string }> = [];
-  if (change.model) out.push({ configId: idOf("model", "model"), value: change.model });
-  if (change.effort !== undefined) out.push({ configId: idOf("thought_level", "effort"), value: change.effort ?? "default" });
-  if (change.mode) out.push({ configId: idOf("mode", "mode"), value: change.mode });
+  const add = (id: string | null, value: string) => {
+    if (id) out.push({ configId: id, value });
+  };
+  if (change.model) add(idOf("model"), change.model);
+  if (change.effort !== undefined) add(idOf("thought_level", "effort"), change.effort ?? "default");
+  if (change.mode) add(idOf("mode"), change.mode);
   return out;
 }
 

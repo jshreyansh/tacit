@@ -5,7 +5,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { ChatEngine, appendEvent } from "../electron/manager-chat/chat-engine";
+import { ChatEngine, appendEvent, chatSettingsChange } from "../electron/manager-chat/chat-engine";
 import type { ChatEvent } from "../shared/chat-events";
 
 /** What Tacit wrote to Claude after asking what it offers (the initialize request it sends at start). */
@@ -447,7 +447,7 @@ test("Keep planning with Codex: what the person would change is their next messa
 function openCodeServer(child: FakeChild, opts: { replay?: object[]; stopReason?: string; holdPrompt?: boolean } = {}) {
   const requests: Array<{ id?: number | string; method?: string; params?: Record<string, any>; result?: any }> = [];
   const config = [
-    { id: "model", name: "Model", category: "model", type: "select", currentValue: "opencode/big-pickle", options: [{ value: "opencode/big-pickle", name: "opencode/Big Pickle" }, { value: "anthropic/claude-opus", name: "anthropic/Claude Opus" }] },
+    { id: "model", name: "Model", category: "model", type: "select", currentValue: "anthropic/claude-opus", options: [{ value: "opencode/big-pickle", name: "opencode/Big Pickle" }, { value: "anthropic/claude-opus", name: "anthropic/Claude Opus" }] },
     { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: "default", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }, { value: "default", name: "Default" }] },
     { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "build", options: [{ value: "build", name: "Build" }, { value: "plan", name: "Plan" }] },
   ];
@@ -463,9 +463,11 @@ function openCodeServer(child: FakeChild, opts: { replay?: object[]; stopReason?
       child.print({ jsonrpc: "2.0", id: msg.id, result: { configOptions: config } });
     }
     if (msg.method === "session/set_config_option") {
-      // The session's options as they now stand, as OpenCode answers.
+      // The session's options as they now stand, as OpenCode answers; Big
+      // Pickle has no efforts, so its options don't list any.
       for (const o of config) if (o.id === msg.params.configId) o.currentValue = msg.params.value;
-      child.print({ jsonrpc: "2.0", id: msg.id, result: { configOptions: config } });
+      const model = config.find((o) => o.id === "model")!.currentValue;
+      child.print({ jsonrpc: "2.0", id: msg.id, result: { configOptions: model === "opencode/big-pickle" ? config.filter((o) => o.id !== "effort") : config } });
     }
     if (msg.method === "session/prompt") {
       if (opts.holdPrompt) prompts.push(msg.id);
@@ -494,9 +496,10 @@ test("OpenCode starts `opencode acp`, opens a session in the folder, offers its 
   assert.ok(events.some((e) => e.kind === "session" && e.sessionId === "ses_new1"));
   const caps = events.find((e) => e.kind === "capabilities");
   assert.ok(caps && caps.kind === "capabilities");
-  assert.deepEqual(caps.models.map((m) => [m.id, m.short, m.efforts]), [["opencode/big-pickle", "Big Pickle", ["low", "high"]], ["anthropic/claude-opus", "Claude Opus", ["low", "high"]]]);
+  // Efforts are known for the model in use only, until another has been in use.
+  assert.deepEqual(caps.models.map((m) => [m.id, m.short, m.efforts]), [["opencode/big-pickle", "Big Pickle", []], ["anthropic/claude-opus", "Claude Opus", ["low", "high"]]]);
   assert.deepEqual(caps.modes.map((m) => m.id), ["build", "plan"]);
-  assert.deepEqual(events.find((e) => e.kind === "settings"), { kind: "settings", settings: { model: "opencode/big-pickle", effort: null, mode: "build" } });
+  assert.deepEqual(events.find((e) => e.kind === "settings"), { kind: "settings", settings: { model: "anthropic/claude-opus", effort: null, mode: "build" } });
   assert.ok(events.some((e) => e.kind === "turn_ended" && e.outcome === "success"));
 });
 
@@ -529,11 +532,18 @@ test("OpenCode streams its thinking, reply and tool calls into the chat; a chang
   assert.deepEqual(t.context, { used: 9000, window: 1000000 });
   assert.equal(t.running, false);
 
-  engine.configure("t1", { model: "anthropic/claude-opus", effort: "high", mode: "plan" });
+  engine.configure("t1", { effort: "high", mode: "plan" });
+  await settle();
+  // The model first; an effort it doesn't take isn't asked for.
+  engine.configure("t1", { model: "opencode/big-pickle", effort: "low" });
   await settle();
   const sets = server.requests.filter((r) => r.method === "session/set_config_option").map((r) => [r.params!.configId, r.params!.value]);
-  assert.deepEqual(sets, [["model", "anthropic/claude-opus"], ["effort", "high"], ["mode", "plan"]]);
-  assert.deepEqual(events.filter((e) => e.kind === "settings").at(-1), { kind: "settings", settings: { model: "anthropic/claude-opus", effort: "high", mode: "plan" } });
+  assert.deepEqual(sets, [["effort", "high"], ["mode", "plan"], ["model", "opencode/big-pickle"]]);
+  assert.deepEqual(events.filter((e) => e.kind === "settings").at(-1), { kind: "settings", settings: { model: "opencode/big-pickle", effort: null, mode: "plan" } });
+  // What each model takes, said again: Big Pickle none, Claude Opus as seen in use.
+  const caps = events.filter((e) => e.kind === "capabilities").at(-1);
+  assert.ok(caps && caps.kind === "capabilities");
+  assert.deepEqual(caps.models.map((m) => [m.id, m.efforts]), [["opencode/big-pickle", []], ["anthropic/claude-opus", ["low", "high"]]]);
 });
 
 test("OpenCode: a message sent mid-turn waits for the turn; Stop cancels the session's turn and the asks it had open", async () => {
@@ -628,4 +638,56 @@ test("OpenCode stopped by Tacit leaves without a failure; exiting on its own sti
   await settle(3);
   crashed.child.emit("exit", 1);
   assert.deepEqual(crashed.events.at(-1), { kind: "exited", code: 1, error: "boom" });
+});
+
+test("a model, effort or mode the renderer picks gets through, OpenCode's provider/model ids too; anything else applies nothing", () => {
+  assert.deepEqual(chatSettingsChange({ model: "opencode/big-pickle" }), { model: "opencode/big-pickle" });
+  assert.deepEqual(chatSettingsChange({ model: "claude-opus-5-5[1m]", effort: "high", mode: null }), { model: "claude-opus-5-5[1m]", effort: "high", mode: null });
+  assert.equal(chatSettingsChange({ model: "x; rm -rf /" }), null);
+  assert.equal(chatSettingsChange({ model: 3 }), null);
+  assert.equal(chatSettingsChange(null), null);
+});
+
+test("OpenCode: a turn in Plan that ends with a reply offers the plan; Yes leaves Plan and carries it out, Keep planning sends what to change", async () => {
+  const { child, events, engine, started } = setup("opencode");
+  const server = openCodeServer(child, { holdPrompt: true });
+  await started;
+  await settle();
+  engine.configure("t1", { mode: "plan" });
+  await settle();
+  const planTurn = async (prompt: string, reply: string) => {
+    engine.send("t1", prompt);
+    await settle();
+    child.print({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "ses_new1", update: { sessionUpdate: "agent_message_chunk", messageId: `m-${prompt}`, content: { type: "text", text: reply } } } });
+    server.release();
+    await settle();
+  };
+  await planTurn("plan it", "1. Add x.txt\n2. Check it");
+  const offered = events.filter((e) => e.kind === "approval_request");
+  assert.deepEqual(offered.at(-1), { kind: "approval_request", requestId: "acp-plan-1", toolName: "ExitPlanMode", input: { plan: "1. Add x.txt\n2. Check it" } });
+  // It outlives the turn's end, so the card shows.
+  const { replayChat } = await import("../shared/chat-transcript");
+  assert.equal(replayChat(engine.snapshot("t1")).approvals.length, 1);
+
+  // Keep planning, with what to change: still in Plan, the note is the next message.
+  engine.answer("t1", "acp-plan-1", "deny", "Use y.txt");
+  await settle();
+  const prompts = () => server.requests.filter((r) => r.method === "session/prompt").map((r) => r.params!.prompt[0].text);
+  assert.deepEqual(prompts(), ["plan it", "Use y.txt"]);
+  child.print({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "ses_new1", update: { sessionUpdate: "agent_message_chunk", messageId: "m-y", content: { type: "text", text: "1. Add y.txt" } } } });
+  server.release();
+  await settle();
+
+  // Yes: the card's mode (Build) is set, then the plan is carried out.
+  engine.answer("t1", "acp-plan-2", "allow_once");
+  engine.configure("t1", { mode: "build" });
+  await settle(20);
+  const modeSets = server.requests.filter((r) => r.method === "session/set_config_option").map((r) => r.params!.value);
+  assert.deepEqual(modeSets, ["plan", "build"]);
+  assert.deepEqual(prompts(), ["plan it", "Use y.txt", "Implement the plan."]);
+  assert.ok(events.some((e) => e.kind === "user_message" && e.text === "Implement the plan."));
+  server.release();
+  await settle();
+  // A turn in Build offers nothing.
+  assert.equal(events.filter((e) => e.kind === "approval_request").length, 2);
 });

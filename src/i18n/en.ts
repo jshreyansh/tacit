@@ -230,6 +230,7 @@ export const en = {
   chat_plan_ready: "The plan is ready. Start on it?",
   chat_plan_go_accept: "Yes, and accept edits",
   chat_plan_go_ask: "Yes, but ask before edits",
+  chat_plan_go: "Yes, start on it",
   chat_plan_keep: "Keep planning",
   chat_plan_change_placeholder: "What should change? (optional)",
   chat_plan_back: "Back",
