@@ -408,7 +408,8 @@ export function WorkdeskView() {
 
   // The strip: every terminal and browser, and the tasks and notes not
   // closed from it (the open one always shows).
-  const tabCards: TabCard[] = [...allCards.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c))), ...extraCards];
+  // In the tabs' own order, which doesn't follow state: a tab stays put.
+  const tabCards: TabCard[] = [...sections.tabs.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c))), ...extraCards];
   /** Closing a tab moves to the one beside it, as a browser does. */
   const nextAfter = (card: TabCard): OpenNode | null => {
     if (card !== openCard) return openNode;

@@ -85,6 +85,31 @@ test("an agent that needs you comes first, then the working ones; the running tu
   assert.equal(s.runningAgents, 1);
 });
 
+test("the tabs keep their order while agents change state, switch to chat, and tasks move on", () => {
+  const snap = (over: Partial<TerminalTelemetrySnapshot>) => over as TerminalTelemetrySnapshot;
+  const pins = (status: string) =>
+    [
+      { id: "t-old", repo: "/repo", kind: "task", title: "First", body: "", status: "open", created: "2026-10-17T09:00:00Z", updated: "2026-10-17T09:00:00Z" },
+      { id: "t-new", repo: "/repo", kind: "task", title: "Second", body: "", status, created: "2026-10-18T09:00:00Z", updated: "2026-10-18T09:00:00Z" },
+    ] as unknown as WorkdeskInputs["pins"];
+  const before = buildWorkdeskSections(inputs({ managerTerminalId: null, pins: pins("open") }));
+  const order = ["claude-1", "codex-1", "mgr", "shell-1", "t-old", "t-new"];
+  assert.deepEqual(before.tabs.map((c) => c.id), order);
+  // codex-1 now waits on you, and the second task needs you: the grid moves them up, the tabs don't.
+  const after = buildWorkdeskSections(
+    inputs({
+      managerTerminalId: null,
+      telemetry: new Map([["codex-1", snap({ derived_status: "progressing", turn_state: "awaiting_input", pty_alive: true })]]),
+      pins: pins("needs_you"),
+    }),
+  );
+  assert.equal(after.agents[0].id, "codex-1");
+  assert.equal(after.tasks[0].id, "t-new");
+  assert.deepEqual(after.tabs.map((c) => c.id), order);
+  // The same cards as the grid's, so the open one is found by identity.
+  assert.ok(after.tabs.includes(after.tasks[0]) && after.tabs.includes(after.agents[0]));
+});
+
 test("browsers group by the profile they're signed in as", () => {
   const s = buildWorkdeskSections(
     inputs({

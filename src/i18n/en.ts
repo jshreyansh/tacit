@@ -279,7 +279,7 @@ export const en = {
   workdesk_filter_browsers: "Browsers",
   workdesk_filter_terminals: "Terminals",
   workdesk_add: "Add to the workdesk",
-  workdesk_add_agent: "Agent",
+  workdesk_add_agent: "Agents",
   workdesk_add_browser_profile: "Browser profile",
   workdesk_add_not_installed: "Not installed",
   workdesk_add_no_project: "Open a project first",

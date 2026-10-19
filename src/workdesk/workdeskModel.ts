@@ -98,6 +98,13 @@ export interface WorkdeskSections {
   notes: NoteCard[];
   counts: Record<WorkdeskFilter, number>;
   runningAgents: number;
+  /**
+   * Every card in the order of the open view's tabs: agents and terminals
+   * as they were added to the canvas, browsers, tasks as they were made,
+   * notes. Unlike the grid's, it never follows state, so a tab stays where
+   * it is when its agent starts work, switches to chat, or a task moves on.
+   */
+  tabs: WorkdeskCard[];
 }
 
 export interface WorkdeskInputs {
@@ -154,6 +161,9 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
       }
     }
   }
+  // The tabs keep the canvas's order; the grid sorts copies.
+  const agentsAsAdded = [...agents];
+  const terminalsAsAdded = [...otherTerminals];
   // Whoever needs you first, then whoever's working; the manager leads its group.
   const byState = (a: TerminalCard, b: TerminalCard) =>
     Number(b.isManager) - Number(a.isManager) || STATE_ORDER[a.state] - STATE_ORDER[b.state];
@@ -177,25 +187,29 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
     .filter((p) => pinKind(p) === "note")
     .map((p) => ({ kind: "note", id: p.id, projectPath: p.repo, title: p.title, body: p.body }));
   const TASK_ORDER: Record<PinStatus, number> = { needs_you: 0, in_progress: 1, open: 2, done: 3, dropped: 4 };
-  const tasks: TaskCard[] = input.pins
-    .filter((p) => pinKind(p) === "task" && p.status !== "dropped")
-    .sort((a, b) => TASK_ORDER[a.status] - TASK_ORDER[b.status] || Date.parse(b.updated) - Date.parse(a.updated))
-    .map((p) => {
-      const steps = p.steps ?? [];
-      const done = steps.filter((st) => st.status === "done").length;
-      const step = steps.find((st) => st.status === "active") ?? steps.find((st) => st.status === "pending");
-      return {
-        kind: "task",
-        id: p.id,
-        projectPath: p.repo,
-        title: p.title,
-        status: p.status,
-        progress: steps.length ? `${done}/${steps.length}` : "",
-        percent: steps.length ? Math.round((done / steps.length) * 100) : 0,
-        current: p.status === "needs_you" ? (p.ask?.reason ?? null) : (step?.text ?? null),
-        owners: p.owners ?? [],
-      };
-    });
+  const taskPins = input.pins.filter((p) => pinKind(p) === "task" && p.status !== "dropped");
+  const taskCard = (p: Pin): TaskCard => {
+    const steps = p.steps ?? [];
+    const done = steps.filter((st) => st.status === "done").length;
+    const step = steps.find((st) => st.status === "active") ?? steps.find((st) => st.status === "pending");
+    return {
+      kind: "task",
+      id: p.id,
+      projectPath: p.repo,
+      title: p.title,
+      status: p.status,
+      progress: steps.length ? `${done}/${steps.length}` : "",
+      percent: steps.length ? Math.round((done / steps.length) * 100) : 0,
+      current: p.status === "needs_you" ? (p.ask?.reason ?? null) : (step?.text ?? null),
+      owners: p.owners ?? [],
+    };
+  };
+  // Each card made once, so the grid and the tabs hold the same ones.
+  const made = taskPins.map((pin) => ({ pin, card: taskCard(pin) }));
+  const tasks = [...made]
+    .sort((a, b) => TASK_ORDER[a.pin.status] - TASK_ORDER[b.pin.status] || Date.parse(b.pin.updated) - Date.parse(a.pin.updated))
+    .map((m) => m.card);
+  const tasksAsMade = [...made].sort((a, b) => Date.parse(a.pin.created) - Date.parse(b.pin.created)).map((m) => m.card);
 
   const browserCount = input.browsers.length;
   return {
@@ -213,6 +227,7 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
       notes: notes.length,
     },
     runningAgents: agents.filter((a) => a.state === "active").length,
+    tabs: [...agentsAsAdded, ...terminalsAsAdded, ...browserGroups.flatMap((g) => g.cards), ...tasksAsMade, ...notes],
   };
 }
 

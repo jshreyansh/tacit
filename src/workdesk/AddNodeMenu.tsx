@@ -9,6 +9,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { createTask } from "../tasks/taskActions";
 import type { OpenNode } from "../stores/workdeskViewStore";
 import type { TerminalType } from "../types";
+import { AGENT_ICON } from "../toolbar/agentIcons";
 
 /**
  * The + at the start of the workdesk view's tabs: add an agent (which one),
@@ -38,12 +39,31 @@ function Row({ onClick, children, disabled, title, more }: { onClick: () => void
   );
 }
 
+/**
+ * The Agents row's icon: OpenCode, Codex and Claude Code as tiles stacked
+ * from one side, each partly in view, so it reads as a choice of agents
+ * rather than one of them.
+ */
+function AgentsStackIcon() {
+  const tile = 16;
+  const step = 7;
+  return (
+    <span className="relative block shrink-0" style={{ width: tile + step * 2, height: tile }} aria-hidden="true">
+      {[AGENT_ICON.opencode, AGENT_ICON.codex, AGENT_ICON.claude].map((icon, i) => (
+        <span key={icon} className="tc-icon-shell absolute top-0" style={{ left: i * step, width: tile, height: tile }}>
+          <img src={icon} alt="" className="h-3 w-3 object-contain" draggable={false} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function AgentRow({ entry, onPick }: { entry: DockEntry; onPick: (type: TerminalType) => void }) {
   const t = useT();
   const { missing, title } = useDockAvailability(entry);
   return (
     <Row onClick={() => onPick(entry.terminalType!)} disabled={missing} title={missing ? (title ?? undefined) : undefined}>
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+      <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
         <DockIcon art={entry.art} scale={0.75} />
       </span>
       <span className="truncate">{entry.label(t)}</span>
@@ -129,13 +149,13 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
           {step === "root" && (
             <>
               <Row onClick={() => setStep("agents")} more>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-                  <DockIcon art={agents[0].art} scale={0.75} />
+                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
+                  <AgentsStackIcon />
                 </span>
                 {t.workdesk_add_agent}
               </Row>
               <Row onClick={() => terminal("shell")}>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
                   <DockIcon art={shell.art} scale={0.7} />
                 </span>
                 {t.dock_terminal}
@@ -144,7 +164,7 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                 onClick={() => (profiles.length > 1 ? setStep("browsers") : done({ kind: "browser", id: addBrowser(profiles[0]?.id) }))}
                 more={profiles.length > 1}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
                   <DockIcon art={browser.art} scale={0.75} />
                 </span>
                 {t.dock_browser}
@@ -158,7 +178,7 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                   void createTask(project.path).then((made) => made && onAdded({ kind: "task", id: made.id }));
                 }}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
                   <DockIcon art={task.art} scale={0.7} />
                 </span>
                 {t.dock_task}
@@ -169,7 +189,7 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                   void addNote().then((id) => done(id ? { kind: "note", id } : null));
                 }}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
                   <DockIcon art={note.art} scale={0.7} />
                 </span>
                 {t.dock_note}
