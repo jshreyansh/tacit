@@ -253,7 +253,7 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   /** The workdesk manager in chat mode (T6.2). */
   chat: {
-    start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) =>
+    start: (request: { terminalId: string; agent: "claude" | "codex" | "opencode"; cwd: string; sessionId: string | null }) =>
       ipcRenderer.invoke("chat:start", request) as Promise<{ ok: boolean; error?: string }>,
     send: (terminalId: string, text: string, attachmentIds?: string[]) =>
       ipcRenderer.invoke("chat:send", terminalId, text, attachmentIds ?? []) as Promise<boolean>,

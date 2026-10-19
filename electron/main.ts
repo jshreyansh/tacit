@@ -471,7 +471,16 @@ const chatEngine = new ChatEngine({
     });
     return { command: spec.file, bridgeArgs: plan?.args ?? [], env: spec.env };
   },
-  onEvent: (terminalId, event) => sendToWindow(mainWindow, "chat:event", { terminalId, event }),
+  onEvent: (terminalId, event) => {
+    // OpenCode has no prompt hook: what's typed to it is read from its
+    // database, for the session it says it's on, as for its terminals.
+    if (event.kind === "session" && chatEngine.agentOf(terminalId) === "opencode") {
+      const sessionFile = resolveSessionFile(event.sessionId, "opencode", chatEngine.cwdOf(terminalId) ?? "");
+      recordNodes.detected(terminalId, "opencode");
+      telemetryService.attachSessionSource({ terminalId, provider: "opencode", sessionId: event.sessionId, confidence: "strong", sessionFile: sessionFile ?? undefined });
+    }
+    sendToWindow(mainWindow, "chat:event", { terminalId, event });
+  },
   // Stream-json fires no Stop hook; the turn's end is the stream's own.
   onTurnEnded: (terminalId, sessionId) =>
     telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
@@ -479,6 +488,8 @@ const chatEngine = new ChatEngine({
   // The agent's own record of the session, so the chat shows what was said
   // in the terminal and before a restart, as the terminal does.
   loadHistory: async (agent, sessionId) => {
+    // OpenCode replays its history as it opens the session; there's no file.
+    if (agent === "opencode") return null;
     const file = findSessionFile(agent, sessionId, os.homedir());
     if (!file) return null;
     const replay = await sessionScanner.loadReplay(file);
@@ -2249,7 +2260,7 @@ function setupIpc() {
     if (!isMainWindowSender(event) || typeof request !== "object" || request === null) return { ok: false, error: "invalid request" };
     const { terminalId, agent, cwd, sessionId } = request as Record<string, unknown>;
     if (!chatId(terminalId)) return { ok: false, error: "invalid terminal" };
-    if (agent !== "claude" && agent !== "codex") return { ok: false, error: "this agent has no chat mode yet" };
+    if (agent !== "claude" && agent !== "codex" && agent !== "opencode") return { ok: false, error: "this agent has no chat mode yet" };
     if (typeof cwd !== "string" || !path.isAbsolute(cwd) || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
       return { ok: false, error: "the terminal's folder doesn't exist" };
     }

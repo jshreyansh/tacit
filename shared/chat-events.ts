@@ -55,6 +55,12 @@ export type ChatEvent =
   | { kind: "capabilities"; models: ChatModelOption[]; modes: ChatModeOption[] }
   /** The model, effort and mode now in use (null: the agent's default). */
   | { kind: "settings"; settings: ChatSettings }
+  /**
+   * The session's history, replayed by the agent as it opened the session
+   * (OpenCode): it replaces the conversation the chat held, as history read
+   * from Claude's or Codex's session file does.
+   */
+  | { kind: "history"; events: ChatEvent[] }
   /** The agent process ended. A non-zero code or an error means it failed. */
   | { kind: "exited"; code: number | null; error?: string };
 

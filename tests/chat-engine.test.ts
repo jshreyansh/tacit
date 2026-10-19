@@ -40,9 +40,9 @@ class FakeChild extends EventEmitter {
 }
 
 function setup(
-  agent: "claude" | "codex",
+  agent: "claude" | "codex" | "opencode",
   sessionId: string | null = null,
-  loadHistory?: (agent: "claude" | "codex", sessionId: string) => Promise<ChatEvent[] | null>,
+  loadHistory?: (agent: "claude" | "codex" | "opencode", sessionId: string) => Promise<ChatEvent[] | null>,
 ) {
   const logged: string[] = [];
   const child = new FakeChild();
@@ -441,4 +441,191 @@ test("Keep planning with Codex: what the person would change is their next messa
   assert.equal(turns().length, before + 1);
   assert.ok(JSON.stringify(turns().at(-1)?.params?.input).includes("Use a shorter name"));
   assert.ok(!events.some((e) => e.kind === "user_message" && e.text === "Implement the plan."));
+});
+
+/** A stand-in `opencode acp`: answers as opencode 2.0.29 does, and can replay a session on load. */
+function openCodeServer(child: FakeChild, opts: { replay?: object[]; stopReason?: string; holdPrompt?: boolean } = {}) {
+  const requests: Array<{ id?: number | string; method?: string; params?: Record<string, any>; result?: any }> = [];
+  const config = [
+    { id: "model", name: "Model", category: "model", type: "select", currentValue: "opencode/big-pickle", options: [{ value: "opencode/big-pickle", name: "opencode/Big Pickle" }, { value: "anthropic/claude-opus", name: "anthropic/Claude Opus" }] },
+    { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: "default", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }, { value: "default", name: "Default" }] },
+    { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "build", options: [{ value: "build", name: "Build" }, { value: "plan", name: "Plan" }] },
+  ];
+  const prompts: Array<number> = [];
+  const respondPrompt = (id: number) => child.print({ jsonrpc: "2.0", id, result: { stopReason: opts.stopReason ?? "end_turn" } });
+  child.onWrite = (line) => {
+    const msg = JSON.parse(line);
+    requests.push(msg);
+    if (msg.method === "initialize") child.print({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+    if (msg.method === "session/new") child.print({ jsonrpc: "2.0", id: msg.id, result: { sessionId: "ses_new1", configOptions: config } });
+    if (msg.method === "session/load") {
+      for (const update of opts.replay ?? []) child.print({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update } });
+      child.print({ jsonrpc: "2.0", id: msg.id, result: { configOptions: config } });
+    }
+    if (msg.method === "session/set_config_option") {
+      // The session's options as they now stand, as OpenCode answers.
+      for (const o of config) if (o.id === msg.params.configId) o.currentValue = msg.params.value;
+      child.print({ jsonrpc: "2.0", id: msg.id, result: { configOptions: config } });
+    }
+    if (msg.method === "session/prompt") {
+      if (opts.holdPrompt) prompts.push(msg.id);
+      else respondPrompt(msg.id);
+    }
+  };
+  return { requests, release: () => prompts.splice(0).forEach(respondPrompt) };
+}
+const settle = async (n = 10) => {
+  for (let i = 0; i < n; i++) await tick();
+};
+
+test("OpenCode starts `opencode acp`, opens a session in the folder, offers its models and modes, and sends what was typed meanwhile", async () => {
+  const { child, spawned, events, engine, started } = setup("opencode");
+  const { requests } = openCodeServer(child);
+  await started;
+  assert.deepEqual(spawned[0].args, ["acp", "--mcp-config", "/tmp/tacit-mcp-t1.json"]);
+  engine.send("t1", "early message", [{ id: "a1", name: "shot.png", path: "/tmp/shot one.png", kind: "image" }]);
+  await settle();
+  assert.deepEqual(requests.map((r) => r.method).filter(Boolean), ["initialize", "session/new", "session/prompt"]);
+  assert.deepEqual(requests.find((r) => r.method === "session/new")?.params, { cwd: "/repo", mcpServers: [] });
+  assert.deepEqual(requests.find((r) => r.method === "session/prompt")?.params, {
+    sessionId: "ses_new1",
+    prompt: [{ type: "text", text: "early message" }, { type: "resource_link", uri: "file:///tmp/shot%20one.png", name: "shot.png" }],
+  });
+  assert.ok(events.some((e) => e.kind === "session" && e.sessionId === "ses_new1"));
+  const caps = events.find((e) => e.kind === "capabilities");
+  assert.ok(caps && caps.kind === "capabilities");
+  assert.deepEqual(caps.models.map((m) => [m.id, m.short, m.efforts]), [["opencode/big-pickle", "Big Pickle", ["low", "high"]], ["anthropic/claude-opus", "Claude Opus", ["low", "high"]]]);
+  assert.deepEqual(caps.modes.map((m) => m.id), ["build", "plan"]);
+  assert.deepEqual(events.find((e) => e.kind === "settings"), { kind: "settings", settings: { model: "opencode/big-pickle", effort: null, mode: "build" } });
+  assert.ok(events.some((e) => e.kind === "turn_ended" && e.outcome === "success"));
+});
+
+test("OpenCode streams its thinking, reply and tool calls into the chat; a change of model, effort or mode is set on the session", async () => {
+  const { child, events, engine, started } = setup("opencode");
+  const server = openCodeServer(child, { holdPrompt: true });
+  await started;
+  await settle();
+  engine.send("t1", "run it");
+  await settle();
+  const update = (u: object) => child.print({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "ses_new1", update: u } });
+  update({ sessionUpdate: "agent_thought_chunk", messageId: "m1:reasoning:0", content: { type: "text", text: "Let me run it." } });
+  update({ sessionUpdate: "tool_call", toolCallId: "c1", name: "shell", title: "shell", kind: "execute", status: "pending", rawInput: { cwd: "/repo" } });
+  update({ sessionUpdate: "tool_call_update", toolCallId: "c1", status: "in_progress", kind: "execute", title: "echo hi", rawInput: { command: "echo hi", cwd: "/repo" } });
+  update({ sessionUpdate: "tool_call_update", toolCallId: "c1", status: "completed", content: [{ type: "content", content: { type: "text", text: "hi" } }] });
+  update({ sessionUpdate: "agent_message_chunk", messageId: "m2", content: { type: "text", text: "Ran " } });
+  update({ sessionUpdate: "agent_message_chunk", messageId: "m2", content: { type: "text", text: "it." } });
+  update({ sessionUpdate: "usage_update", used: 9000, size: 1000000 });
+  server.release();
+  await settle();
+  const reply = engine.snapshot("t1");
+  const t = (await import("../shared/chat-transcript")).replayChat(reply);
+  const last = t.messages.at(-1)!;
+  assert.equal(last.role, "assistant");
+  assert.ok(last.role === "assistant");
+  assert.deepEqual(
+    last.parts.map((p) => (p.type === "tool" ? ["tool", p.name, (p.input as { command?: string }).command, p.output, p.status] : [p.type, p.text])),
+    [["thinking", "Let me run it."], ["tool", "Shell", "echo hi", "hi", "done"], ["text", "Ran it."]],
+  );
+  assert.deepEqual(t.context, { used: 9000, window: 1000000 });
+  assert.equal(t.running, false);
+
+  engine.configure("t1", { model: "anthropic/claude-opus", effort: "high", mode: "plan" });
+  await settle();
+  const sets = server.requests.filter((r) => r.method === "session/set_config_option").map((r) => [r.params!.configId, r.params!.value]);
+  assert.deepEqual(sets, [["model", "anthropic/claude-opus"], ["effort", "high"], ["mode", "plan"]]);
+  assert.deepEqual(events.filter((e) => e.kind === "settings").at(-1), { kind: "settings", settings: { model: "anthropic/claude-opus", effort: "high", mode: "plan" } });
+});
+
+test("OpenCode: a message sent mid-turn waits for the turn; Stop cancels the session's turn and the asks it had open", async () => {
+  const { child, events, engine, started } = setup("opencode");
+  const server = openCodeServer(child, { holdPrompt: true });
+  await started;
+  await settle();
+  engine.send("t1", "first");
+  await settle();
+  engine.send("t1", "second");
+  await settle();
+  const prompts = () => server.requests.filter((r) => r.method === "session/prompt").map((r) => r.params!.prompt[0].text);
+  assert.deepEqual(prompts(), ["first"]);
+  server.release();
+  await settle();
+  assert.deepEqual(prompts(), ["first", "second"]);
+
+  // An ask while the second runs, then Stop.
+  child.print({ jsonrpc: "2.0", id: 77, method: "session/request_permission", params: { sessionId: "ses_new1", toolCall: { toolCallId: "c9", title: "rm -rf build", kind: "execute", rawInput: { command: "rm -rf build" } }, options: [{ optionId: "once", name: "Allow", kind: "allow_once" }, { optionId: "no", name: "Reject", kind: "reject_once" }] } });
+  await settle();
+  const ask = events.find((e) => e.kind === "approval_request");
+  assert.deepEqual(ask, { kind: "approval_request", requestId: "acp-77", toolName: "Shell", input: { command: "rm -rf build" }, toolCallId: "c9" });
+  engine.interrupt("t1");
+  await settle();
+  assert.ok(server.requests.some((r) => r.method === "session/cancel" && r.params!.sessionId === "ses_new1"));
+  assert.deepEqual(server.requests.find((r) => r.id === 77)?.result, { outcome: { outcome: "cancelled" } });
+  assert.ok(events.some((e) => e.kind === "approval_settled" && e.requestId === "acp-77"));
+});
+
+test("OpenCode: an ask is answered with the option the person picked", async () => {
+  const { child, engine, started } = setup("opencode");
+  const server = openCodeServer(child);
+  await started;
+  await settle();
+  const options = [{ optionId: "o1", kind: "allow_once" }, { optionId: "o2", kind: "allow_always" }, { optionId: "o3", kind: "reject_once" }];
+  for (const [id, decision] of [[1, "allow_once"], [2, "allow_always"], [3, "deny"]] as const) {
+    child.print({ jsonrpc: "2.0", id: `p${id}`, method: "session/request_permission", params: { sessionId: "ses_new1", toolCall: { toolCallId: `c${id}`, kind: "edit", rawInput: { filePath: "/repo/a.ts" } }, options } });
+    await settle(3);
+    engine.answer("t1", `acp-p${id}`, decision);
+  }
+  await settle();
+  assert.deepEqual(
+    server.requests.filter((r) => typeof r.id === "string").map((r) => [r.id, r.result.outcome.optionId]),
+    [["p1", "o1"], ["p2", "o2"], ["p3", "o3"]],
+  );
+});
+
+test("OpenCode: a session it has is loaded, and its replay becomes the chat's history, not new messages", async () => {
+  const replay = [
+    { sessionUpdate: "user_message_chunk", messageId: "u1", content: { type: "text", text: "Run echo hi" } },
+    { sessionUpdate: "agent_thought_chunk", messageId: "m1:reasoning:0", content: { type: "text", text: "Running." } },
+    { sessionUpdate: "tool_call", toolCallId: "c1", name: "shell", title: "echo hi", kind: "execute", status: "pending" },
+    { sessionUpdate: "tool_call_update", toolCallId: "c1", status: "completed", content: [{ type: "content", content: { type: "text", text: "hi" } }] },
+    { sessionUpdate: "agent_message_chunk", messageId: "m2", content: { type: "text", text: "done" } },
+    { sessionUpdate: "user_message_chunk", messageId: "u2", content: { type: "text", text: "Thanks" } },
+    { sessionUpdate: "agent_message_chunk", messageId: "m3", content: { type: "text", text: "Any time." } },
+  ];
+  let read = false;
+  const { child, engine, started } = setup("opencode", "ses_old", async () => {
+    read = true;
+    return null;
+  });
+  const { requests } = openCodeServer(child, { replay });
+  await started;
+  await settle();
+  assert.equal(read, false);
+  assert.deepEqual(requests.find((r) => r.method === "session/load")?.params, { sessionId: "ses_old", cwd: "/repo", mcpServers: [] });
+  const { replayChat } = await import("../shared/chat-transcript");
+  const t = replayChat(engine.snapshot("t1"));
+  assert.deepEqual(
+    t.messages.map((m) => (m.role === "user" ? ["user", m.text] : [m.role, m.role === "assistant" ? m.parts.map((p) => p.type).join("+") : ""])),
+    [["user", "Run echo hi"], ["assistant", "thinking+tool+text"], ["user", "Thanks"], ["assistant", "text"]],
+  );
+  assert.equal(t.running, false);
+  assert.equal(t.sessionId, "ses_old");
+});
+
+test("OpenCode stopped by Tacit leaves without a failure; exiting on its own still says why", async () => {
+  const stopped = setup("opencode");
+  openCodeServer(stopped.child);
+  await stopped.started;
+  await settle();
+  stopped.engine.stop("t1");
+  stopped.child.emit("exit", 130);
+  assert.deepEqual(stopped.events.at(-1), { kind: "exited", code: null });
+
+  const crashed = setup("opencode");
+  openCodeServer(crashed.child);
+  await crashed.started;
+  await settle();
+  crashed.child.stderr.write("boom\n");
+  await settle(3);
+  crashed.child.emit("exit", 1);
+  assert.deepEqual(crashed.events.at(-1), { kind: "exited", code: 1, error: "boom" });
 });

@@ -2,6 +2,17 @@ import { randomUUID } from "node:crypto";
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "node:child_process";
 import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatSettings } from "../../shared/chat-events";
 import { withMentions } from "../../shared/chat-attachments";
+import {
+  acpCapabilities,
+  acpConfigChanges,
+  acpPermissionOutcome,
+  acpPrompt,
+  acpStopOutcome,
+  acpTurnEnded,
+  createAcpStreamState,
+  parseAcpPermission,
+  parseAcpUpdate,
+} from "../../shared/chat-stream-acp";
 import { elicitationResult, type Elicitation } from "../../shared/chat-elicitation";
 import {
   claudeAnswerInput,
@@ -491,4 +502,189 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
 /** Only the settings someone chose (null is "the agent's default"). */
 function withoutNulls(settings: ChatSettings): Partial<ChatSettings> {
   return Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== null)) as Partial<ChatSettings>;
+}
+
+/**
+ * OpenCode over the Agent Client Protocol (`opencode acp`), one session for
+ * the whole chat. A session it already has is loaded, and the history it
+ * replays comes as one `history` event that replaces what the chat held,
+ * as Claude's and Codex's do from their session files. A prompt runs one
+ * turn and there's no steering one, so a message sent mid-turn waits for
+ * it. OpenCode gets Tacit's tools from its environment (the adapter's
+ * OPENCODE_CONFIG_CONTENT), so the session is opened with no MCP servers
+ * of its own.
+ */
+export function startOpenCodeDriver(options: DriverOptions): ChatDriver {
+  const state = createAcpStreamState();
+  let nextId = 0;
+  let exited = false;
+  /** Tacit asked it to stop: OpenCode leaves with code 130 then, which isn't a failure. */
+  let stopping = false;
+  let ready = false;
+  let running = false;
+  /** While a session loads, its replay is collected here rather than shown. */
+  let replay: ChatEvent[] | null = null;
+  let configOptions: unknown = null;
+  let settings: ChatSettings = { model: null, effort: null, mode: null };
+  let chosen: Partial<ChatSettings> = {};
+  const queued: Array<{ text: string; attachments: readonly ChatAttachment[] }> = [];
+  const pending = new Map<number, (result: { result?: unknown; error?: { message?: string } }) => void>();
+  const err = stderrTail();
+
+  const child = options.spawn(options.command, ["acp", ...options.bridgeArgs], { cwd: options.cwd, env: options.env });
+
+  const writeMessage = (message: Record<string, unknown>) => {
+    if (!exited && child.stdin.writable) child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+  };
+  const request = (method: string, params: unknown): Promise<{ result?: unknown; error?: { message?: string } }> =>
+    new Promise((resolve) => {
+      const id = ++nextId;
+      pending.set(id, resolve);
+      writeMessage({ id, method, params });
+    });
+  const emitAll = (events: ChatEvent[]) => {
+    if (replay) replay.push(...events);
+    else for (const event of events) options.emit(event);
+  };
+  const fail = (message: string) => options.emit({ kind: "turn_ended", outcome: "error", error: message });
+
+  /** Sets what the person picked on the session, and says what's now in use. */
+  const applyChosen = async (change: Partial<ChatSettings>) => {
+    for (const { configId, value } of acpConfigChanges(configOptions, change)) {
+      const set = await request("session/set_config_option", { sessionId: state.sessionId, configId, value });
+      if (set.error) {
+        fail(set.error.message ?? `OpenCode didn't change its ${configId}.`);
+        continue;
+      }
+      const next = (set.result as { configOptions?: unknown } | undefined)?.configOptions;
+      if (next) configOptions = next;
+    }
+    settings = acpCapabilities(configOptions).settings;
+    options.emit({ kind: "settings", settings });
+  };
+
+  const prompt = async (text: string, attachments: readonly ChatAttachment[]) => {
+    running = true;
+    const done = await request("session/prompt", { sessionId: state.sessionId, prompt: acpPrompt(text, attachments) });
+    const stop = done.error ? { outcome: "error" as const, error: done.error.message ?? "OpenCode couldn't run the turn." } : acpStopOutcome((done.result as { stopReason?: unknown } | undefined)?.stopReason);
+    emitAll(acpTurnEnded(state, stop.outcome, stop.error));
+    running = false;
+    const next = queued.shift();
+    if (next) void prompt(next.text, next.attachments);
+  };
+
+  child.stdout.on(
+    "data",
+    lineReader((line) => {
+      let message: Record<string, unknown>;
+      try {
+        message = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (typeof message.id === "number" && !("method" in message)) {
+        const resolve = pending.get(message.id);
+        pending.delete(message.id);
+        resolve?.(message as { result?: unknown; error?: { message?: string } });
+        return;
+      }
+      const params = (message.params ?? {}) as Record<string, unknown>;
+      if (message.method === "session/update" && params.update && typeof params.update === "object") {
+        emitAll(parseAcpUpdate(state, params.update as Record<string, unknown>));
+        return;
+      }
+      if (message.method === "session/request_permission" && (typeof message.id === "number" || typeof message.id === "string")) {
+        emitAll(parseAcpPermission(state, message.id, params));
+        return;
+      }
+      // Anything else OpenCode asks (file or terminal access we didn't offer) is refused, not left hanging.
+      if ("method" in message && "id" in message) writeMessage({ id: message.id, error: { code: -32601, message: "Tacit doesn't handle this request." } });
+    }),
+  );
+  child.stderr.on("data", (chunk) => err.push(chunk));
+  child.on("error", (error) => {
+    if (exited) return;
+    exited = true;
+    options.emit({ kind: "exited", code: null, error: error.message });
+  });
+  child.on("exit", (code) => {
+    if (exited) return;
+    exited = true;
+    for (const resolve of pending.values()) resolve({ error: { message: "OpenCode exited." } });
+    pending.clear();
+    options.log?.(`opencode chat exited code=${code} ${err.text()}`);
+    if (stopping) options.emit({ kind: "exited", code: null });
+    else options.emit({ kind: "exited", code, ...(code ? { error: err.text() || `OpenCode exited with code ${code}` } : {}) });
+  });
+
+  void (async () => {
+    const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } });
+    if (init.error) return fail(init.error.message ?? "OpenCode didn't start.");
+    let opened: { result?: unknown; error?: { message?: string } };
+    if (options.sessionId) {
+      replay = [];
+      opened = await request("session/load", { sessionId: options.sessionId, cwd: options.cwd, mcpServers: [] });
+      const history = replay;
+      replay = null;
+      if (opened.error) return fail(`OpenCode couldn't open session ${options.sessionId}: ${opened.error.message ?? "unknown error"}`);
+      if (state.inTurn || state.user) history.push(...acpTurnEnded(state, "success"));
+      state.sessionId = options.sessionId;
+      options.emit({ kind: "history", events: history });
+    } else {
+      opened = await request("session/new", { cwd: options.cwd, mcpServers: [] });
+      const id = (opened.result as { sessionId?: unknown } | undefined)?.sessionId;
+      if (opened.error || typeof id !== "string") return fail(opened.error?.message ?? "OpenCode didn't open a session.");
+      state.sessionId = id;
+    }
+    options.emit({ kind: "session", sessionId: state.sessionId! });
+    configOptions = (opened.result as { configOptions?: unknown } | undefined)?.configOptions ?? null;
+    const caps = acpCapabilities(configOptions);
+    options.emit({ kind: "capabilities", models: caps.models, modes: caps.modes });
+    settings = caps.settings;
+    options.emit({ kind: "settings", settings });
+    if (Object.keys(chosen).length > 0) await applyChosen(chosen);
+    ready = true;
+    const next = queued.shift();
+    if (next) void prompt(next.text, next.attachments);
+  })();
+
+  return {
+    send: (text, attachments = []) => {
+      if (!ready || running) {
+        queued.push({ text, attachments });
+        return;
+      }
+      void prompt(text, attachments);
+    },
+    interrupt: () => {
+      if (!state.sessionId) return;
+      writeMessage({ method: "session/cancel", params: { sessionId: state.sessionId } });
+      // Asks still open are answered as cancelled, as the protocol wants.
+      for (const [requestId, ask] of state.permissions) {
+        writeMessage({ id: ask.rpcId, result: { outcome: { outcome: "cancelled" } } });
+        options.emit({ kind: "approval_settled", requestId });
+      }
+      state.permissions.clear();
+      queued.length = 0;
+    },
+    answer: (requestId, decision) => {
+      const ask = state.permissions.get(requestId);
+      if (!ask) return;
+      state.permissions.delete(requestId);
+      writeMessage({ id: ask.rpcId, result: acpPermissionOutcome(ask.options, decision) });
+      options.emit({ kind: "approval_settled", requestId });
+    },
+    // OpenCode asks nothing but permissions over ACP.
+    answerQuestion: () => {},
+    configure: (change) => {
+      chosen = { ...chosen, ...change };
+      if (ready) void applyChosen(change);
+    },
+    stop: () => {
+      if (exited) return;
+      stopping = true;
+      child.stdin.end();
+      child.kill("SIGTERM");
+    },
+  };
 }

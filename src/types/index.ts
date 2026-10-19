@@ -767,7 +767,7 @@ export interface TacitAPI {
    */
   /** The workdesk manager in chat mode (T6.2). */
   chat: {
-    start: (request: { terminalId: string; agent: "claude" | "codex"; cwd: string; sessionId: string | null }) => Promise<{ ok: boolean; error?: string }>;
+    start: (request: { terminalId: string; agent: "claude" | "codex" | "opencode"; cwd: string; sessionId: string | null }) => Promise<{ ok: boolean; error?: string }>;
     /** Sends a message with the files attached to it, by id; rejects when a file is gone. */
     send: (terminalId: string, text: string, attachmentIds?: string[]) => Promise<boolean>;
     /** The open dialog, starting in the chat's folder. */

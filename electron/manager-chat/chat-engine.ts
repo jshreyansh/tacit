@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ApprovalDecision, ChatAnswers, ChatAttachment, ChatEvent, ChatSettings } from "../../shared/chat-events";
-import { startClaudeDriver, startCodexDriver, type ChatDriver, type SpawnFn } from "./drivers";
+import { startClaudeDriver, startCodexDriver, startOpenCodeDriver, type ChatDriver, type SpawnFn } from "./drivers";
 
 /**
  * Chats with managers that run in chat mode (T6.2): one agent process per
@@ -15,7 +15,10 @@ import { startClaudeDriver, startCodexDriver, type ChatDriver, type SpawnFn } fr
  * reloads replays the conversation so far.
  */
 
-export type ChatAgent = "claude" | "codex";
+export type ChatAgent = "claude" | "codex" | "opencode";
+
+/** Agents whose driver replays a session's history itself as it opens it, so none is read from a file. */
+const REPLAYS_HISTORY: ReadonlySet<ChatAgent> = new Set(["opencode"]);
 
 export interface ChatStartRequest {
   terminalId: string;
@@ -75,6 +78,9 @@ interface ChatSession {
   chosen?: Partial<ChatSettings>;
 }
 
+/** What a replayed history doesn't replace: the agent's own state, not the conversation. */
+const KEPT_ACROSS_HISTORY: ReadonlySet<ChatEvent["kind"]> = new Set(["session", "capabilities", "settings", "rate_limit", "context"]);
+
 /** Events kept per chat; the oldest go first. Deltas are merged, so this is a long conversation. */
 const MAX_EVENTS = 20_000;
 
@@ -131,7 +137,7 @@ export class ChatEngine {
     session.cwd = request.cwd;
     session.sessionId = request.sessionId ?? session.sessionId;
     this.sessions.set(request.terminalId, session);
-    if (session.sessionId && this.deps.loadHistory) {
+    if (session.sessionId && this.deps.loadHistory && !REPLAYS_HISTORY.has(request.agent)) {
       try {
         const history = await this.deps.loadHistory(request.agent, session.sessionId);
         if (history) session.events = [...history];
@@ -148,7 +154,7 @@ export class ChatEngine {
       this.record(request.terminalId, { kind: "exited", code: null, error: error instanceof Error ? error.message : String(error) });
       return;
     }
-    const start = request.agent === "codex" ? startCodexDriver : startClaudeDriver;
+    const start = request.agent === "codex" ? startCodexDriver : request.agent === "opencode" ? startOpenCodeDriver : startClaudeDriver;
     const driver = start({
       command: launch.command,
       bridgeArgs: launch.bridgeArgs,
@@ -169,6 +175,12 @@ export class ChatEngine {
     if (event.kind === "session") session.sessionId = event.sessionId;
     if (event.kind === "exited") session.driver = null;
     if (event.kind === "rate_limit") this.deps.limits?.set(session.agent, event);
+    if (event.kind === "history") {
+      // Replaces the conversation held; what the agent said about itself stays.
+      session.events = [...event.events, ...session.events.filter((e) => KEPT_ACROSS_HISTORY.has(e.kind))];
+      this.deps.onEvent(terminalId, event);
+      return;
+    }
     appendEvent(session.events, event);
     this.deps.onEvent(terminalId, event);
     if (event.kind === "turn_ended") this.deps.onTurnEnded?.(terminalId, session.sessionId);
@@ -229,6 +241,10 @@ export class ChatEngine {
 
   stopAll(): void {
     for (const id of [...this.sessions.keys()]) this.stop(id);
+  }
+
+  agentOf(terminalId: string): ChatAgent | null {
+    return this.sessions.get(terminalId)?.agent ?? null;
   }
 
   sessionIdOf(terminalId: string): string | null {

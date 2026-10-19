@@ -315,6 +315,22 @@ export function reduceChat(t: ChatTranscript, event: ChatEvent): ChatTranscript 
       return { ...t, running: false, approvals: [], questions: t.questions.filter((q) => q.afterTurn) };
     }
 
+    case "history": {
+      // The conversation is the history's; what the agent said about itself
+      // (session, model, limits, what it offers) stays.
+      const h = replayChat(event.events);
+      return {
+        ...t,
+        messages: h.messages,
+        running: false,
+        approvals: [],
+        questions: h.questions,
+        plan: h.plan,
+        context: h.context ?? t.context,
+        failure: null,
+      };
+    }
+
     case "exited": {
       const failed = event.error || (event.code !== null && event.code !== 0);
       const ended = t.running ? reduceChat(t, { kind: "turn_ended", outcome: failed ? "error" : "interrupted", ...(event.error ? { error: event.error } : {}) }) : t;

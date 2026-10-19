@@ -13,8 +13,8 @@ import { findTerminal } from "./terminalLookup";
  */
 
 /** Agents with a chat mode so far. */
-export function hasChatMode(type: string | null | undefined): type is "claude" | "codex" {
-  return type === "claude" || type === "codex";
+export function hasChatMode(type: string | null | undefined): type is "claude" | "codex" | "opencode" {
+  return type === "claude" || type === "codex" || type === "opencode";
 }
 
 /**

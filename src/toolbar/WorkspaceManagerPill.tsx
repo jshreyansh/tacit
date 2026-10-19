@@ -564,7 +564,7 @@ export function WorkspaceManagerPill() {
       // as raw `^[[200~` text, echoed by the terminal while nothing was
       // reading it yet.
       if (hasChatMode(type)) {
-        // Claude and Codex managers start in the chat (T6): the tile starts
+        // Managers whose agent has a chat start in it (T6): the tile starts
         // no process, and the briefing is the chat's first message.
         const terminal = createTerminalInScene({ projectId, worktreeId, type });
         useProjectStore.getState().setTerminalChatMode(projectId, worktreeId, terminal.id, true);
