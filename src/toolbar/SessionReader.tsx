@@ -212,7 +212,7 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
   const managerTerminalId = (canvases.find((c) => c.id === activeCanvasId) ?? canvases[0])?.workspaceManagerTerminalId ?? null;
   const [query, setQuery] = useState("");
   const [activeTurn, setActiveTurn] = useState<string | null>(null);
-  const threadRef = useRef<HTMLDivElement>(null);
+  const [reveal, setReveal] = useState<{ id: string; seq: number } | null>(null);
 
   const agent = agentOfSessionFile(timeline.filePath);
   const agentName = agent ? (findAgentAdapter(agent)?.displayName ?? agent) : "";
@@ -253,7 +253,7 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
 
   const jumpTo = (messageId: string) => {
     setActiveTurn(messageId);
-    threadRef.current?.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setReveal((r) => ({ id: messageId, seq: (r?.seq ?? 0) + 1 }));
   };
 
   const primary = "tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 bg-[var(--text-secondary)] px-3 text-[12.5px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40";
@@ -392,11 +392,12 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div ref={threadRef} className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
             <ChatThread
               transcript={transcript}
               agent={agent ?? "claude"}
               replyLabel={manager ? t.chat_from_manager(agentName.split(" ")[0]) : agentName}
+              reveal={reveal}
               onSend={async () => {}}
               onCancel={async () => {}}
             />

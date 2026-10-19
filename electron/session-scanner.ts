@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
-import fsp from "node:fs/promises";
 import path from "node:path";
+import readline from "node:readline";
 import os from "node:os";
 import {
   parseSessionTelemetryLine,
@@ -31,6 +31,10 @@ const TAIL_BYTES = 65536;
 // into every timeline event. Anything past this gets slice-truncated;
 // the UI treats that as acceptable lossy display.
 const REPLAY_TEXT_MAX_CHARS = 16_000;
+/** How many of a replay's first lines are searched for where it ran and its id. */
+const REPLAY_HEAD_LINES = 200;
+/** A file's head is read no further than this, however long its first lines. */
+const HEAD_READ_MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * Remove the noise Claude Code / Codex inject into user messages:
@@ -341,23 +345,20 @@ export class SessionScanner {
   }
 
   async loadReplay(filePath: string): Promise<ReplayTimeline> {
-    const content = await fsp.readFile(filePath, "utf-8");
-    const lines = content.split("\n").filter(Boolean);
-    const type = this.detectSessionType(filePath, lines);
-    // For Codex, the real resume-able sessionId lives inside
-    // session_meta.payload.id — not the filename stem. Claude uses
-    // the filename as its ID so falling back is correct there.
-    const sessionId =
-      type === "codex"
-        ? this.readCodexSessionId(filePath, lines) ??
-          path.basename(filePath, ".jsonl")
-        : path.basename(filePath, ".jsonl");
-    const projectDir = this.resolveProjectDir(filePath, type, sessionId, lines);
+    const type = this.detectSessionType(filePath, this.readHeadLines(filePath, 20));
     const events: TimelineEvent[] = [];
     const editIndices: Array<{ index: number; filePath: string }> = [];
     let totalTokens = 0;
+    // Where the session ran and its id are near the top.
+    const head: string[] = [];
 
-    for (const line of lines) {
+    // Read a line at a time: a long session runs to hundreds of MB, more
+    // than fits in one string, and reading it whole would hold up the
+    // main process.
+    const lines = readline.createInterface({ input: fs.createReadStream(filePath, { encoding: "utf8" }), crlfDelay: Infinity });
+    for await (const line of lines) {
+      if (!line) continue;
+      if (head.length < REPLAY_HEAD_LINES) head.push(line);
       let raw: Record<string, unknown>;
       try {
         raw = JSON.parse(line);
@@ -417,6 +418,16 @@ export class SessionScanner {
         }
       }
     }
+
+    // For Codex, the real resume-able sessionId lives inside
+    // session_meta.payload.id — not the filename stem. Claude uses
+    // the filename as its ID so falling back is correct there.
+    const sessionId =
+      type === "codex"
+        ? this.readCodexSessionId(filePath, head) ??
+          path.basename(filePath, ".jsonl")
+        : path.basename(filePath, ".jsonl");
+    const projectDir = this.resolveProjectDir(filePath, type, sessionId, head);
 
     return {
       sessionId,
@@ -804,11 +815,28 @@ export class SessionScanner {
     return null;
   }
 
+  /** The first lines of a file, read from its start only (a session file can run to hundreds of MB). */
   private readHeadLines(filePath: string, maxLines: number): string[] {
+    let fd: number | null = null;
     try {
-      return fs.readFileSync(filePath, "utf-8").split("\n").slice(0, maxLines);
+      fd = fs.openSync(filePath, "r");
+      const chunks: Buffer[] = [];
+      const chunk = Buffer.alloc(64 * 1024);
+      let newlines = 0;
+      let total = 0;
+      while (newlines < maxLines && total < HEAD_READ_MAX_BYTES) {
+        const read = fs.readSync(fd, chunk, 0, chunk.length, total);
+        if (read === 0) break;
+        const part = Buffer.from(chunk.subarray(0, read));
+        chunks.push(part);
+        total += read;
+        for (const byte of part) if (byte === 10) newlines++;
+      }
+      return Buffer.concat(chunks).toString("utf-8").split("\n").slice(0, maxLines);
     } catch {
       return [];
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
     }
   }
 

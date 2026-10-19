@@ -1,4 +1,4 @@
-import { Children, useMemo, useState, type FC, type PropsWithChildren } from "react";
+import { Children, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type PropsWithChildren } from "react";
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
@@ -666,12 +666,16 @@ export function ApprovalCards({
   );
 }
 
+/** How many of the latest messages a thread draws at first, and how many more each "Show earlier" adds. */
+const THREAD_PAGE = 40;
+
 export function ChatThread({
   transcript,
   agent,
   onSend,
   onCancel,
   replyLabel: replyLabelOverride,
+  reveal,
 }: {
   transcript: ChatTranscript;
   agent: string;
@@ -679,9 +683,40 @@ export function ChatThread({
   onCancel: () => Promise<void>;
   /** Who the replies are from; the manager's chat says "· manager". */
   replyLabel?: string;
+  /** A message to scroll to, drawing the earlier ones down to it first; `seq` asks again for the same one. */
+  reveal?: { id: string; seq: number } | null;
 }) {
   const t = useT();
-  const messages = useMemo(() => toThreadMessages(transcript.messages), [transcript.messages]);
+  const all = useMemo(() => toThreadMessages(transcript.messages), [transcript.messages]);
+  // A long session runs to a thousand messages and more: drawing them all
+  // at once holds the app up, so the thread starts from the latest.
+  const [shown, setShown] = useState(THREAD_PAGE);
+  const start = Math.max(0, all.length - shown);
+  const messages = useMemo(() => (start > 0 ? all.slice(start) : all), [all, start]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  // Earlier messages drawn above keep what you were reading in place.
+  const keepFrom = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport && keepFrom.current !== null) viewport.scrollTop += viewport.scrollHeight - keepFrom.current;
+    keepFrom.current = null;
+  }, [start]);
+  const showEarlier = () => {
+    keepFrom.current = viewportRef.current?.scrollHeight ?? null;
+    setShown((n) => n + THREAD_PAGE);
+  };
+  useEffect(() => {
+    if (!reveal) return;
+    const index = all.findIndex((m) => m.id === reveal.id);
+    if (index < 0) return;
+    if (index < start) setShown(all.length - index);
+    // After the frame that draws it.
+    const frame = requestAnimationFrame(() =>
+      viewportRef.current?.querySelector(`[data-msg-id="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal?.id, reveal?.seq, start]);
   // Sent (or briefed), and nothing back yet: the agent's first event makes
   // the reply. Until then the waiting row is ours alone; the runtime isn't
   // told it's running, or it would draw a second empty reply of its own.
@@ -706,7 +741,18 @@ export function ChatThread({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+        <ThreadPrimitive.Viewport ref={viewportRef} className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+          {start > 0 && (
+            <div className="flex justify-center pb-3">
+              <button
+                type="button"
+                className="tc-rail-btn h-7 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                onClick={showEarlier}
+              >
+                {t.chat_show_earlier(start)}
+              </button>
+            </div>
+          )}
           <ThreadPrimitive.Empty>
             <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.chat_empty}</div>
           </ThreadPrimitive.Empty>
