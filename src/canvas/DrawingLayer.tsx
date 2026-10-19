@@ -20,7 +20,6 @@ import {
   type StrokePoint,
 } from "../stores/drawingStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
 import {
@@ -207,13 +206,8 @@ function renderHitArea(element: DrawingElement) {
 export function DrawingLayer() {
   const { tool, color, elements, activeElement } = useDrawingStore();
   const viewport = useCanvasStore((state) => state.viewport);
-  const leftPanelCollapsed = useCanvasStore((state) => state.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((state) => state.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((state) => state.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((state) => state.rightPanelWidth);
-  const taskDrawerOpen = usePinStore(
-    (state) => state.openProjectPath !== null,
-  );
   const projects = useProjectStore((state) => state.projects);
   const selectedItems = useSelectionStore((state) => state.selectedItems);
   const selectedAnnotationIds = useMemo(
@@ -234,9 +228,6 @@ export function DrawingLayer() {
         event.clientX,
         event.clientY,
         useCanvasStore.getState().viewport,
-        useCanvasStore.getState().leftPanelCollapsed,
-        useCanvasStore.getState().leftPanelWidth,
-        usePinStore.getState().openProjectPath !== null,
       ),
     [],
   );

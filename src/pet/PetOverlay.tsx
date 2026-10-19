@@ -2,13 +2,12 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { usePetStore } from "./petStore";
 import type { AttentionPriority } from "./petStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { SpriteRenderer } from "./SpriteRenderer";
 import { getCurrentFrame, getFrameInterval } from "./sprites";
 import { stepToward } from "./petMovement";
 import { usePetEventBridge } from "./eventBridge";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getCanvasRightInset,
 } from "../canvas/viewportBounds";
 import { C } from "./sprites/colors";
@@ -139,11 +138,8 @@ export function PetOverlay() {
   const landThrow = usePetStore((s) => s.landThrow);
 
   const viewport = useCanvasStore((s) => s.viewport);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
 
   const animFrameRef = useRef<number>(0);
   const lastFrameTimeRef = useRef(0);
@@ -390,13 +386,7 @@ export function PetOverlay() {
   // mid-drag.
   const clientToWorld = useCallback((clientX: number, clientY: number) => {
     const canvas = useCanvasStore.getState();
-    const inset = getCanvasLeftInset(
-      canvas.leftPanelCollapsed,
-      canvas.leftPanelWidth,
-      usePinStore.getState().openProjectPath !== null,
-      canvas.rightPanelCollapsed,
-      canvas.rightPanelWidth,
-    );
+    const inset = getLeftPanelInset(canvas.rightPanelCollapsed, canvas.rightPanelWidth);
     const sx = clientX - inset;
     const sy = clientY;
     return {
@@ -522,10 +512,7 @@ export function PetOverlay() {
   );
 
   // Transform pet world coordinates to screen coordinates
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
+  const leftInset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );

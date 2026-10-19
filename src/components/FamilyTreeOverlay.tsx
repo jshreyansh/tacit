@@ -10,12 +10,11 @@ import {
 import {
   useCanvasStore,
 } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { panToTerminal } from "../utils/panToTerminal";
 import { useT } from "../i18n/useT";
 import {
   canvasPointToScreenPoint,
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { useResolvedTerminalRuntimeState } from "../stores/terminalRuntimeStateStore";
@@ -162,9 +161,6 @@ export function FamilyTreeOverlay() {
   const viewport = useCanvasStore((s) => s.viewport);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [visibleId, setVisibleId] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,10 +230,7 @@ export function FamilyTreeOverlay() {
   if (!portalTarget) return null;
 
   const panelWidth = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
+  const leftInset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );
@@ -253,9 +246,6 @@ export function FamilyTreeOverlay() {
     anchorPos.x,
     anchorPos.y,
     viewport,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
   );
   const anchorLeft = anchorScreenPoint.x;
   const anchorTop = anchorScreenPoint.y;

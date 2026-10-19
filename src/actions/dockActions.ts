@@ -1,5 +1,4 @@
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { createTerminalInScene } from "./terminalSceneActions";
@@ -28,10 +27,7 @@ export function visibleCanvasCenter(): { x: number; y: number } {
   const rect = getVisibleCanvasWorldRect(
     canvasState.viewport,
     canvasState.rightPanelCollapsed,
-    canvasState.leftPanelCollapsed,
-    canvasState.leftPanelWidth,
     canvasState.rightPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
   );
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }

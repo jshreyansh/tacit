@@ -60,8 +60,6 @@ export function StatusDigest() {
   const openedAt = useStatusDigestStore((s) => s.openedAt);
   const closeDigest = useStatusDigestStore((s) => s.closeDigest);
 
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
 
@@ -84,7 +82,7 @@ export function StatusDigest() {
 
   if (!open) return null;
 
-  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const leftInset = getLeftPanelInset(rightPanelCollapsed, rightPanelWidth);
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   const handleRowClick = (signal: DigestSignal) => {

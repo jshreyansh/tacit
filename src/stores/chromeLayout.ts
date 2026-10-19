@@ -18,30 +18,20 @@ export const HUB_WIDTH = 340;
 
 export function leftChromeInset(state: {
   chat: number;
-  leftPanelCollapsed: boolean;
-  leftPanelWidth: number;
   codePanelCollapsed: boolean;
   codePanelWidth: number;
   hubOpen: boolean;
 }): number {
-  const panel = !state.leftPanelCollapsed
-    ? state.leftPanelWidth
-    : !state.codePanelCollapsed
-      ? state.codePanelWidth
-      : state.hubOpen
-        ? HUB_WIDTH
-        : 0;
+  const panel = !state.codePanelCollapsed ? state.codePanelWidth : state.hubOpen ? HUB_WIDTH : 0;
   return CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + state.chat + (panel > 0 ? panel + CHROME_GAP : 0);
 }
 
 export function useLeftChromeInset(): number {
   const chat = useChatDockStore((s) => chatDockOffset(s, CHROME_GAP));
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const codePanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const codePanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const hubOpen = useHubStore((s) => s.open);
-  return leftChromeInset({ chat, leftPanelCollapsed, leftPanelWidth, codePanelCollapsed, codePanelWidth, hubOpen });
+  return leftChromeInset({ chat, codePanelCollapsed, codePanelWidth, hubOpen });
 }
 
 /**

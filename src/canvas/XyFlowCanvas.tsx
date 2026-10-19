@@ -62,7 +62,7 @@ import { fromFlowViewport, toFlowViewport } from "./viewportAdapter";
 import { buildCanvasFlowNodes, buildPinFlowNodes } from "./nodeProjection";
 import { xyflowNodeTypes, type CanvasFlowNode } from "./xyflowNodes";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getVisibleCanvasWorldRect,
   rectIntersectsCanvasViewport,
 } from "./viewportBounds";
@@ -160,17 +160,11 @@ function TerminalRuntimeLayer({
   viewport,
   rightPanelCollapsed,
   rightPanelWidth,
-  leftPanelCollapsed,
-  leftPanelWidth,
-  taskDrawerOpen,
 }: {
   projects: ReturnType<typeof useProjectStore.getState>["projects"];
   viewport: ReturnType<typeof useCanvasStore.getState>["viewport"];
   rightPanelCollapsed: boolean;
   rightPanelWidth: number;
-  leftPanelCollapsed: boolean;
-  leftPanelWidth: number;
-  taskDrawerOpen: boolean;
 }) {
   const managedTerminalIdsRef = useRef<Set<string>>(new Set());
   const publishedTerminalIdsRef = useRef<Set<string>>(new Set());
@@ -282,10 +276,7 @@ function TerminalRuntimeLayer({
         entry.absoluteRect,
         viewport,
         rightPanelCollapsed,
-        leftPanelCollapsed,
-        leftPanelWidth,
         rightPanelWidth,
-        taskDrawerOpen,
       );
       setTerminalRuntimeMode(
         entry.terminal.id,
@@ -303,12 +294,9 @@ function TerminalRuntimeLayer({
       );
     }
   }, [
-    leftPanelCollapsed,
-    leftPanelWidth,
     projects,
     rightPanelCollapsed,
     rightPanelWidth,
-    taskDrawerOpen,
     terminalEntries,
     viewport,
   ]);
@@ -339,14 +327,7 @@ function XyFlowCanvasInner() {
   const rightPanelCollapsed = useCanvasStore(
     (state) => state.rightPanelCollapsed,
   );
-  const leftPanelCollapsed = useCanvasStore(
-    (state) => state.leftPanelCollapsed,
-  );
-  const leftPanelWidth = useCanvasStore((state) => state.leftPanelWidth);
   const rightPanelWidth = useCanvasStore((state) => state.rightPanelWidth);
-  const taskDrawerOpen = usePinStore(
-    (state) => state.openProjectPath !== null,
-  );
   const pinsByProject = usePinStore((state) => state.pinsByProject);
   const projects = useProjectStore((state) => state.projects);
   const drawingEnabled = usePreferencesStore((state) => state.drawingEnabled);
@@ -536,10 +517,7 @@ function XyFlowCanvasInner() {
       const visibleRect = getVisibleCanvasWorldRect(
         viewport,
         rightPanelCollapsed,
-        leftPanelCollapsed,
-        leftPanelWidth,
         rightPanelWidth,
-        taskDrawerOpen,
       );
       const centerPoint = {
         x: visibleRect.x + visibleRect.w / 2,
@@ -876,9 +854,6 @@ function XyFlowCanvasInner() {
         const nextViewport = zoomAtClientPoint({
           clientX: event.clientX,
           clientY: event.clientY,
-          leftPanelCollapsed,
-          leftPanelWidth,
-          taskDrawerOpen,
           nextScale: clampScale(viewport.scale * scaleFactor),
           viewport,
         });
@@ -916,9 +891,6 @@ function XyFlowCanvasInner() {
       });
     },
     [
-      leftPanelCollapsed,
-      leftPanelWidth,
-      taskDrawerOpen,
       viewport,
       goToOffset,
       resolveWheelConsumerForEvent,
@@ -1038,9 +1010,6 @@ function XyFlowCanvasInner() {
         viewport={viewport}
         rightPanelCollapsed={rightPanelCollapsed}
         rightPanelWidth={rightPanelWidth}
-        leftPanelCollapsed={leftPanelCollapsed}
-        leftPanelWidth={leftPanelWidth}
-        taskDrawerOpen={taskDrawerOpen}
       />
       <ReactFlow
         className="tc-xyflow"

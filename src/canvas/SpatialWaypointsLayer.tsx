@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useT } from "../i18n/useT";
-import { getCanvasLeftInset, getCanvasRightInset } from "./viewportBounds";
+import { getLeftPanelInset, getCanvasRightInset } from "./viewportBounds";
 import {
   WAYPOINT_NOOP_EVENT,
   WAYPOINT_RECALLED_EVENT,
@@ -98,11 +97,8 @@ export function SpatialWaypointsLayer() {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const focusedProjectId = useProjectStore((s) => s.focusedProjectId);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const pinDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
 
   const [windowWidth, setWindowWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 0,
@@ -189,10 +185,7 @@ export function SpatialWaypointsLayer() {
     return null;
   }
 
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    pinDrawerOpen,
+  const leftInset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );

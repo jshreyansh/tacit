@@ -5,10 +5,9 @@ import {
 import { focusTerminalInScene } from "../actions/terminalSceneActions";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import {
   getCanvasRightInset,
-  getCanvasLeftInset,
+  getLeftPanelInset,
   clampCenterX,
 } from "../canvas/viewportBounds";
 import { clampScale } from "../canvas/viewportZoom";
@@ -50,15 +49,10 @@ export function flyToBounds(
   const {
     rightPanelCollapsed,
     rightPanelWidth,
-    leftPanelCollapsed,
-    leftPanelWidth,
     viewport,
   } = canvasState;
   const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
+  const leftOffset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );

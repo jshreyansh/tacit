@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useInternalNode } from "@xyflow/react";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { canvasPointToScreenPoint } from "../canvas/viewportBounds";
 
 const CARET_W = 10;
@@ -27,9 +26,6 @@ function findFocusedTerminal(
 export function FocusCaretOverlay() {
   const projects = useProjectStore((s) => s.projects);
   const viewport = useCanvasStore((s) => s.viewport);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
 
   const pos = useMemo(() => findFocusedTerminal(projects), [projects]);
   // xyflow drives the tile via CSS transforms during drag and only commits
@@ -46,18 +42,12 @@ export function FocusCaretOverlay() {
       x + pos.w / 2,
       y,
       viewport,
-      leftPanelCollapsed,
-      leftPanelWidth,
-      taskDrawerOpen,
     );
     return { x: sp.x, y: sp.y };
   }, [
     pos,
     liveNode,
     viewport,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
   ]);
 
   if (!screenPos) return null;

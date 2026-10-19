@@ -47,17 +47,11 @@ test("zoomAtClientPoint preserves the world point under the cursor", () => {
     clientX,
     clientY,
     viewport,
-    false,
-    280,
-    false,
   );
 
   const nextViewport = zoomAtClientPoint({
     clientX,
     clientY,
-    leftPanelCollapsed: false,
-    leftPanelWidth: 280,
-    taskDrawerOpen: false,
     nextScale: 1.25,
     viewport,
   });
@@ -65,9 +59,6 @@ test("zoomAtClientPoint preserves the world point under the cursor", () => {
     clientX,
     clientY,
     nextViewport,
-    false,
-    280,
-    false,
   );
 
   assert.ok(Math.abs(after.x - before.x) < 0.0001);
@@ -78,14 +69,13 @@ test("zoomAtClientPoint preserves the world point under the cursor", () => {
 test("getViewportCenterClientPoint centers within the visible canvas bounds", () => {
   installViewportGlobals();
 
+  // The code panel (still named the right panel in the store) opens on the left.
   const center = getViewportCenterClientPoint({
-    leftPanelCollapsed: false,
-    leftPanelWidth: 280,
     rightPanelCollapsed: false,
     rightPanelWidth: 360,
-    taskDrawerOpen: false,
     topInset: 44,
   });
 
-  assert.deepEqual(center, { x: 680, y: 472 });
+  // Left chrome 12 + 52 + 8 + 360 + 8 = 440, right 20, in a 1440px window: 440 + (1440 - 460) / 2.
+  assert.deepEqual(center, { x: 930, y: 472 });
 });

@@ -1,10 +1,9 @@
 import { useCanvasStore } from "../stores/canvasStore";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { useProjectStore } from "../stores/projectStore";
-import { usePinStore } from "../stores/pinStore";
 import { CHROME_BOTTOM, CHROME_TOP } from "./floatingChrome";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getCanvasRightInset,
 } from "./viewportBounds";
 import {
@@ -18,19 +17,12 @@ const FIT_PADDING = 80;
 
 function getCanvasInsets() {
   const {
-    leftPanelCollapsed,
-    leftPanelWidth,
     rightPanelCollapsed,
     rightPanelWidth,
   } = useCanvasStore.getState();
-  const taskDrawerOpen =
-    usePinStore.getState().openProjectPath !== null;
   return {
-    leftPanelCollapsed,
-    leftPanelWidth,
     rightPanelCollapsed,
     rightPanelWidth,
-    taskDrawerOpen,
   };
 }
 
@@ -75,10 +67,7 @@ export function computeFitAllViewport(): {
   const contentW = maxX - minX;
   const contentH = maxY - minY;
   const insets = getCanvasInsets();
-  const leftOffset = getCanvasLeftInset(
-    insets.leftPanelCollapsed,
-    insets.leftPanelWidth,
-    insets.taskDrawerOpen,
+  const leftOffset = getLeftPanelInset(
     insets.rightPanelCollapsed,
     insets.rightPanelWidth,
   );
@@ -137,11 +126,8 @@ export function stepZoomAtCenter(direction: "in" | "out"): void {
 function zoomAroundCenter(nextScale: number): void {
   const insets = getCanvasInsets();
   const center = getViewportCenterClientPoint({
-    leftPanelCollapsed: insets.leftPanelCollapsed,
-    leftPanelWidth: insets.leftPanelWidth,
     rightPanelCollapsed: insets.rightPanelCollapsed,
     rightPanelWidth: insets.rightPanelWidth,
-    taskDrawerOpen: insets.taskDrawerOpen,
     topInset: CHROME_TOP,
   });
   const viewport = useCanvasStore.getState().viewport;
@@ -149,9 +135,6 @@ function zoomAroundCenter(nextScale: number): void {
     zoomAtClientPoint({
       clientX: center.x,
       clientY: center.y,
-      leftPanelCollapsed: insets.leftPanelCollapsed,
-      leftPanelWidth: insets.leftPanelWidth,
-      taskDrawerOpen: insets.taskDrawerOpen,
       nextScale: clampScale(nextScale),
       viewport,
     }),

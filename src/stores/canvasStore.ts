@@ -52,13 +52,8 @@ export const CHROME_INSET = 12;
 export const CHROME_GAP = 8;
 /**
  * The left rail — the always-present strip of add-a-node buttons plus the
- * Folders and Settings controls.
- *
- * It replaces LeftPanel's own collapsed tab strip rather than sitting beside
- * it: two 32px strips at the same edge would be worse than the crowding this
- * moved away from the bottom. So the panel no longer has a collapsed width of
- * its own — collapsed means zero, and the rail is the handle that reopens it.
- * Every consumer of "left chrome width" goes through `getLeftPanelInset`.
+ * Folders and Settings controls. Every consumer of "left chrome width" goes
+ * through `getLeftPanelInset`.
  */
 export const LEFT_RAIL_WIDTH = 52;
 // PinDrawer slides out from the LeftPanel's right edge. When open,
@@ -74,8 +69,6 @@ interface CanvasStore {
   rightPanelCollapsed: boolean;
   rightPanelActiveTab: RightPanelTab;
   rightPanelWidth: number;
-  leftPanelCollapsed: boolean;
-  leftPanelWidth: number;
   /**
    * File path currently open in the full-canvas Monaco drawer.
    * `null` means the drawer is closed. Persisted only in-memory —
@@ -123,8 +116,6 @@ interface CanvasStore {
   toggleSessionsOverlay: () => void;
   toggleSessionsOverlayExpanded: () => void;
   setSessionsOverlayExpanded: (expanded: boolean) => void;
-  setLeftPanelCollapsed: (collapsed: boolean) => void;
-  setLeftPanelWidth: (width: number) => void;
   animateTo: (
     x: number,
     y: number,
@@ -210,8 +201,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   rightPanelCollapsed: true,
   rightPanelActiveTab: "files" as RightPanelTab,
   rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH,
-  leftPanelCollapsed: true,
-  leftPanelWidth: 280,
   fileEditorPath: null,
   fileEditorExpanded: true,
   usageOverlayOpen: false,
@@ -250,15 +239,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setFocusModeCurrentKey: (key) =>
     set((state) => ({ focusMode: { ...state.focusMode, currentKey: key } })),
   setRightPanelCollapsed: (collapsed) => {
-    // Both panels open at the left edge now, so opening one has to close the
-    // other — otherwise they stack in the same place and the lower one is
-    // simply unreachable. Collapsing is not exclusive: closing this panel
-    // must not reopen the other.
-    set(
-      collapsed
-        ? { rightPanelCollapsed: true }
-        : { rightPanelCollapsed: false, leftPanelCollapsed: true },
-    );
+    set({ rightPanelCollapsed: collapsed });
     if (!collapsed) closeHubForPanel();
     markDirty();
   },
@@ -338,20 +319,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     })),
   setSessionsOverlayExpanded: (expanded) =>
     set({ sessionsOverlayExpanded: expanded }),
-  setLeftPanelCollapsed: (collapsed) => {
-    // Mirror of setRightPanelCollapsed — see the note there.
-    set(
-      collapsed
-        ? { leftPanelCollapsed: true }
-        : { leftPanelCollapsed: false, rightPanelCollapsed: true },
-    );
-    if (!collapsed) closeHubForPanel();
-    markDirty();
-  },
-  setLeftPanelWidth: (width) => {
-    set({ leftPanelWidth: width });
-    markDirty();
-  },
 
   setViewport: (partial) => {
     if (refuseNonFiniteViewport("setViewport", partial)) return;

@@ -12,7 +12,6 @@ import {
   resolveDrawingElementForRender,
 } from "../canvas/annotationGeometry";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import {
   useCardLayoutStore,
@@ -62,16 +61,7 @@ export function prioritizeBoxSelectionItems(
 }
 
 function screenToCanvas(clientX: number, clientY: number) {
-  const { viewport, leftPanelCollapsed, leftPanelWidth } =
-    useCanvasStore.getState();
-  return screenPointToCanvasPoint(
-    clientX,
-    clientY,
-    viewport,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
-  );
+  return screenPointToCanvasPoint(clientX, clientY, useCanvasStore.getState().viewport);
 }
 
 function getItemsInRect(rect: {

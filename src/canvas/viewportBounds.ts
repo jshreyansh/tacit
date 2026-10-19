@@ -48,29 +48,14 @@ export function getCanvasRightInset(
 }
 
 /**
- * Width of the left chrome: the rail, plus the panel when it is open.
+ * Width of the left chrome: the rail, the docked chat, and the code panel
+ * (Files / Diff / Git / Memory) when it is open.
  *
- * The single place that knows the rail is always there. Every caller used to
- * inline `collapsed ? COLLAPSED_TAB_WIDTH : width`, which is why there were a
- * dozen copies of the same expression to keep in step — they now all come
- * through here.
+ * The single place that knows the rail is always there, so callers don't
+ * each keep a copy of the sum. Defaulted to the code panel closed.
  */
-export function getLeftPanelInset(
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
-  // The code panel (Files / Diff / Git / Memory) opens at this edge too, and
-  // the two are mutually exclusive — opening either closes the other — so the
-  // chrome is the rail plus whichever one is currently showing. Defaulted to
-  // closed so a caller that only knows about the sessions panel still gets a
-  // sane number rather than a type error.
-  codePanelCollapsed = true,
-  codePanelWidth = 0,
-) {
-  const panelWidth = !leftPanelCollapsed
-    ? leftPanelWidth
-    : !codePanelCollapsed
-      ? codePanelWidth
-      : 0;
+export function getLeftPanelInset(codePanelCollapsed = true, codePanelWidth = 0) {
+  const panelWidth = !codePanelCollapsed ? codePanelWidth : 0;
   return (
     CHROME_INSET +
     LEFT_RAIL_WIDTH +
@@ -81,53 +66,14 @@ export function getLeftPanelInset(
   );
 }
 
-export function getCanvasLeftInset(
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
-  // Pins used to open in a drawer here, which pushed the canvas right. They
-  // open in the docked chat now, whose width getLeftPanelInset already
-  // counts, so this no longer moves anything. Kept so its callers needn't
-  // all change at once.
-  _pinsOpen: boolean,
-  codePanelCollapsed = true,
-  codePanelWidth = 0,
-) {
-  return getLeftPanelInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    codePanelCollapsed,
-    codePanelWidth,
-  );
-}
-
-export function canvasPointToScreenPoint(
-  x: number,
-  y: number,
-  viewport: Viewport,
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
-  taskDrawerOpen: boolean,
-) {
-  void leftPanelCollapsed;
-  void leftPanelWidth;
-  void taskDrawerOpen;
+export function canvasPointToScreenPoint(x: number, y: number, viewport: Viewport) {
   return {
     x: getCanvasContainerLeft() + viewport.x + x * viewport.scale,
     y: viewport.y + y * viewport.scale,
   };
 }
 
-export function screenPointToCanvasPoint(
-  clientX: number,
-  clientY: number,
-  viewport: Viewport,
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
-  taskDrawerOpen: boolean,
-) {
-  void leftPanelCollapsed;
-  void leftPanelWidth;
-  void taskDrawerOpen;
+export function screenPointToCanvasPoint(clientX: number, clientY: number, viewport: Viewport) {
   return {
     x: (clientX - getCanvasContainerLeft() - viewport.x) / viewport.scale,
     y: (clientY - viewport.y) / viewport.scale,
@@ -157,16 +103,9 @@ const CANVAS_TOP_INSET = TITLE_STRIP_HEIGHT + 12;
 export function getVisibleCanvasWorldRect(
   viewport: Viewport,
   rightPanelCollapsed: boolean,
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
   rightPanelWidth: number,
-  taskDrawerOpen: boolean,
 ): { x: number; y: number; w: number; h: number } {
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
+  const leftInset = getLeftPanelInset();
   const rightInset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
   const screenW = Math.max(
     0,
@@ -192,17 +131,10 @@ export function rectIntersectsCanvasViewport(
   rect: { x: number; y: number; w: number; h: number },
   viewport: Viewport,
   rightPanelCollapsed: boolean,
-  leftPanelCollapsed: boolean,
-  leftPanelWidth: number,
   rightPanelWidth: number,
-  taskDrawerOpen: boolean,
   margin = 120,
 ) {
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
+  const leftInset = getLeftPanelInset();
   const left = -viewport.x / viewport.scale - margin;
   const top = -viewport.y / viewport.scale - margin;
   const right =
@@ -231,9 +163,8 @@ const PAN_SAFE_PADDING = 40;
  * @param objectX   – world-space left edge of the object
  * @param objectW   – world-space width of the object
  * @param scale     – current zoom scale
- * @param leftInset – screen-space left panel width (px), already including
- *                    the task drawer when it's open (callers compute via
- *                    getCanvasLeftInset)
+ * @param leftInset – screen-space left chrome width (px), from
+ *                    getLeftPanelInset
  * @param rightInset – screen-space right panel width (px)
  */
 export function clampCenterX(

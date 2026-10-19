@@ -2,7 +2,6 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useEffect } from "react";
 import { zoomToFitAllTerminals } from "../canvas/zoomActions";
-import { usePinStore } from "../stores/pinStore";
 import { CHROME_BOTTOM, CHROME_TOP } from "../canvas/floatingChrome";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { deleteSelectedSceneItems } from "../actions/sceneDeleteActions";
@@ -65,7 +64,7 @@ import { panToWorktree } from "../utils/panToWorktree";
 import { toggleClearFocus } from "../canvas/toggleClearFocus";
 import { recordRenderDiagnostic } from "../terminal/renderDiagnostics";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getCanvasRightInset,
 } from "../canvas/viewportBounds";
 import {
@@ -235,17 +234,12 @@ async function handleAddProject(t: ReturnType<typeof useT>) {
     viewport: { scale },
     rightPanelCollapsed,
     rightPanelWidth,
-    leftPanelCollapsed,
-    leftPanelWidth,
   } = useCanvasStore.getState();
   // Centre in the band the chrome leaves, on both sides. This only ever
   // subtracted the right inset, so a new project landed left of centre even
   // before the canvas went full-bleed — and behind the rail after.
   const rightOffset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
-  const leftOffset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    usePinStore.getState().openProjectPath !== null,
+  const leftOffset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );

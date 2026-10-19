@@ -163,7 +163,7 @@ test("views laid out after the left chrome start where it ends: rail, chat, then
   const { leftChromeInset, HUB_WIDTH } = await import("../src/stores/chromeLayout");
   const { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } = await import("../src/stores/canvasStore");
   const rail = CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP;
-  const closed = { chat: 0, leftPanelCollapsed: true, leftPanelWidth: 300, codePanelCollapsed: true, codePanelWidth: 420, hubOpen: false };
+  const closed = { chat: 0, codePanelCollapsed: true, codePanelWidth: 420, hubOpen: false };
   assert.equal(leftChromeInset(closed), rail);
   assert.equal(leftChromeInset({ ...closed, chat: 448 }), rail + 448);
   assert.equal(leftChromeInset({ ...closed, chat: 448, codePanelCollapsed: false }), rail + 448 + 420 + CHROME_GAP);

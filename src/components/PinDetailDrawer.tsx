@@ -8,7 +8,7 @@ import {
   PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
@@ -45,8 +45,6 @@ function KindBadge({ pin }: { pin: Pin }) {
 
 export function PinDetailDrawer() {
   const t = useT();
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const openDetailPinId = usePinStore((s) => s.openDetailPinId);
@@ -362,11 +360,7 @@ export function PinDetailDrawer() {
 
   // Opens to the right of the docked chat, whose Pins view lists the
   // pins (and of the code panel when it is open).
-  const pinDrawerOpen = openProjectPath !== null || composingForPin !== null;
-  const effectiveLeftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    pinDrawerOpen,
+  const effectiveLeftInset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );

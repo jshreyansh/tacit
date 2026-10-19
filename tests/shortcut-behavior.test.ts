@@ -678,8 +678,6 @@ test("terminal focus clamps fit scale for small resized tiles", () => {
   });
   useCanvasStore.setState({
     viewport: { x: 0, y: 0, scale: 1 },
-    leftPanelCollapsed: true,
-    leftPanelWidth: 280,
     rightPanelCollapsed: true,
     rightPanelWidth: 360,
   });

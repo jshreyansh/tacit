@@ -395,8 +395,6 @@ function UsageRangeDashboard({
 export function UsageOverlay() {
   const open = useCanvasStore((s) => s.usageOverlayOpen);
   const close = useCanvasStore((s) => s.closeUsageOverlay);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const t = useT();
@@ -555,7 +553,7 @@ export function UsageOverlay() {
 
   if (!open) return null;
 
-  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const leftInset = getLeftPanelInset(rightPanelCollapsed, rightPanelWidth);
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
   const gapWidth =
     typeof window !== "undefined"

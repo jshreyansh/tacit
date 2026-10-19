@@ -1,6 +1,6 @@
 import type { Viewport } from "../types";
 import {
-  getCanvasLeftInset,
+  getLeftPanelInset,
   getCanvasRightInset,
   screenPointToCanvasPoint,
 } from "./viewportBounds";
@@ -54,29 +54,16 @@ export function getNextZoomStep(
 export function zoomAtClientPoint({
   clientX,
   clientY,
-  leftPanelCollapsed,
-  leftPanelWidth,
-  taskDrawerOpen,
   nextScale,
   viewport,
 }: {
   clientX: number;
   clientY: number;
-  leftPanelCollapsed: boolean;
-  leftPanelWidth: number;
-  taskDrawerOpen: boolean;
   nextScale: number;
   viewport: Viewport;
 }): Viewport {
   const scale = clampScale(nextScale);
-  const worldPoint = screenPointToCanvasPoint(
-    clientX,
-    clientY,
-    viewport,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-  );
+  const worldPoint = screenPointToCanvasPoint(clientX, clientY, viewport);
   // No inset here. The canvas container is full-bleed, so a client point and a
   // container point are the same number — subtracting the chrome width shifted
   // the viewport left by that much on every zoom step, which is why zooming in
@@ -89,27 +76,16 @@ export function zoomAtClientPoint({
 }
 
 export function getViewportCenterClientPoint({
-  leftPanelCollapsed,
-  leftPanelWidth,
   rightPanelCollapsed,
   rightPanelWidth,
-  taskDrawerOpen,
   topInset = 0,
 }: {
-  leftPanelCollapsed: boolean;
-  leftPanelWidth: number;
+  /** The code panel, which opens on the left now; the store keeps its old name. */
   rightPanelCollapsed: boolean;
   rightPanelWidth: number;
-  taskDrawerOpen: boolean;
   topInset?: number;
 }) {
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
-    rightPanelCollapsed,
-    rightPanelWidth,
-  );
+  const leftInset = getLeftPanelInset(rightPanelCollapsed, rightPanelWidth);
   const rightInset = getCanvasRightInset(rightPanelCollapsed, rightPanelWidth);
   const visibleWidth = window.innerWidth - leftInset - rightInset;
   const visibleHeight = window.innerHeight - topInset;

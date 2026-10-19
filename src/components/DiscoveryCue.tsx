@@ -472,8 +472,6 @@ export function DiscoveryCue() {
     if (topCue === null || c.priority > topCue.priority) topCue = c;
   }
 
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
   const markSeen = usePreferencesStore((s) => s.markHintSeen);
@@ -481,7 +479,7 @@ export function DiscoveryCue() {
   if (!topCue) return null;
   const cue = topCue;
 
-  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const leftInset = getLeftPanelInset(rightPanelCollapsed, rightPanelWidth);
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   return (

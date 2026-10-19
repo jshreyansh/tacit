@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import { type NodeProps, type NodeTypes, NodeResizer } from "@xyflow/react";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { TerminalTile } from "../terminal/TerminalTile";
@@ -29,14 +28,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   const rightPanelCollapsed = useCanvasStore(
     (state) => state.rightPanelCollapsed,
   );
-  const leftPanelCollapsed = useCanvasStore(
-    (state) => state.leftPanelCollapsed,
-  );
-  const leftPanelWidth = useCanvasStore((state) => state.leftPanelWidth);
   const rightPanelWidth = useCanvasStore((state) => state.rightPanelWidth);
-  const taskDrawerOpen = usePinStore(
-    (state) => state.openProjectPath !== null,
-  );
 
   const terminal = useProjectStore(
     useCallback(
@@ -77,19 +69,13 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       { x: terminal.x, y: terminal.y, w: terminal.width, h: terminal.height },
       viewport,
       rightPanelCollapsed,
-      leftPanelCollapsed,
-      leftPanelWidth,
       rightPanelWidth,
-      taskDrawerOpen,
     );
   }, [
     terminal,
     viewport,
     rightPanelCollapsed,
-    leftPanelCollapsed,
-    leftPanelWidth,
     rightPanelWidth,
-    taskDrawerOpen,
   ]);
 
   const lodMode = useTerminalRuntimeStore(

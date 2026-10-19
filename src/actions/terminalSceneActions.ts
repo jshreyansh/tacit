@@ -11,7 +11,6 @@ import { destroyTerminalRuntime } from "../terminal/terminalRuntimeStore";
 import { recordRenderDiagnostic } from "../terminal/renderDiagnostics";
 import { pickPlacement } from "../canvas/terminalPlacement";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { createConnectionInScene } from "./sceneConnectionActions";
 import { recordDecision } from "../capture";
@@ -141,10 +140,7 @@ export function createTerminalInScene({
       ? getVisibleCanvasWorldRect(
           canvasState.viewport,
           canvasState.rightPanelCollapsed,
-          canvasState.leftPanelCollapsed,
-          canvasState.leftPanelWidth,
           canvasState.rightPanelWidth,
-          usePinStore.getState().openProjectPath !== null,
         )
       : undefined;
   const placement = pickPlacement({

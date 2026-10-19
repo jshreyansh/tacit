@@ -4,10 +4,9 @@ import { useReactFlow } from "@xyflow/react";
 import type { ProjectData } from "../types";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
 import {
   canvasPointToScreenPoint,
-  getCanvasLeftInset,
+  getLeftPanelInset,
   screenDeltaToCanvasDelta,
 } from "./viewportBounds";
 import { resolveCollisionsDetailed } from "./collisionResolver";
@@ -328,12 +327,9 @@ interface WorktreeDragState {
 export function WorktreeLabelLayer() {
   const projects = useProjectStore((s) => s.projects);
   const viewport = useCanvasStore((s) => s.viewport);
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   // The code panel shares the left edge, so it widens the same chrome.
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
   const compactColumns = usePreferencesStore(
     (s) => s.worktreeCompactColumns,
   );
@@ -392,10 +388,7 @@ export function WorktreeLabelLayer() {
   const useLodMode = scale < LOD_THRESHOLD;
   const showHud = scale >= HUD_THRESHOLD && focus.worktreeId !== null;
   const hasFocus = focus.worktreeId !== null;
-  const leftInset = getCanvasLeftInset(
-    leftPanelCollapsed,
-    leftPanelWidth,
-    taskDrawerOpen,
+  const leftInset = getLeftPanelInset(
     rightPanelCollapsed,
     rightPanelWidth,
   );
@@ -426,9 +419,6 @@ export function WorktreeLabelLayer() {
         entry.worldX,
         entry.worldY,
         viewport,
-        leftPanelCollapsed,
-        leftPanelWidth,
-        taskDrawerOpen,
       );
       const isFocused = useLodMode
         ? entry.projectId === focus.projectId

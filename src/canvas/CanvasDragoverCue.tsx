@@ -26,12 +26,10 @@ interface CanvasDragoverCueProps {
  */
 export function CanvasDragoverCue({ active, showChip }: CanvasDragoverCueProps) {
   const t = useT();
-  const leftPanelCollapsed = useCanvasStore((s) => s.leftPanelCollapsed);
-  const leftPanelWidth = useCanvasStore((s) => s.leftPanelWidth);
   const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
 
-  const leftInset = getLeftPanelInset(leftPanelCollapsed, leftPanelWidth, rightPanelCollapsed, rightPanelWidth);
+  const leftInset = getLeftPanelInset(rightPanelCollapsed, rightPanelWidth);
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
 
   return (

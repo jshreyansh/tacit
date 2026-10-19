@@ -26,18 +26,9 @@ test("the canvas container starts at the window's left edge", () => {
   assert.equal(getCanvasContainerLeft(), 0);
 });
 
-test("left inset covers the rail and its margins when the panel is shut", () => {
-  assert.equal(
-    getLeftPanelInset(true, 280),
-    CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP,
-  );
-});
-
-test("left inset adds the panel and a second gap when it is open", () => {
-  assert.equal(
-    getLeftPanelInset(false, 280),
-    CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + 280 + CHROME_GAP,
-  );
+test("left inset covers the rail and its margins when the code panel is shut", () => {
+  assert.equal(getLeftPanelInset(), CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP);
+  assert.equal(getLeftPanelInset(true, 360), CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP);
 });
 
 test("right inset is the edge gap alone, whatever the old panel state says", () => {
@@ -51,57 +42,28 @@ test("right inset is the edge gap alone, whatever the old panel state says", () 
   assert.equal(getRightPanelInset(false, 360), edgeOnly);
 });
 
-test("left inset covers the code panel, which now shares this edge", () => {
-  // Sessions shut, code panel open — the chrome is the rail plus the code
-  // panel, because only one of the two can be open at a time.
+test("left inset adds the code panel, which opens at this edge, and a second gap", () => {
   assert.equal(
-    getLeftPanelInset(true, 280, false, 360),
+    getLeftPanelInset(false, 360),
     CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + 360 + CHROME_GAP,
   );
 });
 
-test("an open sessions panel wins over a code panel left marked open", () => {
-  // Exclusivity is enforced in the store, so this pairing should not occur.
-  // If it ever does, the reported width must still be one panel, not two.
-  assert.equal(
-    getLeftPanelInset(false, 280, false, 360),
-    CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + 280 + CHROME_GAP,
-  );
-});
-
-test("screen to canvas ignores the chrome, open or shut", () => {
+test("screen to canvas ignores the chrome", () => {
   const viewport = { x: 0, y: -20, scale: 2 };
-  const open = screenPointToCanvasPoint(240, 120, viewport, false, 280, false);
-  const shut = screenPointToCanvasPoint(240, 120, viewport, true, 280, false);
-
-  assert.deepEqual(open, { x: 120, y: 70 });
-  assert.deepEqual(shut, open);
+  assert.deepEqual(screenPointToCanvasPoint(240, 120, viewport), { x: 120, y: 70 });
 });
 
 test("canvas to screen offsets by the viewport only", () => {
-  const point = canvasPointToScreenPoint(
-    24,
-    70,
-    { x: 10, y: -20, scale: 2 },
-    false,
-    280,
-    false,
-  );
+  const point = canvasPointToScreenPoint(24, 70, { x: 10, y: -20, scale: 2 });
 
   assert.deepEqual(point, { x: 58, y: 120 });
 });
 
 test("screen/canvas conversion round-trips", () => {
   const viewport = { x: -40, y: 30, scale: 1.5 };
-  const screenPoint = canvasPointToScreenPoint(150, 90, viewport, true, 280, false);
-  const canvasPoint = screenPointToCanvasPoint(
-    screenPoint.x,
-    screenPoint.y,
-    viewport,
-    true,
-    280,
-    false,
-  );
+  const screenPoint = canvasPointToScreenPoint(150, 90, viewport);
+  const canvasPoint = screenPointToCanvasPoint(screenPoint.x, screenPoint.y, viewport);
 
   assert.deepEqual(canvasPoint, { x: 150, y: 90 });
 });
