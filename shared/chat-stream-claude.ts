@@ -288,6 +288,19 @@ export function claudeApprovalLine(requestId: string, allow: boolean, input: unk
   return `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response } })}\n`;
 }
 
+/**
+ * What Claude hears when the person keeps planning instead of starting on
+ * its plan: not a plain refusal, which Claude takes as the end of it and
+ * sums up, but to stay in plan mode and revise, with what they'd change.
+ */
+export function claudeKeepPlanningMessage(note?: string): string {
+  const base = "The person wants to keep planning instead of starting on this plan. Stay in plan mode and don't make any changes.";
+  const said = note?.trim();
+  return said
+    ? `${base} What they'd like changed:\n\n${said}\n\nRevise the plan with that, then present it again.`
+    : `${base} Ask them what they'd like changed in the plan.`;
+}
+
 /** An MCP elicitation as Claude passes it on. */
 export function claudeElicitation(request: Json): Elicitation {
   return elicitationOf({

@@ -779,7 +779,8 @@ export interface TacitAPI {
     /** Files dropped or pasted on the message box. */
     attachFiles: (files: File[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
     interrupt: (terminalId: string) => Promise<void>;
-    answer: (terminalId: string, requestId: string, decision: ApprovalDecision) => Promise<void>;
+    /** `note`: what the person said with a deny; keeping on planning, what they'd change. */
+    answer: (terminalId: string, requestId: string, decision: ApprovalDecision, note?: string) => Promise<void>;
     /** Answers the agent's questions, by question id; null skips them. */
     answerQuestion: (terminalId: string, requestId: string, answers: Record<string, string[]> | null) => Promise<void>;
     /** Picks the model, effort or mode for the chat from its next step. */

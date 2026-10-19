@@ -231,6 +231,8 @@ export const en = {
   chat_plan_go_accept: "Yes, and accept edits",
   chat_plan_go_ask: "Yes, but ask before edits",
   chat_plan_keep: "Keep planning",
+  chat_plan_change_placeholder: "What should change? (optional)",
+  chat_plan_back: "Back",
   rail_chat: (shortcut: string) => `Manager chat (${shortcut})`,
   chat_history_hide: "Hide this chat",
   chat_history_hide_confirm: "Click again to hide it",

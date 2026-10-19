@@ -2316,10 +2316,12 @@ function setupIpc() {
   ipcMain.handle("chat:interrupt", (event, terminalId: unknown) => {
     if (isMainWindowSender(event) && chatId(terminalId)) chatEngine.interrupt(terminalId);
   });
-  ipcMain.handle("chat:answer", (event, terminalId: unknown, requestId: unknown, decision: unknown) => {
+  // A deny can carry what the person said (keeping on planning: what to change).
+  ipcMain.handle("chat:answer", (event, terminalId: unknown, requestId: unknown, decision: unknown, note: unknown) => {
     if (!isMainWindowSender(event) || !chatId(terminalId) || typeof requestId !== "string" || requestId.length > 256) return;
     if (!CHAT_DECISIONS.includes(decision as ApprovalDecision)) return;
-    chatEngine.answer(terminalId, requestId, decision as ApprovalDecision);
+    if (note !== undefined && (typeof note !== "string" || note.length > 20_000)) return;
+    chatEngine.answer(terminalId, requestId, decision as ApprovalDecision, note);
   });
   // The person's answers to the agent's questions: ids and texts, bounded.
   ipcMain.handle("chat:answer-question", (event, terminalId: unknown, requestId: unknown, answers: unknown) => {

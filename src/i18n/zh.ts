@@ -230,6 +230,8 @@ export const zh = {
   chat_plan_go_accept: "开始，并自动接受编辑",
   chat_plan_go_ask: "开始，但编辑前先问",
   chat_plan_keep: "继续规划",
+  chat_plan_change_placeholder: "需要改什么？（可选）",
+  chat_plan_back: "返回",
   rail_chat: (shortcut: string) => `管理者对话（${shortcut}）`,
   chat_history_hide: "隐藏这个对话",
   chat_history_hide_confirm: "再点一次以隐藏",

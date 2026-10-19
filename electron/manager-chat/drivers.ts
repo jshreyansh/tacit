@@ -11,6 +11,7 @@ import {
   claudeCapabilities,
   claudeControlLine,
   claudeInterruptLine,
+  claudeKeepPlanningMessage,
   claudeUserLine,
   createClaudeStreamState,
   parseClaudeLine,
@@ -61,7 +62,8 @@ export interface ChatDriver {
   /** The person's message, with any files sent with it. */
   send(text: string, attachments?: readonly ChatAttachment[]): void;
   interrupt(): void;
-  answer(requestId: string, decision: ApprovalDecision): void;
+  /** `note`: what the person said with a deny; for a plan, what they'd change while they keep planning. */
+  answer(requestId: string, decision: ApprovalDecision, note?: string): void;
   /** Answers the agent's questions; null skips them. */
   answerQuestion(requestId: string, answers: ChatAnswers | null): void;
   /** Changes the model, effort or mode from the next thing the agent does. */
@@ -236,12 +238,14 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
       interrupting = true;
       write(claudeInterruptLine(`interrupt-${randomUUID()}`));
     },
-    answer: (requestId, decision) => {
+    answer: (requestId, decision, note) => {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
       if (decision === "allow_always" && pending) alwaysAllowed.add(allowKey(pending.toolName, pending.input));
       if (decision === "deny") {
-        write(claudeApprovalLine(requestId, false, undefined));
+        // Keep planning: Claude stays in plan mode and revises, rather than stopping.
+        const message = pending?.toolName === "ExitPlanMode" ? claudeKeepPlanningMessage(note) : undefined;
+        write(claudeApprovalLine(requestId, false, undefined, message));
       } else if (decision === "allow_always" && Array.isArray(pending?.suggestions) && pending.suggestions.length > 0) {
         // Claude's own suggested rule, so it stops asking for this.
         const line = JSON.parse(claudeApprovalLine(requestId, true, pending.input));
@@ -425,13 +429,18 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     interrupt: () => {
       if (state.threadId && state.turnId) void request("turn/interrupt", { threadId: state.threadId, turnId: state.turnId });
     },
-    answer: (requestId, decision) => {
+    answer: (requestId, decision, note) => {
       // A proposed plan is ours to act on: carry it out, or keep planning.
       if (requestId.startsWith(CODEX_PLAN_PREFIX)) {
         options.emit({ kind: "approval_settled", requestId });
         // The card picks the mode to work in right after; carried out then,
         // or after a moment in the mode from before Plan.
         if (decision !== "deny") implementTimer = setTimeout(implementPlan, 400);
+        // Keeping on planning, still in Plan: what they'd change is their next message.
+        else if (note?.trim()) {
+          options.emit({ kind: "user_message", id: randomUUID(), text: note.trim(), at: new Date().toISOString() });
+          void startTurn(note.trim());
+        }
         return;
       }
       const target = state.approvals.get(requestId);

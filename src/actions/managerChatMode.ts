@@ -126,8 +126,8 @@ export function interruptManagerChat(terminalId: string): Promise<void> {
   return window.tacit.chat.interrupt(terminalId);
 }
 
-export function answerManagerApproval(terminalId: string, requestId: string, decision: ApprovalDecision): Promise<void> {
-  return window.tacit.chat.answer(terminalId, requestId, decision);
+export function answerManagerApproval(terminalId: string, requestId: string, decision: ApprovalDecision, note?: string): Promise<void> {
+  return window.tacit.chat.answer(terminalId, requestId, decision, note);
 }
 
 /**

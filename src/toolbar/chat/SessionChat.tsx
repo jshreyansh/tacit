@@ -155,7 +155,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
       )}
       <ApprovalCards
         approvals={transcript.approvals}
-        onAnswer={(id, decision) => void answerManagerApproval(terminalId, id, decision)}
+        onAnswer={(id, decision, note) => void answerManagerApproval(terminalId, id, decision, note)}
         onPlanMode={(mode) => void configureChat(terminalId, { mode })}
         agent={agent}
       />

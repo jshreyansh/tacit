@@ -601,6 +601,91 @@ const PLAN_GO_MODES: Record<string, { go: string; ask: string }> = {
   codex: { go: "auto", ask: "read-only" },
 };
 
+/**
+ * A plan the agent is ready to start on. Keep planning opens a box for
+ * what should change: the agent stays in plan mode and revises with it,
+ * or, left empty, asks what to change. Enter sends; Esc goes back.
+ */
+function PlanCard({
+  plan,
+  floating,
+  glass,
+  onGo,
+  onKeepPlanning,
+}: {
+  plan: string;
+  floating: boolean;
+  glass: string;
+  onGo: (how: "go" | "ask") => void;
+  onKeepPlanning: (note: string | undefined) => void;
+}) {
+  const t = useT();
+  const [keeping, setKeeping] = useState(false);
+  const [note, setNote] = useState("");
+  const send = () => onKeepPlanning(note.trim() || undefined);
+  return (
+    <div
+      role="alertdialog"
+      aria-label={t.chat_plan_ready}
+      className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
+      style={{ borderColor: "color-mix(in srgb, var(--cyan) 45%, transparent)", ...(floating ? { borderRadius: 16 } : { background: "color-mix(in srgb, var(--cyan) 5%, transparent)" }) }}
+    >
+      <div className="text-[12.5px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
+      {plan && (
+        <div
+          className={`${markdownClassName} mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2`}
+          style={{ fontSize: "var(--text-sm)" }}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(plan) }}
+        />
+      )}
+      {keeping ? (
+        <div className="mt-2.5">
+          <textarea
+            autoFocus
+            rows={2}
+            value={note}
+            placeholder={t.chat_plan_change_placeholder}
+            aria-label={t.chat_plan_change_placeholder}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              // The canvas listens globally for single-key shortcuts.
+              e.stopPropagation();
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setKeeping(false);
+              }
+            }}
+            className="block max-h-32 w-full resize-none rounded-lg border border-[var(--border-hover)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-1.5 text-[12.5px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--accent)]"
+          />
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={send}>
+              {t.chat_plan_keep}
+            </button>
+            <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => setKeeping(false)}>
+              {t.chat_plan_back}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => onGo("go")}>
+            {t.chat_plan_go_accept}
+          </button>
+          <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onGo("ask")}>
+            {t.chat_plan_go_ask}
+          </button>
+          <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => setKeeping(true)}>
+            {t.chat_plan_keep}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Approvals the manager waits on, stuck above the composer. */
 export function ApprovalCards({
   approvals,
@@ -611,7 +696,8 @@ export function ApprovalCards({
   agent = "claude",
 }: {
   approvals: readonly PendingApproval[];
-  onAnswer: (requestId: string, decision: ApprovalDecision) => void;
+  /** `note`: keeping on planning, what the person would change. */
+  onAnswer: (requestId: string, decision: ApprovalDecision, note?: string) => void;
   /** Above the pill, over the canvas: the first request only, on glass. */
   floating?: boolean;
   glass?: string;
@@ -627,41 +713,20 @@ export function ApprovalCards({
     <div className={floating ? "flex w-full flex-col" : "flex flex-col gap-2 px-3 pb-2"}>
       {shown.map((a) => {
         const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
-        // Claude's plan, done in plan mode: start on it, and how, or keep planning.
+        // A plan, done in plan mode: start on it, and how, or keep planning.
         if (a.toolName === "ExitPlanMode") {
-          const plan = typeof input.plan === "string" ? input.plan : "";
-          const accept = (mode: string) => {
-            onAnswer(a.requestId, "allow_once");
-            onPlanMode?.(mode);
-          };
           return (
-            <div
+            <PlanCard
               key={a.requestId}
-              role="alertdialog"
-              aria-label={t.chat_plan_ready}
-              className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
-              style={{ borderColor: "color-mix(in srgb, var(--cyan) 45%, transparent)", ...(floating ? { borderRadius: 16 } : { background: "color-mix(in srgb, var(--cyan) 5%, transparent)" }) }}
-            >
-              <div className="text-[12.5px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
-              {plan && (
-                <div
-                  className={`${markdownClassName} mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2`}
-                  style={{ fontSize: "var(--text-sm)" }}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(plan) }}
-                />
-              )}
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => accept(PLAN_GO_MODES[agent]?.go ?? "acceptEdits")}>
-                  {t.chat_plan_go_accept}
-                </button>
-                <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => accept(PLAN_GO_MODES[agent]?.ask ?? "default")}>
-                  {t.chat_plan_go_ask}
-                </button>
-                <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
-                  {t.chat_plan_keep}
-                </button>
-              </div>
-            </div>
+              plan={typeof input.plan === "string" ? input.plan : ""}
+              floating={floating}
+              glass={glass}
+              onGo={(how) => {
+                onAnswer(a.requestId, "allow_once");
+                onPlanMode?.(PLAN_GO_MODES[agent]?.[how] ?? (how === "go" ? "acceptEdits" : "default"));
+              }}
+              onKeepPlanning={(note) => onAnswer(a.requestId, "deny", note)}
+            />
           );
         }
         // A command as it will run; access asked for as its summary; else the subject.

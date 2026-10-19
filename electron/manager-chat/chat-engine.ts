@@ -198,8 +198,8 @@ export class ChatEngine {
     this.sessions.get(terminalId)?.driver?.interrupt();
   }
 
-  answer(terminalId: string, requestId: string, decision: ApprovalDecision): void {
-    this.sessions.get(terminalId)?.driver?.answer(requestId, decision);
+  answer(terminalId: string, requestId: string, decision: ApprovalDecision, note?: string): void {
+    this.sessions.get(terminalId)?.driver?.answer(requestId, decision, note);
   }
 
   answerQuestion(terminalId: string, requestId: string, answers: ChatAnswers | null): void {

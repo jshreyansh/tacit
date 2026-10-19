@@ -865,7 +865,7 @@ export function WorkspaceManagerPill() {
                 floating
                 glass={PILL_GLASS}
                 approvals={transcript.approvals}
-                onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+                onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
                 onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
                 agent={managerTerminal.type}
               />
@@ -1385,7 +1385,7 @@ export function WorkspaceManagerPill() {
       {view === "chat" && chatMode && managerTerminal && (
         <ApprovalCards
           approvals={transcript.approvals}
-          onAnswer={(requestId, decision) => void answerManagerApproval(managerTerminal.id, requestId, decision)}
+          onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
           onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
           agent={managerTerminal.type}
         />

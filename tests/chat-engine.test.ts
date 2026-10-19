@@ -400,3 +400,45 @@ test("Claude: asks what it offers at start, switches model, effort and mode at o
   assert.equal(reply.response.response.behavior, "allow");
   assert.deepEqual(reply.response.response.updatedInput.answers, { "Colour?": "Blue" });
 });
+
+test("Keep planning: Claude is told to stay in plan mode and revise with what the person would change, not just refused", async () => {
+  const { child, engine, started } = setup("claude");
+  await started;
+  const plan = (id: string) => child.print({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: "ExitPlanMode", input: { plan: "1. Add x.txt" } } });
+  plan("p1");
+  plan("p2");
+  child.print({ type: "control_request", request_id: "b1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls" } } });
+  await tick();
+  engine.answer("t1", "p1", "deny", "Put it in docs/ instead");
+  engine.answer("t1", "p2", "deny");
+  engine.answer("t1", "b1", "deny");
+  const [withNote, empty, bash] = sentToClaude(child).map((m) => m.response.response);
+  assert.equal(withNote.behavior, "deny");
+  assert.match(withNote.message, /keep planning/);
+  assert.match(withNote.message, /don't make any changes/);
+  assert.match(withNote.message, /Put it in docs\/ instead/);
+  assert.match(withNote.message, /Revise the plan/);
+  // Nothing typed: Claude asks what to change.
+  assert.match(empty.message, /keep planning/);
+  assert.match(empty.message, /Ask them what they'd like changed/);
+  // Any other refusal is as before.
+  assert.equal(bash.message, "The person declined this in Tacit.");
+});
+
+test("Keep planning with Codex: what the person would change is their next message, still in Plan; nothing typed, nothing sent", async () => {
+  const { child, events, engine, started } = setup("codex");
+  const requests = codexServer(child);
+  await started;
+  for (let i = 0; i < 6; i++) await tick();
+  const turns = () => requests.filter((r) => r.method === "turn/start" || r.method === "turn/steer");
+  const before = turns().length;
+  engine.answer("t1", "codex-plan-p1", "deny");
+  for (let i = 0; i < 4; i++) await tick();
+  assert.equal(turns().length, before);
+  engine.answer("t1", "codex-plan-p2", "deny", "Use a shorter name");
+  for (let i = 0; i < 4; i++) await tick();
+  assert.ok(events.some((e) => e.kind === "user_message" && e.text === "Use a shorter name"));
+  assert.equal(turns().length, before + 1);
+  assert.ok(JSON.stringify(turns().at(-1)?.params?.input).includes("Use a shorter name"));
+  assert.ok(!events.some((e) => e.kind === "user_message" && e.text === "Implement the plan."));
+});

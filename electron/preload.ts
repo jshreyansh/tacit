@@ -274,8 +274,8 @@ contextBridge.exposeInMainWorld("tacit", {
       return { attachments: results.flatMap((r) => r.attachments), errors: results.flatMap((r) => r.errors) };
     },
     interrupt: (terminalId: string) => ipcRenderer.invoke("chat:interrupt", terminalId) as Promise<void>,
-    answer: (terminalId: string, requestId: string, decision: ApprovalDecision) =>
-      ipcRenderer.invoke("chat:answer", terminalId, requestId, decision) as Promise<void>,
+    answer: (terminalId: string, requestId: string, decision: ApprovalDecision, note?: string) =>
+      ipcRenderer.invoke("chat:answer", terminalId, requestId, decision, note) as Promise<void>,
     answerQuestion: (terminalId: string, requestId: string, answers: Record<string, string[]> | null) =>
       ipcRenderer.invoke("chat:answer-question", terminalId, requestId, answers) as Promise<void>,
     configure: (terminalId: string, settings: { model?: string | null; effort?: string | null; mode?: string | null }) =>
