@@ -1229,6 +1229,9 @@ function setupIpc() {
         /** "agent" when an agent spawned it; see RecordNodes. */
         origin?: string;
         theme?: "dark" | "light";
+        /** The tile's measured size; checked by PtyManager, 80×24 without it. */
+        cols?: number;
+        rows?: number;
         workflowId?: string;
         assignmentId?: string;
         repoPath?: string;

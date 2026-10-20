@@ -1577,3 +1577,123 @@ test("push telemetry updates replace a live terminal's first_user_prompt when th
     useProjectStore.setState(previousProjectState);
   }
 });
+
+async function runtimeSpawningInto(terminalExtra: Record<string, unknown>) {
+  const mockWindow = installRuntimeGlobals();
+  const { useProjectStore } = await import("../src/stores/projectStore.ts");
+  const store = await import("../src/terminal/terminalRuntimeStore.ts");
+  const previousProjectState = useProjectStore.getState();
+  store.destroyAllTerminalRuntimes();
+  const created: Array<{ cols?: number; rows?: number }> = [];
+  const resized: Array<{ cols: number; rows: number }> = [];
+  seedProjectState(useProjectStore, {
+    ...createTerminal(),
+    focused: false,
+    ptyId: null,
+    status: "idle",
+    ...terminalExtra,
+  } as ReturnType<typeof createTerminal>);
+  mockWindow.tacit = {
+    terminal: {
+      create: async (options: { cols?: number; rows?: number }) => {
+        created.push({ cols: options.cols, rows: options.rows });
+        return 42;
+      },
+      destroy: async () => {},
+      input() {},
+      onExit() {
+        return () => {};
+      },
+      onOutput() {
+        return () => {};
+      },
+      resize(_ptyId: number, cols: number, rows: number) {
+        resized.push({ cols, rows });
+      },
+    },
+    session: {
+      onTurnComplete() {
+        return () => {};
+      },
+    },
+  };
+  store.ensureTerminalRuntime({
+    projectId: "project-1",
+    terminal: useProjectStore.getState().projects[0].worktrees[0].terminals[0],
+    worktreeId: "worktree-1",
+    worktreePath: "/tmp/project-1",
+  });
+  const runtime = store.getTerminalRuntime("terminal-1")!;
+  const spawned = async () => {
+    for (let i = 0; i < 300 && runtime.ptyId === null; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(runtime.ptyId, 42, "the process started");
+  };
+  const savedSize = () => useProjectStore.getState().projects[0].worktrees[0].terminals[0].ptySize;
+  const cleanup = () => {
+    store.destroyAllTerminalRuntimes();
+    useProjectStore.setState(previousProjectState);
+  };
+  return { runtime, store, created, resized, spawned, savedSize, cleanup };
+}
+
+test("a restored terminal whose tile isn't measured yet starts at the size it last had, not 80×24 (SHR-95)", async () => {
+  const t = await runtimeSpawningInto({ ptySize: { cols: 131, rows: 58 } });
+  try {
+    await t.spawned();
+    assert.deepEqual(t.created, [{ cols: 131, rows: 58 }]);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("a tile on screen is measured before its process starts; that size is used and kept for next time (SHR-95)", async () => {
+  const t = await runtimeSpawningInto({ ptySize: { cols: 131, rows: 58 } });
+  try {
+    // The tile attached before the staggered spawn ran.
+    t.runtime.attachedContainer = createFakeContainer() as unknown as HTMLDivElement;
+    t.runtime.fitAddon = { fit() {}, proposeDimensions: () => ({ cols: 150, rows: 40 }) } as unknown as typeof t.runtime.fitAddon;
+    await t.spawned();
+    assert.deepEqual(t.created, [{ cols: 150, rows: 40 }]);
+    assert.deepEqual(t.savedSize(), { cols: 150, rows: 40 });
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("a terminal never measured and never sized starts at main's default", async () => {
+  const t = await runtimeSpawningInto({});
+  try {
+    await t.spawned();
+    assert.deepEqual(t.created, [{ cols: undefined, rows: undefined }]);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("dragging a tile refits it every frame but tells the process twice: as the drag starts and when it settles (SHR-96)", async () => {
+  const t = await runtimeSpawningInto({ ptySize: { cols: 120, rows: 40 } });
+  try {
+    await t.spawned();
+    const { fitAddon, stats, xterm } = createMockXterm();
+    xterm.cols = 120;
+    xterm.rows = 40;
+    t.runtime.attachedContainer = createFakeContainer() as unknown as HTMLDivElement;
+    t.runtime.fitAddon = fitAddon as unknown as typeof t.runtime.fitAddon;
+    t.runtime.xterm = xterm as unknown as typeof t.runtime.xterm;
+    for (let frame = 1; frame <= 30; frame++) {
+      xterm.rows = 40 + frame;
+      t.store.fitTerminalRuntime("terminal-1");
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    assert.equal(stats.fitCalls, 30, "the tile follows every frame");
+    assert.deepEqual(t.resized, [{ cols: 120, rows: 41 }]);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(t.resized, [
+      { cols: 120, rows: 41 },
+      { cols: 120, rows: 70 },
+    ]);
+    assert.deepEqual(t.savedSize(), { cols: 120, rows: 70 });
+  } finally {
+    t.cleanup();
+  }
+});

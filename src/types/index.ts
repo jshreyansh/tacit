@@ -223,6 +223,11 @@ export interface TerminalData {
    * terminal, but starts no process: one owner of the session at a time.
    */
   chatMode?: boolean;
+  /**
+   * The size its process was last told, kept so the next launch starts at
+   * it when the tile can't be measured yet (a restart, a tile off screen).
+   */
+  ptySize?: { cols: number; rows: number };
 }
 
 export interface TerminalRuntimeState {
@@ -593,6 +598,9 @@ export interface TacitAPI {
       terminalType?: string;
       origin?: string;
       theme?: "dark" | "light";
+      /** The tile's measured size, so the process starts at it (SHR-95). */
+      cols?: number;
+      rows?: number;
     }) => Promise<number>;
     destroy: (ptyId: number) => Promise<void>;
     getPid: (ptyId: number) => Promise<number | null>;

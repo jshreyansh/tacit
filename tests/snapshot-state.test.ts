@@ -394,6 +394,62 @@ test("a manager that runs in the docked chat is still there after a restart", as
   assert.equal(byId.get("odd")?.chatMode, undefined);
 });
 
+test("a terminal's last process size comes back after a restart, so it can start at it (SHR-95)", async () => {
+  const { readWorkspaceSnapshot } = await loadSnapshotState("scene-pty-size");
+  const terminal = (id: string, ptySize: unknown) => ({
+    id,
+    title: "Claude",
+    type: "claude",
+    minimized: false,
+    focused: false,
+    ptyId: null,
+    status: "idle",
+    span: { cols: 1, rows: 1 },
+    ptySize,
+  });
+  const restored = readWorkspaceSnapshot({
+    version: 2,
+    scene: {
+      version: 2,
+      camera: { x: 0, y: 0, zoom: 1 },
+      browserCards: {},
+      annotations: [],
+      projects: [
+        {
+          id: "project-1",
+          name: "Project One",
+          path: "/tmp/project-1",
+          position: { x: 0, y: 0 },
+          collapsed: false,
+          zIndex: 0,
+          worktrees: [
+            {
+              id: "worktree-1",
+              name: "main",
+              path: "/tmp/project-1",
+              position: { x: 0, y: 0 },
+              collapsed: false,
+              terminals: [
+                terminal("sized", { cols: 131, rows: 58 }),
+                terminal("never", undefined),
+                terminal("bad", { cols: "131", rows: 58 }),
+                terminal("nan", { cols: 131, rows: null }),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.ok(restored && "legacy" in restored);
+  if (!restored || !("legacy" in restored)) return;
+  const byId = new Map(restored.scene.projects[0].worktrees[0].terminals.map((t) => [t.id, t]));
+  assert.deepEqual(byId.get("sized")?.ptySize, { cols: 131, rows: 58 });
+  assert.equal(byId.get("never")?.ptySize, undefined);
+  assert.equal(byId.get("bad")?.ptySize, undefined);
+  assert.equal(byId.get("nan")?.ptySize, undefined);
+});
+
 test("readWorkspaceSnapshot preserves the skip-restore sentinel", async () => {
   const { readWorkspaceSnapshot } = await loadSnapshotState("skip-restore");
 

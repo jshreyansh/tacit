@@ -1,8 +1,17 @@
 import * as pty from "node-pty";
 import fs from "fs";
 import { buildLaunchSpec, type PtyLaunchOptions } from "./pty-launch.ts";
+import { DEFAULT_PTY_SIZE, validPtySize } from "../shared/pty-size";
 
-export type PtyCreateOptions = PtyLaunchOptions;
+export type PtyCreateOptions = PtyLaunchOptions & {
+  /**
+   * The tile's size, measured before the process starts. An agent that
+   * draws its first screen at 80×24 and is resized while starting up can
+   * leave its input box below the tile (SHR-95).
+   */
+  cols?: number;
+  rows?: number;
+};
 type PtySpawnFn = typeof pty.spawn;
 type BuildLaunchSpecFn = typeof buildLaunchSpec;
 
@@ -48,6 +57,7 @@ export class PtyManager {
     }
 
     const launch = await this.deps.buildLaunchSpec(options);
+    const size = validPtySize(options.cols, options.rows) ?? DEFAULT_PTY_SIZE;
 
     let ptyProcess: pty.IPty | null = null;
     let lastError: unknown = null;
@@ -55,8 +65,8 @@ export class PtyManager {
       try {
         ptyProcess = this.deps.spawn(launch.file, launch.args, {
           name: "xterm-256color",
-          cols: 80,
-          rows: 24,
+          cols: size.cols,
+          rows: size.rows,
           cwd: launch.cwd,
           env: launch.env,
         });
@@ -129,6 +139,7 @@ export class PtyManager {
   }
 
   resize(id: number, cols: number, rows: number) {
+    if (!validPtySize(cols, rows)) return;
     try {
       this.instances.get(id)?.resize(cols, rows);
     } catch {

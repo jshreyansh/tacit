@@ -95,6 +95,13 @@ interface ProjectStore {
     worktreeId: string,
     terminalId: string,
   ) => void;
+  /** The size the terminal's process was last told, for its next launch (SHR-95). */
+  setTerminalPtySize: (
+    projectId: string,
+    worktreeId: string,
+    terminalId: string,
+    size: { cols: number; rows: number },
+  ) => void;
   /** Moves a manager between its tile and the docked chat (T6), keeping its session. */
   setTerminalChatMode: (
     projectId: string,
@@ -816,6 +823,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         worktreeId,
         terminalId,
         (t) => ({ ...t, chatMode: chatMode || undefined, ...(sessionId ? { sessionId } : {}) }),
+      ),
+    }));
+    markDirty();
+  },
+
+  setTerminalPtySize: (projectId, worktreeId, terminalId, size) => {
+    set((state) => ({
+      projects: mapTerminals(
+        state.projects,
+        projectId,
+        worktreeId,
+        terminalId,
+        (t) => ({ ...t, ptySize: { cols: size.cols, rows: size.rows } }),
       ),
     }));
     markDirty();

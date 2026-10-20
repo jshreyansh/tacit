@@ -34,6 +34,7 @@ import {
   sceneDocumentToLegacyState,
 } from "./canvas/sceneProjection";
 import { clusterByTag } from "./clustering";
+import { validPtySize, type PtySize } from "../shared/pty-size";
 
 export interface LegacyWorkspaceSnapshot {
   version: 1;
@@ -104,6 +105,12 @@ function normalizeViewport(
   }
 
   return { scale: 1, x: 0, y: 0 };
+}
+
+/** A saved terminal's last process size, if it's one a terminal could have. */
+function readPtySize(value: unknown): PtySize | undefined {
+  if (!isRecord(value)) return undefined;
+  return validPtySize(value.cols, value.rows) ?? undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -430,6 +437,7 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                         ? terminal.parentTerminalId
                         : undefined,
                     ptyId: null,
+                    ptySize: readPtySize(terminal.ptySize),
                     scrollback:
                       typeof terminal.scrollback === "string"
                         ? terminal.scrollback
@@ -575,6 +583,7 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
               ? t.parentTerminalId
               : undefined,
           ptyId: null,
+          ptySize: readPtySize(t.ptySize),
           scrollback:
             typeof t.scrollback === "string" ? t.scrollback : undefined,
           sessionId: typeof t.sessionId === "string" ? t.sessionId : undefined,

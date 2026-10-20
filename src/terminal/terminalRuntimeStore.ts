@@ -46,6 +46,8 @@ import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import type { TerminalData, TerminalStatus, TerminalType } from "../types";
 import { getTerminalLaunchOptions, getTerminalPromptArgs } from "./cliConfig";
 import { buildFontFamily } from "./fontRegistry";
+import { createPtyResizer, type PtyResizer } from "./ptyResizer";
+import { DEFAULT_PTY_SIZE, validPtySize, type PtySize } from "../../shared/pty-size";
 import { useLocaleStore } from "../stores/localeStore";
 import { isRegisteredAppShortcutEvent } from "../stores/shortcutStore";
 import { en } from "../i18n/en";
@@ -153,6 +155,8 @@ interface ManagedTerminalRuntime {
   removeHookStopFailure: (() => void) | null;
   removeTurnComplete: (() => void) | null;
   resizeDisposable: { dispose(): void } | null;
+  /** Tells the process its size: a drag only as it starts and once it settles (SHR-96). */
+  ptyResizer: PtyResizer | null;
   searchAddon: SearchAddon | null;
   selectionAutoCopy: TerminalSelectionAutoCopyState;
   selectionDisposable: { dispose(): void } | null;
@@ -605,6 +609,10 @@ function withResolvedRuntimeMeta(
 }
 
 function setPtyId(runtime: ManagedTerminalRuntime, ptyId: number | null) {
+  if (ptyId === null || ptyId !== runtime.ptyId) {
+    runtime.ptyResizer?.dispose();
+    runtime.ptyResizer = null;
+  }
   runtime.ptyId = ptyId;
   useTerminalRuntimeStateStore
     .getState()
@@ -1147,6 +1155,56 @@ function parkTerminalRenderer(
   parkTerminalHost(runtime);
 }
 
+/** Keeps the size the process was told, for its next launch (SHR-95). */
+function rememberPtySize(runtime: ManagedTerminalRuntime, size: PtySize) {
+  const saved = runtime.meta.terminal.ptySize;
+  if (saved && saved.cols === size.cols && saved.rows === size.rows) return;
+  updateTerminalInStore(runtime, (terminal) => ({ ...terminal, ptySize: size }));
+  useProjectStore
+    .getState()
+    .setTerminalPtySize(runtime.meta.projectId, runtime.meta.worktreeId, runtime.meta.terminal.id, size);
+}
+
+function startPtyResizer(runtime: ManagedTerminalRuntime, ptyId: number, startedAt: PtySize | null) {
+  runtime.ptyResizer?.dispose();
+  runtime.ptyResizer = createPtyResizer(
+    (size) => {
+      if (runtime.ptyId !== ptyId) return;
+      window.tacit.terminal.resize(ptyId, size.cols, size.rows);
+      rememberPtySize(runtime, size);
+      recordRuntimeDiagnostic(runtime, "terminal_pty_resize", { cols: size.cols, rows: size.rows });
+    },
+    { initial: startedAt },
+  );
+}
+
+/** Asks for the process to be the xterm's size; the resizer decides when it's told. */
+function requestPtyResize(runtime: ManagedTerminalRuntime, cols: number, rows: number) {
+  const size = validPtySize(cols, rows);
+  if (runtime.ptyId === null || !size) return;
+  // A process started here has its resizer; one attached some other way
+  // gets one now, with nothing known about its size yet.
+  if (!runtime.ptyResizer) startPtyResizer(runtime, runtime.ptyId, null);
+  runtime.ptyResizer!.request(size);
+}
+
+/**
+ * The size to start the process at: the tile's, measured, when it's on
+ * screen; else the size this terminal last had. An agent that draws its
+ * first screen at 80×24 and is resized while it starts can leave its input
+ * box below the tile (SHR-95).
+ */
+function spawnSize(runtime: ManagedTerminalRuntime): { size: PtySize; source: "measured" | "last" } | null {
+  if (runtime.attachedContainer && runtime.fitAddon) {
+    const proposed = runtime.fitAddon.proposeDimensions();
+    const measured = proposed ? validPtySize(proposed.cols, proposed.rows) : null;
+    if (measured) return { size: measured, source: "measured" };
+  }
+  const last = runtime.meta.terminal.ptySize;
+  const saved = last ? validPtySize(last.cols, last.rows) : null;
+  return saved ? { size: saved, source: "last" } : null;
+}
+
 function wireInteractiveBindings(runtime: ManagedTerminalRuntime) {
   if (!runtime.xterm || runtime.ptyId === null || !runtime.attachedContainer) {
     return;
@@ -1163,9 +1221,7 @@ function wireInteractiveBindings(runtime: ManagedTerminalRuntime) {
 
   runtime.resizeDisposable = runtime.xterm.onResize(
     ({ cols, rows }: { cols: number; rows: number }) => {
-      if (runtime.ptyId !== null) {
-        window.tacit.terminal.resize(runtime.ptyId, cols, rows);
-      }
+      requestPtyResize(runtime, cols, rows);
     },
   );
 }
@@ -1181,11 +1237,7 @@ function syncAttachedTerminalGeometry(runtime: ManagedTerminalRuntime) {
   }
 
   runtime.fitAddon.fit();
-  window.tacit.terminal.resize(
-    runtime.ptyId,
-    runtime.xterm.cols,
-    runtime.xterm.rows,
-  );
+  requestPtyResize(runtime, runtime.xterm.cols, runtime.xterm.rows);
   recordRuntimeDiagnostic(runtime, "terminal_runtime_fit");
 }
 
@@ -1671,6 +1723,7 @@ function buildTerminalRuntime(
     removeHookStopFailure: null,
     removeTurnComplete: null,
     resizeDisposable: null,
+    ptyResizer: null,
     searchAddon: null,
     selectionAutoCopy: createTerminalSelectionAutoCopyState(),
     selectionDisposable: null,
@@ -1723,6 +1776,8 @@ async function spawnPty(
     terminalType: string;
     origin: string;
     theme: "dark" | "light";
+    cols?: number;
+    rows?: number;
   } = {
     cwd: runtime.meta.worktreePath,
     terminalId: runtime.meta.terminal.id,
@@ -1794,6 +1849,17 @@ async function spawnPty(
       });
   }
 
+  const startSize = spawnSize(runtime);
+  if (startSize) {
+    options.cols = startSize.size.cols;
+    options.rows = startSize.size.rows;
+  }
+  recordRuntimeDiagnostic(runtime, "terminal_pty_spawn_size", {
+    cols: startSize?.size.cols ?? DEFAULT_PTY_SIZE.cols,
+    rows: startSize?.size.rows ?? DEFAULT_PTY_SIZE.rows,
+    source: startSize?.source ?? "default",
+  });
+
   try {
     const ptyId = await window.tacit.terminal.create(options);
     if (runtime.disposed) {
@@ -1802,6 +1868,8 @@ async function spawnPty(
     }
 
     setPtyId(runtime, ptyId);
+    startPtyResizer(runtime, ptyId, startSize?.size ?? DEFAULT_PTY_SIZE);
+    if (startSize?.source === "measured") rememberPtySize(runtime, startSize.size);
     setStatus(runtime, "running");
     if (sendInitialPrompt) {
       updateTerminalInStore(runtime, (terminal) => ({ ...terminal, initialPromptSent: true }));
@@ -2322,11 +2390,7 @@ export function fitTerminalRuntime(terminalId: string) {
   }
 
   runtime.fitAddon.fit();
-  window.tacit.terminal.resize(
-    runtime.ptyId,
-    runtime.xterm.cols,
-    runtime.xterm.rows,
-  );
+  requestPtyResize(runtime, runtime.xterm.cols, runtime.xterm.rows);
   recordRuntimeDiagnostic(runtime, "terminal_runtime_fit_manual");
 }
 

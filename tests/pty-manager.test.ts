@@ -73,3 +73,41 @@ test(
     assert.equal(attempts, 2);
   },
 );
+
+async function managerRecordingSpawns(tag: string) {
+  const spawned: Array<{ cols?: number; rows?: number }> = [];
+  const resized: Array<[number, number]> = [];
+  const { PtyManager } = await import(`../electron/pty-manager.ts?${tag}=${Date.now()}`);
+  const manager = new PtyManager({
+    buildLaunchSpec: async () => ({ cwd: process.cwd(), file: "/bin/sh", args: [], env: {} }),
+    spawn: ((_file: string, _args: string[], opts: { cols?: number; rows?: number }) => {
+      spawned.push({ cols: opts.cols, rows: opts.rows });
+      return { pid: 4242, resize: (c: number, r: number) => resized.push([c, r]) };
+    }) as unknown as typeof import("node-pty").spawn,
+  });
+  return { manager, spawned, resized };
+}
+
+test("a terminal starts at the size the tile measured, so an agent's first screen fits it (SHR-95)", async () => {
+  const { manager, spawned } = await managerRecordingSpawns("size");
+  await manager.create({ cwd: process.cwd(), cols: 131, rows: 58 });
+  assert.deepEqual(spawned, [{ cols: 131, rows: 58 }]);
+});
+
+test("without a measured size, or with one no terminal could have, it starts at 80×24", async () => {
+  const { manager, spawned } = await managerRecordingSpawns("nosize");
+  await manager.create({ cwd: process.cwd() });
+  await manager.create({ cwd: process.cwd(), cols: 0, rows: 58 });
+  await manager.create({ cwd: process.cwd(), cols: 131.5, rows: 58 });
+  await manager.create({ cwd: process.cwd(), cols: 131, rows: 99999 });
+  assert.deepEqual(spawned, Array(4).fill({ cols: 80, rows: 24 }));
+});
+
+test("a resize to a size no terminal could have is ignored", async () => {
+  const { manager, resized } = await managerRecordingSpawns("resize");
+  const id = await manager.create({ cwd: process.cwd() });
+  manager.resize(id, 120, 40);
+  manager.resize(id, Number.NaN, 40);
+  manager.resize(id, 0, 0);
+  assert.deepEqual(resized, [[120, 40]]);
+});
