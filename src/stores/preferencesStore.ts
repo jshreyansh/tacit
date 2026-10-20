@@ -225,10 +225,10 @@ function loadPreferences(): SavedPrefs {
         terminalRenderer = "dom";
       }
 
-      let terminalEngine: TerminalEngine = "xterm";
-      if (parsed.terminalEngine === "wterm") {
-        terminalEngine = "wterm";
-      }
+      // wterm is switched off for now: its first terminals can come up
+      // blank, and the shell is never told its size (SHR-93 follow-up). A
+      // saved "wterm" reads as xterm until it's fixed.
+      const terminalEngine: TerminalEngine = "xterm";
 
       let composerEnabled = false;
       if (parsed.composerEnabled === true) composerEnabled = true;
