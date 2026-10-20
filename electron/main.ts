@@ -101,6 +101,7 @@ import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import { spawn as spawnChild } from "node:child_process";
 import { ChatEngine, chatSettingsChange, type ChatAgent } from "./manager-chat/chat-engine";
 import { findSessionFile, isSessionFile } from "./manager-chat/session-file";
+import { downloadableFont } from "../shared/font-registry";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
 import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
@@ -3378,30 +3379,41 @@ function setupIpc() {
 
   const fontsDir = path.join(app.getPath("userData"), "fonts");
 
-  ipcMain.handle("font:get-path", () => fontsDir);
-
-  ipcMain.handle("font:list-downloaded", () => {
+  // Fonts are named by file, and only the registry's downloadable ones: the
+  // renderer can't pick a path or a download URL. A font reaches the
+  // renderer as bytes, since a file:// URL is a local resource its page
+  // isn't allowed to load (SHR-93).
+  ipcMain.handle("font:list-downloaded", (event) => {
+    if (!isMainWindowSender(event)) throw new Error("font:list-downloaded is only for the app's window");
     try {
       if (!fs.existsSync(fontsDir)) return [];
-      return fs.readdirSync(fontsDir);
+      return fs.readdirSync(fontsDir).filter((name) => downloadableFont(name));
     } catch {
       return [];
     }
   });
 
-  ipcMain.handle("font:check", (_event, fileName: string) => {
-    return fs.existsSync(path.join(fontsDir, fileName));
+  ipcMain.handle("font:read", async (event, fileName: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("font:read is only for the app's window");
+    const font = downloadableFont(fileName);
+    if (!font) throw new Error("Not a Tacit font");
+    const data = await fs.promises.readFile(path.join(fontsDir, font.fileName));
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
   });
 
   ipcMain.handle(
     "font:download",
-    async (_event, url: string, fileName: string) => {
+    async (event, fileName: unknown) => {
+      if (!isMainWindowSender(event)) throw new Error("font:download is only for the app's window");
+      const font = downloadableFont(fileName);
+      if (!font) return { ok: false, error: "Not a Tacit font" };
+      const url = font.url;
       if (!fs.existsSync(fontsDir)) {
         fs.mkdirSync(fontsDir, { recursive: true });
       }
-      const destPath = path.join(fontsDir, fileName);
+      const destPath = path.join(fontsDir, font.fileName);
       if (fs.existsSync(destPath)) {
-        return { ok: true, path: destPath };
+        return { ok: true };
       }
 
       try {
@@ -3446,19 +3458,19 @@ function setupIpc() {
         const zip = new AdmZip(tmpZip);
         const zipEntries = zip.getEntries();
         const matchEntry = zipEntries.find((e) =>
-          e.entryName.endsWith(fileName),
+          e.entryName.endsWith(font.fileName),
         );
         if (!matchEntry) {
           fs.unlinkSync(tmpZip);
           return {
             ok: false,
-            error: `Font file "${fileName}" not found in archive`,
+            error: `Font file "${font.fileName}" not found in archive`,
           };
         }
         fs.writeFileSync(destPath, matchEntry.getData());
         fs.unlinkSync(tmpZip);
 
-        return { ok: true, path: destPath };
+        return { ok: true };
       } catch (err) {
         return {
           ok: false,

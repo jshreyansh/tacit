@@ -54,7 +54,6 @@ import { TERMINAL_TYPE_CONFIG } from "./terminalTypeConfig";
 import { AgentRenderer } from "../components/agent/AgentRenderer";
 import { ActivitySparkline } from "./ActivitySparkline";
 import { TerminalFindOverlay } from "./TerminalFindOverlay";
-import { WtermTile } from "./WtermTile";
 import { useTerminalFindStore } from "../stores/terminalFindStore";
 import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
@@ -62,6 +61,8 @@ import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
 
 // Only a manager in chat mode needs this; loaded on demand, it keeps the
 // tile's own module free of image imports (and testable in Node).
+// Only when the wterm engine is chosen: it compiles WebAssembly as it loads.
+const WtermTile = lazy(() => import("./WtermTile").then((m) => ({ default: m.WtermTile })));
 const ChatModeBody = lazy(() => import("./ChatModeBody").then((m) => ({ default: m.ChatModeBody })));
 
 /** Files dropped on a terminal, for the record: main names them and decides if it counts. */
@@ -1275,7 +1276,9 @@ export function TerminalTile({
               overflow: "hidden",
             }}
           >
-            <WtermTile terminal={liveTerminal} />
+            <Suspense fallback={null}>
+              <WtermTile terminal={liveTerminal} />
+            </Suspense>
           </div>
         ) : (
         <div

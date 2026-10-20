@@ -909,15 +909,13 @@ contextBridge.exposeInMainWorld("tacit", {
       >,
   },
   fonts: {
-    getPath: () => ipcRenderer.invoke("font:get-path") as Promise<string>,
     listDownloaded: () =>
       ipcRenderer.invoke("font:list-downloaded") as Promise<string[]>,
-    check: (fileName: string) =>
-      ipcRenderer.invoke("font:check", fileName) as Promise<boolean>,
-    download: (url: string, fileName: string) =>
-      ipcRenderer.invoke("font:download", url, fileName) as Promise<{
+    read: (fileName: string) =>
+      ipcRenderer.invoke("font:read", fileName) as Promise<ArrayBuffer>,
+    download: (fileName: string) =>
+      ipcRenderer.invoke("font:download", fileName) as Promise<{
         ok: boolean;
-        path?: string;
         error?: string;
       }>,
   },

@@ -1251,13 +1251,10 @@ export function SettingsModal({ onClose }: Props) {
                                       try {
                                         const result =
                                           await window.tacit.fonts.download(
-                                            font.url,
                                             font.fileName,
                                           );
                                         if (result.ok) {
-                                          const fontsDir =
-                                            await window.tacit.fonts.getPath();
-                                          await loadFont(font, fontsDir);
+                                          await loadFont(font);
                                           setDownloadedFonts(
                                             (prev) =>
                                               new Set([...prev, font.fileName]),

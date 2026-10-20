@@ -1251,18 +1251,16 @@ export interface TacitAPI {
     ) => () => void;
   };
   fonts: {
-    getPath: () => Promise<string>;
     listDownloaded: () => Promise<string[]>;
-    check: (fileName: string) => Promise<boolean>;
-    download: (
-      url: string,
-      fileName: string,
-    ) => Promise<{
+    /** A downloaded font's file, by its registry file name. */
+    read: (fileName: string) => Promise<ArrayBuffer>;
+    /** Downloads a registry font, by its file name. */
+    download: (fileName: string) => Promise<{
       ok: boolean;
-      path?: string;
       error?: string;
     }>;
   };
+
   cli: {
     isRegistered: () => Promise<boolean>;
     register: () => Promise<{ ok: boolean; skillInstalled: boolean }>;

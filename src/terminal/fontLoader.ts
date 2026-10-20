@@ -1,30 +1,20 @@
 import { FONT_REGISTRY, type FontEntry } from "./fontRegistry";
 
-export function toFontFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
-  const withLeadingSlash = /^[A-Za-z]:\//.test(normalized)
-    ? `/${normalized}`
-    : normalized.startsWith("/")
-      ? normalized
-      : `/${normalized}`;
-  return `file://${encodeURI(withLeadingSlash)}`;
-}
-
-export async function loadFont(
-  entry: FontEntry,
-  fontsDir: string,
-): Promise<boolean> {
+/**
+ * Adds a downloaded font to the page. Its bytes come from main: the page
+ * can't load a file:// URL, which is what failed for every downloaded font
+ * (SHR-93).
+ */
+export async function loadFont(entry: FontEntry): Promise<boolean> {
   if (entry.source === "builtin") return true;
   try {
-    const filePath = toFontFileUrl(`${fontsDir}/${entry.fileName}`);
-    const face = new FontFace(
-      entry.cssFamily.replace(/"/g, ""),
-      `url("${filePath}")`,
-    );
+    const bytes = await window.tacit.fonts.read(entry.fileName);
+    const face = new FontFace(entry.cssFamily.replace(/"/g, ""), bytes);
     await face.load();
     document.fonts.add(face);
     return true;
-  } catch {
+  } catch (err) {
+    console.error(`[fonts] ${entry.name} didn't load:`, err);
     return false;
   }
 }
@@ -34,14 +24,11 @@ export async function loadAllDownloadedFonts(): Promise<void> {
     return;
   }
 
-  const fontsDir = await window.tacit.fonts.getPath();
-  const downloaded = await window.tacit.fonts.listDownloaded();
-  const downloadedSet = new Set(downloaded);
-
+  const downloaded = new Set(await window.tacit.fonts.listDownloaded());
   for (const entry of FONT_REGISTRY) {
     if (entry.source === "builtin") continue;
-    if (downloadedSet.has(entry.fileName)) {
-      await loadFont(entry, fontsDir);
+    if (downloaded.has(entry.fileName)) {
+      await loadFont(entry);
     }
   }
 }
