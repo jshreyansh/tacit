@@ -187,7 +187,7 @@ test("popups open on the canvas, except where only the real browser can finish",
     profileId: "identity-a",
   });
 
-  // Sign-in must still leave, or it lands on a dead-end page inside the node.
+  // With sign-in set to leave (the fallback since SHR-130), it goes to the system browser.
   assert.deepEqual(resolve("https://accounts.google.com/signin", "identity-a"), {
     action: "system-browser",
     url: "https://accounts.google.com/signin",
@@ -211,6 +211,29 @@ test("popups open on the canvas, except where only the real browser can finish",
     resolve("javascript:fetch('//accounts.google.com')", "identity-a"),
     { action: "ignore" },
   );
+});
+
+test("a sign-in popup opened by script stays a window of its page; a link still becomes a tile (SHR-131)", () => {
+  const isSafeExternal = (url: string) => url.startsWith("https://") || url.startsWith("http://");
+  const keptInApp = () => false;
+  const resolve = (url: string, profileId: string | undefined, scripted: boolean) =>
+    resolvePopupDisposition({ url, profileId, scripted, isAuthBlocked: keptInApp, isSafeExternal });
+
+  // "Sign in with Google" on another site: window.open with features.
+  assert.deepEqual(resolve("https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "identity-a", true), {
+    action: "child-window",
+    url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=x",
+    profileId: "identity-a",
+  });
+  // The same sign-in host followed as a link stays in the canvas, signed in as the node.
+  assert.deepEqual(resolve("https://accounts.google.com/signin", "identity-a", false), {
+    action: "canvas-node",
+    url: "https://accounts.google.com/signin",
+    profileId: "identity-a",
+  });
+  // A popup needs a profile to share; an unsafe one opens nowhere.
+  assert.deepEqual(resolve("https://docs.test/x", undefined, true), { action: "system-browser", url: "https://docs.test/x", reason: "no-profile" });
+  assert.deepEqual(resolve("javascript:alert(1)", "identity-a", true), { action: "ignore" });
 });
 
 test("a live page is not recorded once per render", () => {

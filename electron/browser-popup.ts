@@ -13,6 +13,12 @@
 export type PopupDisposition =
   /** Open as a new tile on the canvas, inheriting the opener's profile. */
   | { action: "canvas-node"; url: string; profileId: string }
+  /**
+   * Open as a real window of the page that asked, keeping `window.opener`:
+   * a sign-in popup hands its result back to the opener and closes itself,
+   * which a separate tile can't do (SHR-131).
+   */
+  | { action: "child-window"; url: string; profileId: string }
   /** Hand to the real browser: the only place this can actually complete. */
   | { action: "system-browser"; url: string; reason: "auth" | "no-profile" }
   /** Neither. Refused rather than guessed at. */
@@ -22,14 +28,24 @@ export interface PopupDispositionInput {
   url: string;
   /** The opener's profile, absent when the guest is not one of ours. */
   profileId: string | undefined;
-  /** Hosts whose sign-in refuses to complete in an embedded browser. */
+  /**
+   * Opened by script as a window (`window.open` with features, Electron's
+   * `new-window` disposition), not a link to a new tab: how sign-in popups
+   * are opened.
+   */
+  scripted?: boolean;
+  /**
+   * Sign-in that is sent to the system browser instead. Off by default since
+   * browser nodes present as Chrome and Google accepts them (SHR-130); kept
+   * as a fallback.
+   */
   isAuthBlocked: (url: string) => boolean;
   /** Schemes and shapes we are willing to hand anywhere at all. */
   isSafeExternal: (url: string) => boolean;
 }
 
 export function resolvePopupDisposition(input: PopupDispositionInput): PopupDisposition {
-  const { url, profileId, isAuthBlocked, isSafeExternal } = input;
+  const { url, profileId, scripted, isAuthBlocked, isSafeExternal } = input;
 
   // Sign-in first, and regardless of profile. These providers reject embedded
   // browsers on purpose, so keeping such a popup on the canvas would produce a
@@ -49,5 +65,6 @@ export function resolvePopupDisposition(input: PopupDispositionInput): PopupDisp
   // such thing as opening it "as the same person". Old behavior stands.
   if (!profileId) return { action: "system-browser", url, reason: "no-profile" };
 
+  if (scripted) return { action: "child-window", url, profileId };
   return { action: "canvas-node", url, profileId };
 }

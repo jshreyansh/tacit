@@ -58,6 +58,13 @@ import {
 import { BrowserObservationStore } from "./browser-observation-store";
 import { resolvePopupDisposition } from "./browser-popup";
 import {
+  chromeIdentity,
+  parseAcceptCh,
+  SIGN_IN_ORIGINS_HINTS,
+  withChromeHeaders,
+  type ChromeIdentity,
+} from "./browser-chrome-identity";
+import {
   buildBrowserContextMenu,
   type BrowserContextMenuAction,
 } from "./browser-context-menu";
@@ -883,6 +890,99 @@ function rememberGuestPartition(partition: unknown): void {
   const guestSession = session.fromPartition(partition);
   guestSessionProfiles.set(guestSession, identityId);
   installGuestDownloads(guestSession);
+  presentSessionAsChrome(guestSession);
+}
+
+/**
+ * Browser nodes present as the Chrome they're built from (SHR-130), worked
+ * out once per launch: the versions are Electron's and the OS's own.
+ */
+let guestChromeIdentity: ChromeIdentity | null = null;
+function browserChromeIdentity(): ChromeIdentity {
+  guestChromeIdentity ??= chromeIdentity({
+    chromeVersion: process.versions.chrome,
+    platform: process.platform,
+    platformVersion: process.getSystemVersion(),
+    arch: process.arch,
+    locale: app.getLocale() || "en-US",
+  });
+  return guestChromeIdentity;
+}
+
+/**
+ * Sign-in pages go to the system browser only when asked to: since browser
+ * nodes present as Chrome, sign-in completes inside them (SHR-130). Kept as
+ * a fallback while that's proven: TACIT_BROWSER_SIGNIN_EXTERNAL=1.
+ */
+const SIGN_IN_IN_SYSTEM_BROWSER = process.env.TACIT_BROWSER_SIGNIN_EXTERNAL === "1";
+const isSignInSentOut = (url: string): boolean => SIGN_IN_IN_SYSTEM_BROWSER && isEmbeddedAuthBlockedUrl(url);
+
+/**
+ * The client hints each origin asked for with `Accept-CH`, as Chrome
+ * remembers them: sent on that origin's later requests. Seeded with the
+ * sign-in origins, so a sign-in isn't the one request without them.
+ */
+const requestedClientHints = new Map<string, Set<string>>(
+  Object.entries(SIGN_IN_ORIGINS_HINTS).map(([origin, hints]) => [origin, new Set(hints)]),
+);
+const NO_HINTS: ReadonlySet<string> = new Set();
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Sessions already presenting as Chrome; a second listener would replace the first. */
+const chromeIdentitySessions = new WeakSet<Electron.Session>();
+
+/**
+ * A browser profile's requests as Chrome sends them: its user agent and
+ * language, and the `Sec-CH-UA` hints Electron doesn't send at all.
+ */
+function presentSessionAsChrome(guestSession: Electron.Session): void {
+  if (chromeIdentitySessions.has(guestSession)) return;
+  chromeIdentitySessions.add(guestSession);
+  const identity = browserChromeIdentity();
+  guestSession.setUserAgent(identity.userAgent, identity.acceptLanguage);
+  guestSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const origin = originOf(details.url);
+    const requested = (origin && requestedClientHints.get(origin)) || NO_HINTS;
+    callback({ requestHeaders: withChromeHeaders(details.requestHeaders, details.url, identity, requested) });
+  });
+  guestSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = details.responseHeaders ?? {};
+    const acceptCh = Object.entries(headers).find(([name]) => name.toLowerCase() === "accept-ch")?.[1];
+    const origin = acceptCh ? originOf(details.url) : null;
+    if (origin) requestedClientHints.set(origin, new Set(parseAcceptCh(acceptCh)));
+    callback({});
+  });
+}
+
+/**
+ * The page's side of the same identity: `navigator.userAgent`,
+ * `navigator.userAgentData` and `navigator.platform`, set over CDP as Chrome's
+ * own tools do, since Electron has no other way to set the brand list.
+ */
+function presentPageAsChrome(contents: Electron.WebContents): void {
+  const identity = browserChromeIdentity();
+  try {
+    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
+  } catch (error) {
+    dbg(`browser identity: attach failed id=${contents.id} ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  contents.debugger
+    .sendCommand("Emulation.setUserAgentOverride", {
+      userAgent: identity.userAgent,
+      acceptLanguage: identity.acceptLanguage,
+      platform: identity.navigatorPlatform,
+      userAgentMetadata: identity.metadata,
+    })
+    .catch((error: unknown) => {
+      dbg(`browser identity: override failed id=${contents.id} ${error instanceof Error ? error.message : String(error)}`);
+    });
 }
 
 /** Sessions already carrying a download handler; attaching twice fires twice. */
@@ -3974,24 +4074,22 @@ app.whenReady().then(async () => {
   });
 
   app.on("web-contents-created", (_event, contents) => {
-    if (contents.getType() === "webview") {
-      // Strip Electron/app identifiers from UA to avoid being blocked by sites
-      const ua = contents
-        .getUserAgent()
-        .replace(/\s*Electron\/\S+/, "")
-        .replace(/\s*tacit\/\S+/i, "");
-      contents.setUserAgent(ua);
+    // A browser node's page, or a popup window one of them opened (a sign-in
+    // popup runs in its opener's profile, so its session is a guest's).
+    const isGuestPage =
+      contents.getType() === "webview" ||
+      (contents.getType() === "window" && guestSessionProfiles.has(contents.session));
+    if (isGuestPage) {
+      // As the Chrome it's built from, in the page and in its requests, so
+      // Google lets it sign in (SHR-130). Electron's own user agent names
+      // Electron, and its brand list leaves out Google Chrome.
+      contents.setUserAgent(browserChromeIdentity().userAgent);
+      presentPageAsChrome(contents);
 
-      // Google/Microsoft/Apple-style sign-in refuses to complete inside any
-      // embedded browser control, no matter the UA or session partition —
-      // it's an intentional anti-phishing check on their end. Redirect
-      // those navigations to the user's real browser instead of letting
-      // the webview hit a dead-end "couldn't sign in" page. (A cookie-
-      // capture workaround to bring the resulting session back into the
-      // card was tried and removed — see external-url.ts's comment on
-      // EMBEDDED_AUTH_BLOCKED_HOSTS for why.)
+      // Sign-in pages stay in the node now (SHR-130). Sending them to the
+      // system browser is the fallback, TACIT_BROWSER_SIGNIN_EXTERNAL=1.
       const redirectAuthToSystemBrowser = (url: string): boolean => {
-        if (!isEmbeddedAuthBlockedUrl(url)) return false;
+        if (!isSignInSentOut(url)) return false;
         if (isSafeExternalUrl(url)) {
           void shell.openExternal(url);
           sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
@@ -4024,13 +4122,15 @@ app.whenReady().then(async () => {
           sendToWindow(mainWindow, "handoff:guest-copied", { sourceWebContentsId: contents.id });
         }, 150);
       };
-      const routeOpenedUrl = (url: string): void => {
+      const routeOpenedUrl = (url: string, scripted = false): "child-window" | "routed" => {
         const disposition = resolvePopupDisposition({
           url,
           profileId: guestSessionProfiles.get(contents.session),
-          isAuthBlocked: isEmbeddedAuthBlockedUrl,
+          scripted,
+          isAuthBlocked: isSignInSentOut,
           isSafeExternal: isSafeExternalUrl,
         });
+        if (disposition.action === "child-window") return "child-window";
         if (disposition.action === "canvas-node") {
           sendToWindow(mainWindow, "browser:popup-requested", {
             url: disposition.url,
@@ -4043,11 +4143,23 @@ app.whenReady().then(async () => {
             sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
           }
         }
+        return "routed";
       };
 
-      contents.setWindowOpenHandler(({ url }) => {
-        routeOpenedUrl(url);
-        return { action: "deny" };
+      // A popup opened by script (window.open with features: how "Sign in
+      // with Google" opens) runs as a real window of this page, in its
+      // profile, keeping window.opener so it can hand the sign-in back and
+      // close itself (SHR-131). Links still open as tiles on the canvas.
+      contents.setWindowOpenHandler(({ url, disposition }) => {
+        if (routeOpenedUrl(url, disposition === "new-window") !== "child-window") return { action: "deny" };
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            ...(mainWindow && !mainWindow.isDestroyed() ? { parent: mainWindow } : {}),
+            autoHideMenuBar: true,
+            webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+          },
+        };
       });
 
       // Right-click. Built here, in main, from Chromium's own report of what
@@ -4080,7 +4192,9 @@ app.whenReady().then(async () => {
             case "copy-link":
               clipboard.writeText(params.linkURL);
               return reportGuestCopy();
-            case "open-link-in-node": return routeOpenedUrl(params.linkURL);
+            case "open-link-in-node":
+              routeOpenedUrl(params.linkURL);
+              return;
             case "inspect": return contents.inspectElement(params.x, params.y);
           }
         };

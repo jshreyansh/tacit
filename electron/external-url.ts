@@ -8,18 +8,13 @@ export function isSafeExternalUrl(url: string): boolean {
 }
 
 /**
- * Identity providers that actively detect and refuse sign-in from an
- * embedded browser control (Electron's `<webview>`, in-app browsers,
- * etc.) as an anti-phishing measure — regardless of user-agent spoofing
- * or session partition. There is no supported way to make sign-in work
- * inside the webview itself, so navigation to these hosts gets redirected
- * to the user's real system browser instead (see `web-contents-created`
- * in main.ts), where it completes normally. (A cookie-capture workaround
- * for Google/YouTube was tried and removed — reading/decrypting another
- * browser's local cookie store is the same technique credential-stealing
- * malware uses, unreliable by design as Google actively hardens against
- * it, and not how legitimate apps get delegated Google access; the
- * correct replacement is a real OAuth flow, built separately per use case.)
+ * Identity providers' sign-in hosts. These used to be sent to the system
+ * browser on the belief that embedded browsers can never sign in; the real
+ * reason Google refused was that browser nodes didn't look like Chrome
+ * (no Google Chrome brand, no Sec-CH-UA hints). They now present as the
+ * Chrome they're built from (browser-chrome-identity.ts), and sign-in stays
+ * in the node (SHR-130). The list remains for the fallback,
+ * TACIT_BROWSER_SIGNIN_EXTERNAL=1, which sends these to the system browser.
  */
 const EMBEDDED_AUTH_BLOCKED_HOSTS = [
   "accounts.google.com",
