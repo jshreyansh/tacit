@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { deriveMacChromiumKey } from "../electron/browser-profile-import";
 import { syncChromeProfiles } from "../electron/browser-profile-sync";
+import { ChromeLoginWatch } from "../electron/chrome-login-watch";
 import { readChromeSyncRequests } from "../shared/browser-profile-sync";
 import { partitionForBrowserIdentity } from "../shared/browser-profile-import";
 
@@ -19,7 +20,7 @@ function encryptV10Cookie(host: string, value: string): string {
 }
 
 function cookieRow(host: string, name: string, value: string): string {
-  return `INSERT INTO cookies VALUES('${host}', '${name}', '/', '', X'${encryptV10Cookie(host, value)}', 0, 1, 1, -1);`;
+  return `INSERT INTO cookies(host_key, name, path, value, encrypted_value, expires_utc, is_secure, is_httponly, samesite) VALUES('${host}', '${name}', '/', '', X'${encryptV10Cookie(host, value)}', 0, 1, 1, -1);`;
 }
 
 /** A Chrome directory with real cookie databases, one per profile. */
@@ -35,7 +36,7 @@ function chromeFixture(profiles: Record<string, string[]>): string {
       "PRAGMA journal_mode=DELETE;",
       "CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);",
       "INSERT INTO meta(key, value) VALUES('version', '24');",
-      "CREATE TABLE cookies(host_key TEXT, name TEXT, path TEXT, value TEXT, encrypted_value BLOB, expires_utc INTEGER, is_secure INTEGER, is_httponly INTEGER, samesite INTEGER);",
+      "CREATE TABLE cookies(host_key TEXT, name TEXT, path TEXT, value TEXT, encrypted_value BLOB, expires_utc INTEGER, is_secure INTEGER, is_httponly INTEGER, samesite INTEGER, creation_utc INTEGER DEFAULT (abs(random())));",
       ...rows,
     ].join("\n")]);
   }
@@ -145,7 +146,7 @@ test("a sync while Chrome is mid-write reads the last committed cookies, not the
     const filler = "x".repeat(2000);
     writer.stdin.write(`PRAGMA cache_size=1;\nPRAGMA cache_spill=1;\nBEGIN;\nUPDATE cookies SET encrypted_value = X'${encryptV10Cookie(".google.com", "uncommitted")}';\n`);
     for (let i = 0; i < 400; i += 1) {
-      writer.stdin.write(`INSERT INTO cookies VALUES('.filler${i}.example', 'f', '/', '${filler}', X'', 0, 1, 1, -1);\n`);
+      writer.stdin.write(`INSERT INTO cookies(host_key, name, path, value, encrypted_value, expires_utc, is_secure, is_httponly, samesite) VALUES('.filler${i}.example', 'f', '/', '${filler}', X'', 0, 1, 1, -1);\n`);
     }
     const journal = `${db}-journal`;
     const deadline = Date.now() + 10_000;
@@ -167,6 +168,70 @@ test("a sync while Chrome is mid-write reads the last committed cookies, not the
     assert.ok(fs.existsSync(journal));
   } finally {
     writer.kill("SIGKILL");
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Chrome's login watcher: a new login syncs that profile; rotating cookies and other profiles don't", async () => {
+  const root = chromeFixture({ "Profile 4": [], "Profile 9": [] });
+  const rows: Record<string, string> = {
+    "Profile 4": ".google.com|SID|100\n.google.com|SIDCC|200\n.google.com|NID|300\n.github.com|_gh_sess|400",
+    "Profile 9": ".google.com|SID|500",
+  };
+  const changes = new Map<string, (filename: string | null) => void>();
+  const logins: Array<[string, string[]]> = [];
+  const watch = new ChromeLoginWatch({
+    chromeRoot: root,
+    readLoginRows: async (db) => rows[path.basename(path.dirname(db))]!,
+    watch: (dir, onChange) => { changes.set(path.basename(dir), onChange); return { close: () => changes.delete(path.basename(dir)) }; },
+    onNewLogin: (source, identityIds) => logins.push([source, identityIds]),
+  });
+  try {
+    watch.setSources([
+      { identityId: "identity-a", sourceProfileId: "Profile 4" },
+      { identityId: "identity-b", sourceProfileId: "Profile 4" },
+      { identityId: "identity-c", sourceProfileId: "Profile 9" },
+    ]);
+    await watch.check("Profile 4"); await watch.check("Profile 9");
+    assert.deepEqual([...changes.keys()].sort(), ["Profile 4", "Profile 9"]);
+    assert.deepEqual(logins, [], "watching starts quietly");
+
+    // Google rotates SIDCC and GitHub its session cookie: not a login.
+    rows["Profile 4"] = ".google.com|SID|100\n.google.com|SIDCC|201\n.google.com|NID|300\n.github.com|_gh_sess|401";
+    await watch.check("Profile 4");
+    assert.deepEqual(logins, []);
+
+    // A new Google sign-in makes a new SID.
+    rows["Profile 4"] = ".google.com|SID|600\n.google.com|SIDCC|601\n.google.com|NID|300\n.github.com|_gh_sess|401";
+    await watch.check("Profile 4");
+    assert.deepEqual(logins, [["Profile 4", ["identity-a", "identity-b"]]]);
+
+    // Signing in to a site adds its login cookie.
+    rows["Profile 9"] = ".google.com|SID|500\n.github.com|user_session|700";
+    await watch.check("Profile 9");
+    assert.deepEqual(logins.at(-1), ["Profile 9", ["identity-c"]]);
+
+    // A profile no longer imported stops being watched.
+    watch.setSources([{ identityId: "identity-c", sourceProfileId: "Profile 9" }]);
+    assert.deepEqual([...changes.keys()], ["Profile 9"]);
+  } finally {
+    watch.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Chrome's login watcher reads a real cookie database, names and times only", async () => {
+  const root = chromeFixture({ Default: [cookieRow(".google.com", "SID", "secret-value")] });
+  const logins: string[] = [];
+  const watch = new ChromeLoginWatch({ chromeRoot: root, watch: () => ({ close: () => {} }), onNewLogin: (source) => logins.push(source) });
+  try {
+    watch.setSources([{ identityId: "identity-a", sourceProfileId: "Default" }]);
+    await watch.check("Default");
+    execFileSync("/usr/bin/sqlite3", [path.join(root, "Default", "Cookies"), cookieRow(".github.com", "user_session", "x")]);
+    await watch.check("Default");
+    assert.deepEqual(logins, ["Default"]);
+  } finally {
+    watch.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

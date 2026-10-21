@@ -1140,8 +1140,12 @@ export interface TacitAPI {
     syncFromChrome: (input: {
       profiles: import("../../shared/browser-profile-sync").ChromeSyncRequest[];
     }) => Promise<import("../../shared/browser-profile-sync").ChromeSyncBatch>;
-    /** Main says an automatic sync is due: the Mac woke, or hours have passed. */
-    onSyncDue: (callback: (reason: "wake" | "timer") => void) => () => void;
+    /** Tells main which Chrome profile each imported profile came from. */
+    setSyncSources: (input: {
+      profiles: import("../../shared/browser-profile-sync").ChromeSyncRequest[];
+    }) => Promise<void>;
+    /** Main says an automatic sync is due: the Mac woke, hours passed, or Chrome got a new login. */
+    onSyncDue: (callback: (due: import("../../shared/browser-profile-sync").ChromeSyncDue) => void) => () => void;
   };
   fs: {
     listDir: (
@@ -1394,8 +1398,9 @@ export interface TacitAPI {
     onCanvasBridgeEvent: (
       callback: (payload: CanvasBridgeEvent) => void,
     ) => () => void;
+    /** `identityId` when sign-in opened in that profile's own Chrome profile. */
     onExternalAuthRedirect: (
-      callback: (payload: { url: string }) => void,
+      callback: (payload: { url: string; identityId?: string }) => void,
     ) => () => void;
     revealDownload: (token: string) => Promise<boolean>;
     observationSummary: () => Promise<BrowserObservationSummary>;

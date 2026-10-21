@@ -48,5 +48,22 @@ export function readChromeSyncRequests(input: unknown): ChromeSyncRequest[] {
   });
 }
 
+/**
+ * The renderer's list of imported profiles and where each came from, which
+ * main keeps for watching Chrome and for opening sign-in in the right Chrome
+ * profile. Empty is allowed: no profile came from Chrome.
+ */
+export function readChromeSyncSources(input: unknown): ChromeSyncRequest[] {
+  const list = (input as { profiles?: unknown } | null)?.profiles;
+  if (Array.isArray(list) && list.length === 0) return [];
+  return readChromeSyncRequests(input);
+}
+
+/** Why main says an automatic sync is due. */
+export type ChromeSyncDue =
+  | { reason: "wake" | "timer" }
+  /** These profiles' Chrome profile got a new login. */
+  | { reason: "chrome-login"; identityIds: string[] };
+
 /** How often an automatic sync runs while Tacit stays open. */
 export const CHROME_AUTO_SYNC_EVERY_MS = 6 * 60 * 60 * 1000;

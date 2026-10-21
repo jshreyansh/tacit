@@ -420,18 +420,21 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!window.tacit?.browser?.onExternalAuthRedirect) return;
-    return window.tacit.browser.onExternalAuthRedirect(({ url }) => {
+    return window.tacit.browser.onExternalAuthRedirect(({ url, identityId }) => {
       let host = url;
       try {
         host = new URL(url).hostname;
       } catch {
         // keep raw url as fallback
       }
+      const profile = identityId ? useIdentityStore.getState().identities[identityId] : undefined;
       useNotificationStore
         .getState()
         .notify(
           "info",
-          `Opened ${host} in your browser to sign in — the embedded browser can't complete Google/Microsoft-style sign-in.`,
+          profile?.provenance
+            ? `Sign in opened in Chrome, in the profile “${profile.provenance.sourceProfileName}”. Once you're signed in there, Tacit syncs “${profile.name}” by itself; then reload the page.`
+            : `Opened ${host} in your browser to sign in — the embedded browser can't complete Google/Microsoft-style sign-in.`,
         );
     });
   }, []);

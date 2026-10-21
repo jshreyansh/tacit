@@ -47,7 +47,13 @@ import {
 } from "./browser-profile-import";
 import { stageChromeLocalStorage } from "./browser-site-storage-import";
 import { syncChromeProfiles } from "./browser-profile-sync";
-import { CHROME_AUTO_SYNC_EVERY_MS, readChromeSyncRequests } from "../shared/browser-profile-sync";
+import { ChromeLoginWatch, openInChromeProfile } from "./chrome-login-watch";
+import {
+  CHROME_AUTO_SYNC_EVERY_MS,
+  readChromeSyncRequests,
+  readChromeSyncSources,
+  type ChromeSyncDue,
+} from "../shared/browser-profile-sync";
 import {
   resolveIdentityClearPartition,
   validateChromeProfileImportRequest,
@@ -838,6 +844,32 @@ let observationStore: BrowserObservationStore | null = null;
  * to ask a session what partition named it.
  */
 const guestSessionProfiles = new WeakMap<Electron.Session, string>();
+
+/**
+ * Imported profile → the Chrome profile it came from (`Profile 4`), as the
+ * renderer last reported. A sign-in a node can't do opens in that Chrome
+ * profile, and that Chrome profile is watched for new logins (SHR-132).
+ */
+const chromeSourceByIdentity = new Map<string, string>();
+let chromeLoginWatch: ChromeLoginWatch | null = null;
+
+/** Sends a sign-in page out: to the node's own Chrome profile when it has one. */
+function openSignInOutside(contents: Electron.WebContents, url: string): void {
+  const identityId = guestSessionProfiles.get(contents.session);
+  const chromeProfile = identityId ? chromeSourceByIdentity.get(identityId) : undefined;
+  if (chromeProfile) {
+    openInChromeProfile(chromeProfile, url).catch((error) => {
+      console.warn("[chrome-sign-in] couldn't open Chrome's profile; using the default browser", error);
+      void shell.openExternal(url);
+    });
+  } else {
+    void shell.openExternal(url);
+  }
+  sendToWindow(mainWindow, "browser:external-auth-redirect", {
+    url,
+    ...(chromeProfile && identityId ? { identityId } : {}),
+  });
+}
 
 /**
  * What browser profile storage exists on disk, as opposed to what the workspace
@@ -2980,15 +3012,32 @@ function setupIpc() {
   // When to sync without being asked: when the Mac wakes (after a pause, so
   // Chrome has refreshed its own sign-ins first) and every few hours while
   // Tacit stays open. Tacit's start is the renderer's, once its profiles load.
-  const chromeSyncDue = (reason: "wake" | "timer") => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("browser-profile-sync:due", reason);
+  const chromeSyncDue = (due: ChromeSyncDue) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("browser-profile-sync:due", due);
   };
+
+  // The renderer reports its imported profiles whenever they change.
+  ipcMain.handle("browser-profile-sync:sources", (event, input: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("Only Tacit's window can name profile sources");
+    const sources = readChromeSyncSources(input);
+    chromeSourceByIdentity.clear();
+    for (const { identityId, sourceProfileId } of sources) chromeSourceByIdentity.set(identityId, sourceProfileId);
+    chromeLoginWatch ??= new ChromeLoginWatch({
+      onNewLogin: (sourceProfileId, identityIds) => {
+        console.info(`[chrome-login-watch] new login in Chrome ${sourceProfileId}; syncing ${identityIds.length} profile(s)`);
+        chromeSyncDue({ reason: "chrome-login", identityIds });
+      },
+      log: (message) => console.warn(message),
+    });
+    chromeLoginWatch.setSources(sources);
+    console.info(`[chrome-login-watch] watching ${new Set(sources.map((s) => s.sourceProfileId)).size} Chrome profile(s) for ${sources.length} imported profile(s)`);
+  });
   let wakeSync: ReturnType<typeof setTimeout> | null = null;
   powerMonitor.on("resume", () => {
     if (wakeSync) clearTimeout(wakeSync);
-    wakeSync = setTimeout(() => { wakeSync = null; chromeSyncDue("wake"); }, 90_000);
+    wakeSync = setTimeout(() => { wakeSync = null; chromeSyncDue({ reason: "wake" }); }, 90_000);
   });
-  setInterval(() => chromeSyncDue("timer"), CHROME_AUTO_SYNC_EVERY_MS).unref();
+  setInterval(() => chromeSyncDue({ reason: "timer" }), CHROME_AUTO_SYNC_EVERY_MS).unref();
 
   ipcMain.handle("browser-connect:begin-pairing", () => {
     if (!desktopApiPort) {
@@ -4136,10 +4185,7 @@ app.whenReady().then(async () => {
       // a node (SHR-130); TACIT_BROWSER_SIGNIN_IN_APP=1 keeps them here.
       const redirectAuthToSystemBrowser = (url: string): boolean => {
         if (!isSignInSentOut(url)) return false;
-        if (isSafeExternalUrl(url)) {
-          void shell.openExternal(url);
-          sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
-        }
+        if (isSafeExternalUrl(url)) openSignInOutside(contents, url);
         return true;
       };
       contents.on("will-navigate", (event, url) => {
@@ -4184,10 +4230,8 @@ app.whenReady().then(async () => {
             sourceWebContentsId: contents.id,
           });
         } else if (disposition.action === "system-browser") {
-          void shell.openExternal(disposition.url);
-          if (disposition.reason === "auth") {
-            sendToWindow(mainWindow, "browser:external-auth-redirect", { url });
-          }
+          if (disposition.reason === "auth") openSignInOutside(contents, disposition.url);
+          else void shell.openExternal(disposition.url);
         }
         return "routed";
       };
@@ -4406,6 +4450,7 @@ app.on("will-quit", (event) => {
   if (isQuitting) return;
   event.preventDefault();
   isQuitting = true;
+  chromeLoginWatch?.close();
   // Chat-mode managers are child processes; they end with the app.
   chatEngine.stopAll();
   renderDiagnostics.recordMainEvent("app_will_quit", {

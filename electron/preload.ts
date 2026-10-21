@@ -810,8 +810,11 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("browser-profile-sync:chrome", input) as Promise<
         import("../shared/browser-profile-sync").ChromeSyncBatch
       >,
-    onSyncDue: (callback: (reason: "wake" | "timer") => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, reason: "wake" | "timer") => callback(reason);
+    setSyncSources: (input: {
+      profiles: import("../shared/browser-profile-sync").ChromeSyncRequest[];
+    }) => ipcRenderer.invoke("browser-profile-sync:sources", input) as Promise<void>,
+    onSyncDue: (callback: (due: import("../shared/browser-profile-sync").ChromeSyncDue) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, due: import("../shared/browser-profile-sync").ChromeSyncDue) => callback(due);
       ipcRenderer.on("browser-profile-sync:due", listener);
       return () => ipcRenderer.removeListener("browser-profile-sync:due", listener);
     },
@@ -1128,11 +1131,11 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("canvas-bridge:event", listener);
     },
     onExternalAuthRedirect: (
-      callback: (payload: { url: string }) => void,
+      callback: (payload: { url: string; identityId?: string }) => void,
     ) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        payload: { url: string },
+        payload: { url: string; identityId?: string },
       ) => callback(payload);
       ipcRenderer.on("browser:external-auth-redirect", listener);
       return () =>
