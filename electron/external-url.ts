@@ -8,13 +8,12 @@ export function isSafeExternalUrl(url: string): boolean {
 }
 
 /**
- * Identity providers' sign-in hosts. These used to be sent to the system
- * browser on the belief that embedded browsers can never sign in; the real
- * reason Google refused was that browser nodes didn't look like Chrome
- * (no Google Chrome brand, no Sec-CH-UA hints). They now present as the
- * Chrome they're built from (browser-chrome-identity.ts), and sign-in stays
- * in the node (SHR-130). The list remains for the fallback,
- * TACIT_BROWSER_SIGNIN_EXTERNAL=1, which sends these to the system browser.
+ * Identity providers' sign-in hosts, which browser nodes send to the system
+ * browser. Google refuses sign-in in embedded Chromium on purpose. Presenting
+ * nodes as Chrome (browser-chrome-identity.ts) was tried and Google still
+ * refused (21 Oct 2026), so these leave until browser nodes run on a real
+ * Chrome (SHR-130). TACIT_BROWSER_SIGNIN_IN_APP=1 keeps them in the node, for
+ * testing.
  */
 const EMBEDDED_AUTH_BLOCKED_HOSTS = [
   "accounts.google.com",

@@ -187,7 +187,7 @@ test("popups open on the canvas, except where only the real browser can finish",
     profileId: "identity-a",
   });
 
-  // With sign-in set to leave (the fallback since SHR-130), it goes to the system browser.
+  // Sign-in goes to the system browser, where Google lets it finish (SHR-130).
   assert.deepEqual(resolve("https://accounts.google.com/signin", "identity-a"), {
     action: "system-browser",
     url: "https://accounts.google.com/signin",

@@ -910,11 +910,13 @@ function browserChromeIdentity(): ChromeIdentity {
 }
 
 /**
- * Sign-in pages go to the system browser only when asked to: since browser
- * nodes present as Chrome, sign-in completes inside them (SHR-130). Kept as
- * a fallback while that's proven: TACIT_BROWSER_SIGNIN_EXTERNAL=1.
+ * Sign-in pages go to the system browser. Presenting as Chrome wasn't enough:
+ * Google still refused sign-in in a browser node on 21 Oct ("This browser or
+ * app may not be secure"), so a node would strand it. They stay in the node
+ * only when asked, TACIT_BROWSER_SIGNIN_IN_APP=1, until browser nodes run on
+ * a real Chrome (SHR-130).
  */
-const SIGN_IN_IN_SYSTEM_BROWSER = process.env.TACIT_BROWSER_SIGNIN_EXTERNAL === "1";
+const SIGN_IN_IN_SYSTEM_BROWSER = process.env.TACIT_BROWSER_SIGNIN_IN_APP !== "1";
 const isSignInSentOut = (url: string): boolean => SIGN_IN_IN_SYSTEM_BROWSER && isEmbeddedAuthBlockedUrl(url);
 
 /**
@@ -4086,8 +4088,8 @@ app.whenReady().then(async () => {
       contents.setUserAgent(browserChromeIdentity().userAgent);
       presentPageAsChrome(contents);
 
-      // Sign-in pages stay in the node now (SHR-130). Sending them to the
-      // system browser is the fallback, TACIT_BROWSER_SIGNIN_EXTERNAL=1.
+      // Sign-in pages go to the system browser, since Google refuses them in
+      // a node (SHR-130); TACIT_BROWSER_SIGNIN_IN_APP=1 keeps them here.
       const redirectAuthToSystemBrowser = (url: string): boolean => {
         if (!isSignInSentOut(url)) return false;
         if (isSafeExternalUrl(url)) {
