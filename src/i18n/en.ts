@@ -1567,6 +1567,8 @@ export const en = {
   browser_identity_picker_title: "The profile this node is signed in as",
   browser_identity_unknown: "Profile",
   browser_identity_manage: "Manage profiles…",
+  browser_chrome_sync: "Sync from Chrome: copy your Chrome sign-ins into every imported profile",
+  browser_chrome_sync_running: "Syncing from Chrome…",
   browser_identity_guest_hint: "Guest — signed out of everything",
   browser_identity_signed_out: "signed out",
   browser_identity_agent_withheld: "Withheld from agents — yours alone",

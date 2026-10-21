@@ -193,9 +193,11 @@ export async function importChromeProfileCookies(
   try {
     fs.copyFileSync(sourceCookieDb, copiedCookieDb);
     // A browser that crashed can leave committed cookie changes in SQLite's
-    // WAL even after its process exits. Copy matching sidecars into our private
-    // scratch directory so SQLite sees one consistent, read-only snapshot.
-    for (const suffix of ["-wal", "-shm"]) {
+    // WAL even after its process exits, and a Chrome that's running may be
+    // mid-write: Chrome keeps cookies in rollback-journal mode, so the journal
+    // is copied too and SQLite rolls our private copy back to the last
+    // committed state. That's what lets a sync read Chrome while it runs.
+    for (const suffix of ["-wal", "-shm", "-journal"]) {
       const sidecar = `${sourceCookieDb}${suffix}`;
       if (fs.existsSync(sidecar)) {
         fs.copyFileSync(sidecar, `${copiedCookieDb}${suffix}`);
@@ -494,7 +496,7 @@ function chromiumSameSite(value: number): "unspecified" | "no_restriction" | "la
   return "unspecified";
 }
 
-async function defaultIsChromeRunning(): Promise<boolean> {
+export async function defaultIsChromeRunning(): Promise<boolean> {
   try {
     await execFileAsync("/usr/bin/pgrep", ["-x", "Google Chrome"]);
     return true;
@@ -503,7 +505,7 @@ async function defaultIsChromeRunning(): Promise<boolean> {
   }
 }
 
-async function defaultReadChromeSafeStoragePassword(): Promise<string> {
+export async function defaultReadChromeSafeStoragePassword(): Promise<string> {
   try {
     const { stdout } = await execFileAsync("/usr/bin/security", [
       "find-generic-password",
@@ -532,14 +534,15 @@ async function readChromiumCookieRows(cookieDbPath: string): Promise<{
     "FROM cookies;",
   ].join("\n");
   try {
-    const [{ stdout: versionOutput }, { stdout: rowsOutput }] = await Promise.all([
-      execFileAsync("/usr/bin/sqlite3", ["-readonly", cookieDbPath, schemaQuery], {
-        maxBuffer: 1024 * 1024,
-      }),
-      execFileAsync("/usr/bin/sqlite3", ["-readonly", "-json", cookieDbPath, cookieQuery], {
-        maxBuffer: 128 * 1024 * 1024,
-      }),
-    ]);
+    // Not -readonly: this is always our scratch copy, and a copy taken while
+    // Chrome was writing carries a hot journal SQLite must roll back. One
+    // after the other, so two processes don't race for that rollback.
+    const { stdout: versionOutput } = await execFileAsync("/usr/bin/sqlite3", [cookieDbPath, schemaQuery], {
+      maxBuffer: 1024 * 1024,
+    });
+    const { stdout: rowsOutput } = await execFileAsync("/usr/bin/sqlite3", ["-json", cookieDbPath, cookieQuery], {
+      maxBuffer: 128 * 1024 * 1024,
+    });
     const schemaVersion = Number.parseInt(versionOutput.trim(), 10) || 0;
     const rows = JSON.parse(rowsOutput || "[]") as ChromiumCookieRow[];
     return { schemaVersion, rows };

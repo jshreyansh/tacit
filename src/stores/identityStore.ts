@@ -110,6 +110,8 @@ interface IdentityActions {
    * point of the asymmetry.
    */
   setAgentAllowed: (id: string, allowed: boolean) => void;
+  /** Record that Sync from Chrome brought these imported profiles up to date. */
+  markSynced: (ids: readonly string[], at: number) => void;
   /**
    * Put a profile back for storage that outlived its entry in the workspace —
    * an orphaned partition the user chose to keep. The id is the one the
@@ -253,6 +255,20 @@ export const useIdentityStore = create<IdentityStore>((set, get) => ({
     set({
       identities: { ...identities, [id]: { ...target, agentAllowed: allowed } },
     });
+    markDirty();
+  },
+
+  markSynced: (ids, at) => {
+    const next = { ...get().identities };
+    let changed = false;
+    for (const id of ids) {
+      const target = next[id];
+      if (!target?.provenance) continue;
+      next[id] = { ...target, provenance: { ...target.provenance, syncedAt: at } };
+      changed = true;
+    }
+    if (!changed) return;
+    set({ identities: next });
     markDirty();
   },
 }));

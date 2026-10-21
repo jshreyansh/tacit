@@ -804,6 +804,17 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("browser-profile-import:chrome", input) as Promise<
         import("../shared/browser-profile-import").BrowserProfileImportBatchResult
       >,
+    syncFromChrome: (input: {
+      profiles: import("../shared/browser-profile-sync").ChromeSyncRequest[];
+    }) =>
+      ipcRenderer.invoke("browser-profile-sync:chrome", input) as Promise<
+        import("../shared/browser-profile-sync").ChromeSyncBatch
+      >,
+    onSyncDue: (callback: (reason: "wake" | "timer") => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, reason: "wake" | "timer") => callback(reason);
+      ipcRenderer.on("browser-profile-sync:due", listener);
+      return () => ipcRenderer.removeListener("browser-profile-sync:due", listener);
+    },
   },
   fs: {
     listDir: (dirPath: string) =>

@@ -115,6 +115,7 @@ import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
 import { terminalStartedBy } from "../shared/worker-cap";
+import { startChromeAutoSync } from "./stores/chromeSyncStore";
 
 // The canvas opacity/blur preference (Settings > Appearance) needs the real
 // window to show through, which means every opaque layer stacked above it
@@ -333,6 +334,8 @@ function useWorkspaceOpen() {
 
 export function App() {
   useWorktreeWatcher();
+  // Imported profiles go stale; copy them from Chrome again (SHR-132).
+  useEffect(() => (window.tacit ? startChromeAutoSync() : undefined), []);
   // Pins change outside the app too (an agent's `tacit pin add`).
   useEffect(() => (window.tacit?.pins ? subscribePinEvents() : undefined), []);
   usePinPreloader();

@@ -33,6 +33,7 @@ import {
   isDefaultBrowserZoom,
 } from "../browser/pageZoom";
 import { resetBrowserNodeZoom } from "../browser/browserNodeCommands";
+import { useChromeSyncStore } from "../stores/chromeSyncStore";
 
 declare global {
   namespace JSX {
@@ -95,6 +96,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
   const t = useT();
   const identities = useIdentityStore((s) => s.identities);
   const currentIdentity = identities[card.identityId];
+  const syncingFromChrome = useChromeSyncStore((s) => s.syncing);
+  const hasImportedProfile = Object.values(identities).some((i) => i.provenance?.source === "chrome");
   const onGuestProfile = !connectedBinding && isGuestProfile(card.identityId);
   const identitySwatch = profileSwatch(card.identityId);
   const identityChipBorder = connectedBinding || onGuestProfile
@@ -467,6 +470,29 @@ export function BrowserCard({ card, projectedLayout }: Props) {
             onClick={() => resetBrowserNodeZoom(card.id)}
           >
             {formatBrowserZoom(pageZoom)}
+          </button>
+        )}
+
+        {/* Sync from Chrome: Google signs in only in a real Chrome, so the
+            way to a signed-in node is to sign in there and copy the logins
+            over again (SHR-132). It syncs every imported profile at once. */}
+        {!connectedBinding && hasImportedProfile && (
+          <button
+            type="button"
+            className="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-60"
+            title={syncingFromChrome ? t.browser_chrome_sync_running : t.browser_chrome_sync}
+            aria-label={t.browser_chrome_sync}
+            disabled={syncingFromChrome}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => void useChromeSyncStore.getState().sync("manual")}
+          >
+            <svg
+              width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden
+              className={syncingFromChrome ? "animate-spin" : undefined}
+            >
+              <path d="M10 6a4 4 0 0 1-6.8 2.85M2 6a4 4 0 0 1 6.8-2.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M8.9 1.4v1.9H7M3.1 10.6V8.7H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         )}
 

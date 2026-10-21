@@ -1136,6 +1136,12 @@ export interface TacitAPI {
     }) => Promise<
       import("../../shared/browser-profile-import").BrowserProfileImportBatchResult
     >;
+    /** Copies each imported profile's logins from its Chrome profile again (SHR-132). */
+    syncFromChrome: (input: {
+      profiles: import("../../shared/browser-profile-sync").ChromeSyncRequest[];
+    }) => Promise<import("../../shared/browser-profile-sync").ChromeSyncBatch>;
+    /** Main says an automatic sync is due: the Mac woke, or hours have passed. */
+    onSyncDue: (callback: (reason: "wake" | "timer") => void) => () => void;
   };
   fs: {
     listDir: (

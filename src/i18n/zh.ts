@@ -1511,6 +1511,8 @@ export const zh = {
   browser_identity_picker_title: "此节点当前使用的配置文件",
   browser_identity_unknown: "配置文件",
   browser_identity_manage: "管理配置文件…",
+  browser_chrome_sync: "从 Chrome 同步：把 Chrome 的登录状态复制到所有导入的配置文件",
+  browser_chrome_sync_running: "正在从 Chrome 同步…",
   browser_identity_guest_hint: "访客 — 未登录任何网站",
   browser_identity_signed_out: "未登录",
   browser_identity_agent_withheld: "不向代理开放 — 只属于你",

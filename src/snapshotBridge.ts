@@ -731,7 +731,11 @@ function coerceBrowserIdentity(value: unknown): BrowserIdentity | null {
     return [[category, { status: entry.status, count: entry.count, ...(typeof entry.detail === "string" ? { detail: entry.detail } : {}) }]];
   })) : null;
   const provenance = rawProvenance?.source === "chrome" && sourceProfileId && sourceProfileName && importedAt !== null && categories && Object.keys(categories).length === categoryNames.length
-    ? { source: "chrome" as const, sourceProfileId, sourceProfileName, importedAt, categories: categories as BrowserProfileCategorySummary }
+    ? {
+        source: "chrome" as const, sourceProfileId, sourceProfileName, importedAt,
+        ...(typeof rawProvenance.syncedAt === "number" ? { syncedAt: rawProvenance.syncedAt } : {}),
+        categories: categories as BrowserProfileCategorySummary,
+      }
     : undefined;
   // Only an explicit `false` withholds a profile from agents. Anything else —
   // absent, or a value from a future version this build cannot read — leaves it

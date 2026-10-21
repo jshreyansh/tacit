@@ -13,6 +13,7 @@ import {
   protocol,
   net,
   session,
+  powerMonitor,
 } from "electron";
 import https from "https";
 import path from "path";
@@ -45,6 +46,8 @@ import {
   importChromeProfilesAsIdentities,
 } from "./browser-profile-import";
 import { stageChromeLocalStorage } from "./browser-site-storage-import";
+import { syncChromeProfiles } from "./browser-profile-sync";
+import { CHROME_AUTO_SYNC_EVERY_MS, readChromeSyncRequests } from "../shared/browser-profile-sync";
 import {
   resolveIdentityClearPartition,
   validateChromeProfileImportRequest,
@@ -271,6 +274,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+// Development only: lets a test drive Tacit's own window as a person would
+// (clicks and keys into tiles), on a port that exists only when asked for.
+if (isDev && /^\d{4,5}$/.test(process.env.TACIT_DEV_UI_CDP_PORT ?? "")) {
+  app.commandLine.appendSwitch("remote-debugging-port", process.env.TACIT_DEV_UI_CDP_PORT!);
+  app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
+}
 if (isDev) {
   app.setPath("userData", path.join(app.getPath("appData"), "tacit-dev"));
 }
@@ -2945,6 +2954,41 @@ function setupIpc() {
       });
     },
   );
+
+  // Sync from Chrome (SHR-132): the button, and the automatic syncs the
+  // renderer starts. The renderer names its imported profiles and where each
+  // came from; one sync runs at a time, and a second waits for the first.
+  let chromeSyncQueue: Promise<unknown> = Promise.resolve();
+  ipcMain.handle("browser-profile-sync:chrome", (event, input: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("Only Tacit's window can sync profiles");
+    const requests = readChromeSyncRequests(input);
+    const run = chromeSyncQueue.then(() =>
+      syncChromeProfiles(requests, {
+        fromPartition: (partitionName) => {
+          const target = session.fromPartition(partitionName);
+          return {
+            cookies: target.cookies,
+            flushStorageData: async () => target.flushStorageData(),
+          };
+        },
+      }),
+    );
+    chromeSyncQueue = run.catch(() => undefined);
+    return run;
+  });
+
+  // When to sync without being asked: when the Mac wakes (after a pause, so
+  // Chrome has refreshed its own sign-ins first) and every few hours while
+  // Tacit stays open. Tacit's start is the renderer's, once its profiles load.
+  const chromeSyncDue = (reason: "wake" | "timer") => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("browser-profile-sync:due", reason);
+  };
+  let wakeSync: ReturnType<typeof setTimeout> | null = null;
+  powerMonitor.on("resume", () => {
+    if (wakeSync) clearTimeout(wakeSync);
+    wakeSync = setTimeout(() => { wakeSync = null; chromeSyncDue("wake"); }, 90_000);
+  });
+  setInterval(() => chromeSyncDue("timer"), CHROME_AUTO_SYNC_EVERY_MS).unref();
 
   ipcMain.handle("browser-connect:begin-pairing", () => {
     if (!desktopApiPort) {

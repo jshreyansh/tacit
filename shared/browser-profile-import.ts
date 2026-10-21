@@ -42,6 +42,8 @@ export interface BrowserIdentityProvenance {
   sourceProfileId: string;
   sourceProfileName: string;
   importedAt: number;
+  /** When Sync from Chrome last brought its logins up to date (SHR-132). */
+  syncedAt?: number;
   categories: BrowserProfileCategorySummary;
 }
 
