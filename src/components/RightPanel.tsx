@@ -7,7 +7,7 @@ import {
   LEFT_RAIL_WIDTH,
 } from "../stores/canvasStore";
 import { CODE_TABS, isCodeTab, RIGHT_TAB_CONFIG as TAB_CONFIG } from "./rightPanelTabs";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 import { useProjectStore } from "../stores/projectStore";
 import { useT } from "../i18n/useT";
 import { PanelCollapseButton } from "./PanelCollapseButton";
@@ -354,7 +354,7 @@ export function RightPanel() {
     <div
       className="tc-float fixed z-40 overflow-hidden"
       style={{
-        top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+        top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
         // Opens beside the LEFT rail, which now owns every panel button.
         // Opens to the right of the docked chat, never under it.
         left: CHROME_INSET + LEFT_RAIL_WIDTH + CHROME_GAP + chatOffset,

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS, titleStripHeight } from "../toolbar/titleStripHeight";
 import { createPortal } from "react-dom";
 import type { ProjectData, TerminalData } from "../types";
 import {
@@ -235,7 +235,7 @@ export function FamilyTreeOverlay() {
     rightPanelWidth,
   );
   const safeLeft = leftInset + OVERLAY_MARGIN;
-  const safeTop = TITLE_STRIP_HEIGHT + OVERLAY_MARGIN;
+  const safeTop = titleStripHeight() + OVERLAY_MARGIN;
   const safeRight = Math.max(
     safeLeft + 1,
     window.innerWidth - panelWidth - OVERLAY_MARGIN,
@@ -279,7 +279,7 @@ export function FamilyTreeOverlay() {
         zIndex: 120,
         minWidth: 180,
         maxWidth: 260,
-        maxHeight: `calc(100vh - ${TITLE_STRIP_HEIGHT + OVERLAY_MARGIN * 2}px)`,
+        maxHeight: `calc(100vh - ${TITLE_STRIP_CSS} - ${OVERLAY_MARGIN * 2}px)`,
         overflowY: "auto",
         animation: "fadeIn 0.15s ease",
       }}

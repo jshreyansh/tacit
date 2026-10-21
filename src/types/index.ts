@@ -1427,6 +1427,10 @@ export interface TacitAPI {
     platform: "darwin" | "win32" | "linux";
     requestClose: () => void;
     setQuitOnLastWindowClosed: (value: boolean) => void;
+    /** Whether the window is full screen now. */
+    isFullScreen: () => Promise<boolean>;
+    /** The window entered or left full screen. */
+    onFullScreenChange: (callback: (fullScreen: boolean) => void) => () => void;
   };
   hooks: {
     getSocketPath: () => Promise<string | null>;

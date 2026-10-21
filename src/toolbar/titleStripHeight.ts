@@ -9,11 +9,36 @@
  * and the lights land on the canvas. Windows declares the same number as
  * `titleBarOverlay.height` for its own min/max/close.
  *
+ * Except in full screen. There the OS hides the lights and draws its own
+ * title bar over the app only while the pointer is at the top edge, and a
+ * full-screen window can't be dragged; the strip is empty space, so it
+ * collapses to 0 and everything starts at the top inset like every other
+ * edge. Main says when the window enters or leaves full screen.
+ *
+ * Read it two ways, both live:
+ * - In styles, `var(--title-strip)` (`TITLE_STRIP_CSS`): a change reaches
+ *   every surface without a render.
+ * - In layout math (canvas fit, pan, clamps), `titleStripHeight()` at the time
+ *   of the calculation, never a copy taken at import.
+ *
  * Lives in a leaf module so helpers outside the toolbar (zoom actions,
  * fit-all math) can read it without pulling in React.
- *
- * This is the one number for the top inset. It used to be a 44 that three
- * components redeclared locally and three more hard-coded inline, which is
- * how a change here silently disagreed with itself by sixteen pixels.
  */
 export const TITLE_STRIP_HEIGHT = 28;
+
+export const TITLE_STRIP_CSS = "var(--title-strip, 28px)";
+
+let fullScreen = false;
+
+/** The strip's height now: 28, or 0 while the window is full screen. */
+export function titleStripHeight(): number {
+  return fullScreen ? 0 : TITLE_STRIP_HEIGHT;
+}
+
+/** Called when the window enters or leaves full screen; sets the CSS variable. */
+export function setWindowFullScreen(value: boolean): void {
+  fullScreen = value;
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty("--title-strip", `${titleStripHeight()}px`);
+  }
+}

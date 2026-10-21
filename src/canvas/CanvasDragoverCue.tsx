@@ -4,7 +4,7 @@ import {
   getLeftPanelInset,
   getRightPanelInset,
 } from "./viewportBounds";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 
 interface CanvasDragoverCueProps {
   active: boolean;
@@ -42,7 +42,7 @@ export function CanvasDragoverCue({ active, showChip }: CanvasDragoverCueProps) 
       <div
         className="fixed pointer-events-none flex justify-center"
         style={{
-          top: TITLE_STRIP_HEIGHT + 12,
+          top: `calc(${TITLE_STRIP_CSS} + 12px)`,
           left: leftInset,
           right: rightInset,
           zIndex: 35,

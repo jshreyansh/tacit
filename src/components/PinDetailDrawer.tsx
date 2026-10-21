@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import type { ClipboardEvent, DragEvent } from "react";
 import { ExternalLink } from "lucide-react";
 import {

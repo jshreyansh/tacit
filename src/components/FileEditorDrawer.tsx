@@ -13,7 +13,6 @@ import {
 import {
   getRightPanelInset,
 } from "../canvas/viewportBounds";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { usePinStore } from "../stores/pinStore";
 import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import {

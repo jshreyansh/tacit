@@ -1,6 +1,6 @@
 import type { Viewport } from "../types";
 import { useChatDockStore, chatDockOffset } from "../stores/chatDockStore";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { titleStripHeight } from "../toolbar/titleStripHeight";
 import {
   CHROME_GAP,
   CHROME_INSET,
@@ -98,7 +98,8 @@ export function screenDeltaToCanvasDelta(
  */
 // The strip plus a little breathing room, so a node auto-placed at the top of
 // the visible area does not sit flush under the traffic lights.
-const CANVAS_TOP_INSET = TITLE_STRIP_HEIGHT + 12;
+/** Read when used: the title strip is 0 in full screen. */
+const canvasTopInset = () => titleStripHeight() + 12;
 
 export function getVisibleCanvasWorldRect(
   viewport: Viewport,
@@ -111,14 +112,14 @@ export function getVisibleCanvasWorldRect(
     0,
     window.innerWidth - leftInset - rightInset,
   );
-  const screenH = Math.max(0, window.innerHeight - CANVAS_TOP_INSET);
+  const screenH = Math.max(0, window.innerHeight - canvasTopInset());
   // World point at the left edge of the *visible* band. This used to be
   // `-viewport.x / scale` — the point at the container's own left edge, which
   // was the visible edge back when the container started after the chrome. The
   // canvas is full-bleed now, so that expression returns a point underneath the
   // left rail, and everything auto-placed "in view" landed partly behind it.
   const x = (leftInset - viewport.x) / viewport.scale;
-  const y = (-viewport.y + CANVAS_TOP_INSET) / viewport.scale;
+  const y = (-viewport.y + canvasTopInset()) / viewport.scale;
   return {
     x,
     y,

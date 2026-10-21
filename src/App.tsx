@@ -116,6 +116,7 @@ import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
 import { terminalStartedBy } from "../shared/worker-cap";
 import { startChromeAutoSync } from "./stores/chromeSyncStore";
+import { setWindowFullScreen } from "./toolbar/titleStripHeight";
 
 // The canvas opacity/blur preference (Settings > Appearance) needs the real
 // window to show through, which means every opaque layer stacked above it
@@ -336,6 +337,15 @@ export function App() {
   useWorktreeWatcher();
   // Imported profiles go stale; copy them from Chrome again (SHR-132).
   useEffect(() => (window.tacit ? startChromeAutoSync() : undefined), []);
+  // Full screen has no title strip: the OS shows its own bar on hover.
+  useEffect(() => {
+    if (!window.tacit?.app.onFullScreenChange) return;
+    const off = window.tacit.app.onFullScreenChange(setWindowFullScreen);
+    void window.tacit.app.isFullScreen().then(setWindowFullScreen, (error) => {
+      console.warn("[title-strip] couldn't read full screen state", error);
+    });
+    return off;
+  }, []);
   // Pins change outside the app too (an agent's `tacit pin add`).
   useEffect(() => (window.tacit?.pins ? subscribePinEvents() : undefined), []);
   usePinPreloader();

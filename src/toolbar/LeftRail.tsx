@@ -4,7 +4,7 @@ import {
   LEFT_RAIL_WIDTH,
   type RightPanelTab,
 } from "../stores/canvasStore";
-import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
+import { TITLE_STRIP_CSS } from "./titleStripHeight";
 import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
@@ -135,7 +135,7 @@ export function LeftRail() {
       className="tc-float fixed z-50 flex flex-col items-center py-2"
       style={{
         left: CHROME_INSET,
-        top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+        top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
         bottom: CHROME_INSET,
         width: LEFT_RAIL_WIDTH,
       }}

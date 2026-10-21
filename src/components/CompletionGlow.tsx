@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useSessionStore } from "../stores/sessionStore";
@@ -94,9 +94,9 @@ export function CompletionGlow() {
       <div
         className="fixed left-0 pointer-events-none z-40 transition-opacity duration-500 ease-out"
         style={{
-          top: TITLE_STRIP_HEIGHT,
+          top: TITLE_STRIP_CSS,
           width: 90,
-          height: `calc(100vh - ${TITLE_STRIP_HEIGHT}px)`,
+          height: `calc(100vh - ${TITLE_STRIP_CSS})`,
           background:
             "linear-gradient(to right, color-mix(in srgb, var(--accent) 28%, transparent), transparent)",
           opacity: showLeft ? 1 : 0,
@@ -105,9 +105,9 @@ export function CompletionGlow() {
       <div
         className="fixed right-0 pointer-events-none z-40 transition-opacity duration-500 ease-out"
         style={{
-          top: TITLE_STRIP_HEIGHT,
+          top: TITLE_STRIP_CSS,
           width: 90,
-          height: `calc(100vh - ${TITLE_STRIP_HEIGHT}px)`,
+          height: `calc(100vh - ${TITLE_STRIP_CSS})`,
           background:
             "linear-gradient(to left, color-mix(in srgb, var(--accent) 28%, transparent), transparent)",
           opacity: showRight ? 1 : 0,

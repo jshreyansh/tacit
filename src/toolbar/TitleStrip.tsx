@@ -1,4 +1,4 @@
-import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
+import { TITLE_STRIP_CSS } from "./titleStripHeight";
 
 const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
@@ -29,7 +29,8 @@ export function TitleStrip() {
       className="fixed top-0 left-0 right-0 z-50"
       style={
         {
-          height: TITLE_STRIP_HEIGHT,
+          // 0 in full screen, where the OS shows its own title bar on hover.
+          height: TITLE_STRIP_CSS,
           // Only the drag behaviour — no fill, so the canvas shows through
           // and the strip reads as part of the window, not a bar on top of it.
           WebkitAppRegion: "drag",

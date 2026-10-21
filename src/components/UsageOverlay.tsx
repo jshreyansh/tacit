@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { useUsageStore } from "../stores/usageStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import {

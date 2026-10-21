@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
 import { CHROME_GAP, useCanvasStore } from "../stores/canvasStore";
 import { leftChromeInset, useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import { chatDockOffset, useChatDockStore } from "../stores/chatDockStore";

@@ -1221,6 +1221,12 @@ contextBridge.exposeInMainWorld("tacit", {
     requestClose: () => ipcRenderer.send("app:request-close"),
     setQuitOnLastWindowClosed: (value: boolean) =>
       ipcRenderer.send("app:set-quit-on-last-window-closed", value),
+    isFullScreen: () => ipcRenderer.invoke("window:is-full-screen") as Promise<boolean>,
+    onFullScreenChange: (callback: (fullScreen: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, fullScreen: boolean) => callback(fullScreen === true);
+      ipcRenderer.on("window:full-screen", listener);
+      return () => ipcRenderer.removeListener("window:full-screen", listener);
+    },
   },
   updater: {
     check: () => ipcRenderer.invoke("updater:check"),

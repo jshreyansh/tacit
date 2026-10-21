@@ -56,7 +56,7 @@ import {
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
-import { TITLE_STRIP_HEIGHT } from "./titleStripHeight";
+import { TITLE_STRIP_CSS, titleStripHeight } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { usePanelPresence } from "../utils/usePanelPresence";
@@ -656,7 +656,7 @@ export function WorkspaceManagerPill() {
           const w = Math.min(Math.max(store.width, 380), 460);
           rect = { x: 0, y: 0, w, h: Math.min(640, view.height - 80) };
           offsetX = Math.min(startX - railEdge, w - 60);
-          offsetY = Math.max(16, startY - (TITLE_STRIP_HEIGHT + CHROME_INSET));
+          offsetY = Math.max(16, startY - (titleStripHeight() + CHROME_INSET));
           floating = true;
           store.setPlacement("float");
         }
@@ -997,7 +997,7 @@ export function WorkspaceManagerPill() {
     // Unfolds from the rail like the panels do: the box opens while the
     // contents, laid out at full width, settle in behind its edge.
     frameStyle = {
-      top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+      top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
       bottom: CHROME_INSET,
       left: railEdge,
       width: shown ? dockWidth : 0,
@@ -1027,7 +1027,7 @@ export function WorkspaceManagerPill() {
   } else if (placement === "full") {
     // Everything right of the bar, the conversation in one readable column.
     frameStyle = {
-      top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+      top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
       bottom: CHROME_INSET,
       left: railEdge,
       right: CHROME_INSET,
@@ -1052,7 +1052,7 @@ export function WorkspaceManagerPill() {
       <div
         aria-hidden="true"
         className="pointer-events-none fixed z-[69] rounded-[20px] border-2 border-dashed"
-        style={{ top: TITLE_STRIP_HEIGHT + CHROME_INSET, bottom: CHROME_INSET, left: railEdge, width: dockWidth, borderColor: "color-mix(in srgb, var(--cyan) 60%, transparent)", background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
+        style={{ top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`, bottom: CHROME_INSET, left: railEdge, width: dockWidth, borderColor: "color-mix(in srgb, var(--cyan) 60%, transparent)", background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
       />
     )}
     {dockMounted && (

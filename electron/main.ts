@@ -1291,6 +1291,16 @@ const TITLE_STRIP_HEIGHT = 28;
       window_id: windowId,
     });
   });
+  // In full screen the OS hides the traffic lights and shows its own title
+  // bar on hover, so the renderer drops its title strip (titleStripHeight.ts).
+  const fullScreenWindow = mainWindow;
+  const reportFullScreen = () => {
+    if (!fullScreenWindow.isDestroyed()) {
+      fullScreenWindow.webContents.send("window:full-screen", fullScreenWindow.isFullScreen());
+    }
+  };
+  mainWindow.on("enter-full-screen", reportFullScreen);
+  mainWindow.on("leave-full-screen", reportFullScreen);
 
   createMenu(mainWindow);
   agentService.setWindow(mainWindow);
@@ -2380,6 +2390,12 @@ function setupIpc() {
   // Only the app's own window may change the run, not a browser tile.
   const isMainWindowSender = (event: Electron.IpcMainInvokeEvent) =>
     !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
+
+  // Whether the window is full screen, for the renderer's first layout; later
+  // changes arrive as "window:full-screen".
+  ipcMain.handle("window:is-full-screen", (event) =>
+    isMainWindowSender(event) && mainWindow ? mainWindow.isFullScreen() : false,
+  );
 
   // The canvas's run control. The goal is free text from the person, kept
   // in the record; anything else is refused.

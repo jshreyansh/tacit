@@ -1,7 +1,7 @@
 import { useCanvasStore } from "../stores/canvasStore";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { useProjectStore } from "../stores/projectStore";
-import { CHROME_BOTTOM, CHROME_TOP } from "./floatingChrome";
+import { CHROME_BOTTOM, chromeTop } from "./floatingChrome";
 import {
   getLeftPanelInset,
   getCanvasRightInset,
@@ -77,7 +77,7 @@ export function computeFitAllViewport(): {
   );
   const viewW = window.innerWidth - leftOffset - rightOffset - FIT_PADDING * 2;
   const viewH =
-    window.innerHeight - CHROME_TOP - CHROME_BOTTOM - FIT_PADDING * 2;
+    window.innerHeight - chromeTop() - CHROME_BOTTOM - FIT_PADDING * 2;
   if (contentW <= 0 || contentH <= 0 || viewW <= 0 || viewH <= 0) return null;
 
   const scale = clampScale(Math.min(1, viewW / contentW, viewH / contentH));
@@ -87,7 +87,7 @@ export function computeFitAllViewport(): {
   // content behind the rail.
   return {
     x: -minX * scale + leftOffset + FIT_PADDING,
-    y: -minY * scale + CHROME_TOP + FIT_PADDING,
+    y: -minY * scale + chromeTop() + FIT_PADDING,
     scale,
   };
 }
@@ -128,7 +128,7 @@ function zoomAroundCenter(nextScale: number): void {
   const center = getViewportCenterClientPoint({
     rightPanelCollapsed: insets.rightPanelCollapsed,
     rightPanelWidth: insets.rightPanelWidth,
-    topInset: CHROME_TOP,
+    topInset: chromeTop(),
   });
   const viewport = useCanvasStore.getState().viewport;
   useCanvasStore.getState().setViewport(

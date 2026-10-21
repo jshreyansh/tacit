@@ -15,7 +15,7 @@ import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddNodeMenu } from "./AddNodeMenu";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 import { agentIcon } from "../toolbar/agentIcons";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import { readTerminalTail } from "../terminal/terminalRegistry";
@@ -470,7 +470,7 @@ export function WorkdeskView() {
         left,
         right: CHROME_INSET,
         transition: leftShift,
-        top: TITLE_STRIP_HEIGHT + CHROME_INSET,
+        top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
         bottom: CHROME_INSET,
         // A browser tab is a window onto the tile laid under it: the panel
         // paints only its bars, and lets clicks through to the page.

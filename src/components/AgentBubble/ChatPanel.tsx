@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TITLE_STRIP_HEIGHT } from "../../toolbar/titleStripHeight";
+import { titleStripHeight } from "../../toolbar/titleStripHeight";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import type { BubbleMessage } from "./types";
@@ -33,8 +33,8 @@ function clampPos(
   // Right: must not overlap with the right panel area
   const maxRight = window.innerWidth - w;
   const clampedRight = Math.max(minRight, Math.min(maxRight, right));
-  // Bottom: top edge must not go above toolbar (top = innerHeight - bottom - h >= TITLE_STRIP_HEIGHT)
-  const maxBottom = window.innerHeight - h - TITLE_STRIP_HEIGHT;
+  // Bottom: top edge must not go above the title strip (top = innerHeight - bottom - h >= strip)
+  const maxBottom = window.innerHeight - h - titleStripHeight();
   const clampedBottom = Math.max(0, Math.min(maxBottom, bottom));
   return { bottom: clampedBottom, right: clampedRight };
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useClusterStore } from "../stores/clusterStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { TITLE_STRIP_HEIGHT } from "../toolbar/titleStripHeight";
+import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 import { getCanvasRightInset } from "./viewportBounds";
 import type { ClusterRule } from "../clustering";
 
@@ -18,7 +18,7 @@ const RULE_OPTIONS: RuleOption[] = [
   { rule: "by-custom", label: "By Custom Tag" },
 ];
 
-const TOP_OFFSET = TITLE_STRIP_HEIGHT + 8;
+const TOP_OFFSET = `calc(${TITLE_STRIP_CSS} + 8px)`;
 
 export function ClusterToolbar() {
   const [open, setOpen] = useState(false);

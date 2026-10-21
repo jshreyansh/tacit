@@ -2,7 +2,7 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useEffect } from "react";
 import { zoomToFitAllTerminals } from "../canvas/zoomActions";
-import { CHROME_BOTTOM, CHROME_TOP } from "../canvas/floatingChrome";
+import { CHROME_BOTTOM, chromeTop } from "../canvas/floatingChrome";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { deleteSelectedSceneItems } from "../actions/sceneDeleteActions";
 import {
@@ -244,7 +244,7 @@ async function handleAddProject(t: ReturnType<typeof useT>) {
     rightPanelWidth,
   );
   const screenCenterX = (leftOffset + window.innerWidth - rightOffset) / 2;
-  const screenCenterY = (CHROME_TOP + window.innerHeight - CHROME_BOTTOM) / 2;
+  const screenCenterY = (chromeTop() + window.innerHeight - CHROME_BOTTOM) / 2;
   const targetX =
     -(newProjectBounds.x + newProjectBounds.w / 2) * scale + screenCenterX;
   const targetY =

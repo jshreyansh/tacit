@@ -8,7 +8,7 @@ import {
   clampCenterX,
 } from "../canvas/viewportBounds";
 import { clampScale } from "../canvas/viewportZoom";
-import { CHROME_BOTTOM, CHROME_TOP } from "../canvas/floatingChrome";
+import { CHROME_BOTTOM, chromeTop } from "../canvas/floatingChrome";
 
 interface PanToWorktreeOptions {
   /** When true, enter overview mode so double-clicking a terminal zooms into it. */
@@ -60,14 +60,14 @@ export function panToWorktree(
   );
   const padding = 60;
   const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
-  const viewH = window.innerHeight - CHROME_TOP - CHROME_BOTTOM - padding * 2;
+  const viewH = window.innerHeight - chromeTop() - CHROME_BOTTOM - padding * 2;
   const scale = clampScale(Math.min(viewW / sizeW, viewH / sizeH) * 0.85);
 
   const centerX = clampCenterX(absX, sizeW, scale, leftOffset, rightOffset);
   // Centred in the band the floating chrome leaves, not in the raw window.
   const centerY =
     -(absY + sizeH / 2) * scale +
-    (CHROME_TOP + window.innerHeight - CHROME_BOTTOM) / 2;
+    (chromeTop() + window.innerHeight - CHROME_BOTTOM) / 2;
 
   useCanvasStore.getState().animateTo(centerX, centerY, scale);
   selectWorktreeInScene(projectId, worktreeId);
