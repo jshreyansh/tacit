@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { focusInitialDialogTarget, trapDialogTabKey } from "../components/ui/ConfirmDialog";
 import { useManagerTranscript } from "../stores/managerChatStore";
@@ -22,9 +22,11 @@ import { ChatThread } from "./chat/ChatThread";
 import { SessionChatBody } from "./chat/SessionChat";
 import { projectName, stamp } from "./chatHistoryModel";
 import {
+  READER_TWO_COLUMN_MIN,
   agentOfSessionFile,
   filterTurns,
   messageCount,
+  readerLayout,
   readerTitle,
   resumeCommand,
   turnsOf,
@@ -71,6 +73,51 @@ function CloseButton({ onClose, t }: { onClose: () => void; t: Dict }) {
         <path d="M4 4l8 8M12 4l-8 8" />
       </svg>
     </button>
+  );
+}
+
+/** The element's own width, measured before paint so the first frame is laid out right. */
+function useOwnWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(Math.round(el.getBoundingClientRect().width));
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+/** The turns column folded away while there was room for it: the viewer's, per browser. */
+const TURNS_HIDDEN_KEY = "tacit.reader.turnsHidden.v1";
+
+function loadTurnsHidden(): boolean {
+  try {
+    return localStorage.getItem(TURNS_HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveTurnsHidden(hidden: boolean): void {
+  try {
+    localStorage.setItem(TURNS_HIDDEN_KEY, hidden ? "1" : "0");
+  } catch {
+    // Storage blocked: it stays folded for this session only.
+  }
+}
+
+function TurnsGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <circle cx="6.5" cy="6.5" r="3.5" />
+      <path d="M9.2 9.2l2.3 2.3M2.5 13.5h5" />
+    </svg>
   );
 }
 
@@ -213,6 +260,43 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
   const [query, setQuery] = useState("");
   const [activeTurn, setActiveTurn] = useState<string | null>(null);
   const [reveal, setReveal] = useState<{ id: string; seq: number } | null>(null);
+  // Its turns sit beside the conversation while there's room; narrower, they
+  // open over it from the header, and the header's actions become icons.
+  const [rootRef, width] = useOwnWidth<HTMLDivElement>();
+  const [turnsHidden, setTurnsHidden] = useState(loadTurnsHidden);
+  const [turnsOpen, setTurnsOpen] = useState(false);
+  const layout = readerLayout(width, turnsHidden);
+  const turnsPopoverRef = useRef<HTMLDivElement>(null);
+  const turnsButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (layout.turnsBeside) setTurnsOpen(false);
+  }, [layout.turnsBeside]);
+  useEffect(() => {
+    if (!turnsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (turnsPopoverRef.current?.contains(target) || turnsButtonRef.current?.contains(target)) return;
+      setTurnsOpen(false);
+    };
+    // Esc folds the turns before it closes the reader (the drawer's own Esc
+    // stands aside while a [data-reader-popover] is open).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setTurnsOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [turnsOpen]);
+  const foldTurns = (hidden: boolean) => {
+    setTurnsHidden(hidden);
+    saveTurnsHidden(hidden);
+  };
 
   const agent = agentOfSessionFile(timeline.filePath);
   const agentName = agent ? (findAgentAdapter(agent)?.displayName ?? agent) : "";
@@ -256,8 +340,8 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
     setReveal((r) => ({ id: messageId, seq: (r?.seq ?? 0) + 1 }));
   };
 
-  const primary = "tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 bg-[var(--text-secondary)] px-3 text-[12.5px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40";
-  const secondary = "tc-rail-btn inline-flex h-8 shrink-0 items-center border border-[var(--border-hover)] px-3 text-[12.5px] text-[var(--text-primary)] disabled:opacity-40";
+  const primary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 bg-[var(--text-secondary)] text-[12.5px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
+  const secondary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center border border-[var(--border-hover)] text-[12.5px] text-[var(--text-primary)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
   const noTargetHint = target ? undefined : t.reader_no_worktree;
 
   let actions: React.ReactNode;
@@ -297,20 +381,34 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
   } else {
     actions = (
       <>
-        <button type="button" className={primary} disabled={!target} title={noTargetHint} onClick={() => target && void continueSessionInChat(target, onLive)}>
+        <button
+          type="button"
+          className={primary}
+          disabled={!target}
+          title={noTargetHint ?? (layout.compact ? t.reader_continue_chat : undefined)}
+          aria-label={t.reader_continue_chat}
+          onClick={() => target && void continueSessionInChat(target, onLive)}
+        >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M7 5l12 7-12 7z" />
           </svg>
-          {t.reader_continue_chat}
+          {!layout.compact && t.reader_continue_chat}
         </button>
         <button
           type="button"
           className={secondary}
           disabled={!target}
-          title={noTargetHint}
+          title={noTargetHint ?? (layout.compact ? t.reader_resume_terminal : undefined)}
+          aria-label={t.reader_resume_terminal}
           onClick={() => target && resumeSessionInTerminal(target, t.reader_resumed_toast(agentName), onLive)}
         >
-          {t.reader_resume_terminal}
+          {layout.compact ? (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 4.5l3.5 3.5L3 11.5M8.5 12h4.5" />
+            </svg>
+          ) : (
+            t.reader_resume_terminal
+          )}
         </button>
       </>
     );
@@ -318,10 +416,83 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
 
   const canAsk = managerTerminalId !== null && holding !== managerTerminalId;
 
+  const turnsPane = (
+    <>
+      <label className="m-2.5 flex h-[30px] shrink-0 items-center gap-2 rounded-[8px] border border-[var(--border)] px-2 text-[var(--text-muted)] focus-within:border-[var(--border-hover)]">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="M13.5 13.5l-3.2-3.2" />
+        </svg>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
+          placeholder={t.reader_find}
+          aria-label={t.reader_find}
+          autoFocus={turnsOpen}
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+        />
+      </label>
+      <div className="flex shrink-0 items-center justify-between px-3 pb-1.5">
+        <span className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.reader_turns(turns.length)}</span>
+        {layout.turnsBeside && (
+          <button
+            type="button"
+            className="tc-rail-btn inline-flex h-5 w-5 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            onClick={() => foldTurns(true)}
+            title={t.reader_turns_hide}
+            aria-label={t.reader_turns_hide}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 3.5L5.5 8l4.5 4.5" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 pb-2.5">
+        {shownTurns.map((turn) => (
+          <div key={turn.messageId} className="group relative">
+            <button
+              type="button"
+              className="tc-rail-btn flex w-full items-start gap-2 px-2 py-1.5 pr-8 text-left"
+              data-on={activeTurn === turn.messageId ? "" : undefined}
+              onClick={() => {
+                jumpTo(turn.messageId);
+                setTurnsOpen(false);
+              }}
+              title={turn.text || t.reader_briefing}
+            >
+              <span className="tc-mono shrink-0 pt-px text-[10.5px] tabular-nums text-[var(--text-muted)]">{stamp(turn.at)}</span>
+              <span className={`line-clamp-2 text-[12px] leading-snug ${turn.briefing ? "italic text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
+                {turn.briefing ? t.reader_briefing : turn.text}
+              </span>
+            </button>
+            {target && !turn.briefing && (
+              <button
+                type="button"
+                className="tc-rail-btn absolute right-1 top-1 hidden h-6 w-6 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] group-hover:inline-flex"
+                onClick={() => void forkSessionAt(target, timeline.filePath, turn.promptIndex, t.reader_forked_toast, onLive)}
+                title={t.reader_fork}
+                aria-label={t.reader_fork}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="4.5" cy="3.5" r="1.5" />
+                  <circle cx="4.5" cy="12.5" r="1.5" />
+                  <circle cx="11.5" cy="5.5" r="1.5" />
+                  <path d="M4.5 5v6M11.5 7c0 2.5-3 2.5-7 4" />
+                </svg>
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] py-3 pl-4 pr-3">
-        {agent && <AgentTile agent={agent} />}
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
+      <div className={`flex shrink-0 items-center border-b border-[var(--border)] py-3 pr-3 ${layout.compact ? "gap-2 pl-3" : "gap-3 pl-4"}`}>
+        {agent && !layout.compact && <AgentTile agent={agent} />}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]" title={titleText}>
@@ -334,62 +505,46 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
           <span className="truncate text-[11.5px] text-[var(--text-muted)]">{meta}</span>
         </div>
         {actions}
+        {!layout.turnsBeside && (
+          <button
+            ref={turnsButtonRef}
+            type="button"
+            className={iconButton}
+            data-on={turnsOpen ? "" : undefined}
+            aria-expanded={turnsOpen}
+            onClick={() => {
+              // With room for the column, this brings it back; without, it
+              // opens the turns over the conversation.
+              if (width >= READER_TWO_COLUMN_MIN) foldTurns(false);
+              else setTurnsOpen((v) => !v);
+            }}
+            title={t.reader_turns_show}
+            aria-label={t.reader_turns_show}
+          >
+            <TurnsGlyph />
+          </button>
+        )}
         <MoreMenu timeline={timeline} agent={agent} t={t} onHidden={onClose} />
         {!onLive && <CloseButton onClose={onClose} t={t} />}
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <nav className="flex w-[220px] shrink-0 flex-col border-r border-[var(--border)]" aria-label={t.reader_turns(turns.length)}>
-          <label className="m-2.5 flex h-[30px] items-center gap-2 rounded-[8px] border border-[var(--border)] px-2 text-[var(--text-muted)] focus-within:border-[var(--border-hover)]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M13.5 13.5l-3.2-3.2" />
-            </svg>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              placeholder={t.reader_find}
-              aria-label={t.reader_find}
-              className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
-            />
-          </label>
-          <div className="px-3 pb-1.5 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.reader_turns(turns.length)}</div>
-          <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 pb-2.5">
-            {shownTurns.map((turn) => (
-              <div key={turn.messageId} className="group relative">
-                <button
-                  type="button"
-                  className="tc-rail-btn flex w-full items-start gap-2 px-2 py-1.5 pr-8 text-left"
-                  data-on={activeTurn === turn.messageId ? "" : undefined}
-                  onClick={() => jumpTo(turn.messageId)}
-                  title={turn.text || t.reader_briefing}
-                >
-                  <span className="tc-mono shrink-0 pt-px text-[10.5px] tabular-nums text-[var(--text-muted)]">{stamp(turn.at)}</span>
-                  <span className={`line-clamp-2 text-[12px] leading-snug ${turn.briefing ? "italic text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
-                    {turn.briefing ? t.reader_briefing : turn.text}
-                  </span>
-                </button>
-                {target && !turn.briefing && (
-                  <button
-                    type="button"
-                    className="tc-rail-btn absolute right-1 top-1 hidden h-6 w-6 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] group-hover:inline-flex"
-                    onClick={() => void forkSessionAt(target, timeline.filePath, turn.promptIndex, t.reader_forked_toast, onLive)}
-                    title={t.reader_fork}
-                    aria-label={t.reader_fork}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <circle cx="4.5" cy="3.5" r="1.5" />
-                      <circle cx="4.5" cy="12.5" r="1.5" />
-                      <circle cx="11.5" cy="5.5" r="1.5" />
-                      <path d="M4.5 5v6M11.5 7c0 2.5-3 2.5-7 4" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </nav>
+      <div className="relative flex min-h-0 flex-1">
+        {layout.turnsBeside && (
+          <nav className="flex w-[220px] shrink-0 flex-col border-r border-[var(--border)]" aria-label={t.reader_turns(turns.length)}>
+            {turnsPane}
+          </nav>
+        )}
+        {!layout.turnsBeside && turnsOpen && (
+          <nav
+            ref={turnsPopoverRef}
+            data-reader-popover=""
+            className="tc-float absolute right-2 top-2 z-10 flex max-h-[70%] w-[min(320px,calc(100%-16px))] flex-col"
+            style={{ borderRadius: 12 }}
+            aria-label={t.reader_turns(turns.length)}
+          >
+            {turnsPane}
+          </nav>
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
@@ -430,6 +585,8 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
   useProjectStore((s) => s.projects);
   const transcript = useManagerTranscript(terminalId);
   const [asking, setAsking] = useState(false);
+  const [rootRef, width] = useOwnWidth<HTMLDivElement>();
+  const { compact } = readerLayout(width, true);
   const found = findTerminal(terminalId);
   if (!found) {
     return <div className="flex h-full items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.reader_live_gone}</div>;
@@ -437,9 +594,9 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
   const { terminal } = found;
   const agentName = findAgentAdapter(terminal.type)?.displayName ?? terminal.type;
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] py-3 pl-4 pr-3">
-        <AgentTile agent={terminal.type} />
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
+      <div className={`flex shrink-0 items-center border-b border-[var(--border)] py-3 pr-3 ${compact ? "gap-2 pl-3" : "gap-3 pl-4"}`}>
+        {!compact && <AgentTile agent={terminal.type} />}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{terminal.customTitle?.trim() || terminal.title}</span>
           <span className="flex items-center gap-1.5 text-[11.5px] text-[var(--green)]">
@@ -449,11 +606,18 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
         </div>
         <button
           type="button"
-          className="tc-rail-btn inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--border-hover)] px-3 text-[12.5px] text-[var(--text-primary)]"
+          className={`tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 border border-[var(--border-hover)] text-[12.5px] text-[var(--text-primary)] ${compact ? "w-8" : "px-3"}`}
           onClick={() => void continueChatSessionInTerminal(terminalId)}
-          title={t.reader_continue_terminal_hint}
+          title={compact ? `${t.reader_continue_terminal}: ${t.reader_continue_terminal_hint}` : t.reader_continue_terminal_hint}
+          aria-label={t.reader_continue_terminal}
         >
-          {t.reader_continue_terminal}
+          {compact ? (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 4.5l3.5 3.5L3 11.5M8.5 12h4.5" />
+            </svg>
+          ) : (
+            t.reader_continue_terminal
+          )}
         </button>
         <button type="button" className={iconButton} onClick={() => panToTerminal(terminalId)} title={t.workdesk_show_on_canvas} aria-label={t.workdesk_show_on_canvas}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">

@@ -73,6 +73,8 @@ export const zh = {
   reader_fork: "从这里分叉：截至这一轮的新会话",
   reader_turns: (n: number) => `${n} 轮`,
   reader_find: "在这个会话中查找",
+  reader_turns_show: "查找与轮次",
+  reader_turns_hide: "隐藏轮次",
   reader_briefing: "简报",
   reader_read_only: (when: string) => `只读 · 结束于 ${when}`,
   reader_ask_manager: "问问管理者",

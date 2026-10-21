@@ -123,3 +123,45 @@ export function linkNodeIds(text: string, describe: (id: string) => NodeDescript
     })
     .join("");
 }
+
+/**
+ * How the reader lays itself out at its own width. It reads down to the
+ * docked chat's minimum: the turns column needs room beside the
+ * conversation, so below `READER_TWO_COLUMN_MIN` it folds into a button
+ * that opens it over the conversation, and below `READER_COMPACT_MIN` the
+ * header's actions become icons so the session's name stays readable.
+ */
+export const READER_MIN_WIDTH = 360;
+/** 220 for the turns, 380 for the conversation. */
+export const READER_TWO_COLUMN_MIN = 600;
+/** Below this, two text buttons leave the session's name ~120px; icons give it back. */
+export const READER_COMPACT_MIN = 680;
+
+export interface ReaderLayout {
+  /** The turns column sits beside the conversation. */
+  turnsBeside: boolean;
+  /** Header actions as icons, without the agent's tile. */
+  compact: boolean;
+}
+
+/** `turnsHidden`: the person folded the column away while there was room. */
+export function readerLayout(width: number, turnsHidden: boolean): ReaderLayout {
+  return {
+    turnsBeside: width >= READER_TWO_COLUMN_MIN && !turnsHidden,
+    compact: width > 0 && width < READER_COMPACT_MIN,
+  };
+}
+
+/**
+ * Where the reader sits beside the left chrome, given the room. It starts
+ * after the open panels (`afterPanels`); when that leaves it less than its
+ * minimum, it opens over the side panel instead (`afterChat`), and when even
+ * that isn't enough, over the chat's edge, so it always opens at least
+ * `READER_MIN_WIDTH` wide (or the whole window, if that's narrower).
+ */
+export function readerLeft(room: { viewport: number; afterPanels: number; afterChat: number; right: number }): number {
+  const fits = (left: number) => room.viewport - left - room.right >= READER_MIN_WIDTH;
+  if (fits(room.afterPanels)) return room.afterPanels;
+  if (fits(room.afterChat)) return room.afterChat;
+  return Math.max(0, room.viewport - room.right - READER_MIN_WIDTH);
+}

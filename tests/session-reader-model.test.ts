@@ -5,6 +5,8 @@ import {
   filterTurns,
   linkNodeIds,
   messageCount,
+  readerLayout,
+  readerLeft,
   readerTitle,
   resumeCommand,
   turnsOf,
@@ -73,4 +75,24 @@ test("a preview line reads terminal ids as names and drops Markdown's marks", as
   // A closed terminal keeps its id; long text is cut.
   assert.equal(previewLine("ask 1792000000000-3", () => null), "ask 1792000000000-3");
   assert.equal(previewLine("x".repeat(200), () => null, 10), "xxxxxxxxx…");
+});
+
+test("the reader keeps its turns beside the conversation while there's room, folds them below that, and turns its actions into icons when narrow", () => {
+  assert.deepEqual(readerLayout(900, false), { turnsBeside: true, compact: false });
+  assert.deepEqual(readerLayout(900, true), { turnsBeside: false, compact: false });
+  // The reader beside a 560 chat and the Dev panel in a 1280 window: 618 inside its border.
+  assert.deepEqual(readerLayout(618, false), { turnsBeside: true, compact: true });
+  assert.deepEqual(readerLayout(560, false), { turnsBeside: false, compact: true });
+  assert.deepEqual(readerLayout(360, false), { turnsBeside: false, compact: true });
+  // Not measured yet: laid out as wide, not squeezed.
+  assert.deepEqual(readerLayout(0, false), { turnsBeside: false, compact: false });
+});
+
+test("the reader opens after the side panel when it fits, over the panel when not, and never hides", () => {
+  // 1280 wide, chat 560 docked, the Dev panel 360 open: 252 left after it.
+  const room = { viewport: 1280, afterPanels: 1008, afterChat: 640, right: 20 };
+  assert.equal(readerLeft(room), 640, "over the panel, beside the chat");
+  assert.equal(readerLeft({ ...room, viewport: 1600 }), 1008, "room enough after the panel");
+  assert.equal(readerLeft({ ...room, viewport: 960 }), 580, "over the chat's edge, still 360 wide");
+  assert.equal(readerLeft({ ...room, viewport: 300 }), 0, "a window narrower than the reader: all of it");
 });

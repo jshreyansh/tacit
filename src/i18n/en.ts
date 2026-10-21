@@ -73,6 +73,8 @@ export const en = {
   reader_fork: "Fork from here: a new session up to this turn",
   reader_turns: (n: number) => `${n} ${n === 1 ? "turn" : "turns"}`,
   reader_find: "Find in this session",
+  reader_turns_show: "Find and turns",
+  reader_turns_hide: "Hide the turns",
   reader_briefing: "Briefing",
   reader_read_only: (when: string) => `Read-only · ended ${when}`,
   reader_ask_manager: "Ask the manager about this",
