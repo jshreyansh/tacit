@@ -1,6 +1,6 @@
 {
   "name": "tacit",
-  "version": "0.39.17",
+  "version": "0.40.0",
   "packageManager": "pnpm@10.33.0",
   "description": "An infinite canvas desktop app for visually managing terminals",
   "main": "dist-electron/main.js",
@@ -14,6 +14,7 @@
     "build": "tsc && vite build",
     "dist": "pnpm build && electron-builder --publish never",
     "dist:mac": "pnpm build && electron-builder --mac --publish never",
+    "release:mac": "node scripts/release-mac.mjs",
     "preview": "vite preview",
     "generate:icons": "python3 scripts/generate-icons.py",
     "pet:preview": "tsx scripts/pet-preview.ts > /tmp/pet-preview.html && echo 'Open /tmp/pet-preview.html in a browser'",

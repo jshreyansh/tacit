@@ -2,6 +2,54 @@
 
 All notable changes to Tacit will be documented in this file.
 
+## [0.40.0] - 2026-10-22
+
+### Added
+- **The workdesk manager runs in a chat** docked on the left, for Claude, Codex and OpenCode: tool calls fold into one line, and the agent's questions, plan approvals and permission requests are answered right in the thread. Model, effort and mode sit in the composer, with files attached to a message, a queue, steering, a context meter and the usage limit. The chat can also pop out, float or go full screen.
+- **Past sessions** live in the chat's History. One reads like a chat, and continues as its own chat or in its terminal.
+- **Tasks and notes** replace pins: statuses, steps, who's on it, and a Needs you state for decisions only you can make. They appear in the chat, on the canvas and in the grid.
+- **The workdesk grid**: every node at a glance, filtered by kind, and any node, session or file opened full size in tabs. Canvas and Grid share one toggle.
+- **The record**: what each agent did, grouped into named contexts you can start, stop and follow. It notes where pasted text came from and who wrote each shared note, and masks one-time codes, passwords and keys before anything is kept. `tacit record export` reads it outside the app.
+- **Agents get Tacit's workspace tools**: Codex, OpenCode and Antigravity, alongside Claude. Settings detects which agent CLIs are installed. A manager can send prompts to nodes, wait on them and close what it started.
+- **Sync from Chrome**: imported browser profiles copy your Chrome logins again, from a button in a browser node's header, when Tacit starts, when the Mac wakes and every 6 hours, and within about 30 seconds of a new sign-in in Chrome. A sign-in a node can't do opens in the Chrome profile it came from.
+
+### Changed
+- The left bar holds the dock, Files / Diff / Git as one code button, Memory, and zoom, Fit, Focus and Canvas/Grid above Settings. The old left panel is gone.
+- In full screen, Tacit uses the whole height; the title strip is only kept when windowed.
+- Browser nodes present themselves to sites as Chrome.
+
+### Fixed
+- Quitting or restarting with terminals open no longer ends in a crash dialog.
+- A past session always opens, with the chat widened or a side panel open; narrow, its turns fold behind a button.
+- Imported profiles no longer fall back to Google's sign-in after a few days: Google's own session checks now stay in the node.
+- A terminal starts at its tile's size and resizes once a drag settles, so agents don't redraw on every pixel.
+- No startup errors: fonts load as bytes and the terminal engine's WebAssembly is allowed.
+- Opening a long past session no longer freezes the app.
+
+## [0.39.17] - 2026-09-06
+
+### Fixed
+- **Onboarding**: a dialog rather than a takeover, and a left bar that isn't clipped.
+
+## [0.39.16] - 2026-09-06
+
+### Changed
+- **Onboarding** shows over the canvas with the workspace visible.
+
+### Fixed
+- **Updates**: the window asks for the updater's state instead of relying on catching its events.
+
+## [0.39.15] - 2026-09-06
+
+### Changed
+- **Onboarding** is a short sequence of dialogs, and a failed update says why it failed.
+
+## [0.39.14] - 2026-09-05
+
+### Added
+- **Onboarding**: three steps, chosen from what the workspace already has.
+- **The disk image** says to drag Tacit to Applications.
+
 ## [0.39.13] - 2026-08-26
 
 ### Fixed

@@ -28,34 +28,64 @@ You need three things from your Apple Developer account:
 
 ## Building a release
 
-```bash
-export APPLE_ID="you@example.com"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-export APPLE_TEAM_ID="ABCDE12345"
+Releases come from a Mac, with one command. CI can't sign them.
 
-pnpm dist:mac
-```
+1. Once per Mac, store the notarization credentials in the keychain. It asks
+   for the app-specific password, so nothing secret is ever in a shell variable:
 
-Signing identity is discovered from the keychain. Nothing is pinned in
-`electron-builder.yml` on purpose — pinning a certificate name makes the build
-fail outright on any machine that does not have that exact certificate.
+   ```bash
+   xcrun notarytool store-credentials tacit-notary \
+     --apple-id "you@example.com" --team-id "ABCDE12345"
+   ```
 
-Without those three variables set, electron-builder skips notarization and says
-so. That is the correct behaviour for a local build; it is not a release.
+2. Bump `version` in `package.json` and add its entry to `CHANGELOG.md`
+   (`## [x.y.z] - date`). The release notes are taken from it.
 
-Notarization takes a few minutes. Apple has to accept the upload, scan it, and
-return a ticket, which electron-builder then staples into the bundle.
+3. On an up-to-date, clean `main`:
+
+   ```bash
+   pnpm release:mac             # build, sign, notarize, verify; publishes nothing
+   pnpm release:mac --publish   # the same, then publishes the GitHub release
+   ```
+
+`scripts/release-mac.mjs` stops at the first problem. Before building, it
+checks main, the tag, the changelog entry, the certificate and the
+notarytool profile (`APPLE_KEYCHAIN_PROFILE`, default `tacit-notary`). After
+building, it checks every app, inside both zips (what the updater installs)
+and both disk images (what people install). Each must be the right version,
+signed with the Developer ID, use the hardened runtime, have the ticket
+stapled, and be accepted by Gatekeeper. It also checks that `latest-mac.yml`
+lists both zips with their exact hashes and sizes.
+
+electron-builder skips notarizing silently when it finds no credentials. That's
+why the script checks for the stapled ticket instead of trusting the build.
+
+`--publish` uploads every file to a draft release, then makes it public. The
+updater reads the latest release's `latest-mac.yml`, which must never point at
+a zip that is still uploading.
+
+Sign-in and usage sync need `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+at build time. The script says whether they were set. 0.39.17 shipped without
+them.
+
+### Linux and Windows
+
+The `Release (Linux and Windows)` workflow builds both for a tag you give it,
+and adds the files to that existing release. Start it by hand from the Actions
+tab. It never builds the Mac app, and never replaces a file already on the
+release.
 
 ### In CI
 
-Instead of a keychain certificate, export the `.p12` and pass it through:
+Mac releases aren't built in CI. If that changes, export the `.p12` and pass
+it through as encrypted secrets:
 
 ```bash
 export CSC_LINK="base64-encoded .p12 or a file path"
 export CSC_KEY_PASSWORD="the .p12 password"
 ```
 
-Store both as encrypted secrets. Never commit them.
+Never commit them.
 
 ## Verifying before you publish
 
@@ -95,14 +125,10 @@ A build that opens cleanly after that is a build a stranger can open.
 
 ## Publishing
 
-`electron-builder.yml` publishes to `jshreyansh/tacit` releases. The repository
-must be **public**, or release assets need authentication to download and
-auto-update fails for everyone.
-
-```bash
-export GH_TOKEN="a token with repo scope"
-pnpm dist:mac -- --publish always
-```
+`pnpm release:mac --publish` publishes to `jshreyansh/tacit` releases with
+`gh`, as whoever `gh auth status` shows. The repository must be **public**, or
+release assets need authentication to download and auto-update fails for
+everyone.
 
 ## Auto-update
 
@@ -121,8 +147,7 @@ Windows and Linux go through `electron-updater` normally.
 
 - [ ] Version bumped in `package.json`
 - [ ] `pnpm test`, `pnpm run test:browser`, `pnpm typecheck` all pass
-- [ ] Built with all three notarization variables set
-- [ ] All four verification commands pass
+- [ ] `pnpm release:mac` passes (it runs the verification below on every app)
 - [ ] Opened from a quarantined copy on a clean machine
 - [ ] Published to a public repository
 - [ ] Update from the previous version tested end to end

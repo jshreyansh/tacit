@@ -1,9 +1,18 @@
-name: Release
+name: Release (Linux and Windows)
 
+# Mac releases are built, signed, notarized and published on a Mac with
+# `pnpm release:mac --publish` (docs/releasing.md): CI has no Developer ID
+# certificate, and an unsigned Mac build is refused by Gatekeeper. This
+# workflow used to run on every tag and build a Mac app too; with a changelog
+# entry in place it would have uploaded that unsigned app over the signed one
+# with --clobber. It now builds Linux and Windows only, when started by hand
+# for an existing tag, and never replaces a file already on the release.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to build, e.g. v0.40.0"
+        required: true
 
 permissions:
   contents: write
@@ -13,10 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Extract version from tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Check CHANGELOG.md contains version entry
         run: |
@@ -43,8 +56,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
-            platform: mac
           - os: ubuntu-latest
             platform: linux
           - os: windows-latest
@@ -54,6 +65,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -79,16 +92,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Optimize macOS ZIPs for differential updates
-        if: matrix.platform == 'mac'
-        run: |
-          for zip in out/*.zip; do
-            pnpm exec rezip-electron optimize "$zip" -o "${zip}.tmp"
-            mv "${zip}.tmp" "$zip"
-            pnpm exec better-blockmap --input "$zip" --output "${zip}.blockmap" --compression gzip --detect-zip-boundary
-          done
-          node scripts/update-mac-yml.cjs
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -111,6 +114,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7
@@ -118,15 +123,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create or update GitHub Release
+      - name: Add the Linux and Windows files to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ needs.validate-changelog.outputs.changelog }}
+          TAG: ${{ inputs.tag }}
         run: |
-          printf '%s\n' "$RELEASE_BODY" > release-notes.md
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
-            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" artifacts/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md
-          fi
+          # The release (and its Mac files) comes from release:mac; this only
+          # adds to it, and fails rather than replace a file already there.
+          gh release view "$TAG" >/dev/null
+          gh release upload "$TAG" artifacts/*
