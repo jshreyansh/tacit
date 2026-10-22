@@ -60,8 +60,9 @@ export class OpenCodeActivity {
   private startWatching(): void {
     if (!this.dirWatcher) {
       const basename = path.basename(this.dbPath);
+      const dir = path.dirname(this.dbPath);
       try {
-        this.dirWatcher = fs.watch(path.dirname(this.dbPath), (_event, changed) => {
+        const watcher = fs.watch(dir, (_event, changed) => {
           const name = changed ? String(changed) : "";
           if (name && !name.startsWith(basename)) return;
           // SQLite touches -shm on every read, Tacit's own included.
@@ -69,8 +70,13 @@ export class OpenCodeActivity {
           if (name === `${basename}-wal` && !this.walWatcher) this.watchWal();
           this.wake();
         });
-      } catch {
+        this.dirWatcher = watcher;
+        this.onFailure(watcher, dir, () => {
+          if (this.dirWatcher === watcher) this.dirWatcher = null;
+        });
+      } catch (err) {
         // No OpenCode data directory yet; each wait ends on its timer.
+        this.cantWatch(dir, err);
       }
     }
     if (!this.walWatcher) this.watchWal();
@@ -80,14 +86,36 @@ export class OpenCodeActivity {
     this.walWatcher?.close();
     this.walWatcher = null;
     if (this.waiters.size === 0) return;
+    const walFile = `${this.dbPath}-wal`;
     try {
-      this.walWatcher = fs.watch(`${this.dbPath}-wal`, (event) => {
+      const watcher = fs.watch(walFile, (event) => {
         if (event === "rename") this.watchWal();
         this.wake();
       });
-    } catch {
+      this.walWatcher = watcher;
+      this.onFailure(watcher, walFile, () => {
+        if (this.walWatcher === watcher) this.walWatcher = null;
+      });
+    } catch (err) {
       // No -wal file yet; the directory watch sets this up when it appears.
+      this.cantWatch(walFile, err);
     }
+  }
+
+  // A watch that fails later is an uncaught exception in the main process
+  // unless it's handled. Each wait still ends on its timer, and the next
+  // wait watches again.
+  private onFailure(watcher: fs.FSWatcher, watched: string, forget: () => void): void {
+    watcher.on("error", (err) => {
+      console.warn(`[opencode-activity] watching ${watched} failed; waits end on their timer until the next one watches again:`, err);
+      watcher.close();
+      forget();
+    });
+  }
+
+  private cantWatch(watched: string, err: unknown): void {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    console.warn(`[opencode-activity] can't watch ${watched}; waits end on their timer:`, err);
   }
 
   private stopWatching(): void {

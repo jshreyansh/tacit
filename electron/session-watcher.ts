@@ -1040,7 +1040,8 @@ export function parseSessionTelemetryLine(
 }
 
 interface WatchEntry {
-  watcher: fs.FSWatcher;
+  // Null once the watch has failed: polling is then the only signal.
+  watcher: fs.FSWatcher | null;
   filePath: string;
   lastNotifiedMtime: number;
   debounceTimer: NodeJS.Timeout | null;
@@ -1135,7 +1136,7 @@ export class SessionWatcher {
       return false;
     };
 
-    const watcher = fs.watch(dir, (event, changedFile) => {
+    const onEvent = (event: fs.WatchEventType, changedFile: string | Buffer | null) => {
       if (changedFile) {
         const changed = String(changedFile);
         if (type === "opencode") {
@@ -1167,13 +1168,13 @@ export class SessionWatcher {
         entry.debounceTimer = null;
         tryCheck("fs.watch");
       }, 300);
-    });
+    };
 
     // Fallback polling: fs.watch on macOS can miss events (rename from atomic writes).
     // Hooks are the primary turn-completion signal; this is a safety net.
     const POLL_DELAY = 60_000;
     const POLL_INTERVAL = 30_000;
-    const pollTimer = setTimeout(() => {
+    const startPolling = () => {
       const entry = this.entries.get(sessionId);
       if (!entry) return;
 
@@ -1181,6 +1182,7 @@ export class SessionWatcher {
         console.log(
           `[SessionWatcher] starting fallback polling for session=${sessionId}`,
         );
+      if (entry.pollTimer) clearTimeout(entry.pollTimer);
       entry.pollTimer = setInterval(() => {
         if (!this.entries.has(sessionId)) {
           const e = this.entries.get(sessionId);
@@ -1189,7 +1191,35 @@ export class SessionWatcher {
         }
         tryCheck("poll");
       }, POLL_INTERVAL);
-    }, POLL_DELAY);
+    };
+
+    // A watch can fail as it starts or later (macOS reports EMFILE to every
+    // folder watch in the process when it can't watch any more). Unhandled,
+    // a later failure is an uncaught exception that takes down the main
+    // process; here the session falls back to polling, starting now.
+    let watcher: fs.FSWatcher | null = null;
+    try {
+      watcher = fs.watch(dir, onEvent);
+      const failed = watcher;
+      failed.on("error", (err) => {
+        console.warn(
+          `[SessionWatcher] watching ${dir} failed for session=${sessionId}; polling every ${POLL_INTERVAL / 1000}s instead:`,
+          err,
+        );
+        failed.close();
+        const entry = this.entries.get(sessionId);
+        if (entry?.watcher !== failed) return;
+        entry.watcher = null;
+        startPolling();
+        tryCheck("poll");
+      });
+    } catch (err) {
+      console.warn(
+        `[SessionWatcher] can't watch ${dir} for session=${sessionId}; polling every ${POLL_INTERVAL / 1000}s instead:`,
+        err,
+      );
+    }
+    const pollTimer = watcher ? setTimeout(startPolling, POLL_DELAY) : null;
 
     this.entries.set(sessionId, {
       watcher,
@@ -1198,6 +1228,7 @@ export class SessionWatcher {
       debounceTimer,
       pollTimer,
     });
+    if (!watcher) startPolling();
 
     // Mark awaitingNewTurn so we don't re-fire for the same completion, but
     // still fire the callback so the renderer knows the current state.
@@ -1223,7 +1254,7 @@ export class SessionWatcher {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
     if (isDev) console.log(`[SessionWatcher] unwatch session=${sessionId}`);
-    entry.watcher.close();
+    entry.watcher?.close();
     if (entry.debounceTimer) clearTimeout(entry.debounceTimer);
     if (entry.pollTimer) {
       clearTimeout(entry.pollTimer);

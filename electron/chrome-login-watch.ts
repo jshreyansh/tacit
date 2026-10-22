@@ -38,7 +38,12 @@ export interface ChromeLoginWatchDeps {
   chromeRoot?: string;
   /** Names and creation times of a cookie database's rows; read from a copy. */
   readLoginRows?: (cookieDbPath: string) => Promise<string>;
-  watch?: (dir: string, onChange: (filename: string | null) => void) => { close: () => void };
+  /** Watches a folder; `onError` is a watch that failed after it started. */
+  watch?: (
+    dir: string,
+    onChange: (filename: string | null) => void,
+    onError: (error: Error) => void,
+  ) => { close: () => void };
   now?: () => number;
   /** A Chrome profile got a new login: these Tacit profiles came from it. */
   onNewLogin: (sourceProfileId: string, identityIds: string[]) => void;
@@ -139,10 +144,21 @@ export class ChromeLoginWatch {
     }
     const watch = this.deps.watch ?? defaultWatch;
     try {
-      watched.watcher = watch(path.dirname(db), (filename) => {
-        if (filename !== null && !filename.startsWith("Cookies")) return;
-        this.schedule(sourceProfileId, watched);
-      });
+      const watcher = watch(
+        path.dirname(db),
+        (filename) => {
+          if (filename !== null && !filename.startsWith("Cookies")) return;
+          this.schedule(sourceProfileId, watched);
+        },
+        // New logins are still found at start, on wake and every few hours;
+        // only the prompt check after a sign-in in Chrome is lost.
+        (error) => {
+          this.deps.log?.(`chrome-login-watch: watching ${sourceProfileId} failed (${error.message}); new logins are found on the next sync instead`);
+          watcher.close();
+          if (watched.watcher === watcher) watched.watcher = null;
+        },
+      );
+      watched.watcher = watcher;
     } catch (error) {
       this.deps.log?.(`chrome-login-watch: can't watch ${sourceProfileId} (${error instanceof Error ? error.message : String(error)})`);
       return;
@@ -206,8 +222,14 @@ async function readLoginRows(cookieDbPath: string): Promise<string> {
   }
 }
 
-function defaultWatch(dir: string, onChange: (filename: string | null) => void): { close: () => void } {
+function defaultWatch(
+  dir: string,
+  onChange: (filename: string | null) => void,
+  onError: (error: Error) => void,
+): { close: () => void } {
   const watcher = fs.watch(dir, { persistent: false }, (_event, filename) => onChange(filename ? String(filename) : null));
+  // Unhandled, a watch that fails later is an uncaught exception in the main process.
+  watcher.on("error", onError);
   return { close: () => watcher.close() };
 }
 

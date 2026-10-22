@@ -2018,12 +2018,21 @@ export class TelemetryService {
       state.sessionWalWatcher = null;
       if (!state.sessionPollTimer) return; // Tracking stopped.
       try {
-        state.sessionWalWatcher = fs.watch(walFile, (event) => {
+        const watcher = fs.watch(walFile, (event) => {
           if (event === "rename") watchWal();
           coalescedRead();
         });
-      } catch {
+        state.sessionWalWatcher = watcher;
+        watcher.on("error", (err) => {
+          console.warn(`[telemetry] watching ${walFile} failed; reading it on the poll instead:`, err);
+          watcher.close();
+          if (state.sessionWalWatcher === watcher) state.sessionWalWatcher = null;
+        });
+      } catch (err) {
         // No -wal file yet; the directory watch sets this up when it appears.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.warn(`[telemetry] can't watch ${walFile}; reading it on the poll instead:`, err);
+        }
       }
     };
 
@@ -2033,7 +2042,7 @@ export class TelemetryService {
     try {
       const directory = path.dirname(state.sessionFile);
       const basename = path.basename(state.sessionFile);
-      state.sessionWatcher = fs.watch(directory, (_event, changedFile) => {
+      const watcher = fs.watch(directory, (_event, changedFile) => {
         const openCode = isOpenCodeProvider(state.snapshot.provider);
         if (changedFile) {
           const changed = String(changedFile);
@@ -2055,7 +2064,19 @@ export class TelemetryService {
         }
         coalescedRead();
       });
-    } catch {
+      state.sessionWatcher = watcher;
+      // Unhandled, a failed watch is an uncaught exception in the main
+      // process; the session is still read on the poll.
+      watcher.on("error", (err) => {
+        console.warn(`[telemetry] watching ${directory} failed; reading the session on the poll instead:`, err);
+        watcher.close();
+        if (state.sessionWatcher === watcher) state.sessionWatcher = null;
+      });
+    } catch (err) {
+      // A session's folder may not exist yet; the poll reads it once it does.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn(`[telemetry] can't watch the folder of ${state.sessionFile}; reading the session on the poll instead:`, err);
+      }
       state.sessionWatcher = null;
     }
   }

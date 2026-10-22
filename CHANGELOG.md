@@ -6,6 +6,7 @@ All notable changes to Tacit will be documented in this file.
 
 ### Fixed
 - **Opening a large folder that isn't a git repository no longer freezes the app.** Adding your home folder as a project froze Tacit for minutes, even with the side panel closed: the Files panel listed every file under it (about a million), again after every change, and macOS asked for access to folders like Contacts and Calendars along the way. Such a folder now loads in the Files panel a folder at a time, as you open it, and only the open folders are watched; one macOS doesn't let Tacit read is marked instead of shown empty. Search is off for such a folder, since it could only cover the folders already open. Git projects keep their whole tree, and one with more than 50,000 files loads the same way. A change in one project no longer re-lists the others, and nothing is listed until Files is showing.
+- **When macOS can't watch any more folders, Tacit keeps running.** A watch that failed crashed the app, with one error dialog for each of several watches. Now each logs why; a session's end is then found by checking every 30 seconds, terminal activity on the regular poll, and new Chrome logins on the next sync.
 
 ## [0.40.0] - 2026-10-22
 
