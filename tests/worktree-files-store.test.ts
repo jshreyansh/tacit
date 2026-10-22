@@ -14,6 +14,8 @@ function fakeTacit(tree: Record<string, string[] | Error>, listing: Listing) {
   const refuse = new Map<string, WatchAnswer>();
   const dirListeners = new Set<(dirPath: string) => void>();
   const failedListeners = new Set<(failures: Failure[]) => void>();
+  // Listings held back until released, to land late.
+  const held = new Map<string, Promise<void>>();
   const tacit = {
     fs: {
       listAllFiles: async () => {
@@ -23,7 +25,9 @@ function fakeTacit(tree: Record<string, string[] | Error>, listing: Listing) {
       listIgnoredFiles: async () => [],
       listDir: async (dirPath: string) => {
         calls.listDir.push(dirPath);
+        // Read now, answered when released: a listing in flight while things change.
         const entries = tree[dirPath];
+        await held.get(dirPath);
         if (entries instanceof Error) return { error: entries.message };
         if (!entries) return { error: "it no longer exists" };
         return { entries: entries.map((name) => ({ name: name.replace(/\/$/, ""), isDirectory: name.endsWith("/") })) };
@@ -56,7 +60,15 @@ function fakeTacit(tree: Record<string, string[] | Error>, listing: Listing) {
     for (const failure of failures) calls.watched.delete(`${failure.recursive ? "tree" : "folder"}:${failure.dirPath}`);
     failedListeners.forEach((listener) => listener(failures));
   };
-  return { tacit, calls, changed, failed, refuse };
+  const hold = (dirPath: string) => {
+    let release!: () => void;
+    held.set(dirPath, new Promise<void>((resolve) => (release = resolve)));
+    return () => {
+      held.delete(dirPath);
+      release();
+    };
+  };
+  return { tacit, calls, changed, failed, refuse, hold };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -282,4 +294,39 @@ test("a git project whose tree watch is lost says so until a refresh watches it 
   await settle();
   assert.ok(calls.watched.has(`tree:${REPO}`));
   assert.equal(store.getState().byWorktree[REPO].watchProblem, null);
+});
+
+test("a folder's listing that lands after its parent dropped it doesn't bring it back", async () => {
+  const tree: Record<string, string[]> = { [HOME]: ["a/", "b/"], [`${HOME}/a`]: ["x.txt"], [`${HOME}/b`]: ["y.txt"] };
+  const { tacit, calls, changed, hold } = fakeTacit(tree, { type: "lazy", reason: "not-git" });
+  (globalThis as { window?: unknown }).window = { tacit };
+  const store = await freshStore();
+  store.getState().acquire(HOME);
+  await settle();
+  await store.getState().openFolder(HOME, "a/");
+  await settle();
+
+  // a/ changes and is re-listed; before that answer lands, a/ is deleted
+  // and the home folder's listing drops it.
+  const releaseLoaded = hold(`${HOME}/a`);
+  changed(`${HOME}/a`);
+  await settle();
+  // b/ is opened for the first time, and is deleted while that's in flight.
+  const releaseFirst = hold(`${HOME}/b`);
+  const opening = store.getState().openFolder(HOME, "b/");
+  await settle();
+  tree[HOME] = [];
+  delete tree[`${HOME}/a`];
+  delete tree[`${HOME}/b`];
+  changed(HOME);
+  await settle();
+  releaseLoaded();
+  releaseFirst();
+  await opening;
+  await settle();
+
+  const entry = store.getState().byWorktree[HOME];
+  assert.deepEqual(entry.paths, [], "a deleted folder came back");
+  assert.deepEqual(Object.keys(entry.folders), [""]);
+  assert.deepEqual([...calls.watched], [`folder:${HOME}`], "a deleted folder is watched");
 });

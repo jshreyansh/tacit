@@ -4,6 +4,7 @@ import {
   entryPaths,
   folderKeyFor,
   folderPathFor,
+  isInTree,
   loadedPaths,
   onlyChildFolder,
   withFolderListed,
@@ -309,8 +310,10 @@ async function listFolder(worktreePath: string, folder: string): Promise<void> {
 
   let dropped: string[] = [];
   let watchThis = false;
+  let shown = false;
   patchEntry(worktreePath, (cur) => {
-    if (cur.mode !== "lazy") return null;
+    if (cur.mode !== "lazy" || !isInTree(cur.folders, folder)) return null;
+    shown = true;
     if (listed == null) {
       // Gone (its parent's listing will drop the row) or unreadable: either
       // way nothing under it is shown, and it isn't retried until a refresh.
@@ -329,9 +332,12 @@ async function listFolder(worktreePath: string, folder: string): Promise<void> {
     const { [folder]: _wasUnreadable, ...unreadable } = cur.unreadable;
     return { folders: next.folders, unreadable, paths: loadedPaths(next.folders), status: "loaded" };
   });
+  if (!shown) return;
   if (failure) console.warn(`[files] can't list ${folderPathFor(worktreePath, folder)}: ${failure}`);
   // A listing that lands after the panel let go of this worktree isn't watched.
   watchFolders(worktreePath, watchThis && watchers.has(worktreePath) ? [folder] : [], dropped);
+  // Listings still in flight for folders just dropped land out of date.
+  for (const gone of dropped) folderLoads.delete(`${worktreePath}\0${gone}`);
 
   const chained = listed && onlyChildFolder(folder, listed);
   if (chained) await useWorktreeFilesStore.getState().openFolder(worktreePath, chained);

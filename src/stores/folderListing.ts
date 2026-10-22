@@ -65,6 +65,17 @@ export function withoutFolder(
  * explorer does the same). Bounded, so a link that points at its own parent
  * can't chain forever.
  */
+/**
+ * Whether a folder is still in the tree: the project itself, or listed by
+ * its loaded parent. A listing that lands after its folder left the tree
+ * (deleted, its parent re-listed meanwhile) must not put it back.
+ */
+export function isInTree(folders: Readonly<Record<string, readonly string[]>>, folder: string): boolean {
+  if (folder === "") return true;
+  const parent = folder.slice(0, folder.slice(0, -1).lastIndexOf("/") + 1);
+  return folders[parent]?.includes(folder) ?? false;
+}
+
 export function onlyChildFolder(folder: string, entries: readonly string[]): string | null {
   if (entries.length !== 1 || !entries[0].endsWith("/")) return null;
   if (folder.split("/").length > MAX_CHAIN_DEPTH) return null;

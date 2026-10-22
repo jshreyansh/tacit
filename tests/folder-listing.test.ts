@@ -5,6 +5,7 @@ import {
   entryPaths,
   folderKeyFor,
   folderPathFor,
+  isInTree,
   loadedPaths,
   onlyChildFolder,
   unloadedFolders,
@@ -75,4 +76,13 @@ test("folder keys map to and from absolute paths, and paths outside the project 
   assert.equal(folderKeyFor("/u/home", "/u"), null);
   assert.equal(folderPathFor("/u/home", ""), "/u/home");
   assert.equal(folderPathFor("/u/home", "src/lib/"), "/u/home/src/lib");
+});
+
+test("a folder is in the tree if it's the project or its loaded parent lists it", () => {
+  const folders = { "": ["src/", "a.txt"], "src/": ["src/lib/"] };
+  assert.equal(isInTree(folders, ""), true);
+  assert.equal(isInTree(folders, "src/"), true);
+  assert.equal(isInTree(folders, "src/lib/"), true);
+  assert.equal(isInTree(folders, "old/"), false, "its parent no longer lists it");
+  assert.equal(isInTree(folders, "docs/api/"), false, "its parent isn't loaded");
 });
