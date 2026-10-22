@@ -220,6 +220,7 @@ import {
   getBlame,
 } from "./git-info";
 import { parseNulSeparatedGitPaths } from "./git-paths";
+import { HIDDEN_DIRS, describeFsError, listDirectory, listWorktreeFiles } from "./file-listing";
 import { createMenu } from "./menu";
 import { isSelectAllShortcutInput } from "./select-all-shortcut";
 import { isReloadShortcutInput } from "./reload-shortcut";
@@ -364,8 +365,6 @@ function emitSessionHistoryChanged(payload: SessionHistoryChangedEvent) {
     projectDirs,
   });
 }
-
-const HIDDEN_DIRS = new Set([".git"]);
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
@@ -3128,19 +3127,18 @@ function setupIpc() {
   const MAX_FILE_SIZE = 512 * 1024;
   const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
-  ipcMain.handle("fs:list-dir", (_event, dirPath: string) => {
+  // One folder of a project the Files panel loads a folder at a time. A
+  // folder it can't read (macOS privacy protection, permissions) comes back
+  // as the reason, so the panel can say so instead of showing it empty.
+  ipcMain.handle("fs:list-dir", async (event, dirPath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("fs:list-dir: not the app window");
+    if (typeof dirPath !== "string" || !path.isAbsolute(dirPath)) {
+      throw new Error("fs:list-dir: expected an absolute folder path");
+    }
     try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      const filtered = entries
-        .filter((e) => !HIDDEN_DIRS.has(e.name))
-        .map((e) => ({ name: e.name, isDirectory: e.isDirectory() }))
-        .sort((a, b) => {
-          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-      return filtered;
-    } catch {
-      return [];
+      return { entries: await listDirectory(dirPath) };
+    } catch (err) {
+      return { error: describeFsError(err) };
     }
   });
 
@@ -3239,71 +3237,28 @@ function setupIpc() {
     shell.showItemInFolder(targetPath);
   });
 
-  ipcMain.handle("fs:watch-dir", (_event, dirPath: string) => {
-    fileTreeWatcher.watch(dirPath);
+  // A git project's tree is watched whole; a project loaded a folder at a
+  // time watches only the folders it has loaded, one level each.
+  ipcMain.handle("fs:watch-dir", (event, dirPath: unknown, recursive: unknown) => {
+    if (!isMainWindowSender(event)) return;
+    if (typeof dirPath !== "string" || !path.isAbsolute(dirPath)) return;
+    fileTreeWatcher.watch(dirPath, recursive !== false);
   });
-  ipcMain.handle("fs:unwatch-dir", (_event, dirPath: string) => {
-    fileTreeWatcher.unwatch(dirPath);
+  ipcMain.handle("fs:unwatch-dir", (event, dirPath: unknown, recursive: unknown) => {
+    if (!isMainWindowSender(event)) return;
+    if (typeof dirPath !== "string") return;
+    fileTreeWatcher.unwatch(dirPath, recursive !== false);
   });
   ipcMain.handle("fs:unwatch-all-dirs", () => {
     fileTreeWatcher.unwatchAll();
   });
 
-  ipcMain.handle("fs:list-all-files", async (_event, dirPath: string) => {
-    const { execFile } = await import("child_process");
-    let trackedOutput: string;
-    try {
-      // Tracked + non-ignored untracked. Small (~1k paths in typical repos)
-      // so the tree can paint immediately. Ignored files are fetched
-      // separately via fs:list-ignored-files and streamed into the tree by
-      // the renderer's chunked batch-add so the UI stays responsive on
-      // huge node_modules trees.
-      trackedOutput = await new Promise<string>((resolve, reject) => {
-        execFile(
-          "git",
-          ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-          { cwd: dirPath, timeout: 10000, maxBuffer: 64 * 1024 * 1024 },
-          (err, stdout) => (err ? reject(err) : resolve(stdout)),
-        );
-      });
-    } catch {
-      // Non-git repo: walk the directory tree recursively
-      const paths: string[] = [];
-      const visited = new Set<string>();
-      // Returns number of file entries added from this subtree. When a
-      // directory subtree is entirely empty, emit the directory itself with a
-      // trailing "/" so @pierre/trees can still display it.
-      const collect = (dir: string, prefix: string): number => {
-        let added = 0;
-        try {
-          const realDir = fs.realpathSync(dir);
-          if (visited.has(realDir)) return 0;
-          visited.add(realDir);
-          const entries = fs.readdirSync(dir, { withFileTypes: true });
-          for (const entry of entries) {
-            if (HIDDEN_DIRS.has(entry.name)) continue;
-            const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
-            if (entry.isDirectory()) {
-              added += collect(path.join(dir, entry.name), relPath);
-            } else {
-              paths.push(relPath);
-              added++;
-            }
-          }
-          if (added === 0 && prefix) paths.push(`${prefix}/`);
-        } catch (err) {
-          console.error(`[fs:list-all-files] failed to read ${dir}:`, err);
-        }
-        return added;
-      };
-      collect(dirPath, "");
-      return { type: "dir" as const, paths };
+  ipcMain.handle("fs:list-all-files", async (event, dirPath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("fs:list-all-files: not the app window");
+    if (typeof dirPath !== "string" || !path.isAbsolute(dirPath)) {
+      throw new Error("fs:list-all-files: expected an absolute folder path");
     }
-
-    return {
-      type: "git" as const,
-      paths: parseNulSeparatedGitPaths(trackedOutput),
-    };
+    return await listWorktreeFiles(dirPath);
   });
 
   ipcMain.handle("fs:list-ignored-files", async (_event, dirPath: string) => {

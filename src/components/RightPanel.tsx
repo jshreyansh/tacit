@@ -535,6 +535,7 @@ export function RightPanel() {
           <FilesContent
             worktreePath={effectiveWorktreePath}
             onFileClick={handleFileClick}
+            active={!collapsed && activeTab === "files"}
           />
         </div>
         {showRepoContextPlaceholder ? (

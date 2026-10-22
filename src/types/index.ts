@@ -1148,15 +1148,20 @@ export interface TacitAPI {
     onSyncDue: (callback: (due: import("../../shared/browser-profile-sync").ChromeSyncDue) => void) => () => void;
   };
   fs: {
+    /** One folder's entries, folders first, or why it can't be read. */
     listDir: (
       dirPath: string,
-    ) => Promise<{ name: string; isDirectory: boolean }[]>;
+    ) => Promise<{ entries: { name: string; isDirectory: boolean }[] } | { error: string }>;
+    /**
+     * A git project's whole tree, or word to load it a folder at a time:
+     * a folder that isn't a git repository, or a project too large for one tree.
+     */
     listAllFiles: (
       dirPath: string,
-    ) => Promise<{
-      type: "git" | "dir";
-      paths: string[];
-    }>;
+    ) => Promise<
+      | { type: "git"; paths: string[] }
+      | { type: "lazy"; reason: "not-git" | "large" }
+    >;
     listIgnoredFiles: (dirPath: string) => Promise<string[]>;
     readFile: (
       filePath: string,
@@ -1181,8 +1186,9 @@ export interface TacitAPI {
     mkdir: (dirPath: string, name: string) => Promise<void>;
     createFile: (dirPath: string, name: string) => Promise<void>;
     reveal: (targetPath: string) => Promise<void>;
-    watchDir: (dirPath: string) => Promise<void>;
-    unwatchDir: (dirPath: string) => Promise<void>;
+    /** Watches a folder: its whole tree (the default), or with `recursive` false only its own entries. */
+    watchDir: (dirPath: string, recursive?: boolean) => Promise<void>;
+    unwatchDir: (dirPath: string, recursive?: boolean) => Promise<void>;
     unwatchAllDirs: () => Promise<void>;
     onDirChanged: (callback: (dirPath: string) => void) => () => void;
   };

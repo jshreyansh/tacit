@@ -822,13 +822,13 @@ contextBridge.exposeInMainWorld("tacit", {
   fs: {
     listDir: (dirPath: string) =>
       ipcRenderer.invoke("fs:list-dir", dirPath) as Promise<
-        { name: string; isDirectory: boolean }[]
+        { entries: { name: string; isDirectory: boolean }[] } | { error: string }
       >,
     listAllFiles: (dirPath: string) =>
-      ipcRenderer.invoke("fs:list-all-files", dirPath) as Promise<{
-        type: "git" | "dir";
-        paths: string[];
-      }>,
+      ipcRenderer.invoke("fs:list-all-files", dirPath) as Promise<
+        | { type: "git"; paths: string[] }
+        | { type: "lazy"; reason: "not-git" | "large" }
+      >,
     listIgnoredFiles: (dirPath: string) =>
       ipcRenderer.invoke("fs:list-ignored-files", dirPath) as Promise<
         string[]
@@ -859,10 +859,10 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("fs:create-file", dirPath, name) as Promise<void>,
     reveal: (targetPath: string) =>
       ipcRenderer.invoke("fs:reveal", targetPath) as Promise<void>,
-    watchDir: (dirPath: string) =>
-      ipcRenderer.invoke("fs:watch-dir", dirPath) as Promise<void>,
-    unwatchDir: (dirPath: string) =>
-      ipcRenderer.invoke("fs:unwatch-dir", dirPath) as Promise<void>,
+    watchDir: (dirPath: string, recursive?: boolean) =>
+      ipcRenderer.invoke("fs:watch-dir", dirPath, recursive) as Promise<void>,
+    unwatchDir: (dirPath: string, recursive?: boolean) =>
+      ipcRenderer.invoke("fs:unwatch-dir", dirPath, recursive) as Promise<void>,
     unwatchAllDirs: () =>
       ipcRenderer.invoke("fs:unwatch-all-dirs") as Promise<void>,
     onDirChanged: (callback: (dirPath: string) => void) => {

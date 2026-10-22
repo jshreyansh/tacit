@@ -12,6 +12,7 @@ import type {
   GitStatusEntry as PierreGitStatusEntry,
 } from "@pierre/trees";
 import { useWorktreeFiles } from "../../hooks/useWorktreeFiles";
+import { unloadedFolders } from "../../stores/folderListing";
 import { useGitStatus } from "../../hooks/useGitStatus";
 import { useT } from "../../i18n/useT";
 import { useCanvasStore } from "../../stores/canvasStore";
@@ -22,6 +23,8 @@ import type { GitFileStatus, GitStatusEntry } from "../../types";
 interface Props {
   worktreePath: string | null;
   onFileClick: (filePath: string) => void;
+  /** Shown to the user: files are listed and watched only then. */
+  active: boolean;
 }
 
 // Map our git status codes to @pierre/trees status strings.
@@ -193,9 +196,10 @@ export function buildFileTreeMoveRequests(
     .filter((move) => move.from !== move.to);
 }
 
-export function FilesContent({ worktreePath, onFileClick }: Props) {
+export function FilesContent({ worktreePath, onFileClick, active }: Props) {
   const t = useT();
-  const { paths, ignoredPaths, refresh } = useWorktreeFiles(worktreePath);
+  const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, refresh, openFolder } =
+    useWorktreeFiles(worktreePath, active);
   const { changedFiles, stagedFiles } = useGitStatus(worktreePath);
   const fileEditorPath = useCanvasStore((s) => s.fileEditorPath);
   const { notify } = useNotificationStore.getState();
@@ -228,6 +232,11 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
     fileEditorPath && worktreePath && fileEditorPath.startsWith(worktreePath + "/")
       ? fileEditorPath.slice(worktreePath.length + 1)
       : null;
+
+  const unreadableRef = useRef(unreadable);
+  unreadableRef.current = unreadable;
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const pendingCreates = useRef<Map<string, "file" | "folder">>(new Map());
 
@@ -362,6 +371,10 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
       if (openRel != null && context.item.path === openRel) {
         return { text: "●", title: "Open in editor" };
       }
+      // A folder loaded on opening that couldn't be read (macOS privacy
+      // protection, permissions): say so rather than show it empty.
+      const why = unreadableRef.current[context.item.path];
+      if (why != null) return { text: "⚠", title: tRef.current.files_folder_unreadable(why) };
       return null;
     },
     [],
@@ -588,6 +601,42 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
   useEffect(() => {
     model.setGitStatus(pierreGitStatus);
   }, [model, pierreGitStatus]);
+
+  // Loaded a folder at a time: when a folder that isn't loaded yet is
+  // opened in the tree, load it. The tree has no expand event, so this
+  // checks the unloaded folders on its change notifications, once a frame.
+  const pendingFolders = useMemo(
+    () => (mode === "lazy" ? unloadedFolders(paths, folders, unreadable) : []),
+    [mode, paths, folders, unreadable],
+  );
+  const pendingFoldersRef = useRef(pendingFolders);
+  pendingFoldersRef.current = pendingFolders;
+  useEffect(() => {
+    if (mode !== "lazy") return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      for (const folder of pendingFoldersRef.current) {
+        const item = model.getItem(folder);
+        if (item?.isDirectory() && (item as { isExpanded(): boolean }).isExpanded()) {
+          void openFolder(folder);
+        }
+      }
+    };
+    const unsubscribe = model.subscribe(() => {
+      if (!frame) frame = requestAnimationFrame(check);
+    });
+    check();
+    return () => {
+      unsubscribe();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [model, mode, openFolder]);
+
+  // The unreadable marker is drawn at model construction; redraw on change.
+  useEffect(() => {
+    model.setIcons(undefined);
+  }, [model, unreadable]);
 
   // Force the tree to re-render visible rows when the open-file path changes
   // so renderRowDecoration is re-invoked. setIcons is the cheapest no-op
@@ -912,6 +961,14 @@ export function FilesContent({ worktreePath, onFileClick }: Props) {
       }}
       onDrop={handleDrop}
     >
+      {mode === "lazy" && lazyReason && (
+        <div
+          className="shrink-0 px-3 py-1.5 text-[11px] leading-snug"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {lazyReason === "not-git" ? t.files_lazy_not_git : t.files_lazy_large}
+        </div>
+      )}
       <PierreFileTree
         model={model}
         renderContextMenu={renderContextMenu}
