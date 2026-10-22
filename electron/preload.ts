@@ -20,6 +20,7 @@ import type {
   ConnectedTabBinding,
 } from "../shared/browser-connection";
 import type { BrowserActionName } from "../shared/browser-controller";
+import type { WatchDirFailure, WatchDirResult } from "../shared/file-watch";
 
 type SessionTelemetryProvider = Exclude<TelemetryProvider, "unknown">;
 
@@ -859,9 +860,9 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("fs:create-file", dirPath, name) as Promise<void>,
     reveal: (targetPath: string) =>
       ipcRenderer.invoke("fs:reveal", targetPath) as Promise<void>,
-    watchDir: (dirPath: string, recursive?: boolean) =>
-      ipcRenderer.invoke("fs:watch-dir", dirPath, recursive) as Promise<void>,
-    unwatchDir: (dirPath: string, recursive?: boolean) =>
+    watchDir: (dirPath: string, recursive: boolean) =>
+      ipcRenderer.invoke("fs:watch-dir", dirPath, recursive) as Promise<WatchDirResult>,
+    unwatchDir: (dirPath: string, recursive: boolean) =>
       ipcRenderer.invoke("fs:unwatch-dir", dirPath, recursive) as Promise<void>,
     unwatchAllDirs: () =>
       ipcRenderer.invoke("fs:unwatch-all-dirs") as Promise<void>,
@@ -870,6 +871,12 @@ contextBridge.exposeInMainWorld("tacit", {
         callback(dirPath);
       ipcRenderer.on("fs:dir-changed", listener);
       return () => ipcRenderer.removeListener("fs:dir-changed", listener);
+    },
+    onWatchFailed: (callback: (failures: WatchDirFailure[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, failures: WatchDirFailure[]) =>
+        callback(failures);
+      ipcRenderer.on("fs:watch-failed", listener);
+      return () => ipcRenderer.removeListener("fs:watch-failed", listener);
     },
   },
   memory: {

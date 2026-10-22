@@ -31,6 +31,9 @@ export function useWorktreeFiles(worktreePath: string | null, active = true) {
   const unreadable = useWorktreeFilesStore((s) =>
     worktreePath ? (s.byWorktree[worktreePath]?.unreadable ?? NONE) : NONE,
   );
+  const watchProblem = useWorktreeFilesStore((s) =>
+    worktreePath ? (s.byWorktree[worktreePath]?.watchProblem ?? null) : null,
+  );
 
   // Acquire/release ref counts the worktree in the store so the watcher
   // subscription is shared across consumers and survives a tab toggle that
@@ -57,5 +60,5 @@ export function useWorktreeFiles(worktreePath: string | null, active = true) {
     [worktreePath],
   );
 
-  return { paths, ignoredPaths, mode, lazyReason, folders, unreadable, refresh, openFolder };
+  return { paths, ignoredPaths, mode, lazyReason, folders, unreadable, watchProblem, refresh, openFolder };
 }

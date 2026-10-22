@@ -375,9 +375,11 @@ const projectScanner = new ProjectScanner();
 const statePersistence = new StatePersistence();
 const snapshotHistory = new SnapshotHistory();
 const gitWatcher = new GitFileWatcher();
-const fileTreeWatcher = new FileTreeWatcher(HIDDEN_DIRS, (dirPath) => {
-  sendToWindow(mainWindow, "fs:dir-changed", dirPath);
-});
+const fileTreeWatcher = new FileTreeWatcher(
+  HIDDEN_DIRS,
+  (dirPath) => sendToWindow(mainWindow, "fs:dir-changed", dirPath),
+  (failures) => sendToWindow(mainWindow, "fs:watch-failed", failures),
+);
 const sessionWatcher = new SessionWatcher();
 // Worker state changes a manager can wait on (T3.5); see node-events.ts.
 const nodeEvents = new NodeEventLog();
@@ -3238,18 +3240,24 @@ function setupIpc() {
   });
 
   // A git project's tree is watched whole; a project loaded a folder at a
-  // time watches only the folders it has loaded, one level each.
+  // time watches only the folders it has loaded, one level each. Main
+  // decides whether a watch starts (see MAX_FOLDER_WATCHES) and says so.
   ipcMain.handle("fs:watch-dir", (event, dirPath: unknown, recursive: unknown) => {
     if (!isMainWindowSender(event)) return;
-    if (typeof dirPath !== "string" || !path.isAbsolute(dirPath)) return;
-    fileTreeWatcher.watch(dirPath, recursive !== false);
+    if (typeof dirPath !== "string" || !path.isAbsolute(dirPath) || typeof recursive !== "boolean") {
+      throw new Error("fs:watch-dir takes an absolute folder path and whether to watch it whole");
+    }
+    return fileTreeWatcher.watch(dirPath, recursive);
   });
   ipcMain.handle("fs:unwatch-dir", (event, dirPath: unknown, recursive: unknown) => {
     if (!isMainWindowSender(event)) return;
-    if (typeof dirPath !== "string") return;
-    fileTreeWatcher.unwatch(dirPath, recursive !== false);
+    if (typeof dirPath !== "string" || typeof recursive !== "boolean") {
+      throw new Error("fs:unwatch-dir takes a folder path and whether it was watched whole");
+    }
+    fileTreeWatcher.unwatch(dirPath, recursive);
   });
-  ipcMain.handle("fs:unwatch-all-dirs", () => {
+  ipcMain.handle("fs:unwatch-all-dirs", (event) => {
+    if (!isMainWindowSender(event)) return;
     fileTreeWatcher.unwatchAll();
   });
 

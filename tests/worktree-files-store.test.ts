@@ -5,9 +5,15 @@ import assert from "node:assert/strict";
 // a folder tree in memory and a record of what was listed and watched.
 type Listing = { type: "git"; paths: string[] } | { type: "lazy"; reason: "not-git" | "large" };
 
+type WatchAnswer = { ok: true } | { ok: false; reason: "limit" | "gone" | "failed"; message: string };
+type Failure = { dirPath: string; recursive: boolean; message: string };
+
 function fakeTacit(tree: Record<string, string[] | Error>, listing: Listing) {
-  const calls = { listAllFiles: 0, listDir: [] as string[], watched: new Set<string>() };
+  const calls = { listAllFiles: 0, listDir: [] as string[], watched: new Set<string>(), unwatched: [] as string[] };
+  // Folders main refuses to watch, and with what answer.
+  const refuse = new Map<string, WatchAnswer>();
   const dirListeners = new Set<(dirPath: string) => void>();
+  const failedListeners = new Set<(failures: Failure[]) => void>();
   const tacit = {
     fs: {
       listAllFiles: async () => {
@@ -22,21 +28,35 @@ function fakeTacit(tree: Record<string, string[] | Error>, listing: Listing) {
         if (!entries) return { error: "it no longer exists" };
         return { entries: entries.map((name) => ({ name: name.replace(/\/$/, ""), isDirectory: name.endsWith("/") })) };
       },
-      watchDir: async (dirPath: string, recursive?: boolean) => {
-        calls.watched.add(`${recursive === false ? "folder" : "tree"}:${dirPath}`);
+      watchDir: async (dirPath: string, recursive: boolean): Promise<WatchAnswer> => {
+        const refused = refuse.get(dirPath);
+        if (refused) return refused;
+        calls.watched.add(`${recursive ? "tree" : "folder"}:${dirPath}`);
+        return { ok: true };
       },
-      unwatchDir: async (dirPath: string, recursive?: boolean) => {
-        calls.watched.delete(`${recursive === false ? "folder" : "tree"}:${dirPath}`);
+      unwatchDir: async (dirPath: string, recursive: boolean) => {
+        const key = `${recursive ? "tree" : "folder"}:${dirPath}`;
+        calls.unwatched.push(key);
+        calls.watched.delete(key);
       },
       onDirChanged: (callback: (dirPath: string) => void) => {
         dirListeners.add(callback);
         return () => dirListeners.delete(callback);
       },
+      onWatchFailed: (callback: (failures: Failure[]) => void) => {
+        failedListeners.add(callback);
+        return () => failedListeners.delete(callback);
+      },
     },
     git: { onChanged: () => () => {} },
   };
   const changed = (dirPath: string) => dirListeners.forEach((listener) => listener(dirPath));
-  return { tacit, calls, changed };
+  // Main lost these watches: they're no longer watched there.
+  const failed = (failures: Failure[]) => {
+    for (const failure of failures) calls.watched.delete(`${failure.recursive ? "tree" : "folder"}:${failure.dirPath}`);
+    failedListeners.forEach((listener) => listener(failures));
+  };
+  return { tacit, calls, changed, failed, refuse };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -173,4 +193,93 @@ test("a git project is watched whole, and only its own changes re-list it", asyn
   changed(REPO);
   await settle();
   assert.equal(calls.listAllFiles, 2);
+});
+
+test("a folder main won't watch isn't counted as watched, the panel says why, and a refresh asks again", async () => {
+  const { tacit, calls, refuse } = fakeTacit(
+    { [HOME]: ["code/"], [`${HOME}/code`]: ["a.ts"] },
+    { type: "lazy", reason: "not-git" },
+  );
+  refuse.set(`${HOME}/code`, { ok: false, reason: "limit", message: "Tacit is already watching 1000 folders" });
+  (globalThis as { window?: unknown }).window = { tacit };
+  const store = await freshStore();
+  store.getState().acquire(HOME);
+  await settle();
+  await store.getState().openFolder(HOME, "code/");
+  await settle();
+  assert.deepEqual(store.getState().byWorktree[HOME].paths.sort(), ["code/", "code/a.ts"], "the folder still opens");
+  assert.equal(store.getState().byWorktree[HOME].watchProblem?.reason, "limit");
+
+  // Room again: a refresh watches it, and the note goes.
+  refuse.clear();
+  await store.getState().refresh(HOME);
+  await settle();
+  assert.ok(calls.watched.has(`folder:${HOME}/code`));
+  assert.equal(store.getState().byWorktree[HOME].watchProblem, null);
+});
+
+test("a refused watch is never unwatched: that would take a share of another project's watch", async () => {
+  const { tacit, calls, refuse } = fakeTacit(
+    { [HOME]: ["code/"], [`${HOME}/code`]: ["a.ts"] },
+    { type: "lazy", reason: "not-git" },
+  );
+  refuse.set(`${HOME}/code`, { ok: false, reason: "limit", message: "full" });
+  (globalThis as { window?: unknown }).window = { tacit };
+  const store = await freshStore();
+  store.getState().acquire(HOME);
+  await settle();
+  await store.getState().openFolder(HOME, "code/");
+  await settle();
+  store.getState().release(HOME);
+  assert.deepEqual(calls.unwatched, [`folder:${HOME}`]);
+});
+
+test("watches main lost are forgotten and noted, with nothing re-listed; a refresh watches them again", async () => {
+  const { tacit, calls, failed } = fakeTacit(
+    { [HOME]: ["code/", "notes/"], [`${HOME}/code`]: ["a.ts"], [`${HOME}/notes`]: ["n.md"] },
+    { type: "lazy", reason: "not-git" },
+  );
+  (globalThis as { window?: unknown }).window = { tacit };
+  const store = await freshStore();
+  store.getState().acquire(HOME);
+  await settle();
+  await store.getState().openFolder(HOME, "code/");
+  await store.getState().openFolder(HOME, "notes/");
+  await settle();
+
+  calls.listDir.length = 0;
+  failed([
+    { dirPath: HOME, recursive: false, message: "macOS can't watch any more folders" },
+    { dirPath: `${HOME}/code`, recursive: false, message: "macOS can't watch any more folders" },
+    { dirPath: "/somewhere/else", recursive: false, message: "not ours" },
+  ]);
+  await settle();
+  assert.deepEqual(calls.listDir, [], "a lost watch re-listed folders");
+  assert.deepEqual(store.getState().byWorktree[HOME].watchProblem, { reason: "failed", message: "macOS can't watch any more folders" });
+
+  // Letting go doesn't unwatch what main no longer holds.
+  store.getState().release(HOME);
+  assert.deepEqual(calls.unwatched, [`folder:${HOME}/notes`]);
+
+  store.getState().acquire(HOME);
+  await settle();
+  assert.deepEqual([...calls.watched].sort(), [`folder:${HOME}`, `folder:${HOME}/code`, `folder:${HOME}/notes`]);
+  assert.equal(store.getState().byWorktree[HOME].watchProblem, null);
+});
+
+test("a git project whose tree watch is lost says so until a refresh watches it again", async () => {
+  const REPO = "/Users/me/tacit";
+  const { tacit, calls, failed } = fakeTacit({}, { type: "git", paths: ["a.ts"] });
+  (globalThis as { window?: unknown }).window = { tacit };
+  const store = await freshStore();
+  store.getState().acquire(REPO);
+  await settle();
+  failed([{ dirPath: REPO, recursive: true, message: "macOS can't watch any more folders" }]);
+  await settle();
+  assert.equal(calls.listAllFiles, 1, "a lost watch re-listed the project");
+  assert.equal(store.getState().byWorktree[REPO].watchProblem?.reason, "failed");
+  await store.getState().refresh(REPO);
+  await settle();
+  assert.ok(calls.watched.has(`tree:${REPO}`));
+  assert.equal(store.getState().byWorktree[REPO].watchProblem, null);
 });

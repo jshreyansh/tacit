@@ -222,7 +222,7 @@ interface FilesTreeProps {
 
 function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreeProps) {
   const t = useT();
-  const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, refresh, openFolder } = files;
+  const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, watchProblem, refresh, openFolder } = files;
   const { changedFiles, stagedFiles } = useGitStatus(worktreePath);
   const fileEditorPath = useCanvasStore((s) => s.fileEditorPath);
   const { notify } = useNotificationStore.getState();
@@ -992,6 +992,23 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
           style={{ color: "var(--text-muted)" }}
         >
           {lazyReason === "not-git" ? t.files_lazy_not_git : t.files_lazy_large}
+        </div>
+      )}
+      {watchProblem && (
+        <div
+          className="shrink-0 flex items-start gap-2 px-3 py-1.5 text-[11px] leading-snug"
+          style={{ color: "var(--amber)" }}
+        >
+          <span className="flex-1 min-w-0">
+            {t.files_watch_stopped(watchProblem.reason === "limit" ? t.files_watch_limit : watchProblem.message)}
+          </span>
+          <button
+            onClick={() => void refresh()}
+            className="shrink-0 font-medium hover:underline"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {t.files_refresh}
+          </button>
         </div>
       )}
       <PierreFileTree

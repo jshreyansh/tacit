@@ -84,6 +84,7 @@ export function describeFsError(err: unknown): string {
   if (code === "EACCES") return "permission denied";
   if (code === "ENOENT") return "it no longer exists";
   if (code === "ENOTDIR") return "it isn't a folder";
+  if (code === "EMFILE") return "macOS can't watch any more folders";
   return err instanceof Error ? err.message : String(err);
 }
 

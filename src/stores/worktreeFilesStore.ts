@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { WatchDirResult } from "../../shared/file-watch";
 import {
   entryPaths,
   folderKeyFor,
@@ -33,6 +34,11 @@ import {
 // listing it whole froze the app for minutes.
 
 type LoadStatus = "idle" | "loading" | "loaded";
+/** Why the tree stopped updating by itself; cleared by the next refresh. */
+export interface WatchProblem {
+  reason: "limit" | "failed";
+  message: string;
+}
 export type FilesMode = "full" | "lazy";
 export type LazyReason = "not-git" | "large";
 
@@ -48,6 +54,9 @@ interface WorktreeEntry {
   // Lazy: folders that couldn't be read, with why. Not retried until the
   // next refresh, so an expanded unreadable folder doesn't loop.
   unreadable: Record<string, string>;
+  // A watch main refused or that stopped: some of the tree no longer
+  // updates by itself until a refresh watches it again.
+  watchProblem: WatchProblem | null;
   // Monotonic; bumped by every refresh. In-flight responses with older ids
   // are dropped so a watcher tick mid-load doesn't lose its data to the
   // earlier load's late phase 2.
@@ -68,6 +77,7 @@ interface WorktreeFilesStore {
 
 interface WatcherHandle {
   unsubFs: () => void;
+  unsubFailed: () => void;
   unsubGit: () => void;
 }
 
@@ -75,22 +85,81 @@ interface WatcherHandle {
 // references that aren't safe to put in a serializable store.
 const watchers = new Map<string, WatcherHandle>();
 // What each worktree has asked main to watch: its whole tree (full), or
-// each loaded folder one level deep (lazy).
-const treeWatched = new Set<string>();
-const foldersWatched = new Map<string, Set<string>>();
+// each loaded folder one level deep (lazy), each with the number of the
+// request. Main may refuse a watch or lose it later; a watch it doesn't
+// hold is forgotten here, so it's never unwatched (which would take away a
+// share of the same folder watched by another project). Main's answer
+// counts only if its request is still the latest for that watch.
+const treeWatched = new Map<string, number>();
+const foldersWatched = new Map<string, Map<string, number>>();
+let watchSeq = 0;
+// Watches a worktree wants that main refused or lost, keyed "tree" or
+// "folder:" + folder, with why. The panel says the tree isn't updating by
+// itself while any are missing; a refresh asks for them again.
+const missingWatches = new Map<string, Map<string, WatchProblem>>();
 // Lazy: the latest listing request per worktree and folder; an older one
 // arriving late is dropped.
 const folderLoads = new Map<string, number>();
 let folderLoadSeq = 0;
 
+function setMissingWatch(worktreePath: string, key: string, problem: WatchProblem | null): void {
+  let missing = missingWatches.get(worktreePath);
+  if (!missing) {
+    if (!problem) return;
+    missing = new Map();
+    missingWatches.set(worktreePath, missing);
+  }
+  if (problem) missing.set(key, problem);
+  else if (!missing.delete(key)) return;
+  const first: WatchProblem | null = missing.values().next().value ?? null;
+  patchEntry(worktreePath, (cur) => (cur.watchProblem === first ? null : { watchProblem: first }));
+}
+
+const treeKey = "tree";
+const folderWatchKey = (folder: string) => `folder:${folder}`;
+
+/** Asks main to watch; if it doesn't, forgets the watch and says why. */
+function requestWatch(
+  worktreePath: string,
+  dirPath: string,
+  recursive: boolean,
+  watched: Map<string, number>,
+  key: string,
+): void {
+  const tc = window.tacit;
+  if (!tc) return;
+  const seq = ++watchSeq;
+  watched.set(key, seq);
+  const missingKey = recursive ? treeKey : folderWatchKey(key);
+  const answered = (result: WatchDirResult) => {
+    if (watched.get(key) !== seq) return; // let go of, or asked again, since
+    if (result.ok) {
+      setMissingWatch(worktreePath, missingKey, null);
+      return;
+    }
+    watched.delete(key);
+    // A folder that's gone is dropped by its parent's listing; not a problem.
+    if (result.reason === "gone") {
+      setMissingWatch(worktreePath, missingKey, null);
+      return;
+    }
+    console.warn(`[files] not watching ${dirPath}: ${result.message}`);
+    setMissingWatch(worktreePath, missingKey, { reason: result.reason, message: result.message });
+  };
+  tc.fs.watchDir(dirPath, recursive).then(answered, (err: unknown) =>
+    answered({ ok: false, reason: "failed", message: err instanceof Error ? err.message : String(err) }),
+  );
+}
+
 function watchTree(worktreePath: string, on: boolean): void {
   const tc = window.tacit;
-  if (!tc || treeWatched.has(worktreePath) === on) return;
+  if (!tc) return;
   if (on) {
-    treeWatched.add(worktreePath);
-    void tc.fs.watchDir(worktreePath, true);
+    if (treeWatched.has(worktreePath)) return;
+    requestWatch(worktreePath, worktreePath, true, treeWatched, worktreePath);
   } else {
-    treeWatched.delete(worktreePath);
+    setMissingWatch(worktreePath, treeKey, null);
+    if (!treeWatched.delete(worktreePath)) return;
     void tc.fs.unwatchDir(worktreePath, true);
   }
 }
@@ -100,23 +169,38 @@ function watchFolders(worktreePath: string, add: readonly string[], remove: read
   if (!tc) return;
   let watched = foldersWatched.get(worktreePath);
   if (!watched) {
-    watched = new Set();
+    watched = new Map();
     foldersWatched.set(worktreePath, watched);
   }
   for (const folder of remove) {
+    setMissingWatch(worktreePath, folderWatchKey(folder), null);
     if (!watched.delete(folder)) continue;
     void tc.fs.unwatchDir(folderPathFor(worktreePath, folder), false);
   }
   for (const folder of add) {
     if (watched.has(folder)) continue;
-    watched.add(folder);
-    void tc.fs.watchDir(folderPathFor(worktreePath, folder), false);
+    requestWatch(worktreePath, folderPathFor(worktreePath, folder), false, watched, folder);
   }
 }
 
+// Every folder a lazy worktree wants watched: those watched, and those main
+// refused or lost.
+function wantedFolders(worktreePath: string): string[] {
+  const missing = [...(missingWatches.get(worktreePath)?.keys() ?? [])]
+    .filter((key) => key.startsWith("folder:"))
+    .map((key) => key.slice("folder:".length));
+  return [...new Set([...(foldersWatched.get(worktreePath)?.keys() ?? []), ...missing])];
+}
+
+// Letting go of the panel: nothing is watched, but what's missing stays
+// noted until a refresh watches it again.
 function unwatchAll(worktreePath: string): void {
-  watchTree(worktreePath, false);
-  watchFolders(worktreePath, [], [...(foldersWatched.get(worktreePath) ?? [])]);
+  const tc = window.tacit;
+  if (!tc) return;
+  if (treeWatched.delete(worktreePath)) void tc.fs.unwatchDir(worktreePath, true);
+  const watched = foldersWatched.get(worktreePath);
+  for (const folder of watched?.keys() ?? []) void tc.fs.unwatchDir(folderPathFor(worktreePath, folder), false);
+  watched?.clear();
 }
 
 function ensureWatcher(worktreePath: string): void {
@@ -140,6 +224,23 @@ function ensureWatcher(worktreePath: string): void {
       if (folder != null && folder in entry.folders) void listFolder(worktreePath, folder);
     }
   });
+  // Watches main lost (macOS couldn't keep them, usually all at once): they
+  // are no longer watched, so forget them and say the tree stopped updating.
+  // Not a change: re-listing every loaded folder at once would only add load.
+  const unsubFailed = tc.fs.onWatchFailed((failures) => {
+    for (const failure of failures) {
+      let key: string;
+      if (failure.recursive) {
+        if (failure.dirPath !== worktreePath || !treeWatched.delete(worktreePath)) continue;
+        key = treeKey;
+      } else {
+        const folder = folderKeyFor(worktreePath, failure.dirPath);
+        if (folder == null || !foldersWatched.get(worktreePath)?.delete(folder)) continue;
+        key = folderWatchKey(folder);
+      }
+      setMissingWatch(worktreePath, key, { reason: "failed", message: failure.message });
+    }
+  });
   const unsubGit = tc.git.onChanged((changedPath: string) => {
     if (useWorktreeFilesStore.getState().byWorktree[worktreePath]?.mode !== "full") return;
     if (
@@ -150,7 +251,7 @@ function ensureWatcher(worktreePath: string): void {
     }
   });
 
-  watchers.set(worktreePath, { unsubFs, unsubGit });
+  watchers.set(worktreePath, { unsubFs, unsubFailed, unsubGit });
 }
 
 function dropWatcher(worktreePath: string): void {
@@ -158,6 +259,7 @@ function dropWatcher(worktreePath: string): void {
   if (!handle) return;
   unwatchAll(worktreePath);
   handle.unsubFs();
+  handle.unsubFailed();
   handle.unsubGit();
   watchers.delete(worktreePath);
 }
@@ -260,6 +362,7 @@ export const useWorktreeFilesStore = create<WorktreeFilesStore>((set, get) => ({
             lazyReason: null,
             folders: {},
             unreadable: {},
+            watchProblem: null,
             loadId: 0,
             refCount: 1,
           },
@@ -361,7 +464,7 @@ export const useWorktreeFilesStore = create<WorktreeFilesStore>((set, get) => ({
     }
 
     const trackedNext = listing.paths;
-    watchFolders(worktreePath, [], [...(foldersWatched.get(worktreePath) ?? [])]);
+    watchFolders(worktreePath, [], wantedFolders(worktreePath));
     if (get().byWorktree[worktreePath]?.refCount) watchTree(worktreePath, true);
     patchEntry(worktreePath, (cur) => {
       if (cur.loadId !== myId) return null;

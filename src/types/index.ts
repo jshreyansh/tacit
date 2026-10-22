@@ -1186,11 +1186,19 @@ export interface TacitAPI {
     mkdir: (dirPath: string, name: string) => Promise<void>;
     createFile: (dirPath: string, name: string) => Promise<void>;
     reveal: (targetPath: string) => Promise<void>;
-    /** Watches a folder: its whole tree (the default), or with `recursive` false only its own entries. */
-    watchDir: (dirPath: string, recursive?: boolean) => Promise<void>;
-    unwatchDir: (dirPath: string, recursive?: boolean) => Promise<void>;
+    /**
+     * Watches a folder: its whole tree (`recursive`), or only its own
+     * entries. Main may refuse (too many folders watched, or the folder is
+     * gone); a refused watch isn't watched and needs no unwatch.
+     */
+    watchDir: (dirPath: string, recursive: boolean) => Promise<import("../../shared/file-watch").WatchDirResult>;
+    unwatchDir: (dirPath: string, recursive: boolean) => Promise<void>;
     unwatchAllDirs: () => Promise<void>;
     onDirChanged: (callback: (dirPath: string) => void) => () => void;
+    /** Watches that stopped (macOS couldn't keep them); they're no longer watched. */
+    onWatchFailed: (
+      callback: (failures: import("../../shared/file-watch").WatchDirFailure[]) => void,
+    ) => () => void;
   };
   agents: {
     /**
