@@ -197,9 +197,32 @@ export function buildFileTreeMoveRequests(
 }
 
 export function FilesContent({ worktreePath, onFileClick, active }: Props) {
+  const files = useWorktreeFiles(worktreePath, active);
+  // A project loaded a folder at a time has no search: it could only cover
+  // the folders already open. The tree's search is fixed when the tree is
+  // made, so the tree is made again when that changes.
+  const searchable = files.mode !== "lazy";
+  return (
+    <FilesTree
+      key={searchable ? "searchable" : "lazy"}
+      worktreePath={worktreePath}
+      onFileClick={onFileClick}
+      files={files}
+      searchable={searchable}
+    />
+  );
+}
+
+interface FilesTreeProps {
+  worktreePath: string | null;
+  onFileClick: (filePath: string) => void;
+  files: ReturnType<typeof useWorktreeFiles>;
+  searchable: boolean;
+}
+
+function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreeProps) {
   const t = useT();
-  const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, refresh, openFolder } =
-    useWorktreeFiles(worktreePath, active);
+  const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, refresh, openFolder } = files;
   const { changedFiles, stagedFiles } = useGitStatus(worktreePath);
   const fileEditorPath = useCanvasStore((s) => s.fileEditorPath);
   const { notify } = useNotificationStore.getState();
@@ -383,7 +406,7 @@ export function FilesContent({ worktreePath, onFileClick, active }: Props) {
   const { model } = useFileTree({
     paths: [],
     initialExpansion: "closed",
-    search: true,
+    search: searchable,
     renderRowDecoration,
     renaming: {
       onRename: handleRename,
@@ -605,6 +628,8 @@ export function FilesContent({ worktreePath, onFileClick, active }: Props) {
   // Loaded a folder at a time: when a folder that isn't loaded yet is
   // opened in the tree, load it. The tree has no expand event, so this
   // checks the unloaded folders on its change notifications, once a frame.
+  // Only a person opens folders here: this tree has no search, which would
+  // open every matching folder, and every folder under a match matches too.
   const pendingFolders = useMemo(
     () => (mode === "lazy" ? unloadedFolders(paths, folders, unreadable) : []),
     [mode, paths, folders, unreadable],
