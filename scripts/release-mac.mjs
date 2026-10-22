@@ -6,6 +6,10 @@
  *   pnpm release:mac             build, notarize, verify; publishes nothing
  *   pnpm release:mac --publish   then a GitHub release with every file, made
  *                                public only once all of them are uploaded
+ *   pnpm release:mac --local     this Mac only: signed but not notarized, for
+ *                                when notarizing isn't possible (an expired
+ *                                Apple Developer membership); installs the
+ *                                disk image's app into /Applications
  *
  * Releases come from here, not CI: CI has no Developer ID certificate, and an
  * unsigned Mac build is refused by Gatekeeper. See docs/releasing.md.
@@ -18,6 +22,11 @@
  * image is checked for a stapled ticket before anything is published.
  *
  * Every step stops the release on failure. Nothing is retried or skipped.
+ *
+ * A --local build runs here because it was built here: Gatekeeper only
+ * assesses apps that arrive quarantined, by download. Copied to another Mac,
+ * it is refused like any unnotarized app, and the updater can't offer it, so
+ * it is never published.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -28,6 +37,7 @@ import path from "node:path";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const OUT = path.join(ROOT, "out");
 const publish = process.argv.includes("--publish");
+const local = process.argv.includes("--local");
 const profile = process.env.APPLE_KEYCHAIN_PROFILE || "tacit-notary";
 const version = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 const tag = `v${version}`;
@@ -55,16 +65,21 @@ function read(file, args, options = {}) {
 
 // ── Before building ─────────────────────────────────────────────────────────
 
-step(`Checking Tacit ${version} can be released`);
+step(`Checking Tacit ${version} can be ${local ? "built for this Mac" : "released"}`);
 if (process.platform !== "darwin") fail("Mac releases are built on a Mac.");
+if (local && publish) fail("--local builds aren't notarized, so they can't be published.");
 
-const branch = read("git", ["rev-parse", "--abbrev-ref", "HEAD"])?.trim();
-if (branch !== "main") fail(`On ${branch}; releases come from main.`);
 if (read("git", ["status", "--porcelain"])?.trim()) fail("The working tree has changes; commit or stash them first.");
-run("git", ["fetch", "--quiet", "origin", "main", "--tags"]);
 const head = read("git", ["rev-parse", "HEAD"]).trim();
-if (head !== read("git", ["rev-parse", "origin/main"])?.trim()) fail("main isn't the same as origin/main; push or pull first.");
-if (read("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`]) !== null) fail(`${tag} is already tagged; bump the version in package.json.`);
+if (!local) {
+  // A local build is never published, so it may come from any commit; a
+  // release is the tagged state of main.
+  const branch = read("git", ["rev-parse", "--abbrev-ref", "HEAD"])?.trim();
+  if (branch !== "main") fail(`On ${branch}; releases come from main.`);
+  run("git", ["fetch", "--quiet", "origin", "main", "--tags"]);
+  if (head !== read("git", ["rev-parse", "origin/main"])?.trim()) fail("main isn't the same as origin/main; push or pull first.");
+  if (read("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`]) !== null) fail(`${tag} is already tagged; bump the version in package.json.`);
+}
 
 const changelog = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
 const notes = changelog.match(new RegExp(`^## \\[${version.replace(/\./g, "\\.")}\\][^\\n]*\\n([\\s\\S]*?)(?=^## \\[|(?![\\s\\S]))`, "m"))?.[1]?.trim();
@@ -73,7 +88,7 @@ if (!notes) fail(`CHANGELOG.md has no entry for ${version}.`);
 if (!/Developer ID Application/.test(read("security", ["find-identity", "-v", "-p", "codesigning"]) ?? "")) {
   fail("No Developer ID Application certificate in the keychain (docs/releasing.md, step 1).");
 }
-if (read("xcrun", ["notarytool", "history", "--keychain-profile", profile]) === null) {
+if (!local && read("xcrun", ["notarytool", "history", "--keychain-profile", profile]) === null) {
   fail(
     `No notarytool profile "${profile}". Create it once (it asks for an app-specific password):\n` +
       `  xcrun notarytool store-credentials ${profile} --apple-id <your Apple ID> --team-id <your Team ID>`,
@@ -94,6 +109,11 @@ console.log(
 step("Building");
 fs.rmSync(OUT, { recursive: true, force: true });
 run("pnpm", ["build"]);
+
+if (local) {
+  buildLocal();
+  process.exit(0);
+}
 
 step(`Packaging, signing and notarizing with the "${profile}" profile (notarizing takes a few minutes)`);
 // Only the keychain profile: electron-builder prefers an Apple ID or API key
@@ -117,7 +137,8 @@ run("node", ["scripts/update-mac-yml.cjs"]);
 
 step("Verifying");
 
-function verifyApp(app, where) {
+/** The version, the Developer ID signature and the hardened runtime. */
+function verifySigned(app, where) {
   const plist = path.join(app, "Contents", "Info.plist");
   const appVersion = read("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plist])?.trim();
   if (appVersion !== version) fail(`${where}: the app says ${appVersion}, not ${version}.`);
@@ -125,6 +146,10 @@ function verifyApp(app, where) {
   const info = read("codesign", ["-dv", "--verbose=2", app]) ?? "";
   if (!/Authority=Developer ID Application/.test(info)) fail(`${where}: not signed with a Developer ID.`);
   if (!/flags=0x10000\(runtime\)/.test(info)) fail(`${where}: the hardened runtime is off.`);
+}
+
+function verifyApp(app, where) {
+  verifySigned(app, where);
   if (read("xcrun", ["stapler", "validate", app]) === null) fail(`${where}: no notarization ticket stapled.`);
   if (!/source=Notarized Developer ID/.test(read("spctl", ["-a", "-vv", "-t", "exec", app]) ?? "")) {
     fail(`${where}: Gatekeeper doesn't accept it as notarized.`);
@@ -196,3 +221,47 @@ run("gh", ["release", "edit", tag, "--draft=false", "--latest"]);
 const url = read("gh", ["release", "view", tag, "--json", "url", "-q", ".url"])?.trim();
 console.log(`\n✓ Tacit ${version} is published: ${url}`);
 console.log("  Installed copies find it the next time they check for updates.");
+
+// ── This Mac only (--local) ─────────────────────────────────────────────────
+
+function buildLocal() {
+  const arch = process.arch;
+  step(`Packaging and signing for this Mac (${arch}); not notarized`);
+  // Without notarize=false electron-builder would try the Apple ID or API key
+  // it finds in the environment; a local build never asks Apple anything.
+  const env = { ...process.env };
+  for (const name of ["APPLE_ID", "APPLE_APP_SPECIFIC_PASSWORD", "APPLE_API_KEY", "APPLE_API_KEY_ID", "APPLE_API_ISSUER", "APPLE_KEYCHAIN_PROFILE"]) delete env[name];
+  run("pnpm", ["exec", "electron-builder", "--mac", "dmg", `--${arch}`, "-c.mac.notarize=false", "--publish", "never"], { env });
+
+  step("Verifying");
+  const dmgs = fs.readdirSync(OUT).filter((name) => name.endsWith(".dmg"));
+  if (dmgs.length !== 1) fail(`Expected one disk image; found ${dmgs.join(", ") || "none"}.`);
+  const dmg = path.join(OUT, dmgs[0]);
+  if (read("pgrep", ["-f", "/Applications/Tacit.app/Contents/MacOS/"]) !== null) fail("Tacit is running; quit it, then run this again.");
+
+  const mount = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-local-"));
+  run("hdiutil", ["attach", "-nobrowse", "-readonly", "-quiet", "-mountpoint", mount, dmg]);
+  try {
+    const app = path.join(mount, "Tacit.app");
+    verifySigned(app, dmgs[0]);
+    console.log(`  ✓ ${dmgs[0]}: ${version}, Developer ID, hardened runtime (not notarized)`);
+
+    step("Installing into /Applications");
+    const installed = "/Applications/Tacit.app";
+    if (fs.existsSync(installed)) {
+      // Kept in the Trash, not deleted: dragging it back undoes the install.
+      const old = read("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", path.join(installed, "Contents", "Info.plist")])?.trim() ?? "old";
+      const trashed = path.join(os.homedir(), ".Trash", `Tacit ${old} (${Date.now()}).app`);
+      fs.renameSync(installed, trashed);
+      console.log(`  The previous Tacit ${old} is in the Trash.`);
+    }
+    run("ditto", [app, installed]);
+    verifySigned(installed, installed);
+  } finally {
+    run("hdiutil", ["detach", "-quiet", mount]);
+    fs.rmSync(mount, { recursive: true, force: true });
+  }
+
+  console.log(`\n✓ Tacit ${version} is installed in /Applications, built from ${head.slice(0, 8)}. Nothing was published.`);
+  console.log(`  ${path.relative(ROOT, dmg)} installs on this Mac only: it isn't notarized, so another Mac refuses it.`);
+}

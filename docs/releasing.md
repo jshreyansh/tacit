@@ -64,6 +64,20 @@ why the script checks for the stapled ticket instead of trusting the build.
 updater reads the latest release's `latest-mac.yml`, which must never point at
 a zip that is still uploading.
 
+### This Mac only
+
+```bash
+pnpm release:mac --local
+```
+
+For when notarizing isn't possible, such as when the Apple Developer membership
+has lapsed (notarytool answers 403, "A required agreement is missing or has
+expired"). It builds a disk image for this Mac's architecture, signed with the
+Developer ID but not notarized, checks it, and installs its app into
+`/Applications`. Any previous copy goes to the Trash. Quit Tacit first. It runs
+here because Gatekeeper only assesses downloaded apps; on another Mac the
+disk image is refused, and the updater never sees it, so it is never published.
+
 Sign-in and usage sync need `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
 at build time. The script says whether they were set. 0.39.17 shipped without
 them.
