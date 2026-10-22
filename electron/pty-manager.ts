@@ -36,6 +36,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * How long a process that's gone gets to have its exit reported, before
+ * quitting goes ahead anyway; node-pty's hand-off is normally a few ms.
+ */
+const EXIT_REPORT_GRACE_MS = 1000;
+
+/** True if `promise` settles within `ms`. */
+async function settles(promise: Promise<void>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([promise.then(() => true as const), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class PtyManager {
   private instances = new Map<number, pty.IPty>();
   private outputBuffers = new Map<number, string[]>();
@@ -213,26 +232,31 @@ export class PtyManager {
     this.instances.delete(id);
     this.outputBuffers.delete(id);
 
+    // Done means node-pty has reported the exit, not just that the process is
+    // gone. node-pty reaps the child on its own thread and hands the exit to
+    // JavaScript a moment later; if the app quits in between, that hand-off
+    // runs during Node's shutdown, the call into JavaScript fails, and
+    // node-pty aborts the whole app (the crash dialog on quit and restart).
+    const reported = new Promise<void>((resolve) => {
+      const listener = instance.onExit(() => {
+        listener.dispose();
+        resolve();
+      });
+    });
+
     // Send SIGHUP to the entire process group (shell + CLI + MCP servers).
     // the master PTY FD close triggers SIGHUP to the session, giving
     if (pid > 1) {
       try {
         process.kill(-pid, "SIGHUP");
       } catch {
-        // Process group may already be gone.
+        // Process group already gone; its exit may still be on its way.
+        await settles(reported, EXIT_REPORT_GRACE_MS);
         return;
       }
     }
 
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      try {
-        process.kill(pid, 0);
-      } catch {
-        return;
-      }
-      await sleep(100);
-    }
+    if (await settles(reported, 5000)) return;
 
     // Last resort: force kill the entire process group.
     if (pid > 1) {
@@ -241,6 +265,9 @@ export class PtyManager {
       } catch {
         // Process group exited while the timeout elapsed.
       }
+    }
+    if (!(await settles(reported, EXIT_REPORT_GRACE_MS))) {
+      console.warn(`[PtyManager] pty ${id} (pid ${pid}) never reported its exit`);
     }
   }
 

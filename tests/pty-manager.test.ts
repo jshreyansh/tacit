@@ -111,3 +111,47 @@ test("a resize to a size no terminal could have is ignored", async () => {
   manager.resize(id, 0, 0);
   assert.deepEqual(resized, [[120, 40]]);
 });
+
+async function realShellManager(script: string) {
+  const { PtyManager } = await import(`../electron/pty-manager.ts?real=${Date.now()}-${Math.random()}`);
+  const manager = new PtyManager({
+    buildLaunchSpec: async () => ({ cwd: process.cwd(), file: "/bin/sh", args: ["-c", script], env: { PATH: "/usr/bin:/bin" } }),
+  });
+  return manager as InstanceType<typeof PtyManager>;
+}
+
+test(
+  "a terminal counts as stopped only once node-pty has reported its exit, so quitting never lands on that report",
+  { skip: process.platform === "win32" },
+  async () => {
+    const manager = await realShellManager("sleep 30");
+    const id = await manager.create({ cwd: process.cwd() });
+    const pid = manager.getPid(id)!;
+    let reported = false;
+    manager.onExit(id, () => {
+      reported = true;
+    });
+    await manager.destroy(id);
+    assert.equal(reported, true, "the exit was reported before destroy resolved");
+    assert.throws(() => process.kill(pid, 0), "the process is gone");
+  },
+);
+
+test(
+  "a terminal that ignores the hang-up is killed, and still reported before it counts as stopped",
+  { skip: process.platform === "win32", timeout: 15_000 },
+  async () => {
+    const manager = await realShellManager("trap '' HUP; echo ready; sleep 30");
+    const id = await manager.create({ cwd: process.cwd() });
+    // The trap has to be in place before the hang-up is sent.
+    await new Promise<void>((resolve) => manager.onData(id, (data: string) => data.includes("ready") && resolve()));
+    let reported = false;
+    manager.onExit(id, () => {
+      reported = true;
+    });
+    const started = Date.now();
+    await manager.destroyAll();
+    assert.equal(reported, true);
+    assert.ok(Date.now() - started >= 4_900, "it waited for the hang-up first");
+  },
+);
