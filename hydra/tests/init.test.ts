@@ -23,25 +23,26 @@ async function runInit(dir: string): Promise<string[]> {
   return logs;
 }
 
-test("init creates Hydra instructions in both CLAUDE.md and AGENTS.md", async () => {
+test("init writes Hydra instructions to AGENTS.md and has CLAUDE.md import it", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hydra-init-"));
   const logs = await runInit(dir);
 
   const claudeMd = fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf-8");
   const agentsMd = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf-8");
 
-  assert.match(claudeMd, /## Hydra Orchestration Toolkit/);
+  // One copy, in AGENTS.md; Claude Code reads it through the import.
   assert.match(agentsMd, /## Hydra Orchestration Toolkit/);
+  assert.doesNotMatch(claudeMd, /## Hydra Orchestration Toolkit/);
+  assert.match(claudeMd, /^@AGENTS\.md$/m);
   assert.deepEqual(logs, [
-    "Created CLAUDE.md with hydra instructions",
     "Created AGENTS.md with hydra instructions",
+    "Created CLAUDE.md, importing AGENTS.md",
   ]);
 });
 
-test("init updates an existing Hydra block in place and preserves adjacent content", async () => {
+test("init moves an old Hydra block out of CLAUDE.md into AGENTS.md and keeps the rest", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hydra-init-update-"));
-  // Use the legacy marker so the test also covers the legacy → current
-  // marker migration path implemented in init.ts.
+  // The legacy heading, so the legacy → current heading migration is covered too.
   const staleSection = [
     "# Project Notes",
     "",
@@ -61,40 +62,37 @@ test("init updates an existing Hydra block in place and preserves adjacent conte
   const claudeMd = fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf-8");
   const agentsMd = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf-8");
 
-  // Legacy marker is replaced; current marker appears exactly once.
-  assert.equal(claudeMd.match(/## Hydra Orchestration Toolkit/g)?.length, 1);
-  assert.doesNotMatch(claudeMd, /## Hydra Sub-Agent Tool/);
+  assert.doesNotMatch(claudeMd, /## Hydra/);
+  assert.match(claudeMd, /^# Project Notes\n\n## Team Rules\n\n- Keep the repo tidy\.\n\n## Shared Agent Instructions/);
+  assert.match(claudeMd, /^@AGENTS\.md$/m);
+  assert.equal(agentsMd.match(/## Hydra Orchestration Toolkit/g)?.length, 1);
 
   // Headline phrasing + the four design-principle bullets are present.
-  assert.match(claudeMd, /`result\.json` is the only completion evidence\./);
-  assert.match(claudeMd, /Why this design/);
-  assert.match(claudeMd, /SWF decider pattern/);
-  assert.match(claudeMd, /Parallel-first/);
-  assert.match(claudeMd, /Typed result contract/);
-  assert.match(claudeMd, /Lead intervention points/);
+  assert.match(agentsMd, /`result\.json` is the only completion evidence\./);
+  assert.match(agentsMd, /Why this design/);
+  assert.match(agentsMd, /SWF decider pattern/);
+  assert.match(agentsMd, /Parallel-first/);
+  assert.match(agentsMd, /Typed result contract/);
+  assert.match(agentsMd, /Lead intervention points/);
 
-  // Workflow patterns + agent launch rule + workflow control + telemetry
-  // sections survive the rewrite.
-  assert.match(claudeMd, /Workflow patterns:/);
-  assert.match(claudeMd, /hydra spawn --task/);
-  assert.match(claudeMd, /tacit terminal create --prompt/);
-  assert.match(claudeMd, /Do not use `tacit terminal input`/);
-  assert.match(claudeMd, /Workflow control:/);
-  assert.match(claudeMd, /Telemetry polling:/);
-  assert.match(claudeMd, /tacit telemetry get --workbench <workbenchId> --repo \./);
-  assert.match(claudeMd, /tacit telemetry events --terminal <terminalId> --limit 20/);
+  // Workflow patterns + agent launch rule + workflow control + telemetry.
+  assert.match(agentsMd, /Workflow patterns:/);
+  assert.match(agentsMd, /hydra spawn --task/);
+  assert.match(agentsMd, /tacit terminal create --prompt/);
+  assert.match(agentsMd, /Do not use `tacit terminal input`/);
+  assert.match(agentsMd, /Workflow control:/);
+  assert.match(agentsMd, /Telemetry polling:/);
+  assert.match(agentsMd, /tacit telemetry get --workbench <workbenchId> --repo \./);
+  assert.match(agentsMd, /tacit telemetry events --terminal <terminalId> --limit 20/);
 
   // Slim result contract is reflected in the rendered section.
-  assert.match(claudeMd, /schema_version `hydra\/result\/v0\.1`/);
-  assert.match(claudeMd, /completed\/stuck\/error/);
-  assert.match(claudeMd, /report_file/);
+  assert.match(agentsMd, /schema_version `hydra\/result\/v0\.1`/);
+  assert.match(agentsMd, /completed\/stuck\/error/);
+  assert.match(agentsMd, /report_file/);
 
-  // Surrounding (non-Hydra) content is preserved verbatim.
-  assert.match(claudeMd, /## Team Rules/);
-  assert.match(agentsMd, /## Hydra Orchestration Toolkit/);
   assert.deepEqual(logs, [
-    "Updated hydra instructions in CLAUDE.md",
     "Created AGENTS.md with hydra instructions",
+    "Moved hydra instructions out of CLAUDE.md, which now imports AGENTS.md",
   ]);
 });
 
@@ -105,8 +103,8 @@ test("init is idempotent when the current Hydra block is already present", async
   const logs = await runInit(dir);
 
   assert.deepEqual(logs, [
-    "CLAUDE.md already contains current hydra instructions",
     "AGENTS.md already contains current hydra instructions",
+    "CLAUDE.md already imports AGENTS.md",
   ]);
 });
 
@@ -115,9 +113,9 @@ test("init treats duplicate legacy blocks as outdated and removes them", async (
 
   await runInit(dir);
 
-  const claudePath = path.join(dir, "CLAUDE.md");
+  const agentsPath = path.join(dir, "AGENTS.md");
   fs.appendFileSync(
-    claudePath,
+    agentsPath,
     [
       "",
       "",
@@ -132,13 +130,13 @@ test("init treats duplicate legacy blocks as outdated and removes them", async (
   assert.equal(checkHydraInstructionsStatus(dir), "outdated");
 
   const logs = await runInit(dir);
-  const claudeMd = fs.readFileSync(claudePath, "utf-8");
+  const agentsMd = fs.readFileSync(agentsPath, "utf-8");
 
   assert.equal(checkHydraInstructionsStatus(dir), "current");
-  assert.equal(claudeMd.match(/## Hydra Orchestration Toolkit/g)?.length, 1);
-  assert.doesNotMatch(claudeMd, /## Hydra Sub-Agent Tool/);
+  assert.equal(agentsMd.match(/## Hydra Orchestration Toolkit/g)?.length, 1);
+  assert.doesNotMatch(agentsMd, /## Hydra Sub-Agent Tool/);
   assert.deepEqual(logs, [
-    "Updated hydra instructions in CLAUDE.md",
-    "AGENTS.md already contains current hydra instructions",
+    "Updated hydra instructions in AGENTS.md",
+    "CLAUDE.md already imports AGENTS.md",
   ]);
 });

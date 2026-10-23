@@ -110,9 +110,9 @@ import {
   writeCliIntegrationState,
 } from "./cli-integration";
 import {
-  checkHydraProjectStatus,
-  enableHydraForProject,
-} from "./hydra-project.ts";
+  checkProjectInstructions,
+  setUpProjectInstructions,
+} from "./project-instructions";
 import { buildLaunchSpec, getLoginShellEnv } from "./pty-launch.js";
 import { spawn as spawnChild } from "node:child_process";
 import { ChatEngine, chatSettingsChange, type ChatAgent } from "./manager-chat/chat-engine";
@@ -1832,12 +1832,17 @@ function setupIpc() {
     },
   );
 
-  ipcMain.handle("project:enable-hydra", (_event, dirPath: string) => {
-    return enableHydraForProject(dirPath);
+  // A project's agent instructions (AGENTS.md, and CLAUDE.md importing it).
+  // Only the app's own window may ask, only about an existing folder, and
+  // never the home folder; checking only reads.
+  ipcMain.handle("project:instructions-status", (event, dirPath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("project:instructions-status is only for the app's window");
+    return checkProjectInstructions(dirPath);
   });
 
-  ipcMain.handle("project:check-hydra", (_event, dirPath: string) => {
-    return checkHydraProjectStatus(dirPath);
+  ipcMain.handle("project:set-up-instructions", (event, dirPath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("project:set-up-instructions is only for the app's window");
+    return setUpProjectInstructions(dirPath);
   });
 
   ipcMain.handle("git:watch", (_event, worktreePath: string) => {

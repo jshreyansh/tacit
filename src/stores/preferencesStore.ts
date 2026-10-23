@@ -73,6 +73,12 @@ interface PreferencesStore {
    * lets new cue ids drop in without a migration.
    */
   seenHints: Record<string, true>;
+  /**
+   * Project folders whose "set up agent instructions?" prompt was answered
+   * Don't ask here. Kept per folder, so one answer never hides the prompt
+   * for every project the way a seen hint does.
+   */
+  instructionsDeclined: string[];
   setCanvasOpacity: (value: number) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
@@ -98,6 +104,7 @@ interface PreferencesStore {
   patchAgentConfig: (patch: Partial<AgentProviderConfig>) => void;
   setDefaultTerminalSize: (size: StoredTerminalSize | null) => void;
   markHintSeen: (hintId: string) => void;
+  declineInstructions: (projectPath: string) => void;
 }
 
 const STORAGE_KEY = "tacit-preferences";
@@ -129,6 +136,12 @@ interface SavedPrefs {
   defaultTerminalSize: StoredTerminalSize | null;
   agentConfig: AgentProviderConfig;
   seenHints: Record<string, true>;
+  instructionsDeclined: string[];
+}
+
+function sanitizePathList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry !== ""))];
 }
 
 function sanitizeSeenHints(value: unknown): Record<string, true> {
@@ -290,6 +303,7 @@ function loadPreferences(): SavedPrefs {
         parsed.defaultTerminalSize,
       );
       const seenHints = sanitizeSeenHints(parsed.seenHints);
+      const instructionsDeclined = sanitizePathList(parsed.instructionsDeclined);
 
       return {
         canvasOpacity,
@@ -316,6 +330,7 @@ function loadPreferences(): SavedPrefs {
         defaultTerminalSize,
         agentConfig,
         seenHints,
+        instructionsDeclined,
       };
     }
   } catch {
@@ -345,6 +360,7 @@ function loadPreferences(): SavedPrefs {
     defaultTerminalSize: null,
     agentConfig: defaultProviderConfig(),
     seenHints: {},
+    instructionsDeclined: [],
   };
 }
 
@@ -454,6 +470,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     defaultTerminalSize: state.defaultTerminalSize,
     agentConfig: state.agentConfig,
     seenHints: state.seenHints,
+    instructionsDeclined: state.instructionsDeclined,
   };
 }
 
@@ -485,6 +502,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   agentConfig: initialPrefs.agentConfig,
   apiKeyReady: false,
   seenHints: initialPrefs.seenHints,
+  instructionsDeclined: initialPrefs.instructionsDeclined,
 
   setCanvasOpacity: (value) => {
     const clamped = Math.round(Math.max(0, Math.min(100, value)));
@@ -604,6 +622,13 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
     const next = { ...current, [hintId]: true as const };
     set({ seenHints: next });
     savePreferences(getSaveState({ ...get(), seenHints: next }));
+  },
+  declineInstructions: (projectPath) => {
+    const current = get().instructionsDeclined;
+    if (current.includes(projectPath)) return;
+    const next = [...current, projectPath];
+    set({ instructionsDeclined: next });
+    savePreferences(getSaveState({ ...get(), instructionsDeclined: next }));
   },
 }));
 

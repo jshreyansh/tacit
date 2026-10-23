@@ -411,11 +411,13 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("project:delete-folder", projectPath) as Promise<
         { ok: true } | { ok: false; error: string }
       >,
-    enableHydra: (dirPath: string) =>
-      ipcRenderer.invoke("project:enable-hydra", dirPath),
-    checkHydra: (dirPath: string) =>
-      ipcRenderer.invoke("project:check-hydra", dirPath) as Promise<
-        "missing" | "outdated" | "current"
+    instructionsStatus: (dirPath: string) =>
+      ipcRenderer.invoke("project:instructions-status", dirPath) as Promise<
+        import("../shared/project-instructions").ProjectInstructionsStatus
+      >,
+    setUpInstructions: (dirPath: string) =>
+      ipcRenderer.invoke("project:set-up-instructions", dirPath) as Promise<
+        import("../shared/project-instructions").SetUpProjectInstructionsResult
       >,
     diff: (worktreePath: string) =>
       ipcRenderer.invoke("project:diff", worktreePath) as Promise<{

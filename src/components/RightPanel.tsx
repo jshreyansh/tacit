@@ -33,6 +33,10 @@ import { openFileInView } from "../actions/openSession";
 import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { resolvePanelProject } from "./RightPanel/panelProject";
 import {
+  InstructionsPrompt,
+  useInstructionsPromptStore,
+} from "./RightPanel/InstructionsPrompt";
+import {
   PanelNoProjects,
   PanelProjectChooser,
   PanelProjectHeader,
@@ -57,7 +61,6 @@ export function RightPanel() {
   const panelWorktreeId = useProjectStore((s) => s.panelWorktreeId);
   const setPanelWorktree = useProjectStore((s) => s.setPanelWorktree);
   const projects = useProjectStore((s) => s.projects);
-  const [hydraEnabling, setHydraEnabling] = useState(false);
   const [directoryIsGitRepo, setDirectoryIsGitRepo] = useState(false);
   const [childRepos, setChildRepos] = useState<RepoContextOption[]>([]);
   const [selectedChildRepoPath, setSelectedChildRepoPath] = useState<string | null>(null);
@@ -297,33 +300,11 @@ export function RightPanel() {
     []
   );
 
-  const handleEnableHydra = useCallback(async () => {
-    const focusedProject = shownProject;
-    if (!focusedProject) {
-      notify("warn", t.hydra_enable_missing_target);
-      return;
-    }
-
-    setHydraEnabling(true);
-    try {
-      const result = await window.tacit.project.enableHydra(focusedProject.path);
-      if (!result.ok) {
-        notify("error", t.hydra_enable_failed(result.error));
-        return;
-      }
-
-      notify(
-        "info",
-        result.changed
-          ? t.hydra_enable_success(focusedProject.name)
-          : t.hydra_enable_already_current(focusedProject.name),
-      );
-    } catch (error) {
-      notify("error", t.hydra_enable_failed(String(error)));
-    } finally {
-      setHydraEnabling(false);
-    }
-  }, [shownProject, notify, t]);
+  // The Git tab's Hydra button: shows the instructions prompt for this
+  // project, even after Not now or Don't ask here.
+  const handleEnableHydra = useCallback(() => {
+    if (shownProject) useInstructionsPromptStore.getState().request(shownProject.path);
+  }, [shownProject]);
 
   const dragging = useSidebarDragStore((s) => s.active);
   // Animate the outer width on expand/collapse; pause the transition
@@ -426,6 +407,10 @@ export function RightPanel() {
           projects={projects}
           onPick={setPanelWorktree}
         />
+      )}
+
+      {panelProject.kind === "project" && (
+        <InstructionsPrompt projectPath={panelProject.project.path} projectName={panelProject.project.name} />
       )}
 
       {panelProject.kind === "choose" && (
@@ -567,7 +552,6 @@ export function RightPanel() {
               <GitContent
                 worktreePath={repoContextPath}
                 onEnableHydra={shownProject ? handleEnableHydra : undefined}
-                hydraEnabling={hydraEnabling}
               />
             )}
             {activeTab === "memory" && (

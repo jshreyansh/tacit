@@ -1,9 +1,10 @@
-import fs from "node:fs";
-import path from "node:path";
-
-const MARKER = "## Hydra Orchestration Toolkit";
-const LEGACY_MARKER = "## Hydra Sub-Agent Tool";
-const INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md"] as const;
+import {
+  checkInstructions,
+  writeInstructions,
+  type InstructionFileResult,
+  type InstructionSection,
+  type SectionStatus,
+} from "../../shared/agent-instructions.ts";
 
 const HYDRA_SECTION = `
 ## Hydra Orchestration Toolkit
@@ -71,62 +72,23 @@ first, then publish \`result.json\` atomically as the final artifact of the run.
 When NOT to use: simple fixes, high-certainty tasks, or work that is faster to do directly in the current agent.
 `;
 
-export type InitInstructionStatus = "created" | "appended" | "updated" | "unchanged";
+/** Hydra's section of a project's AGENTS.md (see shared/agent-instructions.ts). */
+export const HYDRA_INSTRUCTIONS: InstructionSection = {
+  heading: "Hydra Orchestration Toolkit",
+  formerHeadings: ["Hydra Sub-Agent Tool"],
+  text: HYDRA_SECTION,
+};
 
-export interface InitInstructionResult {
-  fileName: (typeof INSTRUCTION_FILES)[number];
-  filePath: string;
-  status: InitInstructionStatus;
+export type InitInstructionResult = InstructionFileResult;
+export type HydraInjectStatus = SectionStatus;
+
+/** Read-only check: are Hydra instructions present, current and in the shared layout? */
+export function checkHydraInstructionsStatus(targetDir: string): HydraInjectStatus {
+  return checkInstructions(targetDir, [HYDRA_INSTRUCTIONS]).status;
 }
 
-export type HydraInjectStatus = "missing" | "outdated" | "current";
-
-/**
- * Read-only check: are Hydra instructions present and up to date?
- * Returns the worst status across all instruction files.
- */
-export function checkHydraInstructionsStatus(
-  targetDir: string,
-): HydraInjectStatus {
-  const desiredSection = HYDRA_SECTION.trim();
-  let worst: HydraInjectStatus = "current";
-
-  for (const fileName of INSTRUCTION_FILES) {
-    const filePath = path.join(targetDir, fileName);
-    let content: string;
-    try {
-      content = fs.readFileSync(filePath, "utf-8");
-    } catch {
-      return "missing";
-    }
-
-    const ranges = findHydraSectionRanges(content);
-    if (ranges.length === 0) {
-      return "missing";
-    }
-    if (ranges.length > 1) {
-      worst = "outdated";
-      continue;
-    }
-
-    const currentSection = extractHydraSection(content);
-    if (
-      currentSection === null ||
-      normalizeSection(currentSection) !== normalizeSection(desiredSection)
-    ) {
-      worst = "outdated";
-    }
-  }
-
-  return worst;
-}
-
-export function syncHydraInstructions(
-  targetDir: string,
-): InitInstructionResult[] {
-  return INSTRUCTION_FILES.map((fileName) =>
-    upsertHydraInstructions(path.join(targetDir, fileName), fileName)
-  );
+export function syncHydraInstructions(targetDir: string): InitInstructionResult[] {
+  return writeInstructions(targetDir, [HYDRA_INSTRUCTIONS]);
 }
 
 export async function init(targetDir = process.cwd()): Promise<InitInstructionResult[]> {
@@ -138,101 +100,26 @@ export async function init(targetDir = process.cwd()): Promise<InitInstructionRe
 }
 
 function formatInitLog(result: InitInstructionResult): string {
+  if (result.fileName === "AGENTS.md") {
+    switch (result.status) {
+      case "created":
+        return "Created AGENTS.md with hydra instructions";
+      case "appended":
+        return "Appended hydra instructions to AGENTS.md";
+      case "updated":
+        return "Updated hydra instructions in AGENTS.md";
+      case "unchanged":
+        return "AGENTS.md already contains current hydra instructions";
+    }
+  }
   switch (result.status) {
     case "created":
-      return `Created ${result.fileName} with hydra instructions`;
+      return "Created CLAUDE.md, importing AGENTS.md";
     case "appended":
-      return `Appended hydra instructions to ${result.fileName}`;
+      return "Added an AGENTS.md import to CLAUDE.md";
     case "updated":
-      return `Updated hydra instructions in ${result.fileName}`;
+      return "Moved hydra instructions out of CLAUDE.md, which now imports AGENTS.md";
     case "unchanged":
-      return `${result.fileName} already contains current hydra instructions`;
+      return "CLAUDE.md already imports AGENTS.md";
   }
-}
-
-function normalizeSection(section: string): string {
-  return section.trim().replace(/\s+$/gm, "");
-}
-
-function findHydraSectionRanges(
-  content: string,
-): Array<{ start: number; end: number }> {
-  const headingRegex = /^## Hydra (?:Orchestration Toolkit|Sub-Agent Tool)$/gm;
-  const ranges: Array<{ start: number; end: number }> = [];
-
-  for (const match of content.matchAll(headingRegex)) {
-    const start = match.index;
-    if (start === undefined) continue;
-    const nextHeadingStart = content.indexOf("\n## ", start + match[0].length);
-    ranges.push({
-      start,
-      end: nextHeadingStart === -1 ? content.length : nextHeadingStart,
-    });
-  }
-
-  return ranges;
-}
-
-function extractHydraSection(content: string): string | null {
-  const range = findHydraSectionRanges(content)[0];
-  if (!range) {
-    return null;
-  }
-  return content.slice(range.start, range.end).trimEnd();
-}
-
-function replaceHydraSections(content: string): string {
-  const ranges = findHydraSectionRanges(content);
-  if (ranges.length === 0) {
-    return content;
-  }
-
-  let updated = content.slice(0, ranges[0].start) + HYDRA_SECTION.trim();
-  let cursor = ranges[0].end;
-  for (const range of ranges.slice(1)) {
-    updated += content.slice(cursor, range.start);
-    cursor = range.end;
-  }
-  updated += content.slice(cursor);
-  return updated;
-}
-
-function buildAppendedContent(existing: string): string {
-  return existing.trimEnd() + "\n\n" + HYDRA_SECTION.trimStart();
-}
-
-function upsertHydraInstructions(
-  filePath: string,
-  fileName: (typeof INSTRUCTION_FILES)[number],
-): InitInstructionResult {
-  const desiredSection = HYDRA_SECTION.trim();
-  let existing = "";
-  let content = "";
-  let status: InitInstructionStatus = "created";
-
-  try {
-    existing = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    content = HYDRA_SECTION.trimStart();
-    fs.writeFileSync(filePath, content);
-    return { fileName, filePath, status };
-  }
-
-  const ranges = findHydraSectionRanges(existing);
-  const currentSection = extractHydraSection(existing);
-  if (ranges.length > 0 && currentSection) {
-    if (
-      ranges.length === 1 &&
-      normalizeSection(currentSection) === normalizeSection(desiredSection)
-    ) {
-      return { fileName, filePath, status: "unchanged" };
-    }
-    content = replaceHydraSections(existing);
-    status = "updated";
-  } else {
-    content = existing ? buildAppendedContent(existing) : HYDRA_SECTION.trimStart();
-    status = existing ? "appended" : "created";
-  }
-  fs.writeFileSync(filePath, content);
-  return { fileName, filePath, status };
 }

@@ -10,7 +10,6 @@ import {
 } from "../canvas/viewportBounds";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
-import { useNotificationStore } from "../stores/notificationStore";
 import { usePinStore } from "../stores/pinStore";
 import { useSearchStore } from "../stores/searchStore";
 import { useCommandPaletteStore } from "../stores/commandPaletteStore";
@@ -76,7 +75,6 @@ function useFocusedProjectSnapshot():
 
 const CUE_ID_SEARCH = "discover-search";
 const CUE_ID_PINNING = "discover-pinning";
-const CUE_ID_HYDRA = "discover-hydra";
 const CUE_ID_PALETTE = "discover-palette";
 const CUE_ID_PAN_RECENT = "discover-pan-recent";
 const CUE_ID_DIGEST = "discover-digest";
@@ -101,7 +99,6 @@ const SNAPSHOT_ENTRY_THRESHOLD = 3;
 
 // Priority bands. Higher = preempts lower when both qualify. Spacing
 // leaves room to slot new cues without renumbering existing ones.
-const PRIORITY_HYDRA = 100;
 const PRIORITY_PAN_RECENT = 90;
 const PRIORITY_PINNING = 80;
 const PRIORITY_DIGEST = 70;
@@ -165,92 +162,6 @@ function usePinningDiscoveryCue(): CueViewModel | null {
       onClick: () => {
         usePinStore.getState().openDrawer(focused.path);
         markSeen(CUE_ID_PINNING);
-      },
-    },
-  };
-}
-
-function useHydraDiscoveryCue(): CueViewModel | null {
-  const t = useT();
-  const focused = useFocusedProjectSnapshot();
-  const seen = usePreferencesStore((s) => s.seenHints[CUE_ID_HYDRA] === true);
-  const markSeen = usePreferencesStore((s) => s.markHintSeen);
-  const notify = useNotificationStore((s) => s.notify);
-
-  const [status, setStatus] = useState<"missing" | "outdated" | null>(null);
-  const [busy, setBusy] = useState(false);
-  const projectPath = focused?.path ?? null;
-  const projectName = useProjectStore(
-    (s) => s.projects.find((p) => p.id === focused?.id)?.name ?? null,
-  );
-
-  useEffect(() => {
-    if (seen) return;
-    if (!projectPath) {
-      setStatus(null);
-      return;
-    }
-    const api = window.tacit?.project?.checkHydra;
-    if (!api) return;
-    let cancelled = false;
-    api(projectPath)
-      .then((next) => {
-        if (cancelled) return;
-        setStatus(next === "missing" || next === "outdated" ? next : null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setStatus(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectPath, seen]);
-
-  if (seen) return null;
-  if (!projectPath || !projectName) return null;
-  if (!status) return null;
-
-  const message =
-    status === "outdated"
-      ? t["discovery.hydra.outdated.message"]
-      : t["discovery.hydra.missing.message"];
-  const label =
-    status === "outdated"
-      ? t["discovery.hydra.outdated.action"]
-      : t["discovery.hydra.missing.action"];
-
-  return {
-    id: CUE_ID_HYDRA,
-    priority: PRIORITY_HYDRA,
-    message,
-    action: {
-      label: busy ? "…" : label,
-      onClick: () => {
-        if (busy) return;
-        const enableApi = window.tacit?.project?.enableHydra;
-        if (!enableApi) return;
-        setBusy(true);
-        enableApi(projectPath)
-          .then((result) => {
-            if (!result.ok) {
-              notify("error", t.hydra_enable_failed(result.error));
-              return;
-            }
-            notify(
-              "info",
-              result.changed
-                ? t.hydra_enable_success(projectName)
-                : t.hydra_enable_already_current(projectName),
-            );
-            setStatus(null);
-            markSeen(CUE_ID_HYDRA);
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            notify("error", t.hydra_enable_failed(msg));
-          })
-          .finally(() => setBusy(false));
       },
     },
   };
@@ -456,7 +367,6 @@ export function DiscoveryCue() {
   // when its conditions aren't met. We then pick the highest-priority
   // active cue so two coincident cues never stack.
   const candidates: Array<CueViewModel | null> = [
-    useHydraDiscoveryCue(),
     usePanToRecentActivityCue(),
     usePinningDiscoveryCue(),
     useDigestDiscoveryCue(),

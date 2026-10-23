@@ -10,6 +10,10 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
+import type {
+  ProjectInstructionsStatus,
+  SetUpProjectInstructionsResult,
+} from "../../shared/project-instructions";
 import type { ApprovalDecision, ChatEvent } from "../../shared/chat-events";
 import type {
   CaptureEntryView,
@@ -335,35 +339,6 @@ export interface ProjectUsage {
   cost: number;
   calls: number;
 }
-
-export type HydraInstructionFileName = "CLAUDE.md" | "AGENTS.md";
-export type HydraInstructionStatus =
-  | "created"
-  | "appended"
-  | "updated"
-  | "unchanged";
-
-export interface ProjectEnableHydraFileResult {
-  fileName: HydraInstructionFileName;
-  filePath: string;
-  status: HydraInstructionStatus;
-}
-
-export interface ProjectEnableHydraSuccess {
-  ok: true;
-  repoPath: string;
-  changed: boolean;
-  files: ProjectEnableHydraFileResult[];
-}
-
-export interface ProjectEnableHydraFailure {
-  ok: false;
-  error: string;
-}
-
-export type ProjectEnableHydraResult =
-  | ProjectEnableHydraSuccess
-  | ProjectEnableHydraFailure;
 
 export interface ModelUsage {
   model: string;
@@ -900,10 +875,10 @@ export interface TacitAPI {
     deleteFolder: (
       projectPath: string,
     ) => Promise<{ ok: true } | { ok: false; error: string }>;
-    enableHydra: (dirPath: string) => Promise<ProjectEnableHydraResult>;
-    checkHydra: (
-      dirPath: string,
-    ) => Promise<"missing" | "outdated" | "current">;
+    /** Whether to offer agent instructions for this project folder, and what they'd change. Only reads. */
+    instructionsStatus: (dirPath: string) => Promise<ProjectInstructionsStatus>;
+    /** Adds or updates Tacit's agent instructions: AGENTS.md, and CLAUDE.md importing it. */
+    setUpInstructions: (dirPath: string) => Promise<SetUpProjectInstructionsResult>;
     diff: (worktreePath: string) => Promise<{
       diff: string;
       files: {

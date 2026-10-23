@@ -205,3 +205,20 @@ test("preferences persist and sanitize worktree compact columns", async () => {
   const raw = JSON.parse(localStorage.getItem("tacit-preferences")!);
   assert.equal(raw.worktreeCompactColumns, 2);
 });
+
+test("Don't ask here for agent instructions is kept per project, across a restart", async () => {
+  installLocalStorage();
+  const { usePreferencesStore } = await loadPreferencesStoreModule("instructions-declined");
+  usePreferencesStore.getState().declineInstructions("/work/notes");
+  usePreferencesStore.getState().declineInstructions("/work/notes");
+  assert.deepEqual(usePreferencesStore.getState().instructionsDeclined, ["/work/notes"]);
+
+  const saved = localStorage.getItem(STORAGE_KEY)!;
+  installLocalStorage(saved);
+  const reloaded = await loadPreferencesStoreModule("instructions-declined-reload");
+  assert.deepEqual(reloaded.usePreferencesStore.getState().instructionsDeclined, ["/work/notes"]);
+
+  installLocalStorage(JSON.stringify({ instructionsDeclined: ["/a", 7, "", "/a", null] }));
+  const corrupt = await loadPreferencesStoreModule("instructions-declined-corrupt");
+  assert.deepEqual(corrupt.usePreferencesStore.getState().instructionsDeclined, ["/a"]);
+});
