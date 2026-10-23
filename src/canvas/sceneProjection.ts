@@ -39,6 +39,7 @@ interface SceneDocumentState {
   browserCards?: Record<string, BrowserCardData> | null;
   connections?: Record<string, ConnectionData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
+  sidePanelWorktreeId?: string | null;
 }
 
 function worldAnchor(position: { x: number; y: number }): AnnotationAnchor {
@@ -271,6 +272,9 @@ export function buildSceneDocument(
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),
     stashedTerminals: state.stashedTerminals ?? undefined,
+    ...(state.sidePanelWorktreeId
+      ? { sidePanelWorktreeId: state.sidePanelWorktreeId }
+      : {}),
   };
 }
 

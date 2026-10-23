@@ -30,6 +30,13 @@ import {
   type RepoContextOption,
 } from "./RightPanel/repoContext";
 import { openFileInView } from "../actions/openSession";
+import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
+import { resolvePanelProject } from "./RightPanel/panelProject";
+import {
+  PanelNoProjects,
+  PanelProjectChooser,
+  PanelProjectHeader,
+} from "./RightPanel/ProjectPicker";
 import { panelContentStyle, panelTransition } from "../utils/panelAnimation";
 import { usePanelPresence } from "../utils/usePanelPresence";
 
@@ -47,6 +54,8 @@ export function RightPanel() {
   const notify = useNotificationStore((s) => s.notify);
 
   const focusedWorktreeId = useProjectStore((s) => s.focusedWorktreeId);
+  const panelWorktreeId = useProjectStore((s) => s.panelWorktreeId);
+  const setPanelWorktree = useProjectStore((s) => s.setPanelWorktree);
   const projects = useProjectStore((s) => s.projects);
   const [hydraEnabling, setHydraEnabling] = useState(false);
   const [directoryIsGitRepo, setDirectoryIsGitRepo] = useState(false);
@@ -90,30 +99,15 @@ export function RightPanel() {
     }
   }, [collapsed, projects]);
 
-  const focusedProject = useMemo(() => {
-    if (!focusedWorktreeId) return null;
-    for (const p of projects) {
-      const wt = p.worktrees.find((w) => w.id === focusedWorktreeId);
-      if (wt) return p;
-    }
-    return null;
-  }, [focusedWorktreeId, projects]);
-
-  const worktreePath = useMemo(() => {
-    if (!focusedWorktreeId) return null;
-    for (const p of projects) {
-      const wt = p.worktrees.find((w) => w.id === focusedWorktreeId);
-      if (wt) return wt.path;
-    }
-    return null;
-  }, [focusedWorktreeId, projects]);
-
-  // Keep the last active worktree path so the left panel stays populated
-  const lastWorktreePathRef = useRef<string | null>(null);
-  if (worktreePath) {
-    lastWorktreePathRef.current = worktreePath;
-  }
-  const effectiveWorktreePath = worktreePath ?? lastWorktreePathRef.current;
+  // One project of this workdesk, never a folder left over from another
+  // workdesk or from before focus was cleared (see panelProject.ts).
+  const panelProject = useMemo(
+    () => resolvePanelProject(projects, panelWorktreeId, focusedWorktreeId),
+    [projects, panelWorktreeId, focusedWorktreeId],
+  );
+  const shownProject = panelProject.kind === "project" ? panelProject.project : null;
+  const effectiveWorktreePath =
+    panelProject.kind === "project" ? panelProject.worktree.path : null;
   const repoScopedTabs = activeTab === "diff" || activeTab === "git" || activeTab === "memory";
 
   useEffect(() => {
@@ -304,6 +298,7 @@ export function RightPanel() {
   );
 
   const handleEnableHydra = useCallback(async () => {
+    const focusedProject = shownProject;
     if (!focusedProject) {
       notify("warn", t.hydra_enable_missing_target);
       return;
@@ -328,7 +323,7 @@ export function RightPanel() {
     } finally {
       setHydraEnabling(false);
     }
-  }, [focusedProject, notify, t]);
+  }, [shownProject, notify, t]);
 
   const dragging = useSidebarDragStore((s) => s.active);
   // Animate the outer width on expand/collapse; pause the transition
@@ -424,7 +419,26 @@ export function RightPanel() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      {panelProject.kind === "project" && (
+        <PanelProjectHeader
+          project={panelProject.project}
+          worktree={panelProject.worktree}
+          projects={projects}
+          onPick={setPanelWorktree}
+        />
+      )}
+
+      {panelProject.kind === "choose" && (
+        <PanelProjectChooser projects={panelProject.projects} onPick={setPanelWorktree} />
+      )}
+      {panelProject.kind === "none" && (
+        <PanelNoProjects onAddFolder={() => void promptAndAddProjectToScene(t)} />
+      )}
+
+      <div
+        className="flex-1 min-h-0 flex flex-col"
+        style={{ display: panelProject.kind === "project" ? undefined : "none" }}
+      >
         {repoScopedTabs && repoContext.selectorKind !== "none" && (
           <div className="shrink-0 px-2 pb-2">
             <div className="rounded-lg bg-[var(--bg)] px-2 py-2">
@@ -552,7 +566,7 @@ export function RightPanel() {
             {activeTab === "git" && (
               <GitContent
                 worktreePath={repoContextPath}
-                onEnableHydra={focusedProject ? handleEnableHydra : undefined}
+                onEnableHydra={shownProject ? handleEnableHydra : undefined}
                 hydraEnabling={hydraEnabling}
               />
             )}

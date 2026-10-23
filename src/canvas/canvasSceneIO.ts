@@ -134,6 +134,7 @@ export function captureLiveCanvasScene(): SceneDocument {
     drawings: useDrawingStore.getState().elements,
     browserCards: useBrowserCardStore.getState().cards,
     connections: useConnectionStore.getState().connections,
+    sidePanelWorktreeId: useProjectStore.getState().panelWorktreeId,
   });
 }
 
@@ -153,7 +154,13 @@ export function applyCanvasSceneToLive(scene: SceneDocument) {
   clearTerminalGeometryRegistry();
   clearSceneSelection();
   useCanvasStore.getState().restoreViewport(restored.viewport);
-  useProjectStore.setState(normalizeProjectsFocus(restoredProjects));
+  const focus = normalizeProjectsFocus(restoredProjects);
+  // Workdesks saved before the side panel kept its own project show what the
+  // focused terminal's project was.
+  useProjectStore.setState({
+    ...focus,
+    panelWorktreeId: scene.sidePanelWorktreeId ?? focus.focusedWorktreeId,
+  });
   useDrawingStore.setState({ elements: restored.drawings });
   restoreBrowserCardsInScene(restored.browserCards);
   restoreConnectionsInScene(restored.connections);

@@ -656,6 +656,9 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
         : {},
     annotations,
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),
+    ...(typeof record.sidePanelWorktreeId === "string"
+      ? { sidePanelWorktreeId: record.sidePanelWorktreeId }
+      : {}),
   };
 }
 

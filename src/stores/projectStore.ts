@@ -41,6 +41,13 @@ interface ProjectStore {
   projects: ProjectData[];
   focusedProjectId: string | null;
   focusedWorktreeId: string | null;
+  /**
+   * The worktree the side panel (Files, Diff, Git, Memory) shows on this
+   * workdesk. Focusing a terminal or a project sets it; clearing focus
+   * (clicking empty canvas) doesn't, so the panel never goes blank or falls
+   * back to another workdesk's folder. Saved with the workdesk.
+   */
+  panelWorktreeId: string | null;
 
   addProject: (project: ProjectData) => void;
   removeProject: (projectId: string) => void;
@@ -177,6 +184,8 @@ interface ProjectStore {
     worktreeId: string | null,
   ) => void;
   clearFocus: () => void;
+  /** Show this worktree in the side panel, without focusing anything. */
+  setPanelWorktree: (worktreeId: string) => void;
 
   setWaypoint: (
     projectId: string,
@@ -524,6 +533,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   projects: [],
   focusedProjectId: null,
   focusedWorktreeId: null,
+  panelWorktreeId: null,
 
   addProject: (project) => {
     set((state) => ({
@@ -1060,9 +1070,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return;
     }
 
+    let panelChanged = false;
     set((state) => {
       const { currentFocusedTerminalId, nextProjectId, nextWorktreeId } =
         focusLookup;
+      // In the same update as focus, so subscribers see one change.
+      const panelWorktreeId = nextWorktreeId ?? state.panelWorktreeId;
       const focusedProjects = updateFocusedTerminalFlags(
         state.projects,
         currentFocusedTerminalId,
@@ -1077,17 +1090,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (
         projects === state.projects &&
         nextProjectId === state.focusedProjectId &&
-        nextWorktreeId === state.focusedWorktreeId
+        nextWorktreeId === state.focusedWorktreeId &&
+        panelWorktreeId === state.panelWorktreeId
       ) {
         return state;
       }
 
+      panelChanged = panelWorktreeId !== state.panelWorktreeId;
       return {
         focusedProjectId: nextProjectId,
         focusedWorktreeId: nextWorktreeId,
+        panelWorktreeId,
         projects,
       };
     });
+    if (panelChanged) markDirty();
     if (
       terminalId &&
       options?.focusInput !== false &&
@@ -1122,6 +1139,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return;
     }
 
+    let panelChanged = false;
     set((state) => {
       const { currentFocusedTerminalId } = inspectFocus(state.projects, null);
       const focusedProjects = updateFocusedTerminalFlags(
@@ -1138,17 +1156,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (
         projects === state.projects &&
         projectId === state.focusedProjectId &&
-        worktreeId === state.focusedWorktreeId
+        worktreeId === state.focusedWorktreeId &&
+        worktreeId === state.panelWorktreeId
       ) {
         return state;
       }
 
+      panelChanged = worktreeId !== state.panelWorktreeId;
       return {
         focusedProjectId: projectId,
         focusedWorktreeId: worktreeId,
+        panelWorktreeId: worktreeId,
         projects,
       };
     });
+    if (panelChanged) markDirty();
   },
 
   clearFocus: () => {
@@ -1175,6 +1197,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         projects,
       };
     });
+  },
+
+  setPanelWorktree: (worktreeId) => {
+    const state = get();
+    if (state.panelWorktreeId === worktreeId) return;
+    const exists = state.projects.some((project) =>
+      project.worktrees.some((worktree) => worktree.id === worktreeId),
+    );
+    if (!exists) return;
+    set({ panelWorktreeId: worktreeId });
+    markDirty();
   },
 
   setWaypoint: (projectId, slot, waypoint) => {

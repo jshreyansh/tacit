@@ -106,6 +106,8 @@ export interface SceneDocument {
   connections?: Record<string, ConnectionData>;
   annotations: AnnotationElement[];
   stashedTerminals?: PersistedStashedTerminal[];
+  /** The worktree this workdesk's side panel shows (projectStore.panelWorktreeId). */
+  sidePanelWorktreeId?: string;
 }
 
 export interface SceneRuntime {
