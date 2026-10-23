@@ -547,7 +547,12 @@ export function RightPanel() {
           </div>
         ) : (
           <>
-            {activeTab === "diff" && <DiffContent worktreePath={repoContextPath} />}
+            {activeTab === "diff" && (
+              <DiffContent
+                worktreePath={repoContextPath}
+                isGitRepo={directoryIsGitRepo || repoContext.selectedRepoPath !== null}
+              />
+            )}
             {activeTab === "git" && (
               <GitContent
                 worktreePath={repoContextPath}

@@ -5,6 +5,7 @@ import { toggleExpandedFiles } from "../diffCardExpansion";
 
 interface Props {
   worktreePath: string | null;
+  isGitRepo: boolean;
 }
 
 function ChangeBar({
@@ -39,15 +40,26 @@ function ChangeBar({
   );
 }
 
-export function DiffContent({ worktreePath }: Props) {
+export function DiffContent({ worktreePath, isGitRepo }: Props) {
   const t = useT();
-  const { fileDiffs, loading, refreshing } = useWorktreeDiff(worktreePath);
+  // A folder without git has no diff to ask for; asking only fails, and the
+  // failure used to read as "No changes".
+  const { fileDiffs, loading, refreshing } = useWorktreeDiff(isGitRepo ? worktreePath : null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   if (!worktreePath) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <span className="tc-caption">{t.no_worktree_selected}</span>
+      </div>
+    );
+  }
+
+  if (!isGitRepo) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-1 px-4 text-center" data-testid="diff-not-git">
+        <span className="tc-caption">{t.git_not_repository}</span>
+        <span className="text-[11px] text-[var(--text-muted)]">{t.diff_not_repository_hint}</span>
       </div>
     );
   }

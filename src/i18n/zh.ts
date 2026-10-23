@@ -389,6 +389,7 @@ export const zh = {
   diff: "变更",
   loading: "加载中...",
   no_changes: "无变更",
+  diff_not_repository_hint: "差异视图显示 Git 追踪的变更。可在 Git 标签页为此文件夹初始化 Git。",
   binary_label: "二进制",
   removed: "已删除",
   file_new: "新增",

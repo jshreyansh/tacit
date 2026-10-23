@@ -392,6 +392,7 @@ export const en = {
   diff: "Diff",
   loading: "Loading...",
   no_changes: "No changes",
+  diff_not_repository_hint: "Diff shows the changes Git tracks. Start Git for this folder in the Git tab.",
   binary_label: "binary",
   removed: "Removed",
   file_new: "New",
