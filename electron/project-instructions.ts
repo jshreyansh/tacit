@@ -25,9 +25,10 @@ const execFileAsync = promisify(execFile);
 /**
  * The instructions Tacit offers to add to a project, so agents there know
  * its commands. Tasks and Notes work in any folder; the multi-agent (Hydra)
- * section only where git is, since its workers each get a git branch. Both
- * are written to AGENTS.md, with CLAUDE.md importing it
- * (shared/agent-instructions.ts).
+ * section only where git is, since its workers each get a git branch. Older
+ * versions of Tacit added it to folders without git too; setting up such a
+ * folder takes it out. Both are written to AGENTS.md, with CLAUDE.md
+ * importing it (shared/agent-instructions.ts).
  *
  * Checking only reads. Nothing is written until the person says yes.
  */
@@ -85,15 +86,15 @@ function hasSection(dir: string, section: InstructionSection): boolean {
   });
 }
 
-async function sectionsFor(dir: string): Promise<{ sections: InstructionSection[]; workflows: boolean; inGit: boolean }> {
+async function sectionsFor(dir: string): Promise<{
+  sections: InstructionSection[];
+  withdrawn: InstructionSection[];
+  inGit: boolean;
+}> {
   const inGit = await isInGitRepo(dir);
-  // A project that took the multi-agent section before keeps it current.
-  const workflows = inGit || hasSection(dir, HYDRA_INSTRUCTIONS);
-  return {
-    sections: workflows ? [HYDRA_INSTRUCTIONS, PIN_INSTRUCTIONS] : [PIN_INSTRUCTIONS],
-    workflows,
-    inGit,
-  };
+  return inGit
+    ? { sections: [HYDRA_INSTRUCTIONS, PIN_INSTRUCTIONS], withdrawn: [], inGit }
+    : { sections: [PIN_INSTRUCTIONS], withdrawn: [HYDRA_INSTRUCTIONS], inGit };
 }
 
 export async function checkProjectInstructions(
@@ -103,12 +104,13 @@ export async function checkProjectInstructions(
   const folder = requireFolder(dir);
   if (holdsHomeFolder(folder, homeDir)) return { offered: false, reason: "home" };
 
-  const { sections, workflows, inGit } = await sectionsFor(folder);
-  const state = checkInstructions(folder, sections);
+  const { sections, withdrawn, inGit } = await sectionsFor(folder);
+  const state = checkInstructions(folder, sections, withdrawn);
   return {
     offered: true,
     status: state.status,
-    workflows,
+    workflows: inGit,
+    removesWorkflows: withdrawn.some((section) => hasSection(folder, section)),
     files: [
       { name: AGENTS_FILE, exists: state.agentsExists, git: inGit ? await fileGitState(folder, AGENTS_FILE) : null },
       { name: CLAUDE_FILE, exists: state.claudeExists, git: inGit ? await fileGitState(folder, CLAUDE_FILE) : null },
@@ -128,8 +130,8 @@ export async function setUpProjectInstructions(
     };
   }
   try {
-    const { sections } = await sectionsFor(folder);
-    const files = writeInstructions(folder, sections);
+    const { sections, withdrawn } = await sectionsFor(folder);
+    const files = writeInstructions(folder, sections, withdrawn);
     return {
       ok: true,
       changed: files.some((file) => file.status !== "unchanged"),

@@ -445,6 +445,7 @@ export const zh = {
   instructions_title_outdated: (name: string) => `更新 ${name} 中 Tacit 的智能体说明？`,
   instructions_no_git: "多智能体工作流需要 git，所以这里不包含它。",
   instructions_outdated_body: "它们来自旧版本的 Tacit。",
+  instructions_removes_workflows: "它们来自旧版本的 Tacit。多智能体部分会被移除：它需要 Git，而此文件夹不是 Git 仓库。",
   instructions_agents_file: "Tacit 的章节",
   instructions_claude_file: "一行：@AGENTS.md",
   instructions_git_tracked: "由 git 跟踪",

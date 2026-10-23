@@ -448,6 +448,8 @@ export const en = {
   instructions_title_outdated: (name: string) => `Update Tacit's agent instructions in ${name}?`,
   instructions_no_git: "Multi-agent workflows need git, so they're left out here.",
   instructions_outdated_body: "They're from an older version of Tacit.",
+  instructions_removes_workflows:
+    "They're from an older version of Tacit. The multi-agent section is taken out: it needs git, and this folder isn't a git repository.",
   instructions_agents_file: "Tacit's section",
   instructions_claude_file: "one line: @AGENTS.md",
   instructions_git_tracked: "tracked by git",

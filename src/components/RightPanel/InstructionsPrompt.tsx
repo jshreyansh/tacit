@@ -122,7 +122,13 @@ export function InstructionsPrompt({ projectPath, projectName }: { projectPath: 
     : value.workflows
       ? t.instructions_title_missing_workflows(projectName)
       : t.instructions_title_missing(projectName);
-  const note = outdated ? t.instructions_outdated_body : value.workflows ? null : t.instructions_no_git;
+  const note = value.removesWorkflows
+    ? t.instructions_removes_workflows
+    : outdated
+      ? t.instructions_outdated_body
+      : value.workflows
+        ? null
+        : t.instructions_no_git;
   const tracked = value.files.some((file) => file.git === "tracked");
 
   const setUp = () => {

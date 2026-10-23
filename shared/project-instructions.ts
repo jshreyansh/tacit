@@ -24,8 +24,10 @@ export type ProjectInstructionsStatus =
       offered: true;
       /** missing: never set up. outdated: set up, but old or in the old layout. */
       status: "missing" | "outdated" | "current";
-      /** Whether the multi-agent (Hydra) section is included: only where git is, or already there. */
+      /** Whether the multi-agent (Hydra) section is included: only where git is. */
       workflows: boolean;
+      /** Whether setting up takes out a multi-agent section an older Tacit added without git. */
+      removesWorkflows: boolean;
       files: ProjectInstructionFile[];
     };
 

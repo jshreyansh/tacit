@@ -160,21 +160,31 @@ export interface InstructionsState {
   claudeExists: boolean;
 }
 
-/** Read-only: how far `dir` is from having `sections` in the layout above. */
-export function checkInstructions(dir: string, sections: readonly InstructionSection[]): InstructionsState {
+/**
+ * Read-only: how far `dir` is from having `sections` in the layout above,
+ * and none of `withdrawn` (sections Tacit added before that no longer apply).
+ */
+export function checkInstructions(
+  dir: string,
+  sections: readonly InstructionSection[],
+  withdrawn: readonly InstructionSection[] = [],
+): InstructionsState {
   const agents = readIfPresent(path.join(dir, AGENTS_FILE));
   const claude = readIfPresent(path.join(dir, CLAUDE_FILE));
   const allHeadings = sections.flatMap(headingsOf);
-  const anywhere =
-    (agents !== null && findSectionRanges(agents, allHeadings).length > 0) ||
-    (claude !== null && findSectionRanges(claude, allHeadings).length > 0);
+  const withdrawnHeadings = withdrawn.flatMap(headingsOf);
+  const has = (content: string | null, headings: string[]) =>
+    content !== null && headings.length > 0 && findSectionRanges(content, headings).length > 0;
+  const anywhere = [agents, claude].some((content) => has(content, [...allHeadings, ...withdrawnHeadings]));
   const state = { agentsExists: agents !== null, claudeExists: claude !== null };
   if (!anywhere) return { status: "missing", ...state };
 
   const current =
     sections.every((section) => sectionStatus(agents, section) === "current") &&
     claudeImportsAgentsFile(claude) &&
-    findSectionRanges(claude ?? "", allHeadings).length === 0;
+    !has(claude, allHeadings) &&
+    !has(agents, withdrawnHeadings) &&
+    !has(claude, withdrawnHeadings);
   return { status: current ? "current" : "outdated", ...state };
 }
 
@@ -196,16 +206,19 @@ function writeFile(
 /**
  * Writes `sections` into AGENTS.md (each replacing its old copy), and makes
  * CLAUDE.md import AGENTS.md, taking out any copy of the same sections it
- * held. Everything else in both files is left as it was.
+ * held. `withdrawn` sections are taken out of both files. Everything else in
+ * both files is left as it was.
  */
 export function writeInstructions(
   dir: string,
   sections: readonly InstructionSection[],
+  withdrawn: readonly InstructionSection[] = [],
 ): InstructionFileResult[] {
-  const allHeadings = sections.flatMap(headingsOf);
+  const withdrawnHeadings = withdrawn.flatMap(headingsOf);
+  const allHeadings = [...sections.flatMap(headingsOf), ...withdrawnHeadings];
 
   const agentsBefore = readIfPresent(path.join(dir, AGENTS_FILE));
-  let agents = agentsBefore ?? "";
+  let agents = withdrawnHeadings.length > 0 ? removeSections(agentsBefore ?? "", withdrawnHeadings) : agentsBefore ?? "";
   for (const section of sections) agents = upsertSection(agents, section);
   const agentsHadText = findSectionRanges(agentsBefore ?? "", allHeadings).length > 0;
 

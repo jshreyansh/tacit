@@ -115,6 +115,20 @@ test("a section under its former heading is replaced, and duplicates are removed
   assert.match(agents, /## Hydra Orchestration Toolkit\n\nUse `hydra dispatch`\.\n\n## Notes\n\nKeep me\.\n$/);
 });
 
+test("withdrawn sections are taken out of both files, and their presence is out of date", (t) => {
+  const dir = folder(t, {
+    "AGENTS.md": `# Project\n\n${WORKFLOWS.text}\n${TASKS.text}`,
+    "CLAUDE.md": `${WORKFLOWS.text}\n## Mine\n\nKeep me.\n\n@AGENTS.md\n`,
+  });
+  assert.equal(checkInstructions(dir, [TASKS], [WORKFLOWS]).status, "outdated");
+  // Without the withdrawal the same files would read as current for TASKS in AGENTS.md,
+  // so it's the withdrawn section that makes them out of date.
+  writeInstructions(dir, [TASKS], [WORKFLOWS]);
+  assert.equal(read(dir, "AGENTS.md"), `# Project\n\n${TASKS.text}`);
+  assert.equal(read(dir, "CLAUDE.md"), "## Mine\n\nKeep me.\n\n@AGENTS.md\n");
+  assert.equal(checkInstructions(dir, [TASKS], [WORKFLOWS]).status, "current");
+});
+
 test("checking never writes, even when the instructions are out of date", (t) => {
   const dir = folder(t, { "AGENTS.md": "## Tacit Pin System\n\nOld.\n", "CLAUDE.md": "## Tacit Pin System\n\nOld.\n" });
   const before = [read(dir, "AGENTS.md"), read(dir, "CLAUDE.md")];

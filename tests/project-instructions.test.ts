@@ -58,6 +58,7 @@ test("a plain folder is offered tasks and notes, without the multi-agent section
     offered: true,
     status: "missing",
     workflows: false,
+    removesWorkflows: false,
     files: [
       { name: "AGENTS.md", exists: false, git: null },
       { name: "CLAUDE.md", exists: false, git: null },
@@ -83,6 +84,7 @@ test("a git repo gets both sections, and the prompt says which files git tracks"
   const status = await checkProjectInstructions(dir, "/nowhere");
   assert.ok(status.offered);
   assert.equal(status.workflows, true);
+  assert.equal(status.removesWorkflows, false);
   assert.deepEqual(status.files, [
     { name: "AGENTS.md", exists: false, git: "ignored" },
     { name: "CLAUDE.md", exists: true, git: "tracked" },
@@ -95,11 +97,41 @@ test("a git repo gets both sections, and the prompt says which files git tracks"
   assert.match(read(dir, "CLAUDE.md"), /^# Team rules\n\n## Shared Agent Instructions[\s\S]*^@AGENTS\.md$/m);
 });
 
-test("a plain folder that took the multi-agent section before keeps it current", async (t) => {
+test("a plain folder an older Tacit gave the multi-agent section loses it on update", async (t) => {
+  // Older versions wrote both sections into both files of any folder,
+  // git or not. Hydra's workers each need a git branch, so there the
+  // section only describes commands that fail.
   const dir = tempDir(t, "tacit-instr-had-hydra-");
-  fs.writeFileSync(path.join(dir, "CLAUDE.md"), "## Hydra Orchestration Toolkit\n\nOld.\n");
+  const old = "## Hydra Orchestration Toolkit\n\nOld hydra.\n\n## Tacit Pin System\n\nOld pins.\n";
+  fs.writeFileSync(path.join(dir, "AGENTS.md"), old);
+  fs.writeFileSync(path.join(dir, "CLAUDE.md"), `# My notes\n\nBe brief.\n\n${old}`);
+
   const status = await checkProjectInstructions(dir, "/nowhere");
-  assert.ok(status.offered && status.workflows && status.status === "outdated");
+  assert.ok(status.offered);
+  assert.equal(status.status, "outdated");
+  assert.equal(status.workflows, false);
+  assert.equal(status.removesWorkflows, true);
+
+  const result = await setUpProjectInstructions(dir, "/nowhere");
+  assert.equal(result.ok, true);
+  const agents = read(dir, "AGENTS.md");
+  assert.doesNotMatch(agents, /Hydra/);
+  assert.match(agents, /^## Tacit Pin System/);
+  const claude = read(dir, "CLAUDE.md");
+  assert.doesNotMatch(claude, /Hydra|Tacit Pin System/);
+  assert.match(claude, /^# My notes\n\nBe brief\.\n\n## Shared Agent Instructions[\s\S]*^@AGENTS\.md$/m);
+
+  const after = await checkProjectInstructions(dir, "/nowhere");
+  assert.ok(after.offered);
+  assert.equal(after.status, "current");
+  assert.equal(after.removesWorkflows, false);
+});
+
+test("a plain folder holding only the multi-agent section is offered an update, not a fresh setup", async (t) => {
+  const dir = tempDir(t, "tacit-instr-only-hydra-");
+  fs.writeFileSync(path.join(dir, "AGENTS.md"), "## Hydra Orchestration Toolkit\n\nOld.\n");
+  const status = await checkProjectInstructions(dir, "/nowhere");
+  assert.ok(status.offered && status.status === "outdated" && status.removesWorkflows);
 });
 
 test("checking an out-of-date project only reads it", async (t) => {
