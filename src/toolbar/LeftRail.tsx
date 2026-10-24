@@ -167,9 +167,9 @@ export function LeftRail() {
         </button>
 
         {/* Sessions: what's on this workdesk now, what needs you, and past
-            sessions, where a folder or a session is added. It was only in
-            the chat's header, a click away from where you start. It opens
-            in the chat's place, wherever the chat lives. */}
+            sessions, where a folder or a session is added. It's also in the
+            chat's header, but here it's a click away from where you start.
+            It opens in the chat's place, wherever the chat lives. */}
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           data-on={sessionsOpen ? "" : undefined}
