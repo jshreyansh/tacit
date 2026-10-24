@@ -548,10 +548,18 @@ test(
   },
 );
 
+// Without the flag OpenCode 2 joins its background service, which runs with
+// the environment of whatever started it. With none running, this launch
+// would start it, and the service would run the bridge (for every session
+// that joins it after) — so it only runs when the service already is.
+const openCodeServiceRunning = spawnSync("pgrep", ["-f", "opencode serve --service"]).status === 0;
+
 test(
   "the real opencode 2 without --standalone never starts it, which is why the flag is there",
   {
-    skip: realOpenCodeSkip || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2"),
+    skip: realOpenCodeSkip
+      || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2")
+      || (!openCodeServiceRunning && "OpenCode's background service isn't running, and this would start it"),
     timeout: 60_000,
   },
   async () => {
