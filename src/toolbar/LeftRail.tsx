@@ -32,7 +32,7 @@ import { DockIcon, createFromDock, dockEntry, useDockAvailability, type DockEntr
  * the two panels could cover both margins at once.
  *
  * They are split by verb now. Everything that opens a view of work you already
- * have lives here — the Hub, Sessions, History, Files, Diff, Git, Memory — and
+ * have lives here — the Hub, the chat, Sessions, Files, Diff, Git, Memory — and
  * everything that creates something lives on the right rail. One panel opens
  * beside this rail, never two, because the surfaces that fill it are all
  * reached from the same column.
@@ -102,7 +102,12 @@ function DockRailButton({ entry }: { entry: DockEntry }) {
 export function LeftRail() {
   const t = useT();
   const chatOpen = useChatDockStore((s) => s.open);
-  const toggleChat = useChatDockStore((s) => s.toggle);
+  const chatFace = useChatDockStore((s) => s.face);
+  const setChatOpen = useChatDockStore((s) => s.setOpen);
+  const showChatFace = useChatDockStore((s) => s.showFace);
+  // Sessions opens in the chat's place, so the two buttons take turns being lit.
+  const sessionsOpen = chatOpen && chatFace === "sessions";
+  const conversationOpen = chatOpen && !sessionsOpen;
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
@@ -144,20 +149,45 @@ export function LeftRail() {
           (Files, Diff, Git) and Memory. Always in view, however short the
           window. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
-        {/* The workdesk manager's chat. Sessions and History moved into it
-            (its Sessions view), along with Pins. */}
+        {/* The workdesk manager's chat, with its Tasks. */}
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
-          data-on={chatOpen ? "" : undefined}
+          data-on={conversationOpen ? "" : undefined}
           title={chatLabel}
           aria-label={chatLabel}
-          aria-pressed={chatOpen}
-          onClick={toggleChat}
+          aria-pressed={conversationOpen}
+          onClick={() => {
+            if (conversationOpen) setChatOpen(false);
+            else showChatFace(chatFace === "sessions" ? "chat" : chatFace);
+          }}
         >
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
           </svg>
-          {needsYou > 0 && !chatOpen && (
+        </button>
+
+        {/* Sessions: what's on this workdesk now, what needs you, and past
+            sessions, where a folder or a session is added. It was only in
+            the chat's header, a click away from where you start. It opens
+            in the chat's place, wherever the chat lives. */}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          data-on={sessionsOpen ? "" : undefined}
+          data-testid="rail-sessions"
+          title={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
+          aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
+          aria-pressed={sessionsOpen}
+          onClick={() => {
+            if (sessionsOpen) setChatOpen(false);
+            else showChatFace("sessions");
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 3a5 5 0 1 1-4.2 2.3" />
+            <path d="M3.2 3.5v2.2h2.2" />
+            <path d="M8 5.5V8l1.8 1.2" />
+          </svg>
+          {needsYou > 0 && !sessionsOpen && (
             <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
           )}
         </button>

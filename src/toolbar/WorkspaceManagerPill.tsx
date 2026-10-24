@@ -19,7 +19,7 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { ChatHistory } from "./ChatHistory";
-import { LiveSessions, useNeedsYouCount } from "./LiveSessions";
+import { LiveSessions } from "./LiveSessions";
 import { TasksView } from "../tasks/TasksView";
 import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
 import { TaskBar } from "../tasks/TaskParts";
@@ -782,7 +782,6 @@ export function WorkspaceManagerPill() {
   }, [transcript.messages]);
 
   const faceOpen = view !== "chat";
-  const needsYou = useNeedsYouCount();
 
   // The pin view beside the chat belongs to the Pins face: leaving it, or
   // closing the chat, closes the project's pins too.
@@ -1111,26 +1110,8 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
-        {/* Sessions and Pins each open in place of the conversation; the lit
-            icon takes you back. */}
-        <button
-          type="button"
-          className={`${iconButton} relative`}
-          data-on={view === "sessions" ? "" : undefined}
-          aria-pressed={view === "sessions"}
-          onClick={() => setView(view === "sessions" ? "chat" : "sessions")}
-          title={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-          aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8 3a5 5 0 1 1-4.2 2.3" />
-            <path d="M3.2 3.5v2.2h2.2" />
-            <path d="M8 5.5V8l1.8 1.2" />
-          </svg>
-          {needsYou > 0 && view !== "sessions" && (
-            <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
-          )}
-        </button>
+        {/* Tasks open in place of the conversation; the lit icon takes you
+            back. Sessions opens the same way, from the left bar. */}
         <button
           type="button"
           className={`${iconButton} relative`}
