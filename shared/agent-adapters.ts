@@ -87,15 +87,22 @@ export interface AgentLaunchPlan {
    */
   placement: "prepend" | "before-double-dash";
   /**
-   * For arguments only some launches take: the agent's arguments with them
-   * put in place, or unchanged. Applied after `args`. Chat mode starts the
-   * agent's protocol subcommand from `args` alone, so it never gets these.
+   * For agents where only some launches can take the tools: this launch's
+   * arguments (after `args` are placed) and environment, in place of `env`.
+   * Chat mode starts the agent's protocol subcommand from `args` and `env`
+   * alone, so it never uses this.
    */
-  addLaunchArgs?: (agentArgs: string[]) => string[];
+  adaptLaunch?: (agentArgs: string[]) => AgentLaunch;
   /** Environment to set for the agent process. */
   env: Record<string, string>;
   /** Files the caller must write before launching. */
   files: LaunchFile[];
+}
+
+/** What one launch runs with. */
+export interface AgentLaunch {
+  args: string[];
+  env: Record<string, string>;
 }
 
 /**
@@ -314,21 +321,25 @@ const OPENCODE_SUBCOMMANDS: ReadonlySet<string> = new Set([
 ]);
 /** The ones that open a session, so need its MCP servers. */
 const OPENCODE_SESSION_SUBCOMMANDS: ReadonlySet<string> = new Set(["run", "mini"]);
+/** Opens a session on a server of its own, so takes the tools as it is. */
+const OPENCODE_OWN_SERVER_SUBCOMMANDS: ReadonlySet<string> = new Set(["acp"]);
 /** Its top-level options that take a value, which isn't the subcommand. */
 const OPENCODE_VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "--server", "--session", "-s", "--prompt", "--log-level", "--completions",
 ]);
 
 /**
- * OpenCode's arguments with `--standalone` on a launch that opens a session:
- * its UI (no subcommand, or a folder to open) gets it first, `run` and
- * `mini` right after their name. Every other subcommand is left alone: it
- * opens no session, and given the flag before or after its name most print
- * their help and exit 1. So is a launch that already names a server, which
- * OpenCode refuses to combine with this flag.
+ * OpenCode's arguments for a launch that opens a session on a server of its
+ * own, or null when it doesn't. Its UI (no subcommand, or a folder to open)
+ * gets `--standalone` first, `run` and `mini` right after their name, and
+ * `acp`, which starts its own server, is left as it is. Every other
+ * subcommand opens no session, and given the flag before or after its name
+ * most print their help and exit 1; a launch that names a server uses that
+ * one, which OpenCode refuses to combine with the flag.
  */
-export function withOpenCodeStandalone(args: string[]): string[] {
-  if (args.some((arg) => /^--(standalone|server)(=|$)/.test(arg))) return args;
+export function withOpenCodeStandalone(args: string[]): string[] | null {
+  if (args.some((arg) => /^--standalone(=|$)/.test(arg))) return args;
+  if (args.some((arg) => /^--server(=|$)/.test(arg))) return null;
   let i = 0;
   while (i < args.length && args[i].startsWith("-") && args[i] !== "--") {
     i += OPENCODE_VALUE_OPTIONS.has(args[i]) ? 2 : 1;
@@ -336,7 +347,8 @@ export function withOpenCodeStandalone(args: string[]): string[] {
   const word = i < args.length && args[i] !== "--" ? args[i] : null;
   if (word === null || !OPENCODE_SUBCOMMANDS.has(word)) return ["--standalone", ...args];
   if (OPENCODE_SESSION_SUBCOMMANDS.has(word)) return [...args.slice(0, i + 1), "--standalone", ...args.slice(i + 1)];
-  return args;
+  if (OPENCODE_OWN_SERVER_SUBCOMMANDS.has(word)) return args;
+  return null;
 }
 
 const opencode: AgentAdapter = {
@@ -357,6 +369,12 @@ const opencode: AgentAdapter = {
   // started the server). OpenCode 1 has no such flag and refuses it, printing
   // its help instead of opening, hence the version. `opencode acp`, which
   // chat mode runs, starts its own server and gets the tools without it.
+  //
+  // Its other commands get no tools, and lose any they inherited (from the
+  // terminal an agent runs them in): `opencode models`, for one, starts the
+  // background service when none is running, and the service keeps the
+  // environment it was started with, so it would run this terminal's bridge
+  // for every session after (verified against 2.1.4).
   mcpInjection: "env-config",
   launchDependsOnVersion: true,
   planBridgeLaunch(bridge, { inheritedEnv, version }) {
@@ -374,7 +392,8 @@ const opencode: AgentAdapter = {
     let config = existing
       ? parseExistingConfig(existing, "opencode", "OPENCODE_CONFIG_CONTENT")
       : {};
-    const mcp = objectOrEmpty(config.mcp);
+    const { [TACIT_MCP_SERVER_NAME]: _ours, ...mcp } = objectOrEmpty(config.mcp);
+    const withoutTools: Record<string, string> = existing ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, mcp }) } : {};
     config = {
       ...config,
       mcp: {
@@ -387,11 +406,16 @@ const opencode: AgentAdapter = {
         },
       },
     };
+    const env = { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
+    const adaptLaunch = (args: string[]): AgentLaunch => {
+      const session = withOpenCodeStandalone(args);
+      return session ? { args: session, env } : { args, env: withoutTools };
+    };
     return {
       args: [],
       placement: "prepend",
-      ...(major >= 2 ? { addLaunchArgs: withOpenCodeStandalone } : {}),
-      env: { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
+      ...(major >= 2 ? { adaptLaunch } : {}),
+      env,
       files: [],
     };
   },
@@ -609,10 +633,10 @@ export function planBridgeLaunch(
   return adapter.planBridgeLaunch(bridge, context);
 }
 
-/** The agent's arguments with the plan's folded in where it says. */
-export function applyLaunchArgs(args: string[], plan: AgentLaunchPlan): string[] {
+/** The agent's arguments with the plan's folded in where it says, and the environment to add. */
+export function applyLaunchPlan(args: string[], plan: AgentLaunchPlan): AgentLaunch {
   const placed = placeLaunchArgs(args, plan);
-  return plan.addLaunchArgs ? plan.addLaunchArgs(placed) : placed;
+  return plan.adaptLaunch ? plan.adaptLaunch(placed) : { args: placed, env: plan.env };
 }
 
 function placeLaunchArgs(args: string[], plan: AgentLaunchPlan): string[] {

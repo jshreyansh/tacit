@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { prepareBridgeLaunch } from "../../electron/agent-launch";
-import { applyLaunchArgs, findAgentAdapter } from "../../shared/agent-adapters";
+import { applyLaunchPlan, findAgentAdapter } from "../../shared/agent-adapters";
 
 type AgentShimProvider = "claude" | "codex" | "opencode" | "gemini" | "antigravity";
 
@@ -104,8 +104,9 @@ export function runAgentShim(provider: AgentShimProvider): never {
         command: realCommand,
       });
       if (plan) {
-        args = applyLaunchArgs(args, plan);
-        env = { ...env, ...plan.env };
+        const launch = applyLaunchPlan(args, plan);
+        args = launch.args;
+        env = { ...env, ...launch.env };
       }
     } catch (error) {
       // Still launch the agent, but say so in the terminal it is about to

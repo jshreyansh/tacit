@@ -93,7 +93,7 @@ import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
 import { detectAgents, locateCommand, runVersion } from "./agent-detect";
 import { writeShellIntegrationFiles } from "./shell-integration";
-import { applyLaunchArgs } from "../shared/agent-adapters";
+import { applyLaunchPlan } from "../shared/agent-adapters";
 import {
   isCliRegistered,
   registerCli,
@@ -1411,8 +1411,9 @@ function setupIpc() {
             command: options.shell,
           });
           if (plan) {
-            options.args = applyLaunchArgs(options.args ?? [], plan);
-            bridgeEnv = plan.env;
+            const launch = applyLaunchPlan(options.args ?? [], plan);
+            options.args = launch.args;
+            bridgeEnv = launch.env;
             // Shared configs an agent owns (`keep`) outlive the terminal.
             bridgeFiles = plan.files.filter((file) => !file.keep).map((file) => file.path);
           }

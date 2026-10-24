@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
 import {
   AgentCapabilityError,
-  applyLaunchArgs,
+  applyLaunchPlan,
   findAgentAdapter,
   listAgentAdapters,
   makeBridgeDescriptor,
@@ -85,28 +86,28 @@ test("the server is registered as `tacit`, so tools read mcp__tacit__*", () => {
 
 test("injected arguments land before a user's -- separator", () => {
   assert.deepEqual(
-    applyLaunchArgs(["--resume", "abc", "--", "fix the bug"], plan(["--mcp-config", "/tmp/x.json"], "before-double-dash")),
+    applyLaunchPlan(["--resume", "abc", "--", "fix the bug"], plan(["--mcp-config", "/tmp/x.json"], "before-double-dash")).args,
     ["--resume", "abc", "--mcp-config", "/tmp/x.json", "--", "fix the bug"],
   );
 });
 
 test("without a separator, before-double-dash appends", () => {
   assert.deepEqual(
-    applyLaunchArgs(["--resume", "abc"], plan(["--mcp-config", "/tmp/x.json"], "before-double-dash")),
+    applyLaunchPlan(["--resume", "abc"], plan(["--mcp-config", "/tmp/x.json"], "before-double-dash")).args,
     ["--resume", "abc", "--mcp-config", "/tmp/x.json"],
   );
 });
 
 test("prepend puts the arguments ahead of a subcommand", () => {
   assert.deepEqual(
-    applyLaunchArgs(["resume", "abc"], plan(["-c", "k=v"], "prepend")),
+    applyLaunchPlan(["resume", "abc"], plan(["-c", "k=v"], "prepend")).args,
     ["-c", "k=v", "resume", "abc"],
   );
 });
 
 test("an empty plan leaves the arguments alone", () => {
   const args = ["--resume", "abc"];
-  assert.equal(applyLaunchArgs(args, plan([], "prepend")), args);
+  assert.equal(applyLaunchPlan(args, plan([], "prepend")).args, args);
 });
 
 test("terminal types that are not agents have no adapter", () => {
@@ -220,7 +221,7 @@ test("codex passes the bridge as -c overrides, ahead of any subcommand", () => {
     "-c", 'mcp_servers.tacit.tools.browser_eval.approval_mode="prompt"',
   ]);
   assert.deepEqual(
-    applyLaunchArgs(["resume", "abc"], result).slice(-2),
+    applyLaunchPlan(["resume", "abc"], result).args.slice(-2),
     ["resume", "abc"],
   );
 });
@@ -409,7 +410,7 @@ test("opencode refuses to overwrite an OPENCODE_CONFIG_CONTENT it cannot read", 
 // started. --standalone gives the launch a private server that does.
 test("opencode 2 opens its UI and `run` with a private server, and leaves its other commands alone", () => {
   const { plan } = opencodeConfig();
-  const launch = (args: string[]) => applyLaunchArgs(args, plan);
+  const launch = (args: string[]) => applyLaunchPlan(args, plan).args;
   // What the dock passes: nothing, a session to resume, a first prompt.
   assert.deepEqual(launch([]), ["--standalone"]);
   assert.deepEqual(launch(["-s", "ses_1"]), ["--standalone", "-s", "ses_1"]);
@@ -420,7 +421,8 @@ test("opencode 2 opens its UI and `run` with a private server, and leaves its ot
   // Typed in a shell: the flag goes after `run` and `mini`, which refuse it before their name.
   assert.deepEqual(launch(["run", "fix it"]), ["run", "--standalone", "fix it"]);
   assert.deepEqual(launch(["--log-level", "debug", "mini"]), ["--log-level", "debug", "mini", "--standalone"]);
-  // Commands that open no session, most of which refuse the flag anywhere.
+  // Commands that open no session, most of which refuse the flag anywhere,
+  // and acp, which starts its own server.
   for (const args of [["models"], ["mcp", "list"], ["session", "list"], ["acp"], ["upgrade"]]) {
     assert.deepEqual(launch(args), args, args.join(" "));
   }
@@ -430,10 +432,37 @@ test("opencode 2 opens its UI and `run` with a private server, and leaves its ot
   }
 });
 
+// `opencode models` and the like start the background service when none is
+// running, and it keeps the environment it started with: given the tools, it
+// would run this terminal's bridge for every session after.
+test("opencode 2 gives the tools only to a launch that opens a session on a server of its own", () => {
+  const { plan } = opencodeConfig();
+  const tools = (args: string[]) => "OPENCODE_CONFIG_CONTENT" in applyLaunchPlan(args, plan).env;
+  for (const args of [[], ["-s", "ses_1"], ["notes"], ["run", "x"], ["mini"], ["acp"], ["--standalone"]]) {
+    assert.equal(tools(args), true, args.join(" "));
+  }
+  for (const args of [["models"], ["mcp", "list"], ["service", "start"], ["serve", "--service"], ["reload"], ["--server", "http://h"]]) {
+    assert.equal(tools(args), false, args.join(" "));
+  }
+});
+
+test("opencode 2's other commands lose tools they inherited, keeping the person's own config", () => {
+  // An agent in a Tacit OpenCode terminal runs `opencode models`: its
+  // environment already holds the terminal's tools.
+  const { plan } = opencodeConfig({
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      model: "anthropic/claude-sonnet-5",
+      mcp: { mine: { type: "local", command: ["my-server"] }, tacit: { type: "local", command: ["old-bridge"] } },
+    }),
+  });
+  const config = JSON.parse(applyLaunchPlan(["models"], plan).env.OPENCODE_CONFIG_CONTENT);
+  assert.deepEqual(config, { model: "anthropic/claude-sonnet-5", mcp: { mine: { type: "local", command: ["my-server"] } } });
+});
+
 test("opencode 1, which refuses --standalone, is launched as before", () => {
   const { plan } = opencodeConfig(undefined, "1.18.29");
-  assert.equal(plan.addLaunchArgs, undefined);
-  assert.deepEqual(applyLaunchArgs(["-s", "ses_1"], plan), ["-s", "ses_1"]);
+  assert.equal(plan.adaptLaunch, undefined);
+  assert.deepEqual(applyLaunchPlan(["models"], plan), { args: ["models"], env: plan.env });
 });
 
 test("opencode without a readable version is an error, not a guess", () => {
@@ -459,7 +488,7 @@ test("prepareBridgeLaunch reads the version of the command it launches, only for
     runVersion,
   })!;
   assert.deepEqual(ran, ["/opt/opencode/bin/opencode --version"]);
-  assert.deepEqual(applyLaunchArgs([], result), ["--standalone"]);
+  assert.deepEqual(applyLaunchPlan([], result).args, ["--standalone"]);
 
   prepareBridgeLaunch({ ...launchBase, runVersion, writeFile: () => {} });
   assert.equal(ran.length, 1, "Claude's launch doesn't depend on its version");
@@ -500,7 +529,11 @@ const builtBridge = path.resolve("tacit-bridge/dist/tacit-bridge.js");
  * a real pipe on stdin: it refuses node's socket). The bridge runs through a
  * link of its own, so a bridge other Tacit terminals run doesn't count.
  */
-async function opencodeStartsBridge(launchArgs: (args: string[]) => string[], waitMs: number): Promise<boolean> {
+async function opencodeStartsBridge(
+  launchArgs: (args: string[]) => string[],
+  waitMs: number,
+  extraEnv: Record<string, string> = {},
+): Promise<boolean> {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tacit-opencode-")));
   const link = path.join(dir, `tacit-bridge-${process.pid}.js`);
   fs.symlinkSync(builtBridge, link);
@@ -511,9 +544,9 @@ async function opencodeStartsBridge(launchArgs: (args: string[]) => string[], wa
     portFile: path.join(dir, "port"),
   });
   const plan = planBridgeLaunch(findAgentAdapter("opencode")!, real, { ...context, version: opencodeVersion! });
-  const child = spawn("sh", ["-c", 'sleep 60 | script -q /dev/null "$0" "$@"', opencodeBinary!, ...launchArgs(applyLaunchArgs([], plan))], {
+  const child = spawn("sh", ["-c", 'sleep 60 | script -q /dev/null "$0" "$@"', opencodeBinary!, ...launchArgs(applyLaunchPlan([], plan).args)], {
     cwd: dir,
-    env: { ...process.env, ...plan.env },
+    env: { ...process.env, ...extraEnv, ...plan.env },
     detached: true,
     stdio: "ignore",
   });
@@ -548,22 +581,92 @@ test(
   },
 );
 
-// Without the flag OpenCode 2 joins its background service, which runs with
-// the environment of whatever started it. With none running, this launch
-// would start it, and the service would run the bridge (for every session
-// that joins it after) — so it only runs when the service already is.
-const openCodeServiceRunning = spawnSync("pgrep", ["-f", "opencode serve --service"]).status === 0;
+/**
+ * An OpenCode with a HOME and a service port of its own, so a background
+ * service it starts is its own and never the person's, which outlives the
+ * test and keeps the environment it was started with. Every HOME's service
+ * otherwise takes the same port (49374 in 2.1.4).
+ */
+async function isolatedOpenCode(dir: string): Promise<Record<string, string>> {
+  const home = path.join(dir, "home");
+  fs.mkdirSync(home, { recursive: true });
+  const env = {
+    HOME: home,
+    XDG_CONFIG_HOME: path.join(home, ".config"),
+    XDG_DATA_HOME: path.join(home, ".local/share"),
+    XDG_STATE_HOME: path.join(home, ".local/state"),
+    XDG_CACHE_HOME: path.join(home, ".cache"),
+    OPENCODE_DISABLE_AUTOUPDATE: "1",
+  };
+  const probe = net.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as net.AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  execFileSync(opencodeBinary!, ["service", "set", "port", String(port)], { cwd: dir, env: { ...process.env, ...env }, stdio: "ignore" });
+  return env;
+}
+
+/** Background services started with this HOME (macOS's ps shows a process's environment). */
+function openCodeServicesIn(home: string): number[] {
+  const listed = spawnSync("pgrep", ["-f", "opencode serve --service"], { encoding: "utf8" }).stdout;
+  return listed.split("\n").filter(Boolean).map(Number).filter((pid) =>
+    spawnSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8" }).stdout.includes(`HOME=${home} `));
+}
 
 test(
-  "the real opencode 2 without --standalone never starts it, which is why the flag is there",
+  "the real opencode 2's `models`, run from a Tacit terminal, starts no service with the bridge",
   {
-    skip: realOpenCodeSkip
-      || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2")
-      || (!openCodeServiceRunning && "OpenCode's background service isn't running, and this would start it"),
+    skip: realOpenCodeSkip || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2"),
     timeout: 60_000,
   },
   async () => {
-    assert.equal(await opencodeStartsBridge((args) => args.filter((arg) => arg !== "--standalone"), 10_000), false);
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tacit-opencode-service-")));
+    const isolated = await isolatedOpenCode(dir);
+    const link = path.join(dir, `tacit-bridge-${process.pid}.js`);
+    fs.symlinkSync(builtBridge, link);
+    try {
+      const real = makeBridgeDescriptor({
+        execPath: process.execPath,
+        serverPath: link,
+        terminalId: "test-opencode",
+        portFile: path.join(dir, "port"),
+      });
+      const plan = planBridgeLaunch(findAgentAdapter("opencode")!, real, { ...context, version: opencodeVersion! });
+      const launch = applyLaunchPlan(["models"], plan);
+      const env = { ...process.env, ...isolated, ...launch.env };
+      execFileSync(opencodeBinary!, launch.args, { cwd: dir, env, timeout: 40_000, stdio: "ignore" });
+      // Without that, nothing here shows the tools are kept from it.
+      assert.notEqual(openCodeServicesIn(isolated.HOME).length, 0, "`opencode models` no longer starts the background service");
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      assert.equal(spawnSync("pgrep", ["-f", link]).status, 1, "the service started the bridge");
+    } finally {
+      for (const pid of openCodeServicesIn(isolated.HOME)) process.kill(pid, "SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+// Without the flag OpenCode 2 joins its background service, which runs with
+// the environment of whatever started it — here, one started without the tools.
+test(
+  "the real opencode 2 without --standalone never starts it, which is why the flag is there",
+  {
+    skip: realOpenCodeSkip || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2"),
+    timeout: 60_000,
+  },
+  async () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tacit-opencode-service-")));
+    const isolated = await isolatedOpenCode(dir);
+    try {
+      execFileSync(opencodeBinary!, ["service", "start"], { cwd: dir, env: { ...process.env, ...isolated }, timeout: 40_000, stdio: "ignore" });
+      assert.notEqual(openCodeServicesIn(isolated.HOME).length, 0, "`opencode service start` started no service");
+      assert.equal(await opencodeStartsBridge((args) => args.filter((arg) => arg !== "--standalone"), 10_000, isolated), false);
+    } finally {
+      for (const pid of openCodeServicesIn(isolated.HOME)) process.kill(pid, "SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   },
 );
 
