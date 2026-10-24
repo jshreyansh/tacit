@@ -598,7 +598,7 @@ function terminalCommands(): PaletteCommand[] {
           id: `terminal:${term.id}`,
           section: "terminal",
           title: label,
-          subtitle: `${p.name} · ${w.name}`,
+          subtitle: w.name ? `${p.name} · ${w.name}` : p.name,
           keywords: [term.type, p.name, w.name],
           perform: () => {
             panToTerminal(term.id);

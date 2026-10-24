@@ -81,6 +81,33 @@ function runGitAsync(dirPath: string, args: string[]): Promise<string> {
   });
 }
 
+/**
+ * A folder that isn't a git repo, as its one worktree. It has no branch, so
+ * the name is empty and the UI shows the folder alone; it used to be called
+ * "main" when added and "(unknown)" after the next refresh.
+ */
+function plainFolder(dirPath: string): WorktreeInfo {
+  return { path: dirPath, branch: "", isPrimary: true };
+}
+
+function isGitRepoSync(dirPath: string): boolean {
+  try {
+    execFileSync("git", ["rev-parse", "--git-dir"], { cwd: dirPath, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isGitRepoAsync(dirPath: string): Promise<boolean> {
+  try {
+    await runGitAsync(dirPath, ["rev-parse", "--git-dir"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class ProjectScanner {
   scan(dirPath: string): ProjectInfo | null {
     try {
@@ -106,18 +133,9 @@ export class ProjectScanner {
       // Not a git repo, that's fine
     }
 
-    let worktrees: WorktreeInfo[];
-    if (isGitRepo) {
-      worktrees = await this.listWorktreesAsync(dirPath);
-    } else {
-      worktrees = [
-        {
-          path: dirPath,
-          branch: "main",
-          isPrimary: true,
-        },
-      ];
-    }
+    const worktrees = isGitRepo
+      ? await this.listWorktreesAsync(dirPath)
+      : [plainFolder(dirPath)];
 
     return { name, path: dirPath, worktrees };
   }
@@ -172,10 +190,11 @@ export class ProjectScanner {
       //       the project from the store instead of inheriting a
       //       ghost entry.
       //   (b) dirPath exists but isn't a git repo — user added a
-      //       plain directory as a project. Keep the legacy
-      //       behaviour of surfacing the dir itself as a single
-      //       "main" worktree so the project stays usable.
+      //       plain directory as a project. It's its own single
+      //       worktree, with no branch, so the project stays usable.
+      // A repo where only `worktree list` failed keeps its branch.
       if (!existsSync(dirPath)) return [];
+      if (!isGitRepoSync(dirPath)) return [plainFolder(dirPath)];
       return [
         {
           path: dirPath,
@@ -197,6 +216,7 @@ export class ProjectScanner {
     } catch {
       // See sync variant above for the two-case rationale.
       if (!existsSync(dirPath)) return [];
+      if (!(await isGitRepoAsync(dirPath))) return [plainFolder(dirPath)];
       return [
         {
           path: dirPath,

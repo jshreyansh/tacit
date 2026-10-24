@@ -127,6 +127,11 @@ export function extractIntent(
   return text;
 }
 
+/** "project / branch", or the project alone for its own name or a folder that isn't a git repo (no branch). */
+function worktreeLocation(projectName: string, worktreeName: string): string {
+  return !worktreeName || worktreeName === projectName ? projectName : `${projectName} / ${worktreeName}`;
+}
+
 function resolveTerminalTitle(
   terminal: Pick<TerminalData, "customTitle" | "title" | "initialPrompt">,
   worktreeName: string,
@@ -424,10 +429,7 @@ export function buildProjectTree(
             telemetryByTerminalId.get(resolvedTerminal.id)?.provider,
             telemetryByTerminalId.get(resolvedTerminal.id)?.first_user_prompt,
           );
-          const originLabel =
-            worktree.name === project.name
-              ? project.name
-              : `${project.name} / ${worktree.name}`;
+          const originLabel = worktreeLocation(project.name, worktree.name);
           stashed.push({
             terminalId: resolvedTerminal.id,
             projectId: project.id,
@@ -458,10 +460,7 @@ export function buildProjectTree(
           telemetry?.provider,
           telemetry?.first_user_prompt,
         );
-        const locationLabel =
-          worktree.name === project.name
-            ? worktree.name
-            : `${project.name} / ${worktree.name}`;
+        const locationLabel = worktreeLocation(project.name, worktree.name);
 
         terminals.push({
           terminalId: resolvedTerminal.id,
@@ -547,10 +546,7 @@ export function buildCanvasTerminalSections(
           telemetry?.provider,
           telemetry?.first_user_prompt,
         );
-        const locationLabel =
-          worktree.name === project.name
-            ? worktree.name
-            : `${project.name} / ${worktree.name}`;
+        const locationLabel = worktreeLocation(project.name, worktree.name);
 
         const item: CanvasTerminalItem = {
           terminalId: resolvedTerminal.id,

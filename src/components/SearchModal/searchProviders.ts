@@ -59,7 +59,7 @@ export function collectSyncResults(
             id: `terminal:${term.id}`,
             category: "terminal",
             title: label,
-            subtitle: `${p.name} / ${w.name}`,
+            subtitle: w.name ? `${p.name} / ${w.name}` : p.name,
             score,
             data: { type: "terminal", terminalId: term.id },
           });

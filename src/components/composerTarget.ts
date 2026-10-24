@@ -53,7 +53,7 @@ export function getSupportedTerminals(
           type: liveTerminal.type,
           status: liveTerminal.status,
           worktreePath: worktree.path,
-          label: `${project.name} / ${worktree.name} / ${getTerminalDisplayTitle(liveTerminal)}`,
+          label: [project.name, worktree.name, getTerminalDisplayTitle(liveTerminal)].filter(Boolean).join(" / "),
           focused: liveTerminal.focused,
         });
       }

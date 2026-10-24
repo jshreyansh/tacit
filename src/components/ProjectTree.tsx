@@ -268,6 +268,18 @@ function WorktreeRow({
       ? t.panel_worktree_force_remove_button
       : t.panel_worktree_remove_button;
 
+  // A folder that isn't a git repo has no branch to show, so its terminals
+  // sit right under the project.
+  if (!group.worktreeName) {
+    return (
+      <div className="pl-4 pr-2 flex flex-col gap-0.5">
+        {group.terminals.map((item) => (
+          <div key={item.terminalId}>{renderTerminal(item)}</div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div
@@ -461,6 +473,10 @@ function ProjectRow({
     activateWorktreeInScene(liveProject.id, firstWorktree.id);
   };
 
+  // A folder that isn't a git repo can't have worktrees: its one has no branch.
+  const plainFolder =
+    project.worktrees.length === 1 && !project.worktrees[0].worktreeName;
+
   const terminalCount = project.worktrees.reduce(
     (acc, wt) => acc + wt.terminals.length,
     0,
@@ -598,10 +614,14 @@ function ProjectRow({
         <IconButton
           size="sm"
           tone="neutral"
-          label={t.panel_new_worktree}
+          label={plainFolder ? t.panel_new_terminal_shell : t.panel_new_worktree}
           className="opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => {
             e.stopPropagation();
+            if (plainFolder) {
+              handleNewTerminal();
+              return;
+            }
             const store = useSessionPanelCollapseStore.getState();
             if (store.isCollapsed(project.projectId)) {
               store.toggle(project.projectId);
@@ -645,16 +665,20 @@ function ProjectRow({
                 label: t.panel_new_terminal,
                 onClick: handleNewTerminal,
               },
-              {
-                label: t.panel_new_worktree,
-                onClick: () => {
-                  const store = useSessionPanelCollapseStore.getState();
-                  if (store.isCollapsed(project.projectId)) {
-                    store.toggle(project.projectId);
-                  }
-                  setCreating(true);
-                },
-              },
+              ...(plainFolder
+                ? []
+                : [
+                    {
+                      label: t.panel_new_worktree,
+                      onClick: () => {
+                        const store = useSessionPanelCollapseStore.getState();
+                        if (store.isCollapsed(project.projectId)) {
+                          store.toggle(project.projectId);
+                        }
+                        setCreating(true);
+                      },
+                    },
+                  ]),
               { type: "separator" as const },
               {
                 label: t.panel_remove_project,

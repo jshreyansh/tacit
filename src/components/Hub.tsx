@@ -742,7 +742,7 @@ export function Hub() {
                         className="tc-meta truncate"
                         style={{ color: "var(--text-metadata)" }}
                       >
-                        {slot.projectName} · {slot.worktreeName}
+                        {slot.worktreeName ? `${slot.projectName} · ${slot.worktreeName}` : slot.projectName}
                       </div>
                     </div>
                     <Sparkline buckets={buckets} />

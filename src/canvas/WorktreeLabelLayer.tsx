@@ -409,8 +409,9 @@ export function WorktreeLabelLayer() {
         worktreeId: entry.worktreeId,
         worldX: entry.worldX,
         worldY: entry.worldY,
-        primary: entry.worktreeName,
-        prefix: entry.projectName,
+        // A folder that isn't a git repo has no branch: just the folder.
+        primary: entry.worktreeName || entry.projectName,
+        prefix: entry.worktreeName ? entry.projectName : null,
       }));
 
   const placedEntries: PlacedEntry<ClusterEntry>[] = clusterEntries.map(
