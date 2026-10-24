@@ -1408,6 +1408,7 @@ function setupIpc() {
             serverPath: getTacitBridgeCliPath(),
             portFile: PORT_FILE,
             inheritedEnv: await getLoginShellEnv(),
+            command: options.shell,
           });
           if (plan) {
             options.args = applyLaunchArgs(options.args ?? [], plan);

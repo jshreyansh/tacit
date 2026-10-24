@@ -1,9 +1,11 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   findAgentAdapter,
   makeBridgeDescriptor,
+  parseCliVersion,
   planBridgeLaunch,
   type AgentLaunchPlan,
 } from "../shared/agent-adapters";
@@ -44,6 +46,16 @@ export interface BridgeLaunchOptions {
   readFile?: (file: string) => string | null;
   writeFile?: (file: string, contents: string) => void;
   homeDir?: string;
+  /** The executable the launch runs, when it isn't the adapter's command (a Settings override, the shim's real one). */
+  command?: string;
+  /** The output of `command` run with these arguments; throws when it can't run. */
+  runVersion?: (command: string, args: readonly string[], env: Record<string, string | undefined>) => string;
+}
+
+const VERSION_TIMEOUT_MS = 5_000;
+
+function runVersionSync(command: string, args: readonly string[], env: Record<string, string | undefined>): string {
+  return execFileSync(command, [...args], { env, timeout: VERSION_TIMEOUT_MS, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
 /** A file's contents, or null when it does not exist. Other errors throw. */
@@ -113,6 +125,24 @@ export function prepareBridgeLaunch(
     terminalId: options.terminalId,
     portFile: options.portFile,
   });
+  let version: string | undefined;
+  if (adapter.launchDependsOnVersion) {
+    // Read at each launch, not from the dock's cached detection: an upgrade
+    // in a terminal changes it. It takes about 40 ms for OpenCode.
+    const command = options.command ?? adapter.command;
+    let output: string;
+    try {
+      output = (options.runVersion ?? runVersionSync)(command, adapter.versionArgs, options.inheritedEnv ?? process.env);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new BridgeUnavailableError(`could not read the ${adapter.displayName} version: ${reason}`);
+    }
+    version = parseCliVersion(output) ?? undefined;
+    if (!version) {
+      throw new BridgeUnavailableError(`\`${command} ${adapter.versionArgs.join(" ")}\` printed no version number`);
+    }
+  }
+
   const plan = planBridgeLaunch(adapter, bridge, {
     terminalId: options.terminalId,
     tempFile: options.tempFile ?? ((name) => path.join(os.tmpdir(), name)),
@@ -120,6 +150,7 @@ export function prepareBridgeLaunch(
     platform: options.platform ?? process.platform,
     readFile: options.readFile ?? readFileIfPresent,
     homeDir: options.homeDir ?? os.homedir(),
+    version,
   });
 
   const writeFile = options.writeFile ?? writeFileAtomically;

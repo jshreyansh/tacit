@@ -86,6 +86,12 @@ export interface AgentLaunchPlan {
    * that global options must precede.
    */
   placement: "prepend" | "before-double-dash";
+  /**
+   * For arguments only some launches take: the agent's arguments with them
+   * put in place, or unchanged. Applied after `args`. Chat mode starts the
+   * agent's protocol subcommand from `args` alone, so it never gets these.
+   */
+  addLaunchArgs?: (agentArgs: string[]) => string[];
   /** Environment to set for the agent process. */
   env: Record<string, string>;
   /** Files the caller must write before launching. */
@@ -113,6 +119,8 @@ export interface AgentAdapter {
   /** Prints the CLI's version, for detection. */
   versionArgs: readonly string[];
   mcpInjection: McpInjection | null;
+  /** How it's given the tools differs by version, so the caller reads it first (LaunchContext.version). */
+  launchDependsOnVersion?: true;
   /**
    * Why the agent is no longer offered for new terminals, when it isn't.
    * Terminals already running it keep their tools.
@@ -142,6 +150,8 @@ export interface LaunchContext {
   readFile?: (path: string) => string | null;
   /** The user's home directory, for agents that only read config from it. */
   homeDir?: string;
+  /** The version of the CLI being launched, for an adapter with `launchDependsOnVersion`. */
+  version?: string;
 }
 
 /** A request for something an agent cannot do. Never swallowed. */
@@ -297,6 +307,38 @@ function objectOrEmpty(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/** OpenCode's subcommands (2.0.29). A first word that isn't one is the folder its UI opens. */
+const OPENCODE_SUBCOMMANDS: ReadonlySet<string> = new Set([
+  "upgrade", "update", "uninstall", "acp", "api", "debug", "auth", "mcp", "plugin",
+  "models", "stats", "mini", "run", "session", "service", "reload", "pair", "serve",
+]);
+/** The ones that open a session, so need its MCP servers. */
+const OPENCODE_SESSION_SUBCOMMANDS: ReadonlySet<string> = new Set(["run", "mini"]);
+/** Its top-level options that take a value, which isn't the subcommand. */
+const OPENCODE_VALUE_OPTIONS: ReadonlySet<string> = new Set([
+  "--server", "--session", "-s", "--prompt", "--log-level", "--completions",
+]);
+
+/**
+ * OpenCode's arguments with `--standalone` on a launch that opens a session:
+ * its UI (no subcommand, or a folder to open) gets it first, `run` and
+ * `mini` right after their name. Every other subcommand is left alone: it
+ * opens no session, and given the flag before or after its name most print
+ * their help and exit 1. So is a launch that already names a server, which
+ * OpenCode refuses to combine with this flag.
+ */
+export function withOpenCodeStandalone(args: string[]): string[] {
+  if (args.some((arg) => /^--(standalone|server)(=|$)/.test(arg))) return args;
+  let i = 0;
+  while (i < args.length && args[i].startsWith("-") && args[i] !== "--") {
+    i += OPENCODE_VALUE_OPTIONS.has(args[i]) ? 2 : 1;
+  }
+  const word = i < args.length && args[i] !== "--" ? args[i] : null;
+  if (word === null || !OPENCODE_SUBCOMMANDS.has(word)) return ["--standalone", ...args];
+  if (OPENCODE_SESSION_SUBCOMMANDS.has(word)) return [...args.slice(0, i + 1), "--standalone", ...args.slice(i + 1)];
+  return args;
+}
+
 const opencode: AgentAdapter = {
   id: "opencode",
   displayName: "OpenCode",
@@ -306,8 +348,26 @@ const opencode: AgentAdapter = {
   // bridge rides in the environment and nothing is written. Verified against
   // opencode 1.18.29 with `opencode mcp list`, which starts the server:
   // "tacit connected". OpenCode runs MCP tools without asking by default.
+  //
+  // OpenCode 2 runs sessions on one shared background service, started once
+  // with its own environment, so a launch's OPENCODE_CONFIG_CONTENT never
+  // reaches the server that starts MCP servers and the bridge was never
+  // started. `--standalone` gives the launch a private server that inherits
+  // its environment (verified against 2.0.29 by watching which process
+  // started the server). OpenCode 1 has no such flag and refuses it, printing
+  // its help instead of opening, hence the version. `opencode acp`, which
+  // chat mode runs, starts its own server and gets the tools without it.
   mcpInjection: "env-config",
-  planBridgeLaunch(bridge, { inheritedEnv }) {
+  launchDependsOnVersion: true,
+  planBridgeLaunch(bridge, { inheritedEnv, version }) {
+    const major = version ? Number.parseInt(version, 10) : Number.NaN;
+    if (!Number.isFinite(major)) {
+      throw new AgentCapabilityError(
+        "opencode",
+        "mcpInjection",
+        `OpenCode's version ${version ? `"${version}" can't be read` : "wasn't given"}, and only version 2 on needs --standalone to get the tools.`,
+      );
+    }
     const existing = inheritedEnv?.OPENCODE_CONFIG_CONTENT?.trim();
     // Someone who sets this themselves keeps everything in it; only our one
     // server is added.
@@ -330,6 +390,7 @@ const opencode: AgentAdapter = {
     return {
       args: [],
       placement: "prepend",
+      ...(major >= 2 ? { addLaunchArgs: withOpenCodeStandalone } : {}),
       env: { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
       files: [],
     };
@@ -550,6 +611,11 @@ export function planBridgeLaunch(
 
 /** The agent's arguments with the plan's folded in where it says. */
 export function applyLaunchArgs(args: string[], plan: AgentLaunchPlan): string[] {
+  const placed = placeLaunchArgs(args, plan);
+  return plan.addLaunchArgs ? plan.addLaunchArgs(placed) : placed;
+}
+
+function placeLaunchArgs(args: string[], plan: AgentLaunchPlan): string[] {
   if (plan.args.length === 0) return args;
   if (plan.placement === "prepend") return [...plan.args, ...args];
   const separatorIndex = args.indexOf("--");

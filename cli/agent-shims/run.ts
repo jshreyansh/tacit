@@ -100,6 +100,8 @@ export function runAgentShim(provider: AgentShimProvider): never {
         serverPath: resolveTacitBridgeCliPath(),
         portFile: process.env.TACIT_PORT_FILE ?? "",
         inheritedEnv: process.env,
+        // Not the command's name: on this PATH that's this shim.
+        command: realCommand,
       });
       if (plan) {
         args = applyLaunchArgs(args, plan);

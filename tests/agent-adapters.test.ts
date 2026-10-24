@@ -11,6 +11,7 @@ import {
   findAgentAdapter,
   listAgentAdapters,
   makeBridgeDescriptor,
+  parseCliVersion,
   planBridgeLaunch,
   CODEX_TOOLS_REQUIRING_APPROVAL,
   TACIT_MCP_SERVER_NAME,
@@ -359,8 +360,8 @@ test(
 
 // ── OpenCode ────────────────────────────────────────────────────────────
 
-function opencodeConfig(inheritedEnv?: Record<string, string | undefined>) {
-  const plan = planBridgeLaunch(findAgentAdapter("opencode")!, bridge, { ...context, inheritedEnv });
+function opencodeConfig(inheritedEnv?: Record<string, string | undefined>, version = "2.0.29") {
+  const plan = planBridgeLaunch(findAgentAdapter("opencode")!, bridge, { ...context, inheritedEnv, version });
   return { plan, config: JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT) };
 }
 
@@ -403,6 +404,84 @@ test("opencode refuses to overwrite an OPENCODE_CONFIG_CONTENT it cannot read", 
   }
 });
 
+// OpenCode 2 runs sessions on a shared background service that never sees a
+// launch's environment, so the bridge in OPENCODE_CONFIG_CONTENT was never
+// started. --standalone gives the launch a private server that does.
+test("opencode 2 opens its UI and `run` with a private server, and leaves its other commands alone", () => {
+  const { plan } = opencodeConfig();
+  const launch = (args: string[]) => applyLaunchArgs(args, plan);
+  // What the dock passes: nothing, a session to resume, a first prompt.
+  assert.deepEqual(launch([]), ["--standalone"]);
+  assert.deepEqual(launch(["-s", "ses_1"]), ["--standalone", "-s", "ses_1"]);
+  // A prompt that happens to be a subcommand's name is still the prompt.
+  assert.deepEqual(launch(["--prompt", "models"]), ["--standalone", "--prompt", "models"]);
+  // A folder to open is the UI too.
+  assert.deepEqual(launch(["notes"]), ["--standalone", "notes"]);
+  // Typed in a shell: the flag goes after `run` and `mini`, which refuse it before their name.
+  assert.deepEqual(launch(["run", "fix it"]), ["run", "--standalone", "fix it"]);
+  assert.deepEqual(launch(["--log-level", "debug", "mini"]), ["--log-level", "debug", "mini", "--standalone"]);
+  // Commands that open no session, most of which refuse the flag anywhere.
+  for (const args of [["models"], ["mcp", "list"], ["session", "list"], ["acp"], ["upgrade"]]) {
+    assert.deepEqual(launch(args), args, args.join(" "));
+  }
+  // OpenCode refuses --server with it, and the flag isn't given twice.
+  for (const args of [["--server", "http://127.0.0.1:4096"], ["run", "--server=http://h", "x"], ["--standalone"]]) {
+    assert.deepEqual(launch(args), args, args.join(" "));
+  }
+});
+
+test("opencode 1, which refuses --standalone, is launched as before", () => {
+  const { plan } = opencodeConfig(undefined, "1.18.29");
+  assert.equal(plan.addLaunchArgs, undefined);
+  assert.deepEqual(applyLaunchArgs(["-s", "ses_1"], plan), ["-s", "ses_1"]);
+});
+
+test("opencode without a readable version is an error, not a guess", () => {
+  for (const version of [undefined, "", "dev"]) {
+    assert.throws(
+      () => planBridgeLaunch(findAgentAdapter("opencode")!, bridge, { ...context, version }),
+      (error: unknown) => error instanceof AgentCapabilityError && /version/.test(error.message),
+      String(version),
+    );
+  }
+});
+
+test("prepareBridgeLaunch reads the version of the command it launches, only for an agent that needs it", () => {
+  const ran: string[] = [];
+  const runVersion = (command: string, args: readonly string[]) => {
+    ran.push([command, ...args].join(" "));
+    return "opencode v2.0.29\n";
+  };
+  const result = prepareBridgeLaunch({
+    ...launchBase,
+    terminalType: "opencode",
+    command: "/opt/opencode/bin/opencode",
+    runVersion,
+  })!;
+  assert.deepEqual(ran, ["/opt/opencode/bin/opencode --version"]);
+  assert.deepEqual(applyLaunchArgs([], result), ["--standalone"]);
+
+  prepareBridgeLaunch({ ...launchBase, runVersion, writeFile: () => {} });
+  assert.equal(ran.length, 1, "Claude's launch doesn't depend on its version");
+});
+
+test("an OpenCode that can't report its version is an error with the reason", () => {
+  assert.throws(
+    () => prepareBridgeLaunch({
+      ...launchBase,
+      terminalType: "opencode",
+      runVersion: () => {
+        throw new Error("spawn opencode ENOENT");
+      },
+    }),
+    (error: unknown) => error instanceof BridgeUnavailableError && error.message.includes("ENOENT"),
+  );
+  assert.throws(
+    () => prepareBridgeLaunch({ ...launchBase, terminalType: "opencode", runVersion: () => "opencode\n" }),
+    (error: unknown) => error instanceof BridgeUnavailableError && /no version number/.test(error.message),
+  );
+});
+
 const opencodeBinary = (() => {
   try {
     return execFileSync("sh", ["-c", "command -v opencode"], { encoding: "utf8" }).trim() || null;
@@ -410,32 +489,73 @@ const opencodeBinary = (() => {
     return null;
   }
 })();
+const opencodeVersion = opencodeBinary
+  ? parseCliVersion(execFileSync(opencodeBinary, ["--version"], { encoding: "utf8" }))
+  : null;
 const builtBridge = path.resolve("tacit-bridge/dist/tacit-bridge.js");
 
+/**
+ * Opens the real OpenCode's UI as a terminal would and reports whether it
+ * started the bridge. The UI needs a terminal, which `script` gives it (with
+ * a real pipe on stdin: it refuses node's socket). The bridge runs through a
+ * link of its own, so a bridge other Tacit terminals run doesn't count.
+ */
+async function opencodeStartsBridge(launchArgs: (args: string[]) => string[], waitMs: number): Promise<boolean> {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tacit-opencode-")));
+  const link = path.join(dir, `tacit-bridge-${process.pid}.js`);
+  fs.symlinkSync(builtBridge, link);
+  const real = makeBridgeDescriptor({
+    execPath: process.execPath,
+    serverPath: link,
+    terminalId: "test-opencode",
+    portFile: path.join(dir, "port"),
+  });
+  const plan = planBridgeLaunch(findAgentAdapter("opencode")!, real, { ...context, version: opencodeVersion! });
+  const child = spawn("sh", ["-c", 'sleep 60 | script -q /dev/null "$0" "$@"', opencodeBinary!, ...launchArgs(applyLaunchArgs([], plan))], {
+    cwd: dir,
+    env: { ...process.env, ...plan.env },
+    detached: true,
+    stdio: "ignore",
+  });
+  try {
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+      if (spawnSync("pgrep", ["-f", link]).status === 0) return true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return false;
+  } finally {
+    process.kill(-child.pid!, "SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const realOpenCodeSkip = process.platform !== "darwin"
+  ? "drives OpenCode's UI through macOS's script"
+  : !opencodeBinary
+    ? "opencode is not installed"
+    : !fs.existsSync(builtBridge)
+      ? "tacit-bridge is not built"
+      : false;
+
 test(
-  "the real opencode starts the bridge from the generated config and connects",
-  {
-    skip: !opencodeBinary
-      ? "opencode is not installed"
-      : !fs.existsSync(builtBridge)
-        ? "tacit-bridge is not built"
-        : false,
-    timeout: 90_000,
+  "the real opencode, opened as a terminal opens it, starts the bridge",
+  { skip: realOpenCodeSkip, timeout: 60_000 },
+  async () => {
+    // It takes about a second; the wait allows for a cold start.
+    assert.equal(await opencodeStartsBridge((args) => args, 20_000), true);
   },
-  () => {
-    const real = makeBridgeDescriptor({
-      execPath: process.execPath,
-      serverPath: builtBridge,
-      terminalId: "test-opencode",
-      portFile: path.join(os.tmpdir(), "tacit-test-port"),
-    });
-    const { env } = planBridgeLaunch(findAgentAdapter("opencode")!, real, context);
-    const out = execFileSync(opencodeBinary!, ["mcp", "list"], {
-      encoding: "utf8",
-      env: { ...process.env, ...env },
-      timeout: 60_000,
-    }).replace(/\u001b\[[0-9;]*m/g, "");
-    assert.match(out, /✓ tacit\s+connected/, out);
+);
+
+test(
+  "the real opencode 2 without --standalone never starts it, which is why the flag is there",
+  {
+    skip: realOpenCodeSkip || (Number.parseInt(opencodeVersion ?? "", 10) < 2 && "opencode is older than 2"),
+    timeout: 60_000,
+  },
+  async () => {
+    assert.equal(await opencodeStartsBridge((args) => args.filter((arg) => arg !== "--standalone"), 10_000), false);
   },
 );
 
