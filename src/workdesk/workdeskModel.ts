@@ -22,6 +22,10 @@ export interface TerminalCard {
   title: string;
   /** What it's working on: its first prompt, else its folder or branch. */
   subtitle: string;
+  /** What its tab says, to tell five Claudes apart: the name it was given,
+   *  else its first prompt, else what it is. A manager's first prompt is
+   *  Tacit's briefing, so it goes by what it is. */
+  label: string;
   state: CanvasTerminalState;
   attentionReason?: "error" | "awaiting_input";
   /** When the running turn started, for "running · 2m". */
@@ -150,6 +154,9 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
           isAgent,
           title: terminal.customTitle?.trim() || terminal.title,
           subtitle: prompt ? oneLine(prompt, 80) : worktree.name || project.name,
+          label:
+            terminal.customTitle?.trim() ||
+            (prompt && terminal.id !== input.managerTerminalId ? oneLine(prompt, 80) : terminal.title),
           state: derived.state,
           ...(derived.attentionReason ? { attentionReason: derived.attentionReason } : {}),
           ...(derived.state === "active" && derived.turnStartedAt ? { since: derived.turnStartedAt } : {}),

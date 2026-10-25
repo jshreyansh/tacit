@@ -85,6 +85,24 @@ test("an agent that needs you comes first, then the working ones; the running tu
   assert.equal(s.runningAgents, 1);
 });
 
+test("an agent's tab says its name, else its first prompt, else what it is", () => {
+  const snap = (over: Partial<TerminalTelemetrySnapshot>) => over as TerminalTelemetrySnapshot;
+  const s = buildWorkdeskSections(
+    inputs({
+      telemetry: new Map([
+        ["claude-1", snap({ first_user_prompt: "ignored: it has a name" })],
+        ["codex-1", snap({ first_user_prompt: "list the\n tasks in the workdesk" })],
+        ["mgr", snap({ first_user_prompt: "You've been assigned the workdesk manager role" })],
+      ]),
+    }),
+  );
+  const label = (id: string) => [...s.agents, ...s.terminals].find((c) => c.id === id)?.label;
+  assert.equal(label("claude-1"), "lint-job");
+  assert.equal(label("codex-1"), "list the tasks in the workdesk");
+  assert.equal(label("mgr"), "claude", "a manager's first prompt is Tacit's briefing");
+  assert.equal(label("shell-1"), "shell", "not sent anything");
+});
+
 test("the tabs keep their order while agents change state, switch to chat, and tasks move on", () => {
   const snap = (over: Partial<TerminalTelemetrySnapshot>) => over as TerminalTelemetrySnapshot;
   const pins = (status: string) =>

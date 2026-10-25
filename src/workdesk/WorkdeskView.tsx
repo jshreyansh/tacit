@@ -53,6 +53,10 @@ type Dict = ReturnType<typeof useT>;
 const TAIL_ROWS = 40;
 const TAIL_LINES = 6;
 const TAIL_REFRESH_MS = 1500;
+/** A tab's name fades out under its close button, which sits over its last 24px. */
+const TAB_FADE = "[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))]";
+const TAB_FADE_ON_HOVER =
+  "group-hover/tab:[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))] group-focus-within/tab:[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))]";
 
 function GlobeIcon() {
   return (
@@ -498,19 +502,24 @@ export function WorkdeskView() {
             const active = card === openCard;
             const icon =
               card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : card.kind === "session" && card.agent ? agentIcon(card.agent) : null;
+            const label = card.kind === "terminal" ? card.label : card.title;
+            const closeLabel = card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(label) : t.workdesk_tab_close(label);
             return (
               <div
                 key={`${card.kind}:${card.id}`}
                 role="tab"
                 aria-selected={active}
-                className="group/tab tc-rail-btn flex h-[30px] max-w-[210px] shrink-0 items-center gap-1.5 pl-2.5 pr-1 text-[12px]"
+                className="group/tab tc-rail-btn relative flex h-[30px] max-w-[210px] shrink-0 items-center px-2.5 text-[12px]"
                 data-on={active ? "" : undefined}
                 style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
               >
+                {/* The close button takes no room of its own: as in Chrome,
+                    it shows over the end of the name, which fades under it. */}
                 <button
                   type="button"
-                  className="flex min-w-0 items-center gap-1.5 outline-none"
+                  className={`flex min-w-0 items-center gap-1.5 outline-none ${active ? TAB_FADE : TAB_FADE_ON_HOVER}`}
                   onClick={() => setOpenNode({ kind: card.kind, id: card.id })}
+                  title={label}
                 >
                   {icon ? (
                     <img src={icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />
@@ -531,17 +540,17 @@ export function WorkdeskView() {
                       )}
                     </span>
                   )}
-                  <span className="truncate">{card.title}</span>
+                  <span className="truncate">{label}</span>
                   {card.kind === "terminal" && card.state === "active" && (
                     <span className="tc-live-pip inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />
                   )}
                 </button>
                 <button
                   type="button"
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 ${active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"}`}
+                  className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 ${active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"}`}
                   onClick={() => closeTab(card)}
-                  aria-label={card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(card.title) : t.workdesk_tab_close(card.title)}
-                  title={card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(card.title) : t.workdesk_tab_close(card.title)}
+                  aria-label={closeLabel}
+                  title={closeLabel}
                 >
                   <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
                     <path d="M4 4l8 8M12 4l-8 8" />
