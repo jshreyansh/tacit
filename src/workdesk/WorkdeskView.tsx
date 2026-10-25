@@ -509,7 +509,7 @@ export function WorkdeskView() {
                 key={`${card.kind}:${card.id}`}
                 role="tab"
                 aria-selected={active}
-                className="group/tab tc-rail-btn relative flex h-[30px] max-w-[210px] shrink-0 items-center px-2.5 text-[12px]"
+                className="group/tab tc-rail-btn relative flex h-[30px] max-w-[150px] shrink-0 items-center px-2.5 text-[12px]"
                 data-on={active ? "" : undefined}
                 style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
               >
