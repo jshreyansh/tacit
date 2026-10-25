@@ -109,6 +109,13 @@ interface AttachOptions {
   onCopy?: () => void;
 }
 
+interface TerminalViewBorrow {
+  container: HTMLDivElement;
+  /** Where the view goes back to: the tile's container, the latest one to ask. */
+  home: HTMLDivElement | null;
+  homeOptions: AttachOptions;
+}
+
 interface TerminalLifecycleCause {
   caller?: string;
   detail?: Record<string, unknown>;
@@ -121,6 +128,8 @@ interface ManagedTerminalRuntime {
   activityThrottled: boolean;
   attachedContainer: HTMLDivElement | null;
   attachOptions: AttachOptions | null;
+  /** The view is shown elsewhere for now (the workdesk view's tab); see borrowTerminalView. */
+  borrow: TerminalViewBorrow | null;
   cliOverride: ReturnType<
     typeof usePreferencesStore.getState
   >["cliCommands"][TerminalType];
@@ -1690,6 +1699,7 @@ function buildTerminalRuntime(
     activityThrottled: false,
     attachedContainer: null,
     attachOptions: null,
+    borrow: null,
     cliOverride:
       usePreferencesStore.getState().cliCommands[resolvedMeta.terminal.type] ??
       undefined,
@@ -2298,6 +2308,16 @@ export function attachTerminalContainer(
     return;
   }
 
+  // Borrowed: the tile that mounts meanwhile (a terminal added from the
+  // workdesk view's tab gets its tile just after the tab) gets it back later,
+  // instead of taking it from the tab and leaving that blank.
+  if (runtime.borrow && runtime.borrow.container !== container) {
+    runtime.borrow.home = container;
+    runtime.borrow.homeOptions = options;
+    recordRuntimeDiagnostic(runtime, "terminal_container_attach_while_borrowed");
+    return;
+  }
+
   runtime.attachOptions = options;
   recordRuntimeDiagnostic(runtime, "terminal_container_attach", {
     has_existing_xterm: !!runtime.xterm,
@@ -2335,16 +2355,23 @@ export function detachTerminalContainer(
 
   recordRuntimeDiagnostic(runtime, "terminal_container_detach", {
     ...getLifecycleDiagnosticData(cause),
+    borrowed: !!runtime.borrow,
   });
+  // The tile let go while the tab has the view: nothing to go back to.
+  if (runtime.borrow) {
+    runtime.borrow.home = null;
+    return;
+  }
   parkTerminalRenderer(runtime, cause);
 }
 
 /**
  * Shows a terminal's live view somewhere else for a while (the workdesk
  * view's tab), then hands it back: the returned function puts it back in
- * the container it was in, its tile, and fits it there. Null for a terminal
- * with no runtime, or one drawn by the agent renderer, which has no xterm
- * to move.
+ * its tile's container, and fits it there. Until then the view stays here,
+ * even when the tile attaches after this (it becomes where the view goes
+ * back to). Null for a terminal with no runtime, or one drawn by the agent
+ * renderer, which has no xterm to move.
  */
 export function borrowTerminalView(
   terminalId: string,
@@ -2355,21 +2382,25 @@ export function borrowTerminalView(
   if (!runtime || runtime.disposed || runtime.usesAgentRenderer) {
     return null;
   }
-  const previous = runtime.attachedContainer;
-  const previousOptions = runtime.attachOptions ?? {};
+  const home = runtime.borrow ? runtime.borrow.home : runtime.attachedContainer;
+  const homeOptions = runtime.borrow ? runtime.borrow.homeOptions : (runtime.attachOptions ?? {});
   // On the canvas the zoom shrinks the text; here it's at full scale, so it
   // takes its own size, and the preference comes back with the tile.
   setViewFontSize(runtime, fontSize ?? null);
-  attachTerminalContainer(terminalId, container, previousOptions);
+  runtime.borrow = null;
+  attachTerminalContainer(terminalId, container, homeOptions);
+  const borrow: TerminalViewBorrow = { container, home, homeOptions };
+  runtime.borrow = borrow;
   fitTerminalRuntime(terminalId);
   return () => {
-    // Rebuilt, or taken by something else meanwhile: theirs now.
-    if (runtimeRegistry.get(terminalId) !== runtime || runtime.disposed || runtime.attachedContainer !== container) {
+    // Rebuilt, or borrowed by another view meanwhile: theirs now.
+    if (runtimeRegistry.get(terminalId) !== runtime || runtime.disposed || runtime.borrow !== borrow) {
       return;
     }
+    runtime.borrow = null;
     setViewFontSize(runtime, null);
-    if (previous?.isConnected) {
-      attachTerminalContainer(terminalId, previous, previousOptions);
+    if (borrow.home?.isConnected) {
+      attachTerminalContainer(terminalId, borrow.home, borrow.homeOptions);
       fitTerminalRuntime(terminalId);
       return;
     }

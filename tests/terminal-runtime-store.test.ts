@@ -965,6 +965,76 @@ test("reattaching a parked runtime reacquires WebGL after the pool evicts it", a
   }
 });
 
+test("a tile that attaches while the workdesk view's tab has the terminal gets it back only when the tab lets go", async () => {
+  // A terminal added from the workdesk view's tab: the tab borrows the view,
+  // then the canvas tile mounts and attaches. The tile used to take the view,
+  // leaving the tab blank.
+  const mockWindow = installRuntimeGlobals();
+  const { useProjectStore } = await import("../src/stores/projectStore.ts");
+  const {
+    attachTerminalContainer,
+    borrowTerminalView,
+    destroyAllTerminalRuntimes,
+    detachTerminalContainer,
+    ensureTerminalRuntime,
+    getTerminalRuntime,
+  } = await import("../src/terminal/terminalRuntimeStore.ts");
+  const previousState = useProjectStore.getState();
+
+  destroyAllTerminalRuntimes();
+
+  try {
+    seedProjectState(useProjectStore);
+    ensureTerminalRuntime({
+      projectId: "project-1",
+      terminal: useProjectStore.getState().projects[0].worktrees[0].terminals[0],
+      worktreeId: "worktree-1",
+      worktreePath: "/tmp/project-1",
+    });
+    mockWindow.tacit = {
+      terminal: {
+        destroy: async () => {},
+        input() {},
+        resize() {},
+      },
+    };
+
+    const runtime = getTerminalRuntime("terminal-1");
+    assert.ok(runtime);
+    if (!runtime) {
+      return;
+    }
+
+    const host = createFakeContainer();
+    const { fitAddon, xterm } = createMockXterm();
+    runtime.fitAddon = fitAddon as unknown as typeof runtime.fitAddon;
+    runtime.hostElement = host as unknown as HTMLDivElement;
+    runtime.xterm = xterm as unknown as typeof runtime.xterm;
+
+    const tab = Object.assign(createFakeContainer(), { isConnected: true });
+    const tile = Object.assign(createFakeContainer(), { isConnected: true });
+
+    const giveBack = borrowTerminalView("terminal-1", tab as unknown as HTMLDivElement);
+    assert.ok(giveBack);
+    attachTerminalContainer("terminal-1", tile as unknown as HTMLDivElement);
+    assert.equal(host.parentElement, tab, "the tab keeps the view while it's open");
+
+    giveBack?.();
+    assert.equal(host.parentElement, tile, "closing the tab hands the view to the tile");
+
+    // The tile unmounting while the tab has the view: nowhere to go back to.
+    const again = borrowTerminalView("terminal-1", tab as unknown as HTMLDivElement);
+    detachTerminalContainer("terminal-1", { reason: "test_tile_unmounted" });
+    assert.equal(host.parentElement, tab, "a tile letting go doesn't take the view from the tab");
+    again?.();
+    assert.notEqual(host.parentElement, tab);
+    assert.notEqual(host.parentElement, tile);
+  } finally {
+    destroyAllTerminalRuntimes();
+    useProjectStore.setState(previousState);
+  }
+});
+
 test("manual terminal viewport refresh redraws registered xterms immediately", async () => {
   const {
     registerTerminal,

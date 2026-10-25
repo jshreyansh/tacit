@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
-import { borrowTerminalView, fitTerminalRuntime } from "../terminal/terminalRuntimeStore";
+import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
@@ -172,6 +172,9 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
     else if (!busy) requestManagerMove(card.id, pending, false);
   }, [pending, busy, card.chatMode, card.isManager, card.id]);
 
+  // A runtime built after the tab opened (a terminal just added), or rebuilt
+  // under it, is borrowed again, as the tile re-attaches (TerminalTile).
+  const runtimeEpoch = useTerminalRuntimeStore((s) => s.terminals[card.id]?.epoch ?? 0);
   useLayoutEffect(() => {
     if (!container || card.chatMode) return;
     const preferred = usePreferencesStore.getState().terminalFontSize;
@@ -185,7 +188,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
       observer.disconnect();
       giveBack();
     };
-  }, [container, card.id, card.chatMode]);
+  }, [container, card.id, card.chatMode, runtimeEpoch]);
 
   return (
     <>
