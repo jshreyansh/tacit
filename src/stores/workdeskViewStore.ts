@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { WorkdeskFilter } from "../workdesk/workdeskModel";
 
 /**
  * How the workdesk is shown (T7): as the canvas, or as the workdesk view's
@@ -77,12 +76,15 @@ interface WorkdeskViewStore {
   mode: WorkdeskMode;
   projection: BrowserProjection | null;
   setProjection: (projection: BrowserProjection | null) => void;
-  filter: WorkdeskFilter;
+  /** The tab showing; null for the overview, every node in its section. */
   openNode: OpenNode | null;
   setOpenNode: (node: OpenNode | null) => void;
+  /** The last tab opened, which the grid reopens when you come back to it. */
+  lastTab: OpenNode | null;
+  /** A tab that's gone (its node closed): not reopened, and not showing. */
+  forgetTab: (node: OpenNode) => void;
   setMode: (mode: WorkdeskMode) => void;
   toggleMode: () => void;
-  setFilter: (filter: WorkdeskFilter) => void;
   /**
    * Tasks and notes closed from the tab strip: still in the grid, and back
    * in the strip once opened again.
@@ -104,8 +106,8 @@ interface WorkdeskViewStore {
 
 export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
   mode: loadWorkdeskMode(),
-  filter: "all",
   openNode: null,
+  lastTab: null,
   projection: null,
   setProjection: (projection) => set({ projection }),
   hiddenTabs: loadHidden(),
@@ -115,7 +117,10 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
     if (!tabs.some((s) => s.id === filePath)) set({ sessionTabs: [...tabs, { id: filePath, title: null, agent: null }] });
     get().setOpenNode({ kind: "session", id: filePath });
   },
-  closeSession: (filePath) => set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) })),
+  closeSession: (filePath) => {
+    get().forgetTab({ kind: "session", id: filePath });
+    set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) }));
+  },
   nameSession: (filePath, title, agent) =>
     set((s) => ({ sessionTabs: s.sessionTabs.map((tab) => (tab.id === filePath ? { ...tab, title, agent } : tab)) })),
   fileTabs: [],
@@ -124,12 +129,17 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
     if (!tabs.includes(filePath)) set({ fileTabs: [...tabs, filePath] });
     get().setOpenNode({ kind: "file", id: filePath });
   },
-  closeFile: (filePath) => set((s) => ({ fileTabs: s.fileTabs.filter((p) => p !== filePath) })),
+  closeFile: (filePath) => {
+    get().forgetTab({ kind: "file", id: filePath });
+    set((s) => ({ fileTabs: s.fileTabs.filter((p) => p !== filePath) }));
+  },
   sessionWentLive: (filePath, terminalId) => {
+    get().forgetTab({ kind: "session", id: filePath });
     set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) }));
     get().setOpenNode({ kind: "terminal", id: terminalId });
   },
   hideTab: (node) => {
+    get().forgetTab(node);
     const hiddenTabs = [...new Set([...get().hiddenTabs, tabKey(node)])];
     saveHidden(hiddenTabs);
     set({ hiddenTabs });
@@ -140,16 +150,23 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
     if (openNode && hidden.includes(tabKey(openNode))) {
       const hiddenTabs = hidden.filter((k) => k !== tabKey(openNode));
       saveHidden(hiddenTabs);
-      set({ openNode, hiddenTabs });
+      set({ openNode, lastTab: openNode, hiddenTabs });
       return;
     }
-    set({ openNode });
+    set(openNode ? { openNode, lastTab: openNode } : { openNode });
   },
-  // Back on the canvas, the grid opens on its cards next time.
+  forgetTab: (node) => {
+    const key = tabKey(node);
+    const { openNode, lastTab } = get();
+    set({
+      openNode: openNode && tabKey(openNode) === key ? null : openNode,
+      lastTab: lastTab && tabKey(lastTab) === key ? null : lastTab,
+    });
+  },
+  // Back in the grid, the last tab opened shows again; with none, the overview.
   setMode: (mode) => {
     saveMode(mode);
-    set(mode === "canvas" ? { mode, openNode: null } : { mode });
+    set(mode === "canvas" ? { mode, openNode: null } : { mode, openNode: get().lastTab });
   },
   toggleMode: () => get().setMode(get().mode === "grid" ? "canvas" : "grid"),
-  setFilter: (filter) => set({ filter }),
 }));

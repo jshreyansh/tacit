@@ -14,6 +14,7 @@ import { closeTerminalInScene } from "../actions/terminalSceneActions";
 import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddNodeMenu } from "./AddNodeMenu";
+import { GridViewIcon } from "./viewIcons";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { TITLE_STRIP_CSS } from "../toolbar/titleStripHeight";
 import { agentIcon } from "../toolbar/agentIcons";
@@ -35,16 +36,16 @@ import {
   type TerminalCard,
   type WorkdeskCard,
   type TabCard,
-  type WorkdeskFilter,
 } from "./workdeskModel";
 import { TERMINAL_ID_PATTERN } from "../toolbar/sessionReaderModel";
 import { terminalName } from "../actions/terminalLookup";
 
 /**
- * The workdesk view (T7): every node on the canvas on screen as a card, in
- * agents, browsers by profile, and terminals and notes, to the right of the
- * docked chat. Cards show live status and the last lines worth reading; a
- * card opens its node full size in the view's tabs.
+ * The workdesk view (T7), to the right of the docked chat: a strip of tabs,
+ * each a node full size, and before them the overview, every node on the
+ * canvas as a card, in agents, browsers by profile, and terminals and notes.
+ * Cards show live status and the last lines worth reading; a card opens its
+ * node in a tab.
  */
 
 type Dict = ReturnType<typeof useT>;
@@ -308,8 +309,6 @@ const gridCols = "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(26
 export function WorkdeskView() {
   const t = useT();
   const mode = useWorkdeskViewStore((s) => s.mode);
-  const filter = useWorkdeskViewStore((s) => s.filter);
-  const setFilter = useWorkdeskViewStore((s) => s.setFilter);
   const openNode = useWorkdeskViewStore((s) => s.openNode);
   const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
   const hiddenTabs = useWorkdeskViewStore((s) => s.hiddenTabs);
@@ -366,13 +365,14 @@ export function WorkdeskView() {
   const openCard: TabCard | null = openNode
     ? ([...allCards, ...extraCards].find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null)
     : null;
-  // A node closed while its tab was open: back to the grid. One just added
-  // may not be listed yet, so only a node that was seen counts as closed.
+  // A node closed while its tab was open, or was the last one: back to the
+  // overview. One just added may not be listed yet, so only a node that was
+  // seen counts as closed.
   const seenOpen = useRef<string | null>(null);
   useEffect(() => {
     if (openCard) seenOpen.current = tabKey(openCard);
-    else if (openNode && seenOpen.current === tabKey(openNode)) setOpenNode(null);
-  }, [openNode, openCard, setOpenNode]);
+    else if (openNode && seenOpen.current === tabKey(openNode)) useWorkdeskViewStore.getState().forgetTab(openNode);
+  }, [openNode, openCard]);
   // The grid opens with the manager's chat docked on its left, as the pill
   // has nowhere to sit over the cards; back on the canvas the chat is left
   // as it was before.
@@ -447,21 +447,9 @@ export function WorkdeskView() {
   // Beside whatever is open on the left (the chat, a panel, the Hub), never under it.
   const left = leftInset;
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
-  const show = (f: WorkdeskFilter) => filter === "all" || filter === f;
-  // Tasks and notes sit together, as they're kept together.
-  const filters: WorkdeskFilter[] = ["all", "agents", "terminals", "browsers", "tasks", "notes"];
-  const filterLabel: Record<WorkdeskFilter, string> = {
-    all: t.workdesk_filter_all,
-    agents: t.workdesk_filter_agents,
-    terminals: t.workdesk_filter_terminals,
-    browsers: t.workdesk_filter_browsers,
-    tasks: t.workdesk_tasks,
-    notes: t.workdesk_filter_notes,
-  };
   const empty = sections.counts.all === 0;
   const browserWindow = openCard?.kind === "browser";
   const barGlass = browserWindow ? "pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:blur(22px)_saturate(1.6)]" : "";
-  const emptyFilter = !empty && sections.counts[filter] === 0;
 
   return (
     <section
@@ -478,52 +466,34 @@ export function WorkdeskView() {
       }}
       aria-label={t.workdesk_view_grid}
       onKeyDown={(e) => {
-        // Esc leaves a tab for the grid, unless it's meant for a terminal or the note.
+        // Esc leaves a tab for the overview, unless it's meant for a terminal or the note.
         if (e.key !== "Escape" || !openCard) return;
         const target = e.target as HTMLElement;
         if (target.closest(".tc-xterm-host") || target.tagName === "TEXTAREA") return;
         setOpenNode(null);
       }}
     >
-      <div className={`flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5 ${barGlass}`}>
-        {/* Filters are rounded chips, apart from the square view switcher. */}
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-          {filters.map((f) => {
-            const on = filter === f;
-            return (
-              <button
-                key={f}
-                type="button"
-                className="flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-[12.5px] outline-none hover:text-[var(--text-primary)] focus-visible:border-[var(--accent)]"
-                aria-pressed={on}
-                // From a tab too: back to the grid, showing that kind.
-                onClick={() => {
-                  setFilter(f);
-                  setOpenNode(null);
-                }}
-                style={{
-                  color: on ? "var(--text-primary)" : "var(--text-muted)",
-                  borderColor: on ? "var(--border-hover)" : "transparent",
-                  background: on ? "var(--surface-hover)" : undefined,
-                }}
-              >
-                {filterLabel[f]}
-                <span className="ml-1.5 tabular-nums" style={{ color: on ? "var(--text-secondary)" : "var(--text-faint)" }}>
-                  {sections.counts[f]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {openCard && (
-        <div className={`flex h-10 shrink-0 items-center border-b border-[var(--border)] px-2 ${browserWindow ? barGlass : "bg-[color-mix(in_srgb,var(--bg)_40%,transparent)]"}`}>
-          {/* Add an agent, terminal, browser, task or note; it opens here.
-              It stays put while the tabs scroll. */}
-          <AddNodeMenu onAdded={(node) => setOpenNode(node)} />
-          <span className="mx-1.5 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
+      <div className={`flex h-12 shrink-0 items-center border-b border-[var(--border)] px-2.5 ${barGlass}`}>
+        {/* Add an agent, terminal, browser, task or note; it opens here.
+            It and the overview stay put while the tabs scroll. */}
+        <AddNodeMenu onAdded={(node) => setOpenNode(node)} />
+        <button
+          type="button"
+          className="tc-rail-btn ml-1 flex h-[30px] shrink-0 items-center gap-1.5 px-2 text-[12px] outline-none"
+          data-on={openCard ? undefined : ""}
+          aria-pressed={!openCard}
+          aria-label={t.workdesk_overview}
+          title={t.workdesk_overview}
+          onClick={() => setOpenNode(null)}
+          style={{ color: openCard ? "var(--text-muted)" : "var(--text-primary)" }}
+        >
+          <GridViewIcon size={14} />
+          <span className="tabular-nums" style={{ color: openCard ? "var(--text-faint)" : "var(--text-secondary)" }}>
+            {sections.counts.all}
+          </span>
+        </button>
+        <span className="mx-1.5 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
           {tabCards.map((card) => {
             const active = card === openCard;
             const icon =
@@ -580,9 +550,8 @@ export function WorkdeskView() {
               </div>
             );
           })}
-          </div>
         </div>
-      )}
+      </div>
 
       {openCard && (
         <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
@@ -592,11 +561,9 @@ export function WorkdeskView() {
 
       {!openCard && (
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-24 pt-3">
-        {(empty || emptyFilter) && (
-          <div className="py-16 text-center text-[13px] text-[var(--text-muted)]">{empty ? t.workdesk_empty : t.workdesk_empty_filter}</div>
-        )}
+        {empty && <div className="py-16 text-center text-[13px] text-[var(--text-muted)]">{t.workdesk_empty}</div>}
         <div className="flex flex-col gap-2.5">
-          {show("agents") && sections.agents.length > 0 && (
+          {sections.agents.length > 0 && (
             <>
               <SectionHead title={t.workdesk_section_agents} summary={t.workdesk_agents_summary(sections.agents.length, sections.runningAgents)} />
               <div className={gridCols}>
@@ -606,7 +573,7 @@ export function WorkdeskView() {
               </div>
             </>
           )}
-          {show("terminals") && sections.terminals.length > 0 && (
+          {sections.terminals.length > 0 && (
             <>
               <SectionHead title={t.workdesk_section_terminals} summary={String(sections.terminals.length)} />
               <div className={gridCols}>
@@ -616,7 +583,7 @@ export function WorkdeskView() {
               </div>
             </>
           )}
-          {show("browsers") && sections.browserGroups.length > 0 && (
+          {sections.browserGroups.length > 0 && (
             <>
               <SectionHead
                 title={t.workdesk_section_browsers}
@@ -643,7 +610,7 @@ export function WorkdeskView() {
               ))}
             </>
           )}
-          {show("tasks") && sections.tasks.length > 0 && (
+          {sections.tasks.length > 0 && (
             <>
               <SectionHead title={t.workdesk_tasks} summary={String(sections.tasks.length)} />
               <div className={gridCols}>
@@ -653,7 +620,7 @@ export function WorkdeskView() {
               </div>
             </>
           )}
-          {show("notes") && sections.notes.length > 0 && (
+          {sections.notes.length > 0 && (
             <>
               <SectionHead title={t.workdesk_section_notes} summary={String(sections.notes.length)} />
               <div className={gridCols}>

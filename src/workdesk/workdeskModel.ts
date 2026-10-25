@@ -11,7 +11,8 @@ import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from 
  * notes. Pure, so the grouping and ordering are tested without React.
  */
 
-export type WorkdeskFilter = "all" | "agents" | "terminals" | "browsers" | "tasks" | "notes";
+/** What the overview counts: every node, or one kind. */
+export type WorkdeskCountKey = "all" | "agents" | "terminals" | "browsers" | "tasks" | "notes";
 
 export interface TerminalCard {
   kind: "terminal";
@@ -96,7 +97,7 @@ export interface WorkdeskSections {
   /** Plain terminals: shells and anything that isn't an agent. */
   terminals: TerminalCard[];
   notes: NoteCard[];
-  counts: Record<WorkdeskFilter, number>;
+  counts: Record<WorkdeskCountKey, number>;
   runningAgents: number;
   /**
    * Every card in the order of the open view's tabs: agents and terminals
