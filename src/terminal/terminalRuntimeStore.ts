@@ -172,7 +172,7 @@ interface ManagedTerminalRuntime {
   selectionPointerCleanup: (() => void) | null;
   serializeAddon: SerializeAddon | null;
   sessionCancel: (() => void) | null;
-  /** Codex makes no session until it's sent a message: each Enter restarts the capture clock, until one is found. */
+  /** Claude and Codex have no session until they're answered: each Enter restarts the capture clock, until one is found. */
   onSubmitCaptureSession: (() => void) | null;
   started: boolean;
   telemetryTimer: ReturnType<typeof setInterval> | null;
@@ -1558,8 +1558,9 @@ function scheduleSessionCapture(
   cliType: TerminalType,
   detectedCliPid?: number | null,
   // When the session began, and Codex's newest thread just before: polling
-  // starts well after both, by when the newest thread is this terminal's own.
-  since?: { startedAt: string; codexBaseline: Promise<string | null> },
+  // starts well after both, by when Codex's newest thread is this
+  // terminal's own.
+  since?: { startedAt: string; codexBaseline?: Promise<string | null> },
 ) {
   // Session discovery knows only these agents' sessions (Antigravity's
   // through electron/antigravity-session.ts). Polling for any other one
@@ -1600,6 +1601,52 @@ function scheduleSessionCapture(
       );
     }
   });
+}
+
+// Claude and Codex report their session through a hook; polling is the
+// fallback for a hook that never comes. Neither has a session to report
+// until it's answered: Codex makes it at the first message, and Claude in a
+// folder it doesn't trust yet starts only once that question is answered.
+// So unless a prompt went in at launch, the fallback's clock starts at
+// Enter, and each Enter restarts it until a session is found. Timed from
+// launch, it ran out on an agent nobody had typed to and warned "Session
+// capture timeout".
+function captureHookAgentSession(
+  runtime: ManagedTerminalRuntime,
+  ptyId: number,
+  cliType: "claude" | "codex",
+  options: {
+    launchedAt: string;
+    codexBaseline?: Promise<string | null>;
+    detectedCliPid?: number | null;
+    startNow?: boolean;
+  },
+) {
+  let firstSubmitAt: string | null = null;
+  const startClock = () => {
+    if (runtime.hookFallbackTimer) clearTimeout(runtime.hookFallbackTimer);
+    runtime.sessionCancel?.();
+    // Codex's thread is made at the first Enter, so it is matched by that
+    // time; Claude's by its process's start, so by launch.
+    firstSubmitAt ??= new Date().toISOString();
+    const startedAt = cliType === "codex" ? firstSubmitAt : options.launchedAt;
+    runtime.hookFallbackTimer = setTimeout(() => {
+      runtime.hookFallbackTimer = null;
+      if (runtime.disposed || runtime.meta.terminal.sessionId) return;
+      console.warn(
+        `[TerminalRuntime] Hook session fallback triggered for terminal=${runtime.meta.terminal.id}`,
+      );
+      scheduleSessionCapture(runtime, ptyId, cliType, options.detectedCliPid, {
+        startedAt,
+        codexBaseline: options.codexBaseline,
+      });
+    }, HOOK_SESSION_FALLBACK_MS);
+  };
+  if (options.startNow) {
+    startClock();
+  } else {
+    runtime.onSubmitCaptureSession = startClock;
+  }
 }
 
 function triggerDetection(runtime: ManagedTerminalRuntime) {
@@ -1657,6 +1704,15 @@ function triggerDetection(runtime: ManagedTerminalRuntime) {
         return;
       }
 
+      if (nextType === "claude" || nextType === "codex") {
+        captureHookAgentSession(runtime, runtime.ptyId!, nextType, {
+          launchedAt: new Date().toISOString(),
+          codexBaseline:
+            nextType === "codex" ? window.tacit.session.getCodexLatest() : undefined,
+          detectedCliPid: result?.pid,
+        });
+        return;
+      }
       scheduleSessionCapture(runtime, runtime.ptyId!, nextType, result?.pid);
     });
   }, CLI_DETECTION_POLL_INTERVAL_MS);
@@ -1878,6 +1934,7 @@ async function spawnPty(
     !resumeSessionId && launch && runtime.meta.terminal.type === "codex"
       ? window.tacit.session.getCodexLatest()
       : undefined;
+  const launchedAt = new Date().toISOString();
 
   const startSize = spawnSize(runtime);
   if (startSize) {
@@ -1932,38 +1989,12 @@ async function spawnPty(
         (runtime.meta.terminal.type === "claude" ||
           runtime.meta.terminal.type === "codex")
       ) {
-        // Hook is primary for claude/codex; fall back to polling if no hook event.
-        let firstStartedAt: string | null = null;
-        const startCaptureClock = () => {
-          if (runtime.hookFallbackTimer) clearTimeout(runtime.hookFallbackTimer);
-          runtime.sessionCancel?.();
-          // The session can't be older than the first Enter.
-          firstStartedAt ??= new Date().toISOString();
-          const startedAt = firstStartedAt;
-          runtime.hookFallbackTimer = setTimeout(() => {
-            runtime.hookFallbackTimer = null;
-            if (!hookSessionReceived && !runtime.disposed) {
-              console.warn(
-                `[TerminalRuntime] Hook session fallback triggered for terminal=${runtime.meta.terminal.id}`,
-              );
-              scheduleSessionCapture(
-                runtime,
-                ptyId,
-                runtime.meta.terminal.type,
-                undefined,
-                codexBaseline && { startedAt, codexBaseline },
-              );
-            }
-          }, HOOK_SESSION_FALLBACK_MS);
-        };
-        // Codex makes its session when it's sent its first message, not at
-        // launch: timing a Codex nobody had typed to yet warned "Session
-        // capture timeout" after 40s.
-        if (runtime.meta.terminal.type === "codex" && !sendInitialPrompt) {
-          runtime.onSubmitCaptureSession = startCaptureClock;
-        } else {
-          startCaptureClock();
-        }
+        captureHookAgentSession(runtime, ptyId, runtime.meta.terminal.type, {
+          launchedAt,
+          codexBaseline,
+          // A prompt given at launch is a first message.
+          startNow: sendInitialPrompt,
+        });
       } else if (runtime.meta.terminal.type !== "shell") {
         scheduleSessionCapture(runtime, ptyId, runtime.meta.terminal.type);
       }

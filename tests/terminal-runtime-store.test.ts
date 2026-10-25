@@ -1330,6 +1330,15 @@ test("a Codex launched without a prompt times its session from the first Enter, 
       },
     };
 
+    // Every timer is fake from before launch, so one started at launch runs out here too.
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+    const flush = async (ms: number) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 500) {
+        t.mock.timers.tick(500);
+        for (let i = 0; i < 5; i += 1) await Promise.resolve();
+      }
+    };
+
     ensureTerminalRuntime({
       projectId: "project-1",
       terminal: useProjectStore.getState().projects[0].worktrees[0].terminals[0],
@@ -1348,18 +1357,9 @@ test("a Codex launched without a prompt times its session from the first Enter, 
     } as unknown as typeof runtime.xterm;
     runtime.attachedContainer = createFakeContainer() as unknown as HTMLDivElement;
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await flush(500);
     assert.ok(typed, "the runtime should listen for typing once the pty is up");
     assert.equal(latestReads, 1, "Codex's newest thread is read before it starts");
-
-    const launchedAt = Date.now();
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: launchedAt });
-    const flush = async (ms: number) => {
-      for (let elapsed = 0; elapsed < ms; elapsed += 500) {
-        t.mock.timers.tick(500);
-        for (let i = 0; i < 5; i += 1) await Promise.resolve();
-      }
-    };
 
     // Nobody types for a minute: Codex has no session, and nothing is timed.
     await flush(60_000);
@@ -1379,6 +1379,140 @@ test("a Codex launched without a prompt times its session from the first Enter, 
       "this-codex",
     );
     assert.equal(runtime.onSubmitCaptureSession, null, "found, so Enter stops restarting the clock");
+  } finally {
+    t.mock.timers.reset();
+    destroyAllTerminalRuntimes();
+    useTerminalRuntimeStateStore.getState().reset();
+    useProjectStore.setState(previousProjectState);
+  }
+});
+
+test("a Claude waiting on its folder question isn't timed until Enter, then is searched for by its launch", async (t) => {
+  const mockWindow = installRuntimeGlobals();
+  const { useProjectStore } = await import("../src/stores/projectStore.ts");
+  const { useTerminalRuntimeStateStore } = await import(
+    "../src/stores/terminalRuntimeStateStore.ts"
+  );
+  const {
+    destroyAllTerminalRuntimes,
+    ensureTerminalRuntime,
+    getTerminalRuntime,
+  } = await import("../src/terminal/terminalRuntimeStore.ts");
+  const previousProjectState = useProjectStore.getState();
+  const findClaudeCalls: Array<string | undefined> = [];
+  let typed: ((data: string) => void) | null = null;
+
+  destroyAllTerminalRuntimes();
+
+  try {
+    seedProjectState(useProjectStore, {
+      ...createTerminal(),
+      ptyId: null,
+      status: "idle",
+      title: "claude",
+      type: "claude",
+    });
+
+    mockWindow.tacit = {
+      hooks: {
+        onSessionStarted() {
+          return () => {};
+        },
+        onStopFailure() {
+          return () => {};
+        },
+        onTurnComplete() {
+          return () => {};
+        },
+      },
+      session: {
+        findClaude: async (_cwd: string, startedAt?: string) => {
+          findClaudeCalls.push(startedAt);
+          return { confidence: "strong", sessionId: "this-claude" };
+        },
+        getBypassState: async () => false,
+        getPermissionMode: async () => null,
+        onTurnComplete() {
+          return () => {};
+        },
+        unwatch: async () => {},
+        watch: async () => ({ ok: true }),
+      },
+      telemetry: {
+        attachSession: async () => ({ ok: true, sessionFile: null }),
+        detachSession: async () => {},
+        getTerminal: async () => null,
+        onSnapshotChanged() {
+          return () => {};
+        },
+      },
+      terminal: {
+        create: async () => 42,
+        destroy: async () => {},
+        getPid: async () => 4242,
+        input() {},
+        notifyThemeChanged() {},
+        onExit() {
+          return () => {};
+        },
+        onOutput() {
+          return () => {};
+        },
+        resize() {},
+      },
+    };
+
+    // Every timer is fake from before launch, so one started at launch runs out here too.
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+    const flush = async (ms: number) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 500) {
+        t.mock.timers.tick(500);
+        for (let i = 0; i < 5; i += 1) await Promise.resolve();
+      }
+    };
+
+    const launchedBefore = Date.now();
+    ensureTerminalRuntime({
+      projectId: "project-1",
+      terminal: useProjectStore.getState().projects[0].worktrees[0].terminals[0],
+      worktreeId: "worktree-1",
+      worktreePath: "/tmp/project-1",
+    });
+    const runtime = getTerminalRuntime("terminal-1");
+    assert.ok(runtime);
+    const { xterm } = createMockXterm();
+    runtime.xterm = {
+      ...xterm,
+      onData(callback: (data: string) => void) {
+        typed = callback;
+        return { dispose() {} };
+      },
+    } as unknown as typeof runtime.xterm;
+    runtime.attachedContainer = createFakeContainer() as unknown as HTMLDivElement;
+
+    await flush(500);
+    assert.ok(typed, "the runtime should listen for typing once the pty is up");
+    const launchedAfter = Date.now();
+
+    // Claude asks whether to trust the folder; no answer for two minutes.
+    await flush(120_000);
+    assert.deepEqual(findClaudeCalls, []);
+
+    typed!("\r");
+    await flush(29_500);
+    assert.deepEqual(findClaudeCalls, [], "the hook still has its 30s");
+    await flush(6_000);
+
+    assert.ok(findClaudeCalls.length > 0, "the fallback searches once the clock runs out");
+    const anchoredAt = new Date(findClaudeCalls[0]!).getTime();
+    assert.ok(
+      anchoredAt >= launchedBefore && anchoredAt <= launchedAfter,
+      "Claude is matched by when it started, not by the Enter",
+    );
+    assert.equal(
+      useTerminalRuntimeStateStore.getState().terminals["terminal-1"]?.sessionId,
+      "this-claude",
+    );
   } finally {
     t.mock.timers.reset();
     destroyAllTerminalRuntimes();
