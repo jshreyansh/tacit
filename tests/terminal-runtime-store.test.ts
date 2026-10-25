@@ -1252,6 +1252,141 @@ test("codex SessionStart hook cancels fallback polling and preserves the exact s
   }
 });
 
+test("a Codex launched without a prompt times its session from the first Enter, not from launch", async (t) => {
+  const mockWindow = installRuntimeGlobals();
+  const { useProjectStore } = await import("../src/stores/projectStore.ts");
+  const { useTerminalRuntimeStateStore } = await import(
+    "../src/stores/terminalRuntimeStateStore.ts"
+  );
+  const {
+    destroyAllTerminalRuntimes,
+    ensureTerminalRuntime,
+    getTerminalRuntime,
+  } = await import("../src/terminal/terminalRuntimeStore.ts");
+  const previousProjectState = useProjectStore.getState();
+  const findCodexCalls: Array<{ startedAt?: string; createdSince?: string }> = [];
+  let latestReads = 0;
+  let typed: ((data: string) => void) | null = null;
+
+  destroyAllTerminalRuntimes();
+
+  try {
+    seedProjectState(useProjectStore, {
+      ...createTerminal(),
+      ptyId: null,
+      status: "idle",
+      title: "codex",
+      type: "codex",
+    });
+
+    mockWindow.tacit = {
+      hooks: {
+        onSessionStarted() {
+          return () => {};
+        },
+        onStopFailure() {
+          return () => {};
+        },
+        onTurnComplete() {
+          return () => {};
+        },
+      },
+      session: {
+        findCodex: async (_cwd: string, startedAt?: string, createdSince?: string) => {
+          findCodexCalls.push({ startedAt, createdSince });
+          return { confidence: "medium", sessionId: "this-codex" };
+        },
+        getBypassState: async () => false,
+        getCodexLatest: async () => {
+          latestReads += 1;
+          return "baseline-session";
+        },
+        onTurnComplete() {
+          return () => {};
+        },
+        unwatch: async () => {},
+        watch: async () => ({ ok: true }),
+      },
+      telemetry: {
+        attachSession: async () => ({ ok: true, sessionFile: null }),
+        detachSession: async () => {},
+        getTerminal: async () => null,
+        onSnapshotChanged() {
+          return () => {};
+        },
+      },
+      terminal: {
+        create: async () => 42,
+        destroy: async () => {},
+        input() {},
+        notifyThemeChanged() {},
+        onExit() {
+          return () => {};
+        },
+        onOutput() {
+          return () => {};
+        },
+        resize() {},
+      },
+    };
+
+    ensureTerminalRuntime({
+      projectId: "project-1",
+      terminal: useProjectStore.getState().projects[0].worktrees[0].terminals[0],
+      worktreeId: "worktree-1",
+      worktreePath: "/tmp/project-1",
+    });
+    const runtime = getTerminalRuntime("terminal-1");
+    assert.ok(runtime);
+    const { xterm } = createMockXterm();
+    runtime.xterm = {
+      ...xterm,
+      onData(callback: (data: string) => void) {
+        typed = callback;
+        return { dispose() {} };
+      },
+    } as unknown as typeof runtime.xterm;
+    runtime.attachedContainer = createFakeContainer() as unknown as HTMLDivElement;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(typed, "the runtime should listen for typing once the pty is up");
+    assert.equal(latestReads, 1, "Codex's newest thread is read before it starts");
+
+    const launchedAt = Date.now();
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: launchedAt });
+    const flush = async (ms: number) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 500) {
+        t.mock.timers.tick(500);
+        for (let i = 0; i < 5; i += 1) await Promise.resolve();
+      }
+    };
+
+    // Nobody types for a minute: Codex has no session, and nothing is timed.
+    await flush(60_000);
+    assert.deepEqual(findCodexCalls, []);
+    assert.equal(runtime.hookFallbackTimer, null);
+
+    typed!("hi\r");
+    const enterAt = new Date().toISOString();
+    await flush(29_500);
+    assert.deepEqual(findCodexCalls, [], "the hook still has its 30s");
+    await flush(1_500);
+
+    assert.deepEqual(findCodexCalls[0], { startedAt: enterAt, createdSince: enterAt });
+    assert.equal(latestReads, 1, "the baseline is the one read before launch");
+    assert.equal(
+      useTerminalRuntimeStateStore.getState().terminals["terminal-1"]?.sessionId,
+      "this-codex",
+    );
+    assert.equal(runtime.onSubmitCaptureSession, null, "found, so Enter stops restarting the clock");
+  } finally {
+    t.mock.timers.reset();
+    destroyAllTerminalRuntimes();
+    useTerminalRuntimeStateStore.getState().reset();
+    useProjectStore.setState(previousProjectState);
+  }
+});
+
 test("wuu polling attaches the discovered session to telemetry", async () => {
   const mockWindow = installRuntimeGlobals();
   const { useProjectStore } = await import("../src/stores/projectStore.ts");

@@ -1538,8 +1538,13 @@ function setupIpc() {
 
   ipcMain.handle(
     "session:find-codex",
-    (_event, cwd: string, startedAt?: string) => {
-      return findBestCodexSession(cwd, startedAt);
+    (_event, cwd: string, startedAt?: string, createdSince?: unknown) => {
+      return findBestCodexSession(
+        cwd,
+        startedAt,
+        undefined,
+        typeof createdSince === "string" ? createdSince : undefined,
+      );
     },
   );
 

@@ -607,6 +607,7 @@ export interface TacitAPI {
     findCodex: (
       cwd: string,
       startedAt?: string,
+      createdSince?: string,
     ) => Promise<{
       sessionId: string;
       filePath: string;

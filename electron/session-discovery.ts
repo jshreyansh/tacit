@@ -33,6 +33,14 @@ const CODEX_SESSION_LOOKBACK_DAYS = 7;
 const CODEX_INDEX_RECENT_LIMIT = 24;
 const CODEX_FALLBACK_SCAN_LIMIT = 32;
 const CODEX_STATE_DB_CANDIDATE_LIMIT = 24;
+// The state db keeps whole seconds, and the clock that sets createdSince
+// starts a moment after the keypress or launch that made the thread.
+const CODEX_CREATED_SINCE_SLACK_MS = 5_000;
+
+function createdSinceOk(anchorMs: number, createdSince?: string): boolean {
+  const sinceMs = createdSince ? new Date(createdSince).getTime() : NaN;
+  return !Number.isFinite(sinceMs) || anchorMs >= sinceMs - CODEX_CREATED_SINCE_SLACK_MS;
+}
 const require = createRequire(import.meta.url);
 
 interface SqliteStatement {
@@ -187,6 +195,7 @@ function findBestCodexSessionInStateDb(
   cwd: string,
   startedAt?: string,
   homeDir = os.homedir(),
+  createdSince?: string,
 ): FoundSession | null {
   const dbPath = getCodexStateDbPath(homeDir);
   if (!dbPath || !fs.existsSync(dbPath)) {
@@ -247,7 +256,7 @@ function findBestCodexSessionInStateDb(
           confidence: "medium";
           anchorMs: number;
           distance: number;
-        } => candidate !== null,
+        } => candidate !== null && createdSinceOk(candidate.anchorMs, createdSince),
       )
       .sort((left, right) => {
         if (left.distance !== right.distance) return left.distance - right.distance;
@@ -392,12 +401,17 @@ export function readLatestCodexSessionId(homeDir = os.homedir()): string | null 
   return latest?.sessionId ?? null;
 }
 
+/**
+ * `createdSince`, when given, rules out threads made before it: they belong
+ * to some earlier Codex, however close their time is to `startedAt`.
+ */
 export function findBestCodexSession(
   cwd: string,
   startedAt?: string,
   homeDir = os.homedir(),
+  createdSince?: string,
 ): FoundSession | null {
-  const fromDb = findBestCodexSessionInStateDb(cwd, startedAt, homeDir);
+  const fromDb = findBestCodexSessionInStateDb(cwd, startedAt, homeDir, createdSince);
   if (fromDb) {
     return fromDb;
   }
@@ -438,7 +452,7 @@ export function findBestCodexSession(
         confidence: "medium";
         anchorMs: number;
         distance: number;
-      } => candidate !== null,
+      } => candidate !== null && createdSinceOk(candidate.anchorMs, createdSince),
     )
     .sort((left, right) => {
       if (left.distance !== right.distance) return left.distance - right.distance;
@@ -476,7 +490,7 @@ export function findBestCodexSession(
         confidence: "medium";
         anchorMs: number;
         distance: number;
-      } => candidate !== null,
+      } => candidate !== null && createdSinceOk(candidate.anchorMs, createdSince),
     )
     .sort((left, right) => {
       if (left.distance !== right.distance) return left.distance - right.distance;

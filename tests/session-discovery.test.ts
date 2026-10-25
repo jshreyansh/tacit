@@ -429,6 +429,59 @@ test("findBestOpenCodeSession ignores stale cwd sessions before launch", () => {
   });
 });
 
+test("findBestCodexSession with createdSince passes over an older thread in the same folder", () => {
+  withTempHome((homeDir) => {
+    const since = new Date("2026-10-26T02:18:32.000Z");
+    const sinceSec = Math.floor(since.getTime() / 1000);
+    writeStateDbThreads(homeDir, [
+      {
+        id: "earlier-codex",
+        cwd: "/tmp/project-since",
+        createdAtSec: sinceSec - 600,
+        updatedAtSec: sinceSec - 590,
+        rolloutPath: "/tmp/earlier.jsonl",
+      },
+    ]);
+
+    // Nothing new yet: the closest thread is an earlier Codex's, not this one's.
+    assert.equal(
+      findBestCodexSession("/tmp/project-since", since.toISOString(), homeDir, since.toISOString()),
+      null,
+    );
+    assert.equal(
+      findBestCodexSession("/tmp/project-since", since.toISOString(), homeDir)?.sessionId,
+      "earlier-codex",
+      "without createdSince the old guess stands",
+    );
+  });
+
+  withTempHome((homeDir) => {
+    const since = new Date("2026-10-26T02:18:32.000Z");
+    const sinceSec = Math.floor(since.getTime() / 1000);
+    writeStateDbThreads(homeDir, [
+      {
+        id: "earlier-codex",
+        cwd: "/tmp/project-since",
+        createdAtSec: sinceSec - 600,
+        updatedAtSec: sinceSec - 590,
+        rolloutPath: "/tmp/earlier.jsonl",
+      },
+      {
+        id: "this-codex",
+        cwd: "/tmp/project-since",
+        // The db keeps whole seconds.
+        createdAtSec: sinceSec,
+        updatedAtSec: sinceSec + 4,
+        rolloutPath: "/tmp/this.jsonl",
+      },
+    ]);
+    assert.equal(
+      findBestCodexSession("/tmp/project-since", since.toISOString(), homeDir, since.toISOString())?.sessionId,
+      "this-codex",
+    );
+  });
+});
+
 test("findBestCodexSession prefers recent indexed sessions that match cwd", () => {
   withTempHome((homeDir) => {
     const now = new Date();

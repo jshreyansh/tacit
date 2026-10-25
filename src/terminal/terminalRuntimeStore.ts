@@ -172,6 +172,8 @@ interface ManagedTerminalRuntime {
   selectionPointerCleanup: (() => void) | null;
   serializeAddon: SerializeAddon | null;
   sessionCancel: (() => void) | null;
+  /** Codex makes no session until it's sent a message: each Enter restarts the capture clock, until one is found. */
+  onSubmitCaptureSession: (() => void) | null;
   started: boolean;
   telemetryTimer: ReturnType<typeof setInterval> | null;
   usesAgentRenderer: boolean;
@@ -464,6 +466,7 @@ async function pollSessionId(
   detectedCliPid?: number | null,
   startedAt?: string,
   terminalId?: string,
+  codexBaselineAtStart?: Promise<string | null>,
 ) {
   const maxAttempts =
     cliType === "antigravity"
@@ -493,7 +496,8 @@ async function pollSessionId(
 
   let codexBaseline: string | null = null;
   if (cliType === "codex") {
-    codexBaseline = await window.tacit.session.getCodexLatest();
+    codexBaseline = await (codexBaselineAtStart ??
+      window.tacit.session.getCodexLatest());
   }
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -509,9 +513,12 @@ async function pollSessionId(
     let sessionId: string | null = null;
     let confidence: "strong" | "medium" | "weak" | undefined;
     if (cliType === "codex") {
+      // With a baseline from before Codex started, startedAt is when its
+      // session began, so an older thread is someone else's.
       const candidate = await window.tacit.session.findCodex(
         worktreePath,
         startedAt,
+        codexBaselineAtStart ? startedAt : undefined,
       );
       sessionId = candidate?.sessionId ?? null;
       confidence = candidate?.confidence;
@@ -647,6 +654,7 @@ function setSessionId(
 ) {
   const prev = runtime.meta.terminal.sessionId;
   const store = useProjectStore.getState();
+  if (sessionId) runtime.onSubmitCaptureSession = null;
 
   useTerminalRuntimeStateStore
     .getState()
@@ -1226,6 +1234,7 @@ function wireInteractiveBindings(runtime: ManagedTerminalRuntime) {
     if (runtime.ptyId !== null) {
       window.tacit.terminal.input(runtime.ptyId, data);
     }
+    if (data.includes("\r")) runtime.onSubmitCaptureSession?.();
   });
 
   runtime.resizeDisposable = runtime.xterm.onResize(
@@ -1548,6 +1557,9 @@ function scheduleSessionCapture(
   ptyId: number,
   cliType: TerminalType,
   detectedCliPid?: number | null,
+  // When the session began, and Codex's newest thread just before: polling
+  // starts well after both, by when the newest thread is this terminal's own.
+  since?: { startedAt: string; codexBaseline: Promise<string | null> },
 ) {
   // Session discovery knows only these agents' sessions (Antigravity's
   // through electron/antigravity-session.ts). Polling for any other one
@@ -1575,8 +1587,9 @@ function scheduleSessionCapture(
     },
     () => cancelled || runtime.disposed,
     detectedCliPid,
-    new Date().toISOString(),
+    since?.startedAt ?? new Date().toISOString(),
     runtime.meta.terminal.id,
+    since?.codexBaseline,
   ).then((result) => {
     // An agy that was never sent a message has no conversation to find;
     // that is normal, not a failure worth a warning.
@@ -1740,6 +1753,7 @@ function buildTerminalRuntime(
     selectionPointerCleanup: null,
     serializeAddon: null,
     sessionCancel: null,
+    onSubmitCaptureSession: null,
     started: false,
     telemetryTimer: null,
     usesAgentRenderer: false,
@@ -1859,6 +1873,12 @@ async function spawnPty(
       });
   }
 
+  // Read before Codex starts, so its newest thread can't be this one's.
+  const codexBaseline =
+    !resumeSessionId && launch && runtime.meta.terminal.type === "codex"
+      ? window.tacit.session.getCodexLatest()
+      : undefined;
+
   const startSize = spawnSize(runtime);
   if (startSize) {
     options.cols = startSize.size.cols;
@@ -1913,15 +1933,37 @@ async function spawnPty(
           runtime.meta.terminal.type === "codex")
       ) {
         // Hook is primary for claude/codex; fall back to polling if no hook event.
-        runtime.hookFallbackTimer = setTimeout(() => {
-          runtime.hookFallbackTimer = null;
-          if (!hookSessionReceived && !runtime.disposed) {
-            console.warn(
-              `[TerminalRuntime] Hook session fallback triggered for terminal=${runtime.meta.terminal.id}`,
-            );
-            scheduleSessionCapture(runtime, ptyId, runtime.meta.terminal.type);
-          }
-        }, HOOK_SESSION_FALLBACK_MS);
+        let firstStartedAt: string | null = null;
+        const startCaptureClock = () => {
+          if (runtime.hookFallbackTimer) clearTimeout(runtime.hookFallbackTimer);
+          runtime.sessionCancel?.();
+          // The session can't be older than the first Enter.
+          firstStartedAt ??= new Date().toISOString();
+          const startedAt = firstStartedAt;
+          runtime.hookFallbackTimer = setTimeout(() => {
+            runtime.hookFallbackTimer = null;
+            if (!hookSessionReceived && !runtime.disposed) {
+              console.warn(
+                `[TerminalRuntime] Hook session fallback triggered for terminal=${runtime.meta.terminal.id}`,
+              );
+              scheduleSessionCapture(
+                runtime,
+                ptyId,
+                runtime.meta.terminal.type,
+                undefined,
+                codexBaseline && { startedAt, codexBaseline },
+              );
+            }
+          }, HOOK_SESSION_FALLBACK_MS);
+        };
+        // Codex makes its session when it's sent its first message, not at
+        // launch: timing a Codex nobody had typed to yet warned "Session
+        // capture timeout" after 40s.
+        if (runtime.meta.terminal.type === "codex" && !sendInitialPrompt) {
+          runtime.onSubmitCaptureSession = startCaptureClock;
+        } else {
+          startCaptureClock();
+        }
       } else if (runtime.meta.terminal.type !== "shell") {
         scheduleSessionCapture(runtime, ptyId, runtime.meta.terminal.type);
       }
@@ -2086,6 +2128,7 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
         }
         runtime.sessionCancel?.();
         runtime.sessionCancel = null;
+        runtime.onSubmitCaptureSession = null;
         runtime.wasResumeAttempt = false;
         runtime.hasRespawned = false;
         setTerminalType(runtime, "shell");
@@ -2521,6 +2564,7 @@ export function destroyTerminalRuntime(
   clearRuntimeTimers(runtime);
   runtime.sessionCancel?.();
   runtime.sessionCancel = null;
+  runtime.onSubmitCaptureSession = null;
   runtime.xterm?.blur();
   detachTerminalRenderer(runtime, cause);
   clearWatchedSession(runtime);

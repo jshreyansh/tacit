@@ -85,8 +85,8 @@ contextBridge.exposeInMainWorld("tacit", {
   session: {
     getCodexLatest: () =>
       ipcRenderer.invoke("session:get-codex-latest") as Promise<string | null>,
-    findCodex: (cwd: string, startedAt?: string) =>
-      ipcRenderer.invoke("session:find-codex", cwd, startedAt) as Promise<{
+    findCodex: (cwd: string, startedAt?: string, createdSince?: string) =>
+      ipcRenderer.invoke("session:find-codex", cwd, startedAt, createdSince) as Promise<{
         sessionId: string;
         filePath: string;
         confidence: "medium" | "weak";
