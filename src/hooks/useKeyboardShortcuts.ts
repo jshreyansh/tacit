@@ -1,4 +1,4 @@
-import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { toggleWorkdeskMode } from "../workdesk/workdeskModeSwitch";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useEffect } from "react";
 import { zoomToFitAllTerminals } from "../canvas/zoomActions";
@@ -363,7 +363,7 @@ export function useKeyboardShortcuts() {
       // Canvas or the workdesk view's grid of every node.
       if (matchesShortcut(e, shortcuts.toggleWorkdeskView)) {
         consumeShortcut();
-        useWorkdeskViewStore.getState().toggleMode();
+        toggleWorkdeskMode();
         return;
       }
 

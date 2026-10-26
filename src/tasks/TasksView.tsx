@@ -3,13 +3,12 @@ import { useT } from "../i18n/useT";
 import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
-import { visibleCanvasCenter } from "../actions/dockActions";
-import { flyToBounds } from "../utils/panToTerminal";
 import type { Pin } from "../types";
 import { pinKind } from "../../shared/pin";
 import { FILTERS, countByFilter, filterTasks, isTask, sortTasks, type TaskFilter } from "./taskModel";
 import { NeedsYouBlock, OwnerChips, ProgressBar, StatusChip, StatusDot, StepList, statusLabel } from "./TaskParts";
 import { createTask, deleteTask, handTaskToManager, makeNote, updateTask } from "./taskActions";
+import { showPinOnCanvas } from "./showPinOnCanvas";
 
 /**
  * The project's tasks, in the docked chat (it took over from the Pins
@@ -17,9 +16,6 @@ import { createTask, deleteTask, handTaskToManager, makeNote, updateTask } from 
  * then work under way. A task opens in place to its steps and actions; its
  * full editor opens beside the chat (or in a tab in the workdesk view).
  */
-
-const DEFAULT_W = 300;
-const DEFAULT_H = 220;
 
 /** Opens a task or note full size: a tab in the workdesk view, else beside the chat. */
 export function openPinFull(pin: Pin): void {
@@ -32,16 +28,6 @@ export function openPinFull(pin: Pin): void {
   store.openDetail(pin.id);
 }
 
-/** Shows it on the canvas, putting it there first (in view) when it isn't. */
-export async function showPinOnCanvas(pin: Pin): Promise<void> {
-  useWorkdeskViewStore.getState().setMode("canvas");
-  let placed = pin;
-  if (typeof pin.x !== "number" || typeof pin.y !== "number") {
-    const center = visibleCanvasCenter();
-    placed = (await updateTask(pin, { x: Math.round(center.x - DEFAULT_W / 2), y: Math.round(center.y - DEFAULT_H / 2) })) ?? pin;
-  }
-  if (typeof placed.x === "number" && typeof placed.y === "number") flyToBounds(placed.x, placed.y, placed.w ?? DEFAULT_W, placed.h ?? DEFAULT_H);
-}
 
 function TaskRow({ task, open, onToggle, autoEdit }: { task: Pin; open: boolean; onToggle: () => void; autoEdit: boolean }) {
   const t = useT();

@@ -3,12 +3,10 @@ import { useT } from "../i18n/useT";
 import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
-import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { updatePinInScene } from "../actions/scenePinActions";
 import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
-import { panToTerminal, flyToBounds } from "../utils/panToTerminal";
 import type { BrowserCard, NoteCard, TabCard, TaskCard, TerminalCard } from "./workdeskModel";
 import { PastSessionTab } from "../toolbar/SessionReader";
 import { FileEditorDrawer } from "../components/FileEditorDrawer";
@@ -18,8 +16,6 @@ import { cancelManagerMove, moveManagerNow } from "../actions/managerChatMode";
 import type { Pin } from "../types";
 import { TaskSections } from "../tasks/TaskParts";
 import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
-import { showPinOnCanvas } from "../tasks/TasksView";
-import { openFileInView, openPastSession } from "../actions/openSession";
 
 /**
  * One node full size in the workdesk view's tabs (T7, G2). A terminal's
@@ -33,64 +29,6 @@ type Dict = ReturnType<typeof useT>;
 const NOTE_SAVE_MS = 500;
 /** The app's own text size: a terminal in a tab reads like the chat beside it. */
 const TAB_FONT_SIZE = 13;
-
-/** The canvas, on this node: a task or note not on it yet is put there. */
-export async function showOnCanvas(card: TabCard): Promise<void> {
-  // A past session or a file: the canvas, with it in the reader or the editor.
-  if (card.kind === "session") {
-    useWorkdeskViewStore.getState().setMode("canvas");
-    openPastSession(card.id);
-    return;
-  }
-  if (card.kind === "file") {
-    useWorkdeskViewStore.getState().setMode("canvas");
-    openFileInView(card.id);
-    return;
-  }
-  if (card.kind === "task" || card.kind === "note") {
-    const pin = (usePinStore.getState().pinsByProject[card.projectPath] ?? []).find((p) => p.id === card.id);
-    if (pin) return showPinOnCanvas(pin);
-    useWorkdeskViewStore.getState().setMode("canvas");
-    return;
-  }
-  useWorkdeskViewStore.getState().setMode("canvas");
-  if (card.kind === "terminal") {
-    panToTerminal(card.id);
-  } else {
-    const data = useBrowserCardStore.getState().cards[card.id];
-    if (data) flyToBounds(data.x, data.y, data.w, data.h);
-  }
-}
-
-/**
- * The canvas, on the node open in the workdesk view's tab: what the view
- * toggle does from a tab. With nothing open it's just the canvas.
- */
-export async function showOpenNodeOnCanvas(): Promise<void> {
-  const view = useWorkdeskViewStore.getState();
-  const node = view.openNode;
-  if (!node) return view.setMode("canvas");
-  switch (node.kind) {
-    case "session":
-      return showOnCanvas({ kind: "session", id: node.id, title: "", agent: null });
-    case "file":
-      return showOnCanvas({ kind: "file", id: node.id, title: "" });
-    case "task":
-    case "note": {
-      const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === node.id);
-      if (pin) return showPinOnCanvas(pin);
-      return view.setMode("canvas");
-    }
-    case "terminal":
-      view.setMode("canvas");
-      return panToTerminal(node.id);
-    case "browser": {
-      view.setMode("canvas");
-      const data = useBrowserCardStore.getState().cards[node.id];
-      if (data) flyToBounds(data.x, data.y, data.w, data.h);
-    }
-  }
-}
 
 function Footer({ hint, children }: { hint: string; children: React.ReactNode }) {
   return (

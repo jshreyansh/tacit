@@ -231,6 +231,9 @@ export function selectionToSceneSelection(
       case "annotation":
         selection.annotationIds.push(item.annotationId);
         break;
+      // A pin isn't a scene element: nothing for scene commands to act on.
+      case "pin":
+        break;
     }
   }
 

@@ -79,12 +79,14 @@ interface WorkdeskViewStore {
   /** The tab showing; null for the overview, every node in its section. */
   openNode: OpenNode | null;
   setOpenNode: (node: OpenNode | null) => void;
-  /** The last tab opened, which the grid reopens when you come back to it. */
-  lastTab: OpenNode | null;
-  /** A tab that's gone (its node closed): not reopened, and not showing. */
+  /** A tab that's gone (its node closed): no longer showing. */
   forgetTab: (node: OpenNode) => void;
   setMode: (mode: WorkdeskMode) => void;
-  toggleMode: () => void;
+  /**
+   * The grid, open on this node's tab (the node you were on in the canvas),
+   * or on the overview with none. workdeskModeSwitch.ts picks the node.
+   */
+  showGrid: (node: OpenNode | null) => void;
   /**
    * Tasks and notes closed from the tab strip: still in the grid, and back
    * in the strip once opened again.
@@ -107,7 +109,6 @@ interface WorkdeskViewStore {
 export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
   mode: loadWorkdeskMode(),
   openNode: null,
-  lastTab: null,
   projection: null,
   setProjection: (projection) => set({ projection }),
   hiddenTabs: loadHidden(),
@@ -150,23 +151,22 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
     if (openNode && hidden.includes(tabKey(openNode))) {
       const hiddenTabs = hidden.filter((k) => k !== tabKey(openNode));
       saveHidden(hiddenTabs);
-      set({ openNode, lastTab: openNode, hiddenTabs });
+      set({ openNode, hiddenTabs });
       return;
     }
-    set(openNode ? { openNode, lastTab: openNode } : { openNode });
+    set({ openNode });
   },
   forgetTab: (node) => {
-    const key = tabKey(node);
-    const { openNode, lastTab } = get();
-    set({
-      openNode: openNode && tabKey(openNode) === key ? null : openNode,
-      lastTab: lastTab && tabKey(lastTab) === key ? null : lastTab,
-    });
+    const { openNode } = get();
+    if (openNode && tabKey(openNode) === tabKey(node)) set({ openNode: null });
   },
-  // Back in the grid, the last tab opened shows again; with none, the overview.
   setMode: (mode) => {
     saveMode(mode);
-    set(mode === "canvas" ? { mode, openNode: null } : { mode, openNode: get().lastTab });
+    set({ mode, openNode: null });
   },
-  toggleMode: () => get().setMode(get().mode === "grid" ? "canvas" : "grid"),
+  showGrid: (node) => {
+    saveMode("grid");
+    set({ mode: "grid" });
+    get().setOpenNode(node);
+  },
 }));

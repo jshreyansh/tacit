@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { usePinStore } from "../stores/pinStore";
+import { useSelectionStore } from "../stores/selectionStore";
+import { activatePinInScene } from "../actions/sceneSelectionActions";
 import { updatePinInScene } from "../actions/scenePinActions";
 import type { PinFlowNode } from "./nodeProjection";
 import type { Pin } from "../types";
@@ -20,10 +22,16 @@ const MIN_HEIGHT = 160;
  * and gets its drag/select/resize from React Flow; the header drags, the
  * rest is for working in (nodrag).
  */
+/** As a selected browser shows. */
+const SELECTED_OUTLINE = { outline: "2px solid var(--accent)", outlineOffset: -2 } as const;
+
 export function PinNode({ data }: NodeProps<PinFlowNode>) {
   const [hovered, setHovered] = useState(false);
   const pin = usePinStore((state) =>
     state.pinsByProject[data.projectPath]?.find((p) => p.id === data.pinId),
+  );
+  const isSelected = useSelectionStore((state) =>
+    state.selectedItems.some((item) => item.type === "pin" && item.pinId === data.pinId),
   );
 
   const handleResizeEnd = useCallback(
@@ -51,13 +59,24 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
               background: "var(--surface)",
               borderColor: needs ? "color-mix(in srgb, var(--amber) 55%, var(--border))" : "var(--border)",
               boxShadow: "var(--shadow-elev-1)",
+              ...(isSelected ? SELECTED_OUTLINE : {}),
             }
           : {
               background: "color-mix(in srgb, var(--amber) 10%, var(--surface))",
               borderColor: "color-mix(in srgb, var(--amber) 35%, var(--border))",
               boxShadow: "var(--shadow-elev-1)",
+              ...(isSelected ? SELECTED_OUTLINE : {}),
             }
       }
+      // Pressing anywhere in it, or typing in it, is being on this task or
+      // note, as with a browser: the grid opens on it. Capture, since its
+      // fields and buttons keep their presses from the canvas.
+      onMouseDownCapture={() => {
+        if (!isSelected) activatePinInScene(pin.id);
+      }}
+      onFocus={() => {
+        if (!isSelected) activatePinInScene(pin.id);
+      }}
       onMouseEnter={() => {
         setHovered(true);
         // Same reason as BrowserCard: a note wired to an agent should light

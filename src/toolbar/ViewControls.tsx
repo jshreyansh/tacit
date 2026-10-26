@@ -10,7 +10,7 @@ import {
 import { useT } from "../i18n/useT";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { CanvasViewIcon, GridViewIcon } from "../workdesk/viewIcons";
-import { showOpenNodeOnCanvas } from "../workdesk/WorkdeskTab";
+import { showGridOnFocusedNode, showOpenNodeOnCanvas } from "../workdesk/workdeskModeSwitch";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 
 const platform = window.tacit?.app.platform ?? "darwin";
@@ -90,13 +90,13 @@ export function ViewControls() {
   }, []);
 
 
-  // One button for the view: it shows the one it switches to. From a node
-  // open full size in the grid, the canvas opens on that node.
+  // One button for the view: it shows the one it switches to, and keeps you
+  // on the node you're on (workdeskModeSwitch.ts).
   const toGrid = mode !== "grid";
   const viewToggle = (
     <button
       className={buttonCls}
-      onClick={() => (toGrid ? setMode("grid") : void showOpenNodeOnCanvas())}
+      onClick={() => (toGrid ? showGridOnFocusedNode() : void showOpenNodeOnCanvas())}
       title={toGrid ? `${t.workdesk_view_grid} (${formatShortcut(gridShortcut, isMac)})` : `${t.workdesk_view_canvas} (${formatShortcut(gridShortcut, isMac)})`}
       aria-label={toGrid ? t.workdesk_view_grid : t.workdesk_view_canvas}
     >

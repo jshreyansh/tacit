@@ -1,4 +1,4 @@
-import { useWorkdeskViewStore } from "../../stores/workdeskViewStore";
+import { toggleWorkdeskMode } from "../../workdesk/workdeskModeSwitch";
 import { useChatDockStore } from "../../stores/chatDockStore";
 /**
  * Command palette action registry.
@@ -144,7 +144,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       title: t.shortcut_toggle_workdesk_view,
       keywords: ["grid", "canvas", "workdesk", "view", "cards", "tabs"],
       hint: shortcutHint("toggleWorkdeskView", isMac),
-      perform: () => useWorkdeskViewStore.getState().toggleMode(),
+      perform: () => toggleWorkdeskMode(),
     },
     {
       id: "open-settings",

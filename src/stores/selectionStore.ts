@@ -5,7 +5,9 @@ export type SelectedItem =
   | { type: "worktree"; projectId: string; worktreeId: string }
   | { type: "terminal"; projectId: string; worktreeId: string; terminalId: string }
   | { type: "card"; cardId: string }
-  | { type: "annotation"; annotationId: string };
+  | { type: "annotation"; annotationId: string }
+  /** A task or note on the canvas, clicked: the node you're on, for the grid to open. */
+  | { type: "pin"; pinId: string };
 
 interface SelectionRect {
   x: number;
@@ -21,6 +23,7 @@ interface SelectionStore {
   setSelectedItems: (items: SelectedItem[]) => void;
   selectAnnotation: (annotationId: string) => void;
   selectCard: (cardId: string) => void;
+  selectPin: (pinId: string) => void;
   selectProject: (projectId: string) => void;
   selectTerminal: (
     projectId: string,
@@ -44,6 +47,11 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
   selectCard: (cardId) =>
     set({
       selectedItems: [{ type: "card", cardId }],
+      selectionRect: null,
+    }),
+  selectPin: (pinId) =>
+    set({
+      selectedItems: [{ type: "pin", pinId }],
       selectionRect: null,
     }),
   selectProject: (projectId) =>

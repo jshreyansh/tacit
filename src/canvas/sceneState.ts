@@ -77,6 +77,10 @@ export function filterValidSelectedItems(
         return cardIds.size > 0 ? cardIds.has(item.cardId) : true;
       case "annotation":
         return annotationIds ? annotationIds.has(item.annotationId) : true;
+      // Pins live in the pin store, not the scene: one removed is simply
+      // not found when the selection is read.
+      case "pin":
+        return true;
     }
   });
 }
@@ -118,6 +122,8 @@ export function sameSelectedItems(
           other.type === "annotation" &&
           item.annotationId === other.annotationId
         );
+      case "pin":
+        return other.type === "pin" && item.pinId === other.pinId;
     }
   });
 }

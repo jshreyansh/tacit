@@ -401,6 +401,12 @@ export function BrowserCard({ card, projectedLayout }: Props) {
         e.stopPropagation();
         activateCardInScene(cardId);
       }}
+      // Typing in its address bar, or using its page, is being on this
+      // browser too: the page's clicks never reach this window, but its
+      // focus does. The grid opens on the browser you're on.
+      onFocus={() => {
+        if (!isSelected) activateCardInScene(cardId);
+      }}
       // Lets ConnectionLayer light this card's wires from the browser end, the
       // same way hovering a terminal tile lights its own. Without it a
       // hand-drawn terminal↔browser wire only highlights from one side.

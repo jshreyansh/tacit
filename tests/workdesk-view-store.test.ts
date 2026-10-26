@@ -3,66 +3,53 @@ import assert from "node:assert/strict";
 
 import { useWorkdeskViewStore } from "../src/stores/workdeskViewStore.ts";
 
-// The grid reopens the last tab you had open; with none, or once it's gone,
-// it opens on the overview.
+// The grid opens on the node it's given (the one you were on in the canvas),
+// or on the overview with none; the canvas has no tab open.
 
 const initial = useWorkdeskViewStore.getState();
 function reset() {
-  useWorkdeskViewStore.setState({ ...initial, mode: "canvas", openNode: null, lastTab: null, hiddenTabs: [], sessionTabs: [], fileTabs: [] });
+  useWorkdeskViewStore.setState({ ...initial, mode: "canvas", openNode: null, hiddenTabs: [], sessionTabs: [], fileTabs: [] });
 }
 
 const codex = { kind: "terminal" as const, id: "t-1" };
 
-test("the grid opens on the overview when no tab was ever opened", () => {
+test("the grid opens on the node it's given, or on the overview with none", () => {
   reset();
-  useWorkdeskViewStore.getState().setMode("grid");
-  assert.equal(useWorkdeskViewStore.getState().openNode, null);
-});
-
-test("back in the grid, the last tab opened shows again, even after looking at the overview", () => {
-  reset();
-  const view = useWorkdeskViewStore.getState();
-  view.setMode("grid");
-  view.setOpenNode(codex);
-  view.setOpenNode(null);
-  view.setMode("canvas");
-  assert.equal(useWorkdeskViewStore.getState().openNode, null, "nothing is open on the canvas");
-  view.setMode("grid");
+  useWorkdeskViewStore.getState().showGrid(codex);
+  assert.equal(useWorkdeskViewStore.getState().mode, "grid");
   assert.deepEqual(useWorkdeskViewStore.getState().openNode, codex);
+
+  useWorkdeskViewStore.getState().setMode("canvas");
+  assert.equal(useWorkdeskViewStore.getState().openNode, null, "nothing is open on the canvas");
+
+  useWorkdeskViewStore.getState().showGrid(null);
+  assert.equal(useWorkdeskViewStore.getState().openNode, null, "the overview");
 });
 
-test("a tab that's gone isn't reopened", () => {
+test("a task closed from the strip comes back to it when the grid opens on it", () => {
+  reset();
+  const task = { kind: "task" as const, id: "p-1" };
+  const view = useWorkdeskViewStore.getState();
+  view.showGrid(task);
+  view.hideTab(task);
+  assert.equal(useWorkdeskViewStore.getState().openNode, null);
+  assert.ok(useWorkdeskViewStore.getState().hiddenTabs.includes("task:p-1"));
+  view.setMode("canvas");
+  view.showGrid(task);
+  assert.deepEqual(useWorkdeskViewStore.getState().openNode, task);
+  assert.ok(!useWorkdeskViewStore.getState().hiddenTabs.includes("task:p-1"));
+});
+
+test("a tab that's gone stops showing; forgetting another leaves the open one", () => {
   reset();
   const view = useWorkdeskViewStore.getState();
-  view.setMode("grid");
-
-  view.setOpenNode({ kind: "task", id: "p-1" });
-  view.hideTab({ kind: "task", id: "p-1" });
-  view.setMode("canvas");
-  view.setMode("grid");
-  assert.equal(useWorkdeskViewStore.getState().openNode, null, "a task closed from the strip");
+  view.showGrid(codex);
+  view.forgetTab({ kind: "terminal", id: "t-2" });
+  assert.deepEqual(useWorkdeskViewStore.getState().openNode, codex);
+  view.forgetTab(codex);
+  assert.equal(useWorkdeskViewStore.getState().openNode, null);
 
   view.openSession("/tmp/session.jsonl");
   view.closeSession("/tmp/session.jsonl");
-  view.setMode("canvas");
-  view.setMode("grid");
   assert.equal(useWorkdeskViewStore.getState().openNode, null, "a past session's tab closed");
-
-  view.setOpenNode(codex);
-  view.forgetTab(codex);
-  assert.equal(useWorkdeskViewStore.getState().openNode, null, "a terminal closed while its tab showed");
-  view.setMode("canvas");
-  view.setMode("grid");
-  assert.equal(useWorkdeskViewStore.getState().openNode, null, "and it isn't reopened");
-});
-
-test("forgetting another tab leaves the last one", () => {
-  reset();
-  const view = useWorkdeskViewStore.getState();
-  view.setMode("grid");
-  view.setOpenNode(codex);
-  view.forgetTab({ kind: "terminal", id: "t-2" });
-  view.setMode("canvas");
-  view.setMode("grid");
-  assert.deepEqual(useWorkdeskViewStore.getState().openNode, codex);
 });

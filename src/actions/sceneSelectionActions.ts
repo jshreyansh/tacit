@@ -57,6 +57,12 @@ export function activateCardInScene(cardId: string): void {
   selectCardInScene(cardId);
 }
 
+/** A task or note clicked on the canvas: the node you're on, as a browser is when clicked. */
+export function activatePinInScene(pinId: string): void {
+  clearSceneFocus();
+  useSelectionStore.getState().selectPin(pinId);
+}
+
 export function activateAnnotationInScene(annotationId: string): void {
   clearSceneFocus();
   selectAnnotationInScene(annotationId);
