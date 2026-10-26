@@ -797,11 +797,14 @@ export function ChatThread({
   onCancel,
   replyLabel: replyLabelOverride,
   reveal,
+  emptyText,
 }: {
   transcript: ChatTranscript;
   agent: string;
   onSend: (text: string) => Promise<void>;
   onCancel: () => Promise<void>;
+  /** What an empty chat says; the manager's own words by default. */
+  emptyText?: string;
   /** Who the replies are from; the manager's chat says "· manager". */
   replyLabel?: string;
   /** A message to scroll to, drawing the earlier ones down to it first; `seq` asks again for the same one. */
@@ -875,7 +878,7 @@ export function ChatThread({
             </div>
           )}
           <ThreadPrimitive.Empty>
-            <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.chat_empty}</div>
+            <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{emptyText ?? t.chat_empty}</div>
           </ThreadPrimitive.Empty>
           <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
           {awaitingReply && <PendingReply agent={agent} label={replyLabel} />}

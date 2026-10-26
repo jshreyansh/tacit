@@ -150,6 +150,8 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
   const alwaysAllowed = new Set<string>();
   let interrupting = false;
   let exited = false;
+  /** Stopped by Tacit (moved to the terminal, closed): not a failure. */
+  let stopping = false;
   const err = stderrTail();
 
   const child = options.spawn(options.command, claudeArgs(options.sessionId, options.bridgeArgs), {
@@ -212,7 +214,8 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     if (exited) return;
     exited = true;
     options.log?.(`claude chat exited code=${code} ${err.text()}`);
-    options.emit({ kind: "exited", code, ...(code ? { error: err.text() || `Claude exited with code ${code}` } : {}) });
+    if (stopping) options.emit({ kind: "exited", code: null });
+    else options.emit({ kind: "exited", code, ...(code ? { error: err.text() || `Claude exited with code ${code}` } : {}) });
   });
 
   const write = (line: string) => {
@@ -270,6 +273,7 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
     },
     stop: () => {
       if (exited) return;
+      stopping = true;
       child.stdin.end();
       child.kill("SIGTERM");
     },
@@ -281,6 +285,8 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
   const state = createCodexStreamState();
   let nextId = 0;
   let exited = false;
+  /** Stopped by Tacit (moved to the terminal, closed): not a failure. */
+  let stopping = false;
   let ready = false;
   const queued: Array<{ text: string; attachments: readonly ChatAttachment[] }> = [];
   const pending = new Map<number, (result: { result?: unknown; error?: { message?: string } }) => void>();
@@ -394,7 +400,8 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     for (const resolve of pending.values()) resolve({ error: { message: "Codex exited." } });
     pending.clear();
     options.log?.(`codex chat exited code=${code} ${err.text()}`);
-    options.emit({ kind: "exited", code, ...(code ? { error: err.text() || `Codex exited with code ${code}` } : {}) });
+    if (stopping) options.emit({ kind: "exited", code: null });
+    else options.emit({ kind: "exited", code, ...(code ? { error: err.text() || `Codex exited with code ${code}` } : {}) });
   });
 
   void (async () => {
@@ -494,6 +501,7 @@ export function startCodexDriver(options: DriverOptions): ChatDriver {
     },
     stop: () => {
       if (exited) return;
+      stopping = true;
       child.stdin.end();
       child.kill("SIGTERM");
     },

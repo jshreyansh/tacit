@@ -2,6 +2,7 @@ import type { ApprovalDecision, ChatAttachResult, ChatAttachmentInfo } from "../
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
+import { resolveTerminalRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { findTerminal } from "./terminalLookup";
 
 /**
@@ -11,6 +12,26 @@ import { findTerminal } from "./terminalLookup";
  * protocol; only one of the two holds the session at a time, and each picks
  * up the other's session when it takes over.
  */
+
+/**
+ * The session the tile holds now. A terminal's agent reports its session
+ * to the runtime's state, which reaches the saved tile only later: reading
+ * the saved one alone, a tile just talked to went to the chat with none,
+ * and the chat started a new, empty conversation.
+ */
+function currentSessionId(terminal: Parameters<typeof resolveTerminalRuntimeState>[0]): string | null {
+  return resolveTerminalRuntimeState(terminal).sessionId ?? null;
+}
+
+/**
+ * Records the chat's session as the tile's live one, which wins over the
+ * saved one: writing only the saved one, the terminal resumed the session
+ * from before the chat.
+ */
+function recordChatSession(terminalId: string, sessionId: string): void {
+  const found = findTerminal(terminalId);
+  if (found) useProjectStore.getState().updateTerminalSessionId(found.project.id, found.worktree.id, terminalId, sessionId);
+}
 
 /** Agents with a chat mode so far. */
 export function hasChatMode(type: string | null | undefined): type is "claude" | "codex" | "opencode" {
@@ -28,7 +49,7 @@ export async function startTerminalChat(terminalId: string): Promise<boolean> {
     terminalId,
     agent: found.terminal.type,
     cwd: found.worktree.path,
-    sessionId: found.terminal.sessionId ?? null,
+    sessionId: currentSessionId(found.terminal),
   });
   if (!result.ok) {
     useNotificationStore.getState().notify("warn", result.error ?? "The chat couldn't start the agent.");
@@ -57,9 +78,8 @@ export async function moveManagerToTerminal(terminalId: string): Promise<void> {
   if (!found) return;
   await window.tacit.chat.stop(terminalId);
   const snapshot = await window.tacit.chat.snapshot(terminalId);
-  useProjectStore
-    .getState()
-    .setTerminalChatMode(found.project.id, found.worktree.id, terminalId, false, snapshot.sessionId ?? found.terminal.sessionId);
+  if (snapshot.sessionId) recordChatSession(terminalId, snapshot.sessionId);
+  useProjectStore.getState().setTerminalChatMode(found.project.id, found.worktree.id, terminalId, false);
 }
 
 /**
@@ -138,12 +158,7 @@ export function answerManagerApproval(terminalId: string, requestId: string, dec
 export function installManagerChatListener(): () => void {
   return window.tacit.chat.onEvent(({ terminalId, event }) => {
     useManagerChatStore.getState().apply(terminalId, event);
-    if (event.kind === "session") {
-      const found = findTerminal(terminalId);
-      if (found && found.terminal.sessionId !== event.sessionId) {
-        useProjectStore.getState().updateTerminalSessionId(found.project.id, found.worktree.id, terminalId, event.sessionId);
-      }
-    }
+    if (event.kind === "session") recordChatSession(terminalId, event.sessionId);
   });
 }
 

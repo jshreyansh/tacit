@@ -136,6 +136,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         transcript={transcript}
         agent={agent}
         replyLabel={agentName}
+        emptyText={t.chat_session_empty(agentName)}
         onSend={async (text) => void (await send(text))}
         onCancel={() => interruptManagerChat(terminalId)}
       />

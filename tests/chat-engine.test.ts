@@ -146,6 +146,30 @@ test("a Claude that fails to start says why, from what it printed", async () => 
   assert.equal(engine.send("t1", "hi"), false);
 });
 
+test("Claude and Codex stopped by Tacit leave without a failure; a crash still says why", async () => {
+  // Switching a tile back to its terminal stops the chat's agent with SIGTERM
+  // (exit 143). The chat used to show "Claude exited with code 143".
+  for (const agent of ["claude", "codex"] as const) {
+    const stopped = setup(agent);
+    if (agent === "codex") codexServer(stopped.child);
+    stopped.child.kill = () => true;
+    await stopped.started;
+    await tick();
+    stopped.engine.stop("t1");
+    stopped.child.emit("exit", 143);
+    assert.deepEqual(stopped.events.at(-1), { kind: "exited", code: null }, agent);
+
+    const crashed = setup(agent);
+    if (agent === "codex") codexServer(crashed.child);
+    await crashed.started;
+    await tick();
+    crashed.child.stderr.write("boom\n");
+    await tick();
+    crashed.child.emit("exit", 1);
+    assert.deepEqual(crashed.events.at(-1), { kind: "exited", code: 1, error: "boom" }, agent);
+  }
+});
+
 /** A fake Codex app-server: answers the handshake and records requests. */
 function codexServer(child: FakeChild, opts: { threadId?: string } = {}) {
   const requests: Array<{ id?: number; method?: string; params?: Record<string, unknown>; result?: unknown; error?: unknown }> = [];

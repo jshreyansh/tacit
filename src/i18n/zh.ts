@@ -263,6 +263,7 @@ export const zh = {
   chat_interrupted: "已停止。",
   chat_turn_failed: "这一回合失败了。",
   chat_empty: "向工作台经理提出需求。它的回复会边写边出现在这里。",
+  chat_session_empty: (agent: string) => `给 ${agent} 发消息。它的回复会边写边出现在这里。`,
   chat_show_earlier: (n: number) => `显示更早的消息（${n}）`,
   chat_reply_coming: "回复即将到来",
   chat_approval_more: (n: number) => `还有 ${n} 个在等待`,

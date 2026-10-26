@@ -264,6 +264,7 @@ export const en = {
   chat_interrupted: "Stopped.",
   chat_turn_failed: "This turn failed.",
   chat_empty: "Ask the manager for something. Its replies stream in here as they're written.",
+  chat_session_empty: (agent: string) => `Message ${agent}. Its replies stream in here as they're written.`,
   chat_show_earlier: (n: number) => `Show earlier messages (${n})`,
   chat_reply_coming: "Reply on its way",
   chat_approval_more: (n: number) => `+${n} more waiting`,
