@@ -130,9 +130,11 @@ export interface CanvasBridgeEvent {
   requestId: string;
   sourceKind: "terminal" | "browser";
   sourceId: string;
-  targetKind: "terminal" | "browser";
+  targetKind: "terminal" | "browser" | "note";
   targetId: string;
   type: string;
+  /** The message's first words, on "start", when it carried one. */
+  preview?: string;
   ok?: boolean;
   error?: string;
 }

@@ -18,6 +18,26 @@ export interface ActiveConnectionEvent {
   status: "active" | "error";
 }
 
+/**
+ * One message sent along a wire (send_to_connected, emit_event): drawn as a
+ * dot travelling from sender to receiver with the first words beside it, and
+ * kept in the wire's menu as one of its recent messages.
+ */
+export interface WireMessage {
+  requestId: string;
+  source: ConnectionEndpoint;
+  target: ConnectionEndpoint;
+  /** The first words, or null for an event that carried no message. */
+  preview: string | null;
+  at: number;
+  status: "sending" | "delivered" | "failed";
+}
+
+/** How long a message's dot and preview stay on the wire. */
+export const FLIGHT_MS = 2_600;
+/** How many messages each wire keeps for its menu. */
+export const RECENT_PER_WIRE = 5;
+
 /** Canonical, order-independent key for a pair of endpoints — the store
  * keys active connection events by this, and ConnectionLayer.tsx computes
  * the same key from a connection's from/to to look it up, without either
@@ -34,6 +54,10 @@ interface BridgeActivityStore {
   activeCalls: Record<string, ActiveBridgeCall>;
   /** Keyed by connectionEventPairKey(source, target) — see emit_event/canvas-bridge:event. */
   activeConnectionEvents: Record<string, ActiveConnectionEvent>;
+  /** Messages on their way, by requestId; each leaves FLIGHT_MS after it set off. */
+  flights: Record<string, WireMessage>;
+  /** The latest messages per wire, newest first, by connectionEventPairKey. */
+  recentByPair: Record<string, WireMessage[]>;
   startCall: (browserId: string, requestId: string, action: string) => void;
   endCall: (browserId: string, requestId: string, ok: boolean) => void;
   startConnectionEvent: (
@@ -41,6 +65,7 @@ interface BridgeActivityStore {
     type: string,
     source: ConnectionEndpoint,
     target: ConnectionEndpoint,
+    preview?: string | null,
   ) => void;
   endConnectionEvent: (
     requestId: string,
@@ -78,9 +103,27 @@ function clearEventStaleTimer(key: string) {
   }
 }
 
+function withMessageStatus(
+  state: Pick<BridgeActivityStore, "flights" | "recentByPair">,
+  key: string,
+  requestId: string,
+  status: WireMessage["status"],
+): Pick<BridgeActivityStore, "flights" | "recentByPair"> {
+  const flight = state.flights[requestId];
+  const recent = state.recentByPair[key];
+  return {
+    flights: flight ? { ...state.flights, [requestId]: { ...flight, status } } : state.flights,
+    recentByPair: recent
+      ? { ...state.recentByPair, [key]: recent.map((m) => (m.requestId === requestId ? { ...m, status } : m)) }
+      : state.recentByPair,
+  };
+}
+
 export const useBridgeActivityStore = create<BridgeActivityStore>((set, get) => ({
   activeCalls: {},
   activeConnectionEvents: {},
+  flights: {},
+  recentByPair: {},
 
   startCall: (browserId, requestId, action) => {
     clearStaleTimer(browserId);
@@ -133,15 +176,30 @@ export const useBridgeActivityStore = create<BridgeActivityStore>((set, get) => 
     }, ERROR_FLASH_MS);
   },
 
-  startConnectionEvent: (requestId, type, source, target) => {
+  startConnectionEvent: (requestId, type, source, target, preview = null) => {
     const key = connectionEventPairKey(source, target);
     clearEventStaleTimer(key);
+    const message: WireMessage = { requestId, source, target, preview, at: Date.now(), status: "sending" };
     set((state) => ({
       activeConnectionEvents: {
         ...state.activeConnectionEvents,
         [key]: { requestId, type, source, target, startedAt: Date.now(), status: "active" },
       },
+      flights: { ...state.flights, [requestId]: message },
+      recentByPair: {
+        ...state.recentByPair,
+        [key]: [message, ...(state.recentByPair[key] ?? [])].slice(0, RECENT_PER_WIRE),
+      },
     }));
+    // The dot and its preview stay their full time however quickly delivery
+    // finishes: typing into a terminal takes milliseconds, too short to see.
+    setTimeout(() => {
+      set((state) => {
+        if (!(requestId in state.flights)) return state;
+        const { [requestId]: _gone, ...rest } = state.flights;
+        return { flights: rest };
+      });
+    }, FLIGHT_MS);
 
     const timer = setTimeout(() => {
       const current = get().activeConnectionEvents[key];
@@ -154,6 +212,7 @@ export const useBridgeActivityStore = create<BridgeActivityStore>((set, get) => 
 
   endConnectionEvent: (requestId, source, target, ok) => {
     const key = connectionEventPairKey(source, target);
+    set((state) => withMessageStatus(state, key, requestId, ok ? "delivered" : "failed"));
     const current = get().activeConnectionEvents[key];
     if (!current || current.requestId !== requestId) return;
     clearEventStaleTimer(key);
@@ -205,7 +264,7 @@ export function initCanvasBridgeEventIPC(): () => void {
       const source = { kind: payload.sourceKind, id: payload.sourceId };
       const target = { kind: payload.targetKind, id: payload.targetId };
       if (payload.phase === "start") {
-        startConnectionEvent(payload.requestId, payload.type, source, target);
+        startConnectionEvent(payload.requestId, payload.type, source, target, payload.preview ?? null);
       } else {
         endConnectionEvent(payload.requestId, source, target, payload.ok ?? false);
       }

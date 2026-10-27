@@ -1151,6 +1151,10 @@ export const en = {
   connection_endpoint_unknown_note: "a note that no longer exists",
   connection_change_type: "Change type…",
   connection_type_menu_aria_label: "Connection type",
+  connection_flip: "Turn round",
+  connection_two_way: "Both ways",
+  connection_recent_heading: "Recent messages",
+  connection_message_failed: "didn't arrive",
   // Formatted with the wire's current type — the label on the wire is a
   // button, so it needs to say what pressing it does.
   connection_type_label_aria: "Connection type: {type}. Change it.",

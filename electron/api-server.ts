@@ -1276,7 +1276,11 @@ export class ApiServer {
         targetId: target.id,
         type,
       };
-      sendToWindow(win, "canvas-bridge:event", { phase: "start", ...pulseBase });
+      const preview =
+        typeof payload.message === "string"
+          ? payload.message.replace(/\s+/g, " ").trim().slice(0, 80)
+          : type;
+      sendToWindow(win, "canvas-bridge:event", { phase: "start", ...pulseBase, preview });
 
       try {
         if (target.kind === "terminal") {

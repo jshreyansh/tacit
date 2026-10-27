@@ -7,7 +7,12 @@ import {
   type ConnectionEndpointKind,
   type ConnectionType,
 } from "../../shared/connection-types";
-import { setConnectionTypeInScene } from "../actions/sceneConnectionActions";
+import {
+  flipConnectionInScene,
+  setConnectionTwoWayInScene,
+  setConnectionTypeInScene,
+} from "../actions/sceneConnectionActions";
+import type { WireMessage } from "../stores/bridgeActivityStore";
 import { useT } from "../i18n/useT";
 
 /**
@@ -34,6 +39,17 @@ interface Props {
   /** Resolved, so the inferred meaning of an untyped wire shows as current. */
   current: ConnectionType;
   currentPrompt?: string;
+  /** What the two ends are called, in the wire's direction. */
+  fromName: string;
+  toName: string;
+  twoWay: boolean;
+  /** Whether turning it round or making it two-way means anything: only
+   * between two terminals, where either end can send. */
+  canRedirect: boolean;
+  /** Newest first. */
+  recent: WireMessage[];
+  /** What a node in `recent` is called. */
+  nameOf: (endpoint: WireMessage["source"]) => string;
   onClose: () => void;
 }
 
@@ -47,6 +63,12 @@ export function ConnectionTypeMenu({
   toKind,
   current,
   currentPrompt,
+  fromName,
+  toName,
+  twoWay,
+  canRedirect,
+  recent,
+  nameOf,
   onClose,
 }: Props) {
   const t = useT();
@@ -126,7 +148,7 @@ export function ConnectionTypeMenu({
     const node = ref.current;
     if (!node || editingCustom) return;
     const items = Array.from(
-      node.querySelectorAll<HTMLElement>("[role='menuitem']"),
+      node.querySelectorAll<HTMLElement>("[role='menuitem'], [role='menuitemcheckbox']"),
     );
     const active = document.activeElement as HTMLElement | null;
     const index = active ? items.indexOf(active) : -1;
@@ -166,6 +188,13 @@ export function ConnectionTypeMenu({
     >
       {!editingCustom && (
         <>
+          {/* Which way it runs, in the words on the canvas. */}
+          <div
+            className="px-3 pt-1 pb-1.5 mb-1 border-b border-[var(--border)] text-[11px] text-[var(--text-muted)] truncate"
+            title={`${fromName} ${twoWay ? "⇄" : "→"} ${toName}`}
+          >
+            {fromName} <span className="text-[var(--accent)]">{twoWay ? "⇄" : "→"}</span> {toName}
+          </div>
           {types.map((type) => {
             const spec = connectionTypeSpec(type);
             const isCurrent = type === current;
@@ -218,6 +247,69 @@ export function ConnectionTypeMenu({
           {anyPending && (
             <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1 text-[10px] leading-snug text-[var(--text-faint)]">
               {t.connection_type_inactive_note}
+            </div>
+          )}
+          {canRedirect && (
+            <div className="mt-1 pt-1 border-t border-[var(--border)]">
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                disabled={twoWay}
+                className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] disabled:opacity-40 disabled:hover:bg-transparent transition-colors duration-quick"
+                onClick={() => {
+                  flipConnectionInScene(connectionId);
+                  onClose();
+                }}
+              >
+                ⇆ {t.connection_flip}
+              </button>
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                tabIndex={-1}
+                aria-checked={twoWay}
+                className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors duration-quick"
+                onClick={() => {
+                  setConnectionTwoWayInScene(connectionId, !twoWay);
+                  onClose();
+                }}
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span>⇄ {t.connection_two_way}</span>
+                  <span className={twoWay ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}>
+                    {twoWay ? "●" : "○"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
+          {recent.length > 0 && (
+            <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1">
+              <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1">
+                {t.connection_recent_heading}
+              </div>
+              {recent.map((message) => (
+                <div
+                  key={message.requestId}
+                  className="text-[11px] leading-snug py-0.5 truncate"
+                  title={message.preview ?? ""}
+                >
+                  <span className="text-[var(--text-muted)]">
+                    {nameOf(message.source)} → {nameOf(message.target)}:
+                  </span>{" "}
+                  <span
+                    className={
+                      message.status === "failed"
+                        ? "text-[var(--red)]"
+                        : "text-[var(--text-secondary)]"
+                    }
+                  >
+                    {message.preview ?? "—"}
+                    {message.status === "failed" ? ` · ${t.connection_message_failed}` : ""}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </>

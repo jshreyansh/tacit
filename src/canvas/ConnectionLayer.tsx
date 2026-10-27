@@ -36,8 +36,19 @@ import {
   connectionFamily,
   connectionTypeSpec,
   isPendingBehaviour,
+  isTwoWay,
   resolveConnectionType,
 } from "../../shared/connection-types";
+import {
+  anchorToward,
+  arrowHead,
+  curvePath,
+  curvePoint,
+  facingAnchors,
+  trimmed,
+  wireCurve,
+  type WireCurve,
+} from "./wireGeometry";
 import {
   connectionStrokeStyle,
   formatConnectionTypeLabel,
@@ -64,8 +75,10 @@ import { ConnectionTypeMenu } from "./ConnectionTypeMenu";
  *  - zoomed out — soft dashed centre-to-centre curves, hovering a node lights
  *    up everything it works with. The map-mode read of "what belongs to
  *    what", with no connector dots competing for attention.
- *  - zoomed in — solid elbow wires, connector dots, live activity pulse.
- *    The working view, where you actually manipulate connections.
+ *  - zoomed in — curved wires with an arrow where messages arrive, connector
+ *    dots on the node under the pointer, and each message as a dot travelling
+ *    the wire with its first words. The working view, where you actually
+ *    manipulate connections.
  *
  * The map-view highlight colours by ORIGIN, not by importance: lineage in the
  * accent, hand-drawn wires in teal, both at the same weight and opacity. An
@@ -98,18 +111,21 @@ interface Point {
   y: number;
 }
 
-// A 5px visible dot is honest-looking but was nearly impossible to actually
-// grab — real hit-testing needs a much bigger, invisible target around it
-// (this is how tldraw/excalidraw/n8n all do connection handles: a small
-// clean dot for the eye, a generous circle for the pointer).
-const HANDLE_VISIBLE_RADIUS = 6;
-const HANDLE_HOVER_RADIUS = 9;
+// A small dot for the eye and a generous invisible circle for the pointer
+// (how tldraw/excalidraw/n8n do connection handles). The dots show only on
+// the node under the pointer: four big rings on every node read as clutter.
+const HANDLE_VISIBLE_RADIUS = 4;
+const HANDLE_HOVER_RADIUS = 6;
 const HANDLE_HIT_RADIUS = 20;
+/** Arrowhead length on screen, in pixels. */
+const ARROW_PX = 9;
+/** The travelling dot's radius on screen, in pixels. */
+const FLIGHT_DOT_PX = 4;
 
 const FALLBACK_TERMINAL_WIDTH = 300;
 const FALLBACK_TERMINAL_HEIGHT = 200;
 
-// Below this zoom the layer crossfades from working view (elbow wires +
+// Below this zoom the layer crossfades from working view (curved wires +
 // connector dots) to map view (soft family curves), ramping across
 // [THRESHOLD - BAND, THRESHOLD] so the change arrives gradually rather than
 // popping. Inherited from the old ClusterLinkLayer, which is where the
@@ -200,39 +216,9 @@ function handlePoints(rect: EndpointRect): Point[] {
   ];
 }
 
-/** Border-midpoint anchors facing each other, for a clean orthogonal path. */
-function facingAnchors(a: EndpointRect, b: EndpointRect): [Point, Point] {
-  const aCx = a.x + a.w / 2;
-  const aCy = a.y + a.h / 2;
-  const bCx = b.x + b.w / 2;
-  const bCy = b.y + b.h / 2;
-  const horizontal = Math.abs(bCx - aCx) >= Math.abs(bCy - aCy);
-  if (horizontal) {
-    const aIsLeft = aCx <= bCx;
-    return [
-      { x: aIsLeft ? a.x + a.w : a.x, y: aCy },
-      { x: aIsLeft ? b.x : b.x + b.w, y: bCy },
-    ];
-  }
-  const aIsAbove = aCy <= bCy;
-  return [
-    { x: aCx, y: aIsAbove ? a.y + a.h : a.y },
-    { x: bCx, y: aIsAbove ? b.y : b.y + b.h },
-  ];
-}
-
-function elbowPath(p1: Point, p2: Point): string {
-  const midX = (p1.x + p2.x) / 2;
-  return `M${p1.x},${p1.y} L${midX},${p1.y} L${midX},${p2.y} L${p2.x},${p2.y}`;
-}
-
-/**
- * Middle of the elbow's vertical leg, which is the one segment of the path that
- * is always present and never overlaps either endpoint — the label and the
- * custom marker both anchor here so they never sit on top of a card.
- */
-function elbowMidpoint(p1: Point, p2: Point): Point {
-  return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+/** A curve with its arrow ends pulled back, so the stroke stops at the arrowhead. */
+function strokeCurve(curve: WireCurve, arrowAtStart: boolean, arrowAtEnd: boolean, arrow: number): WireCurve {
+  return trimmed(curve, arrowAtStart ? arrow * 0.7 : 0, arrowAtEnd ? arrow * 0.7 : 0);
 }
 
 /** The same point on the map view's quadratic curve (t = 0.5). */
@@ -309,7 +295,11 @@ export function ConnectionLayer() {
   const activeConnectionEvents = useBridgeActivityStore(
     (s) => s.activeConnectionEvents,
   );
+  const flights = useBridgeActivityStore((s) => s.flights);
+  const recentByPair = useBridgeActivityStore((s) => s.recentByPair);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
+  // The node a wire being dragged would connect to if let go now.
+  const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
   // An endpoint key (`kind:id`), so a browser or note can be the hover source
   // just as well as a terminal — otherwise a hand-drawn wire only lights from
   // the terminal end, and hovering the browser you wired up does nothing.
@@ -515,34 +505,40 @@ export function ConnectionLayer() {
       };
     };
 
+    // event.target alone isn't enough: our own connector dots and wire
+    // paths sit visually on top of every card (this layer renders after
+    // CanvasCardLayer), so when the cursor is right over a dot — exactly
+    // where you're aiming to drop a connection — event.target is that dot,
+    // and `.closest("[data-connect-id]")` on it walks up through this
+    // layer's own DOM tree, which never has that attribute, and misses
+    // the real card underneath entirely. elementsFromPoint returns every
+    // element stacked at that point, not just the topmost, so it finds
+    // the actual card regardless of what's drawn above it.
+    const endpointAt = (clientX: number, clientY: number): ConnectionEndpoint | null => {
+      for (const el of document.elementsFromPoint(clientX, clientY)) {
+        const match = (el as HTMLElement).closest?.("[data-connect-id]") as HTMLElement | null;
+        if (!match) continue;
+        const kind = match.dataset.connectKind as ConnectionEndpointKind | undefined;
+        const id = match.dataset.connectId;
+        if (!kind || !id) return null;
+        // The node the wire starts from isn't somewhere it can end.
+        if (kind === pending.from.kind && id === pending.from.id) return null;
+        return { kind, id };
+      }
+      return null;
+    };
+
     const handleMove = (event: MouseEvent) => {
       store.updatePendingCursor(toFlow(event.clientX, event.clientY));
+      const over = endpointAt(event.clientX, event.clientY);
+      const key = over ? endpointKey(over) : null;
+      setDropTargetKey((current) => (current === key ? current : key));
     };
 
     const handleUp = (event: MouseEvent) => {
-      // event.target alone isn't enough: our own connector dots and wire
-      // paths sit visually on top of every card (this layer renders after
-      // CanvasCardLayer), so when the cursor is right over a dot — exactly
-      // where you're aiming to drop a connection — event.target is that dot,
-      // and `.closest("[data-connect-id]")` on it walks up through this
-      // layer's own DOM tree, which never has that attribute, and misses
-      // the real card underneath entirely. elementsFromPoint returns every
-      // element stacked at that point, not just the topmost, so it finds
-      // the actual card regardless of what's drawn above it.
-      const stack = document.elementsFromPoint(event.clientX, event.clientY);
-      let target: HTMLElement | null = null;
-      for (const el of stack) {
-        const match = (el as HTMLElement).closest?.("[data-connect-id]");
-        if (match) {
-          target = match as HTMLElement;
-          break;
-        }
-      }
-      const kind = target?.dataset.connectKind as
-        | ConnectionEndpointKind
-        | undefined;
-      const id = target?.dataset.connectId;
-      const resolved = store.endPending(kind && id ? { kind, id } : undefined);
+      setDropTargetKey(null);
+      const over = endpointAt(event.clientX, event.clientY);
+      const resolved = store.endPending(over ?? undefined);
       if (resolved) {
         createConnectionInScene(resolved.from, resolved.to);
       }
@@ -570,7 +566,8 @@ export function ConnectionLayer() {
             const from = rectByKey.get(`${connection.from.kind}:${connection.from.id}`);
             const to = rectByKey.get(`${connection.to.kind}:${connection.to.id}`);
             if (!from || !to) return null;
-            const [p1, p2] = facingAnchors(from, to);
+            const [a1, a2] = facingAnchors(from, to);
+            const curve = wireCurve(a1, a2);
 
             const browserEndpoint =
               connection.from.kind === "browser" ? connection.from : connection.to;
@@ -579,10 +576,9 @@ export function ConnectionLayer() {
                 ? activeCalls[browserEndpoint.id]
                 : undefined;
 
-            // An emitted event (emit_event/canvas-bridge:event) carries its
-            // own explicit source/target — unlike the browser-bridge call
-            // above, it isn't always terminal-calls-browser (a
-            // terminal↔terminal wire can pulse in either direction).
+            // An emitted event or a message (canvas-bridge:event) carries its
+            // own source and target, so it lights the wire whichever way it
+            // travelled.
             const eventPairKey = connectionEventPairKey(connection.from, connection.to);
             const activeEvent = activeConnectionEvents[eventPairKey];
 
@@ -590,29 +586,6 @@ export function ConnectionLayer() {
             const isError =
               activeCall?.status === "error" || activeEvent?.status === "error";
             const pulseColor = isError ? "var(--red)" : "var(--accent)";
-
-            // Direction for the traveling dot: an active emitted event's
-            // explicit source→target wins; otherwise the legacy
-            // browser-bridge-call assumption (terminal is always the
-            // caller, browser always the callee) applies; otherwise the
-            // static line stays undirected.
-            let sourceAnchor = p1;
-            let targetAnchor = p2;
-            if (activeEvent) {
-              const sourceRect = rectByKey.get(
-                `${activeEvent.source.kind}:${activeEvent.source.id}`,
-              );
-              const targetRect = rectByKey.get(
-                `${activeEvent.target.kind}:${activeEvent.target.id}`,
-              );
-              if (sourceRect && targetRect) {
-                [sourceAnchor, targetAnchor] = facingAnchors(sourceRect, targetRect);
-              }
-            } else if (activeCall) {
-              const terminalRect = from.kind === "terminal" ? from : to;
-              const browserRect = from.kind === "browser" ? from : to;
-              [sourceAnchor, targetAnchor] = facingAnchors(terminalRect, browserRect);
-            }
 
             // At map zoom, hovering promotes the edges around the hovered node
             // out of the faint resting hairline, so one hover answers "what is
@@ -646,13 +619,24 @@ export function ConnectionLayer() {
             const overviewStroke = connectionStrokeStyle(family, "overview");
             const isCustom = hasCustomMarker(connection);
 
+            // The arrow is where things arrive: at the end it was dropped on,
+            // and at both ends of a two-way wire. A bare relationship carries
+            // nothing, so it has no arrow.
+            const arrow = ARROW_PX / viewport.scale;
+            const directed = family !== "structural";
+            const arrowAtEnd = directed;
+            const arrowAtStart = directed && isTwoWay(connection);
+            const wireColor = isActive ? pulseColor : "var(--accent)";
+            const wireOpacity = (isActive ? 1 : workingStroke.opacity) * (1 - overviewOpacity);
+
             return (
               <g key={connection.id}>
                 <path
-                  d={elbowPath(p1, p2)}
+                  d={curvePath(curve)}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={14}
+                  vectorEffect="non-scaling-stroke"
                   style={{
                     pointerEvents: isOverview ? "none" : "stroke",
                     cursor: "pointer",
@@ -666,30 +650,53 @@ export function ConnectionLayer() {
                       connectionId: connection.id,
                     });
                   }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setTypeMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      connectionId: connection.id,
+                    });
+                  }}
                 />
                 {overviewOpacity < 1 && (
-                  <path
-                    d={elbowPath(p1, p2)}
-                    fill="none"
-                    stroke={isActive ? pulseColor : "var(--accent)"}
-                    strokeWidth={
-                      (isActive ? 2.5 : workingStroke.width) / viewport.scale
-                    }
-                    strokeDasharray={workingStroke.dash ?? undefined}
-                    vectorEffect="non-scaling-stroke"
-                    style={{
-                      opacity:
-                        (isActive ? 1 : workingStroke.opacity) *
-                        (1 - overviewOpacity),
-                      transition: "stroke 0.15s ease, opacity 0.15s ease",
-                    }}
-                  />
+                  <>
+                    <path
+                      d={curvePath(strokeCurve(curve, arrowAtStart, arrowAtEnd, arrow))}
+                      fill="none"
+                      stroke={wireColor}
+                      strokeWidth={isActive ? 2.25 : workingStroke.width}
+                      strokeDasharray={workingStroke.dash ?? undefined}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{
+                        opacity: wireOpacity,
+                        transition: "stroke 0.15s ease, opacity 0.15s ease",
+                      }}
+                    />
+                    {arrowAtEnd && (
+                      <path
+                        d={arrowHead(curve, "end", arrow)}
+                        fill={wireColor}
+                        stroke="none"
+                        style={{ opacity: wireOpacity, transition: "fill 0.15s ease, opacity 0.15s ease" }}
+                      />
+                    )}
+                    {arrowAtStart && (
+                      <path
+                        d={arrowHead(curve, "start", arrow)}
+                        fill={wireColor}
+                        stroke="none"
+                        style={{ opacity: wireOpacity, transition: "fill 0.15s ease, opacity 0.15s ease" }}
+                      />
+                    )}
+                  </>
                 )}
                 {overviewOpacity < 1 && isCustom && (
                   <CustomMarker
-                    at={elbowMidpoint(p1, p2)}
+                    at={curvePoint(curve, 0.5)}
                     scale={viewport.scale}
-                    color={isActive ? pulseColor : "var(--accent)"}
+                    color={wireColor}
                     opacity={1 - overviewOpacity}
                   />
                 )}
@@ -728,17 +735,23 @@ export function ConnectionLayer() {
                     opacity={0.7 * overviewOpacity}
                   />
                 )}
-                {isActive && (
+                {/* A browser-bridge call has no message to show, only that the
+                    agent is driving the page, so it keeps a looping pulse for
+                    as long as the call runs. */}
+                {activeCall && !activeEvent && (
                   <circle
-                    r={4 / viewport.scale}
+                    r={FLIGHT_DOT_PX / viewport.scale}
                     fill={pulseColor}
                     stroke="var(--surface)"
-                    strokeWidth={1 / viewport.scale}
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
                   >
                     <animateMotion
-                      dur={isError ? "0.6s" : "1s"}
+                      dur={isError ? "0.6s" : "1.2s"}
                       repeatCount="indefinite"
-                      path={elbowPath(sourceAnchor, targetAnchor)}
+                      path={curvePath(
+                        from.kind === "terminal" ? curve : wireCurve(a2, a1),
+                      )}
                     />
                   </circle>
                 )}
@@ -746,53 +759,87 @@ export function ConnectionLayer() {
             );
           })}
 
+          {/* Each message travels its wire once, from the node that sent it. */}
+          {overviewOpacity < 1 &&
+            Object.values(flights).map((flight) => {
+              const source = rectByKey.get(endpointKey(flight.source));
+              const target = rectByKey.get(endpointKey(flight.target));
+              if (!source || !target) return null;
+              const [s1, s2] = facingAnchors(source, target);
+              const failed = flight.status === "failed";
+              return (
+                <circle
+                  key={`flight:${flight.requestId}`}
+                  r={FLIGHT_DOT_PX / viewport.scale}
+                  fill={failed ? "var(--red)" : "var(--accent)"}
+                  stroke="var(--surface)"
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                  style={{ opacity: 1 - overviewOpacity }}
+                >
+                  <animateMotion
+                    // Started when it mounts: an SVG animation with a fixed
+                    // begin would count from page load and be long over.
+                    ref={(el) => (el as SVGAnimationElement | null)?.beginElement()}
+                    begin="indefinite"
+                    dur="0.9s"
+                    fill="freeze"
+                    calcMode="spline"
+                    keyTimes="0;1"
+                    keySplines="0.4 0 0.2 1"
+                    path={curvePath(wireCurve(s1, s2))}
+                  />
+                </circle>
+              );
+            })}
+
           {pending &&
             (() => {
               const from = rectByKey.get(`${pending.from.kind}:${pending.from.id}`);
               if (!from) return null;
-              const [p1] = facingAnchors(from, {
-                kind: "terminal",
-                id: "",
-                x: pending.cursor.x,
-                y: pending.cursor.y,
-                w: 0,
-                h: 0,
-              });
+              // Over a node it could connect to, the wire snaps to the side it
+              // would arrive at, so you see the wire you'll get.
+              const target = dropTargetKey ? rectByKey.get(dropTargetKey) : undefined;
+              const [s1, s2] = target ? facingAnchors(from, target) : anchorToward(from, pending.cursor);
+              const curve = wireCurve(s1, s2);
+              const arrow = ARROW_PX / viewport.scale;
               return (
-                <path
-                  d={elbowPath(p1, pending.cursor)}
-                  fill="none"
-                  stroke="var(--accent)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  vectorEffect="non-scaling-stroke"
-                  style={{ opacity: 0.6 }}
-                />
+                <>
+                  <path
+                    d={curvePath(strokeCurve(curve, false, true, arrow))}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth={1.75}
+                    strokeLinecap="round"
+                    strokeDasharray={target ? undefined : "5 4"}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ opacity: target ? 0.95 : 0.6 }}
+                  />
+                  <path d={arrowHead(curve, "end", arrow)} fill="var(--accent)" style={{ opacity: target ? 0.95 : 0.6 }} />
+                </>
               );
             })()}
 
           {pending &&
-            rects
-              .filter(
-                (rect) =>
-                  !(rect.kind === pending.from.kind && rect.id === pending.from.id),
-              )
-              .map((rect) => (
+            dropTargetKey &&
+            (() => {
+              const rect = rectByKey.get(dropTargetKey);
+              if (!rect) return null;
+              return (
                 <rect
-                  key={`drop-zone:${rect.kind}:${rect.id}`}
-                  x={rect.x}
-                  y={rect.y}
-                  width={rect.w}
-                  height={rect.h}
-                  rx={8}
-                  fill="none"
+                  x={rect.x - 3 / viewport.scale}
+                  y={rect.y - 3 / viewport.scale}
+                  width={rect.w + 6 / viewport.scale}
+                  height={rect.h + 6 / viewport.scale}
+                  rx={10 / viewport.scale}
+                  fill="color-mix(in srgb, var(--accent) 6%, transparent)"
                   stroke="var(--accent)"
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
+                  strokeWidth={1.5}
                   vectorEffect="non-scaling-stroke"
-                  style={{ opacity: 0.5 }}
+                  style={{ opacity: 0.9 }}
                 />
-              ))}
+              );
+            })()}
 
           {isOverview &&
             hasFamily &&
@@ -830,23 +877,28 @@ export function ConnectionLayer() {
 
           {showHandles &&
             rects.map((rect) => {
-            // While a connection is being dragged, every OTHER card's
-            // handles grow and light up as valid drop targets — the same
-            // "here's where you can let go" affordance tldraw/excalidraw
-            // give arrow endpoints, instead of leaving the user to guess.
+            const rectKey = `${rect.kind}:${rect.id}`;
             const isDragSource =
               pending?.from.kind === rect.kind && pending?.from.id === rect.id;
-            const isDropCandidate = pending !== null && !isDragSource;
 
-            const activeCall = activeRectKeys.get(`${rect.kind}:${rect.id}`);
+            const activeCall = activeRectKeys.get(rectKey);
             const isActive = activeCall !== undefined;
             const activeColor =
               activeCall?.status === "error" ? "var(--red)" : "var(--accent)";
+            // Dots show on the node under the pointer (or one of its dots), on
+            // the node a wire is being dragged from, and while it is busy. The
+            // hit circles stay live on every node, so moving off a node's edge
+            // onto its dot doesn't make the dot vanish under the pointer.
+            const showDots =
+              hoveredKey === rectKey ||
+              hoveredHandle?.startsWith(`${rectKey}:`) === true ||
+              isDragSource ||
+              isActive;
 
             return handlePoints(rect).map((point, index) => {
-              const handleKey = `${rect.kind}:${rect.id}:${index}`;
+              const handleKey = `${rectKey}:${index}`;
               const isHovered = hoveredHandle === handleKey;
-              const isLit = isHovered || isDropCandidate || isActive;
+              const isLit = isHovered || isActive;
               const visibleRadius =
                 (isLit ? HANDLE_HOVER_RADIUS : HANDLE_VISIBLE_RADIUS) /
                 viewport.scale;
@@ -905,11 +957,11 @@ export function ConnectionLayer() {
                       pointerEvents: "none",
                       // Fades out with the map-view crossfade, but a drag in
                       // progress keeps them fully visible at any zoom.
-                      opacity:
-                        (isLit ? 1 : 0.85) *
-                        (pending !== null ? 1 : 1 - overviewOpacity),
+                      opacity: showDots
+                        ? (isLit ? 1 : 0.9) * (pending !== null ? 1 : 1 - overviewOpacity)
+                        : 0,
                       transition:
-                        "r 0.1s ease, fill 0.1s ease, stroke 0.15s ease, opacity 0.1s ease",
+                        "r 0.1s ease, fill 0.1s ease, stroke 0.15s ease, opacity 0.12s ease",
                     }}
                   />
                 </g>
@@ -929,20 +981,21 @@ export function ConnectionLayer() {
             const from = rectByKey.get(endpointKey(connection.from));
             const to = rectByKey.get(endpointKey(connection.to));
             if (!from || !to) return null;
-            const [p1, p2] = facingAnchors(from, to);
+            const [a1, a2] = facingAnchors(from, to);
             // Labels outlive the start of the map-view crossfade by a little,
             // and the two renderings have different midpoints, so the anchor
             // travels between them rather than letting the label detach from
             // whichever line is currently the prominent one.
-            const elbowMid = elbowMidpoint(p1, p2);
+            const wireMid = curvePoint(wireCurve(a1, a2), 0.5);
             const curveMid = curveMidpoint(from, to);
             const mid = {
-              x: elbowMid.x + (curveMid.x - elbowMid.x) * overviewOpacity,
-              y: elbowMid.y + (curveMid.y - elbowMid.y) * overviewOpacity,
+              x: wireMid.x + (curveMid.x - wireMid.x) * overviewOpacity,
+              y: wireMid.y + (curveMid.y - wireMid.y) * overviewOpacity,
             };
             const type = resolveConnectionType(connection);
             const spec = connectionTypeSpec(type);
             const isCustom = type === "custom";
+            const twoWay = isTwoWay(connection) && spec.family !== "structural";
             // Pair-aware: the same label runs at one pair and not another, so
             // the endpoints decide the mark, not the type on its own.
             const pending = isPendingBehaviour(
@@ -960,7 +1013,7 @@ export function ConnectionLayer() {
                   "{type}",
                   spec.label,
                 )}
-                className="absolute rounded border transition-colors duration-quick"
+                className="absolute rounded-full border transition-colors duration-quick hover:text-[var(--text-primary)] hover:border-[var(--accent)]/50"
                 style={{
                   left: viewport.x + mid.x * viewport.scale,
                   top: viewport.y + mid.y * viewport.scale,
@@ -969,7 +1022,8 @@ export function ConnectionLayer() {
                   fontFamily: '"Geist Mono", monospace',
                   fontSize: labelLayout.fontPx,
                   lineHeight: 1.2,
-                  padding: "1px 5px",
+                  padding: "2px 8px",
+                  boxShadow: "0 1px 3px rgb(0 0 0 / 0.25)",
                   whiteSpace: "nowrap",
                   maxWidth: 220,
                   overflow: "hidden",
@@ -1010,8 +1064,60 @@ export function ConnectionLayer() {
                 {/* Echoes the diamond drawn on the wire, so the label and the
                     marker read as one thing rather than two coincidences. */}
                 {isCustom ? "◇ " : ""}
+                {twoWay ? "⇄ " : ""}
                 {formatConnectionTypeLabel(connection)}
               </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The first words of each message, beside the node it is arriving at,
+          for as long as its dot is on the wire. */}
+      {labelLayout.visible && overviewOpacity < 1 && (
+        <div className="absolute inset-0" style={{ pointerEvents: "none" }}>
+          {Object.values(flights).map((flight) => {
+            if (!flight.preview) return null;
+            const source = rectByKey.get(endpointKey(flight.source));
+            const target = rectByKey.get(endpointKey(flight.target));
+            if (!source || !target) return null;
+            const [, arrive] = facingAnchors(source, target);
+            const failed = flight.status === "failed";
+            // Beside the end of the wire, outside the node it arrives at:
+            // never over the node it is talking to, nor over the last stretch
+            // of wire where its dot lands.
+            const gap = 10;
+            const shift: Record<typeof arrive.side, string> = {
+              left: `translate(calc(-100% - ${gap}px), calc(-100% - ${gap}px))`,
+              right: `translate(${gap}px, calc(-100% - ${gap}px))`,
+              top: `translate(${gap}px, calc(-100% - ${gap}px))`,
+              bottom: `translate(${gap}px, ${gap}px)`,
+            };
+            return (
+              <div
+                key={`flight-preview:${flight.requestId}`}
+                className="tc-wire-preview absolute rounded-md border"
+                style={{
+                  left: viewport.x + arrive.x * viewport.scale,
+                  top: viewport.y + arrive.y * viewport.scale,
+                  transform: shift[arrive.side],
+                  maxWidth: 260,
+                  padding: "3px 8px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  fontFamily: '"Geist Mono", monospace',
+                  fontSize: 11,
+                  lineHeight: 1.3,
+                  background: "var(--surface)",
+                  borderColor: failed ? "var(--red)" : "color-mix(in srgb, var(--accent) 45%, var(--border))",
+                  color: failed ? "var(--red)" : "var(--text-secondary)",
+                  boxShadow: "0 2px 8px rgb(0 0 0 / 0.3)",
+                  opacity: 1 - overviewOpacity,
+                }}
+              >
+                {flight.preview}
+              </div>
             );
           })}
         </div>
@@ -1031,6 +1137,19 @@ export function ConnectionLayer() {
             toKind={typeMenuTarget.connection.to.kind}
             current={resolveConnectionType(typeMenuTarget.connection)}
             currentPrompt={typeMenuTarget.connection.customPrompt}
+            fromName={describeEndpoint(typeMenuTarget.connection.from, labelContext)}
+            toName={describeEndpoint(typeMenuTarget.connection.to, labelContext)}
+            twoWay={isTwoWay(typeMenuTarget.connection)}
+            canRedirect={
+              typeMenuTarget.connection.from.kind === "terminal" &&
+              typeMenuTarget.connection.to.kind === "terminal"
+            }
+            recent={
+              recentByPair[
+                connectionEventPairKey(typeMenuTarget.connection.from, typeMenuTarget.connection.to)
+              ] ?? []
+            }
+            nameOf={(endpoint) => describeEndpoint(endpoint, labelContext)}
             onClose={() => setTypeMenu(null)}
           />
         </div>
