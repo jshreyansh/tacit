@@ -471,6 +471,7 @@ export const zh = {
   activity_kind_wire: "连线",
   activity_kind_unwire: "断开",
   activity_kind_retype_wire: "改线",
+  activity_kind_redirect_wire: "改线",
   activity_kind_rename: "重命名",
   activity_kind_manager: "管理者",
   activity_kind_browser_action: "浏览器",

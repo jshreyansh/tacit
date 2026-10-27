@@ -206,7 +206,7 @@ test.before(async () => {
 });
 
 test("the bridge lists its tools in-process, as an agent receives them", () => {
-  assert.equal(bridgeTools.length, 26);
+  assert.equal(bridgeTools.length, 27);
   for (const tool of bridgeTools) {
     assert.ok(tool.inputSchema && typeof tool.inputSchema === "object", tool.name);
   }

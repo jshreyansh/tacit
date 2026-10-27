@@ -125,6 +125,17 @@ export type CaptureEvent =
       by: CaptureActor;
     }
   | {
+      /**
+       * A wire's direction changed: turned round, or made two-way or one-way
+       * again. `from` and `to` are its ends as they now stand.
+       */
+      kind: "redirect_wire";
+      from: CaptureNodeRef;
+      to: CaptureNodeRef;
+      two_way: boolean;
+      by: CaptureActor;
+    }
+  | {
       kind: "unwire";
       from: CaptureNodeRef;
       to: CaptureNodeRef;
@@ -471,6 +482,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "manager": return event.node;
     case "wire":
     case "retype_wire":
+    case "redirect_wire":
     case "unwire": return event.from;
     case "topology": return null;
     case "spawn_refused": return null;

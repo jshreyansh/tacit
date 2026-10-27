@@ -11,6 +11,8 @@ import {
   normalizeCustomPrompt,
   resolveConnectionType,
   validConnectionTypes,
+  menuConnectionTypes,
+  newWireConnectionType,
   type ConnectionEndpointKind,
 } from "../shared/connection-types";
 import { useConnectionStore } from "../src/stores/connectionStore";
@@ -27,10 +29,16 @@ test("every pair infers a meaning, and none is left undefined", () => {
     for (const to of kinds) {
       const inferred = defaultConnectionType(from, to);
       assert.ok(isConnectionType(inferred), `${from}>${to} inferred nothing`);
-      // The menu must be able to show what a wire currently is.
+      // The menu must be able to show what a wire currently is, even when
+      // this build no longer offers it.
       assert.ok(
-        validConnectionTypes(from, to).includes(inferred),
+        menuConnectionTypes(from, to, inferred).includes(inferred),
         `${from}>${to} defaults to a type its own menu omits`,
+      );
+      // And a wire drawn now gets something offered, i.e. something that runs.
+      assert.ok(
+        validConnectionTypes(from, to).includes(newWireConnectionType(from, to)),
+        `${from}>${to} would be drawn with a type its menu doesn't offer`,
       );
     }
   }
@@ -57,13 +65,16 @@ test("each pair infers the meaning a person would expect", () => {
   assert.equal(defaultConnectionType("terminal", "note"), "writes-to");
 });
 
-test("the menu offers only what the pair can be, with the escape hatch last", () => {
-  const agentToBrowser = validConnectionTypes("terminal", "browser");
-  assert.deepEqual(agentToBrowser, ["controls", "sends-replies-to", "relates-to", "custom"]);
-  assert.equal(agentToBrowser.at(-1), "custom", "custom sits beneath the presets");
+test("the menu offers only what runs for the pair, with relates-to last", () => {
+  assert.deepEqual(validConnectionTypes("terminal", "browser"), ["controls", "sends-replies-to", "relates-to"]);
+  assert.deepEqual(validConnectionTypes("terminal", "terminal"), ["hands-off-to", "relates-to"]);
+  // A pair with nothing running can still record a relationship.
+  assert.deepEqual(validConnectionTypes("note", "note"), ["relates-to"]);
+  assert.deepEqual(validConnectionTypes("note", "terminal"), ["relates-to"]);
 
-  // A pair that can only be a bare relationship still offers the escape hatch.
-  assert.deepEqual(validConnectionTypes("note", "note"), ["relates-to", "custom"]);
+  // An older wire whose meaning isn't offered any more still shows it, first.
+  assert.deepEqual(menuConnectionTypes("note", "terminal", "instructs"), ["instructs", "relates-to"]);
+  assert.deepEqual(menuConnectionTypes("terminal", "terminal", "relates-to"), ["hands-off-to", "relates-to"]);
 
   // No duplicates anywhere — relates-to is a default for some pairs and a
   // universal option for all of them, and must not appear twice.
@@ -142,29 +153,14 @@ test("which wires actually run is pinned per pair, so shrinking the gap is delib
 
   assert.deepEqual(running.sort(), [
     "controls terminal>browser",
+    "hands-off-to terminal>terminal",
     "sends-replies-to terminal>browser",
     "writes-to terminal>note",
   ]);
 
-  // Every offerable wire that looks like it acts but does not. Landing a
-  // behaviour deletes a line here in the same commit that adds one above.
-  assert.deepEqual(pending.sort(), [
-    "custom browser>browser",
-    "custom browser>note",
-    "custom browser>terminal",
-    "custom note>browser",
-    "custom note>note",
-    "custom note>terminal",
-    "custom terminal>browser",
-    "custom terminal>note",
-    "custom terminal>terminal",
-    "feeds-context-to browser>terminal",
-    "hands-off-to terminal>terminal",
-    "instructs note>terminal",
-    "sends-page-to browser>browser",
-    "sends-replies-to terminal>terminal",
-    "writes-to browser>note",
-  ]);
+  // The menu offers nothing that looks like it acts but does not; a type
+  // comes back into it in the commit that makes it run.
+  assert.deepEqual(pending, []);
 
   // `relates-to` never carries the mark: it does not run by design, and its
   // structural stroke already says so.

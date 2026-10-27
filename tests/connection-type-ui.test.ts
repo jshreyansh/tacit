@@ -19,6 +19,8 @@ import {
   MAX_CUSTOM_PROMPT_LENGTH,
   connectionTypeSpec,
   validConnectionTypes,
+  menuConnectionTypes,
+  resolveConnectionType,
   type ConnectionEndpointKind,
   type ConnectionFamily,
 } from "../shared/connection-types";
@@ -36,7 +38,9 @@ const wire = (
 
 /** What the menu actually puts on screen, in order. */
 const menuRows = (from: ConnectionEndpointKind, to: ConnectionEndpointKind) =>
-  validConnectionTypes(from, to).map((type) => connectionTypeSpec(type).label);
+  menuConnectionTypes(from, to, resolveConnectionType({ from: { kind: from }, to: { kind: to } })).map(
+    (type) => connectionTypeSpec(type).label,
+  );
 
 // ---------------------------------------------------------------- label text
 
@@ -203,20 +207,12 @@ test("a nonsense scale cannot take the layer down with a NaN font size", () => {
 
 // --------------------------------------------------------------- menu rows
 
-test("the menu offers readable phrases, in order, with custom last", () => {
-  assert.deepEqual(menuRows("terminal", "browser"), [
-    "controls",
-    "sends replies to",
-    "relates to",
-    "custom",
-  ]);
-  assert.deepEqual(menuRows("note", "terminal"), ["instructs", "relates to", "custom"]);
-  assert.deepEqual(menuRows("note", "note"), ["relates to", "custom"]);
-  assert.deepEqual(menuRows("browser", "browser"), [
-    "sends page to",
-    "relates to",
-    "custom",
-  ]);
+test("the menu offers readable phrases, in order, with relates to last", () => {
+  assert.deepEqual(menuRows("terminal", "browser"), ["controls", "sends replies to", "relates to"]);
+  assert.deepEqual(menuRows("terminal", "terminal"), ["hands off to", "relates to"]);
+  // An untyped older wire's inferred meaning leads, so it shows as current.
+  assert.deepEqual(menuRows("note", "terminal"), ["instructs", "relates to"]);
+  assert.deepEqual(menuRows("note", "note"), ["relates to"]);
 });
 
 test("no row is a dead end: every offered type has a label and only custom asks", () => {
@@ -224,7 +220,7 @@ test("no row is a dead end: every offered type has a label and only custom asks"
   for (const from of kinds) {
     for (const to of kinds) {
       const types = validConnectionTypes(from, to);
-      assert.equal(types.at(-1), "custom", `${from}>${to} must end with custom`);
+      assert.equal(types.at(-1), "relates-to", `${from}>${to} must end with relates-to`);
       for (const type of types) {
         const spec = connectionTypeSpec(type);
         assert.ok(spec.label.length > 0, `${type} has no label`);

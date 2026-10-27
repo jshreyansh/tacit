@@ -13,6 +13,8 @@ import { findTerminal, getLivePtyId } from "./terminalLookup";
 import { captureRef, recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
 import {
+  isTwoWay,
+  newWireConnectionType,
   resolveConnectionType,
   type ConnectionType,
 } from "../../shared/connection-types";
@@ -56,6 +58,11 @@ export function createConnectionInScene(
   const announce = options.announce ?? origin === "manual";
   const existing = useConnectionStore.getState().connections;
   const id = useConnectionStore.getState().addConnection(from, to, origin);
+  // A wire someone just drew gets a meaning this build runs, so the line
+  // never promises something that then doesn't happen.
+  if (id && !existing[id] && origin === "manual") {
+    useConnectionStore.getState().setConnectionType(id, newWireConnectionType(from.kind, to.kind));
+  }
   if (id && announce) notifyIfTerminalBrowserWired(from, to);
   // addConnection returns the existing id for an already-wired pair, so
   // checking whether the id was already known is what keeps a re-wire of the
@@ -104,6 +111,39 @@ export function setConnectionTypeInScene(
     to: captureRef(existing.to),
     connection_type: type,
     previous_type: previous,
+    by,
+  });
+}
+
+/** Turn a one-way wire round, so the other end sends. */
+export function flipConnectionInScene(id: string, by: CaptureActor = "user"): void {
+  const store = useConnectionStore.getState();
+  if (!store.connections[id]) return;
+  store.flipConnection(id);
+  recordRedirect(id, by);
+}
+
+/** Let both ends send along a wire, or only the end it was drawn from. */
+export function setConnectionTwoWayInScene(
+  id: string,
+  twoWay: boolean,
+  by: CaptureActor = "user",
+): void {
+  const store = useConnectionStore.getState();
+  const existing = store.connections[id];
+  if (!existing || isTwoWay(existing) === twoWay) return;
+  store.setConnectionTwoWay(id, twoWay);
+  recordRedirect(id, by);
+}
+
+function recordRedirect(id: string, by: CaptureActor): void {
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({
+    kind: "redirect_wire",
+    from: captureRef(applied.from),
+    to: captureRef(applied.to),
+    two_way: isTwoWay(applied),
     by,
   });
 }

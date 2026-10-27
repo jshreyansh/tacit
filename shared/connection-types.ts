@@ -106,6 +106,8 @@ const RUNNING: ReadonlySet<string> = new Set([
   "controls terminal>browser",
   "sends-replies-to terminal>browser",
   "writes-to terminal>note",
+  // The agent at the source passes work on with send_to_connected.
+  "hands-off-to terminal>terminal",
 ]);
 
 /** Whether drawing this wire, between these two kinds, makes something happen. */
@@ -196,18 +198,90 @@ export function validConnectionTypes(
 ): ConnectionType[] {
   const key = pairKey(from, to);
   const primary = DEFAULTS[key] ?? "relates-to";
-  const seen = new Set<ConnectionType>([primary]);
-  const out: ConnectionType[] = [primary];
-  for (const extra of EXTRA_CHOICES[key] ?? []) {
-    if (!seen.has(extra)) { seen.add(extra); out.push(extra); }
+  const seen = new Set<ConnectionType>();
+  const out: ConnectionType[] = [];
+  // Only what this build runs is offered: a menu of "not yet" rows promised
+  // behaviour that drawing the wire then didn't deliver. Custom comes back
+  // when it runs.
+  for (const type of [primary, ...(EXTRA_CHOICES[key] ?? [])]) {
+    if (!seen.has(type) && connectionRuns(type, from, to)) { seen.add(type); out.push(type); }
   }
   // Always available, and always last: recording a bare relationship is
-  // meaningful for any pair, and custom is the escape hatch beneath the
-  // presets rather than a peer of them.
-  for (const universal of ["relates-to", "custom"] as const) {
-    if (!seen.has(universal)) { seen.add(universal); out.push(universal); }
-  }
+  // meaningful for any pair.
+  if (!seen.has("relates-to")) out.push("relates-to");
   return out;
+}
+
+/**
+ * The rows a wire's menu shows: what the pair can be, led by the wire's
+ * current meaning when that is one this build no longer offers, so the menu
+ * never opens with nothing marked and an old wire can be moved off it.
+ */
+export function menuConnectionTypes(
+  from: ConnectionEndpointKind,
+  to: ConnectionEndpointKind,
+  current: ConnectionType,
+): ConnectionType[] {
+  const offered = validConnectionTypes(from, to);
+  return offered.includes(current) ? offered : [current, ...offered];
+}
+
+/**
+ * The type a wire the user just drew is given: what the pair means by
+ * default when this build runs it, else a bare relationship. Stamped at
+ * creation, so wires drawn before keep the meaning they were drawn with.
+ */
+export function newWireConnectionType(
+  from: ConnectionEndpointKind,
+  to: ConnectionEndpointKind,
+): ConnectionType {
+  const primary = defaultConnectionType(from, to);
+  return connectionRuns(primary, from, to) ? primary : "relates-to";
+}
+
+/** Minimal shape of a stored wire for working out who may send along it. */
+export interface DirectedConnectionLike extends TypedConnectionLike {
+  from: { kind: ConnectionEndpointKind; id: string };
+  to: { kind: ConnectionEndpointKind; id: string };
+  origin?: "spawn" | "manual";
+  twoWay?: boolean;
+}
+
+/**
+ * Whether either end may send along this wire. A wire runs from where it was
+ * dragged to where it was dropped unless it was made two-way. A spawn wire is
+ * two-way: the agent that started a worker instructs it and the worker
+ * reports back.
+ */
+export function isTwoWay(connection: DirectedConnectionLike): boolean {
+  return connection.twoWay ?? connection.origin === "spawn";
+}
+
+/** Which way this wire runs, seen from one of its ends; null if it isn't one. */
+export function wireDirectionFrom(
+  connection: DirectedConnectionLike,
+  end: { kind: ConnectionEndpointKind; id: string },
+): "to_it" | "from_it" | "both_ways" | null {
+  const isFrom = connection.from.kind === end.kind && connection.from.id === end.id;
+  const isTo = connection.to.kind === end.kind && connection.to.id === end.id;
+  if (!isFrom && !isTo) return null;
+  if (isTwoWay(connection)) return "both_ways";
+  return isFrom ? "to_it" : "from_it";
+}
+
+/**
+ * The wire types an agent's messages travel along. A bare relationship
+ * records and runs nothing, and a wire whose behaviour isn't built yet must
+ * not quietly start doing something else.
+ */
+const MESSAGE_TYPES: ReadonlySet<ConnectionType> = new Set([
+  "hands-off-to",
+  "sends-replies-to",
+  "writes-to",
+]);
+
+export function wireCarriesMessages(connection: TypedConnectionLike): boolean {
+  return MESSAGE_TYPES.has(resolveConnectionType(connection));
 }
 
 /** Minimal shape of a stored connection; the store's own type is wider. */

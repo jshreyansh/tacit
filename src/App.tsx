@@ -68,7 +68,8 @@ import {
   decideSpawnProfile,
   listAgentBrowserProfiles,
 } from "./browser/agentBrowserProfiles";
-import { installReplyDelivery } from "./browser/chatReplyDelivery";
+import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
+import { nodeTitle, wireEndsOf } from "./canvas/wireEnds";
 import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
 import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { subscribePinEvents, usePinStore } from "./stores/pinStore";
@@ -761,36 +762,44 @@ export function App() {
       // the most-recently-connected browser for the narrower drive tools),
       // this fans out to *every* connected endpoint — the actual
       // graph-not-point-to-point behavior emit_event is for.
+      // Each end says which way its wire runs, so an event doesn't travel
+      // up a wire that points at the emitter.
       getConnectionsForNode: (kind: ConnectionEndpoint["kind"], id: string) => {
-        const connections = connectionsInvolving(
-          useConnectionStore.getState().connections,
-          kind,
-          id,
-        );
-        return connections.map((connection) => {
-          const other =
-            connection.from.kind === kind && connection.from.id === id
-              ? connection.to
-              : connection.from;
-          if (other.kind === "terminal") {
-            const found = findTerminal(other.id);
+        return wireEndsOf(kind, id).map((end) => {
+          if (end.kind === "terminal") {
             return {
               kind: "terminal" as const,
-              id: other.id,
-              ptyId: getLivePtyId(other.id),
-              terminalType: found?.terminal.type ?? null,
-              worktreePath: found?.worktree.path ?? null,
+              id: end.id,
+              ptyId: end.ptyId ?? null,
+              terminalType: end.terminalType ?? null,
+              worktreePath: end.worktreePath ?? null,
+              direction: end.direction,
             };
           }
-          if (other.kind === "note") {
-            // Reported so callers can see the note is connected, but it has
-            // no reaction — nodeEmit (electron/api-server.ts) skips notes
-            // rather than treating them as a drivable endpoint.
-            return { kind: "note" as const, id: other.id };
-          }
-          return { kind: "browser" as const, id: other.id };
+          // A note is reported so callers can see it is connected, but it has
+          // no reaction — nodeEmit (electron/api-server.ts) skips notes
+          // rather than treating them as a drivable endpoint.
+          return { kind: end.kind, id: end.id, direction: end.direction };
         });
       },
+
+      // Backs send_to_connected (electron/wire-message.ts): the sender and
+      // everything wired to it.
+      getWiresOfTerminal: (terminalId: string) => {
+        const found = findTerminal(terminalId);
+        if (!found) return null;
+        return JSON.parse(
+          JSON.stringify({
+            sender: { id: terminalId, title: nodeTitle("terminal", terminalId) ?? terminalId },
+            ends: wireEndsOf("terminal", terminalId),
+          }),
+        );
+      },
+
+      appendToNote: (noteId: string, source: string, text: string) =>
+        appendToNote(noteId, source, text).then((result) =>
+          result.ok ? { ok: true } : { ok: false, detail: result.detail },
+        ),
 
       // Backs the workspace-manager query tools (list_nodes/get_node_state/
       // get_workspace_summary in tacit-bridge/src/mcp-server.ts via
@@ -799,7 +808,15 @@ export function App() {
       // one flat space, same as focusableNodes.ts's collector does for
       // focus view. Pins without x/y (list/drawer-only, never placed on the
       // canvas) are excluded, same as focusableNodes.ts excludes them.
-      listWorkspaceNodes: () => {
+      listWorkspaceNodes: (forTerminalId?: string | null) => {
+        // Seen from the asking terminal: itself, and which way each node is
+        // wired to it (absent when it isn't).
+        const wires = new Map<string, string>();
+        if (forTerminalId) {
+          for (const end of wireEndsOf("terminal", forTerminalId)) {
+            wires.set(`${end.kind === "note" ? "pin" : end.kind}:${end.id}`, end.carries ? end.direction : "relates_only");
+          }
+        }
         const nodes: Array<{
           kind: "terminal" | "browser" | "pin";
           id: string;
@@ -811,6 +828,8 @@ export function App() {
           status: string | null;
           title: string | null;
           startedBy: string | null;
+          you?: true;
+          wire?: string;
         }> = [];
 
         const { projects } = useProjectStore.getState();
@@ -868,6 +887,13 @@ export function App() {
           });
         }
 
+        if (forTerminalId) {
+          for (const node of nodes) {
+            if (node.kind === "terminal" && node.id === forTerminalId) node.you = true;
+            const wire = wires.get(`${node.kind}:${node.id}`);
+            if (wire) node.wire = wire;
+          }
+        }
         return JSON.parse(JSON.stringify(nodes));
       },
 

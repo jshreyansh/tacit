@@ -115,7 +115,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Emit event to connected nodes",
       description:
-        "Emits a named event (e.g. 'task-complete', 'found-result', 'error') to every canvas node connected to this terminal by a wire. A connected terminal receives it as a new prompt (prefixed with where it came from); a connected browser navigates there if payload.url is set. Use this to hand off work or share a result with another node on the canvas, instead of a raw tool call.",
+        "Emits a named event (e.g. 'task-complete', 'found-result', 'error') to every canvas node this terminal is wired to, along wires that run from you or both ways. A connected agent receives it as a new prompt (prefixed with where it came from), a connected shell gets payload.message as a command, and a connected browser navigates there if payload.url is set. To send a message or a command to something you're wired to, send_to_connected is simpler.",
       inputSchema: {
         type: z.string().describe("Event name, e.g. 'task-complete'"),
         payload: z
@@ -135,6 +135,34 @@ export function createTacitBridgeServer(): McpServer {
         "POST",
         `/node/terminal/${encodeURIComponent(terminalId)}/emit`,
         { type, payload },
+      );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "send_to_connected",
+    {
+      title: "Send a message to what you're wired to on the canvas",
+      description:
+        "Sends a message along the wires the user drew from you on the canvas. A wired agent gets it as a new prompt labelled with who it's from (it arrives after the agent's current turn if it is busy), so you can hand it work or answer it; a wired shell terminal runs the message as a command; a wired note has it added to the end. Give `to` to reach one node, or leave it out to reach everything wired from you. Open to any terminal: the wire is the permission, no manager role needed. A wire runs one way, from where it was drawn to where it was dropped, unless the user made it two-way; list_nodes shows each node's `wire` as seen from you: to_it (you can send), from_it (it sends to you), both_ways, or relates_only (records a relationship, carries nothing).",
+      inputSchema: {
+        message: z.string().describe("What to send: an instruction or answer for an agent, or a command for a shell"),
+        to: z
+          .string()
+          .optional()
+          .describe("Optional. The id of one node you're wired to, from list_nodes. Leave out to send to every node wired from you."),
+      },
+    },
+    async ({ message, to }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) {
+        return textResult("Not running inside a Tacit terminal.");
+      }
+      const result = await apiRequest(
+        "POST",
+        `/terminal/${encodeURIComponent(terminalId)}/send-to-connected`,
+        { message, to },
       );
       return textResult(JSON.stringify(result, null, 2));
     },
@@ -436,11 +464,15 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "List every node on the canvas",
       description:
-        "Lists every terminal, browser, and note on the current canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workdesk manager. Use this to see what already exists before spawning something new or connecting nodes.",
+        "Lists every terminal, browser, and note on the current canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Your own terminal has you: true. A node wired to you has `wire`, seen from you: to_it (send_to_connected reaches it), from_it (it sends to you), both_ways, or relates_only (a recorded relationship that carries nothing). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workdesk manager. Use this to see what already exists before spawning something new or connecting nodes.",
       inputSchema: {},
     },
     async () => {
-      const result = await apiRequest("GET", "/workspace/nodes");
+      const terminalId = getTerminalId();
+      const result = await apiRequest(
+        "GET",
+        terminalId ? `/workspace/nodes?for=${encodeURIComponent(terminalId)}` : "/workspace/nodes",
+      );
       return textResult(JSON.stringify(result, null, 2));
     },
   );
@@ -692,7 +724,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Wire two nodes together (workdesk manager only)",
       description:
-        "Connects two existing nodes on the canvas. A wire grants capability, it isn't just a drawn line: wiring a terminal to a browser lets that terminal drive the page with the browser_* tools, and emit_event only reaches nodes a wire connects. Wiring a note just records that it belongs to that work. Only the workdesk manager can call this.",
+        "Connects two existing nodes on the canvas, from source to target. A wire grants capability, it isn't just a drawn line: wiring a terminal to a browser lets that terminal drive the page with the browser_* tools, and wiring a terminal to another terminal or a note lets the source send to it with send_to_connected. Only the workdesk manager can call this.",
       inputSchema: {
         source: z.object({
           kind: z.enum(["terminal", "browser", "note"]),

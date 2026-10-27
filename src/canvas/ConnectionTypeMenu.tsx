@@ -3,7 +3,7 @@ import {
   MAX_CUSTOM_PROMPT_LENGTH,
   connectionTypeSpec,
   isPendingBehaviour,
-  validConnectionTypes,
+  menuConnectionTypes,
   type ConnectionEndpointKind,
   type ConnectionType,
 } from "../../shared/connection-types";
@@ -14,11 +14,9 @@ import { useT } from "../i18n/useT";
  * Choose what a wire means.
  *
  * Opened by clicking a wire's own type label, so the thing you change is the
- * thing you were just reading. The rows are exactly
- * `validConnectionTypes(from, to)` — no greyed-out entries for combinations that
- * can never apply, which is a menu teaching you about restrictions instead of
- * offering you choices. `custom` is always last, beneath the presets rather than
- * a peer of them, and is the only row that asks for anything.
+ * thing you were just reading. The rows are what this build runs for the pair
+ * (`menuConnectionTypes`), plus the wire's own meaning when an older wire has
+ * one that no longer is offered, marked "not yet" so it can be moved off it.
  *
  * Modelled on ContextMenu (same surface, same viewport flip, same Escape and
  * click-away contract) rather than reusing it, because it needs a second state:
@@ -61,7 +59,8 @@ export function ConnectionTypeMenu({
   const [editingCustom, setEditingCustom] = useState(current === "custom");
   const [draft, setDraft] = useState(currentPrompt ?? "");
 
-  const types = validConnectionTypes(fromKind, toKind);
+  const types = menuConnectionTypes(fromKind, toKind, current);
+  const anyPending = types.some((type) => isPendingBehaviour(type, fromKind, toKind));
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -216,9 +215,11 @@ export function ConnectionTypeMenu({
               *which* rows were inert, and it went stale the moment
               `sends replies to` started running. The mark now sits on the rows
               it describes, and disappears from each as its behaviour lands. */}
-          <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1 text-[10px] leading-snug text-[var(--text-faint)]">
-            {t.connection_type_inactive_note}
-          </div>
+          {anyPending && (
+            <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1 text-[10px] leading-snug text-[var(--text-faint)]">
+              {t.connection_type_inactive_note}
+            </div>
+          )}
         </>
       )}
 

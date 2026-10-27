@@ -513,30 +513,50 @@ async function writeReplyToNotes(
       notify("warn", `The note this wire writes to is gone, so nothing was saved.`);
       continue;
     }
-    const appended = appendToNoteBody(pin.body, { source: sourceTitle, at, text });
-    if (!appended.ok) {
+    const result = await appendToNote(target.id, sourceTitle, text, at);
+    if (result.ok) {
+      notify("info", `Saved ${sourceTitle}'s reply to “${pin.title}”.`);
+    } else if (result.reason === "too-long") {
       // `empty` and `duplicate` are ordinary and not the user's problem. A note
       // that has hit its ceiling is, because it means writes are being dropped
       // from here on and only the user can decide what to do about it.
-      if (appended.reason === "too-long") {
-        notify("warn", `“${pin.title}” is full, so ${sourceTitle}'s reply wasn't added.`);
-      }
-      continue;
+      notify("warn", `“${pin.title}” is full, so ${sourceTitle}'s reply wasn't added.`);
+    } else if (result.reason === "failed") {
+      notify("warn", `Couldn't write ${sourceTitle}'s reply to “${pin.title}”: ${result.detail}`);
     }
-    try {
-      const updated = await window.tacit?.pins?.update?.(pin.repo, pin.id, {
-        body: appended.body,
-      });
-      // The drawer's subscription only runs while the drawer is mounted, so the
-      // store is updated here rather than relying on the broadcast.
-      if (updated) usePinStore.getState().upsertPin(pin.repo, updated);
-      notify("info", `Saved ${sourceTitle}'s reply to “${pin.title}”.`);
-    } catch (err) {
-      notify(
-        "warn",
-        `Couldn't write ${sourceTitle}'s reply to “${pin.title}”: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+  }
+}
+
+/**
+ * Add a dated entry from `source` to the end of a note. Shared by `writes-to`
+ * delivery and send_to_connected; the caller decides what to tell the user.
+ */
+export async function appendToNote(
+  pinId: string,
+  source: string,
+  text: string,
+  at: string = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+): Promise<{ ok: true } | { ok: false; reason: "gone" | "empty" | "duplicate" | "too-long" | "failed"; detail: string }> {
+  const pin = findPinById(pinId);
+  if (!pin) return { ok: false, reason: "gone", detail: "the note is gone" };
+  const appended = appendToNoteBody(pin.body, { source, at, text });
+  if (!appended.ok) {
+    const detail =
+      appended.reason === "too-long" ? `“${pin.title}” is full`
+      : appended.reason === "duplicate" ? "the note already ends with that text"
+      : "nothing to add";
+    return { ok: false, reason: appended.reason, detail };
+  }
+  try {
+    const updated = await window.tacit?.pins?.update?.(pin.repo, pin.id, {
+      body: appended.body,
+    });
+    // The drawer's subscription only runs while the drawer is mounted, so the
+    // store is updated here rather than relying on the broadcast.
+    if (updated) usePinStore.getState().upsertPin(pin.repo, updated);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: "failed", detail: err instanceof Error ? err.message : String(err) };
   }
 }
 

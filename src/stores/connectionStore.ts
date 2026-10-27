@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { useWorkspaceStore } from "./workspaceStore";
-import { normalizeCustomPrompt, type ConnectionType } from "../../shared/connection-types";
+import {
+  normalizeCustomPrompt,
+  validConnectionTypes,
+  type ConnectionType,
+} from "../../shared/connection-types";
 
 // "note" endpoints use the pin's own id, which buildPinFlowNodes
 // (src/canvas/nodeProjection.ts) already uses as the canvas node id, so it
@@ -42,6 +46,12 @@ export interface ConnectionData {
   type?: ConnectionType;
   /** The sentence the user wrote. Only meaningful when `type` is "custom". */
   customPrompt?: string;
+  /**
+   * Whether either end may send along it. Absent means one way, from `from`
+   * to `to`, except a spawn wire, which is two-way. Read it through
+   * `isTwoWay` (shared/connection-types.ts) so that default is applied.
+   */
+  twoWay?: boolean;
 }
 
 interface PendingConnection {
@@ -69,6 +79,10 @@ interface ConnectionStore {
     type: ConnectionType,
     customPrompt?: string,
   ) => void;
+  /** Turn a one-way wire round. A type that doesn't fit the new direction is
+   * dropped, so the wire falls back to what that direction means. */
+  flipConnection: (id: string) => void;
+  setConnectionTwoWay: (id: string, twoWay: boolean) => void;
   startPending: (from: ConnectionEndpoint, cursor: { x: number; y: number }) => void;
   updatePendingCursor: (cursor: { x: number; y: number }) => void;
   /**
@@ -145,6 +159,25 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     if (prompt) next.customPrompt = prompt;
     else delete next.customPrompt;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+  },
+
+  flipConnection: (id) => {
+    const existing = get().connections[id];
+    if (!existing) return;
+    const next: ConnectionData = { ...existing, from: existing.to, to: existing.from };
+    if (next.type && !validConnectionTypes(next.from.kind, next.to.kind).includes(next.type)) {
+      delete next.type;
+      delete next.customPrompt;
+    }
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+  },
+
+  setConnectionTwoWay: (id, twoWay) => {
+    const existing = get().connections[id];
+    if (!existing || existing.twoWay === twoWay) return;
+    set((state) => ({ connections: { ...state.connections, [id]: { ...existing, twoWay } } }));
     markDirty();
   },
 

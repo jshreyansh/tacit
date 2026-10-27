@@ -476,6 +476,7 @@ export const en = {
   activity_kind_wire: "wired",
   activity_kind_unwire: "unwired",
   activity_kind_retype_wire: "rewired",
+  activity_kind_redirect_wire: "rewired",
   activity_kind_rename: "renamed",
   activity_kind_manager: "manager",
   activity_kind_browser_action: "browser",

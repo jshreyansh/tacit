@@ -260,6 +260,10 @@ export function summarize(entry: CaptureEntry): string {
       return `disconnected ${entry.from} from ${entry.to}`;
     case "retype_wire":
       return `rewired ${entry.from} to ${entry.to}: ${entry.previous_type} became ${entry.connection_type}`;
+    case "redirect_wire":
+      return entry.two_way
+        ? `made the wire between ${entry.from} and ${entry.to} two-way`
+        : `made the wire run one way, from ${entry.from} to ${entry.to}`;
     case "close":
       return `closed ${entry.node}${entry.reason ? ` — ${entry.reason.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "rename":
@@ -307,6 +311,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "wire":
     case "unwire":
     case "retype_wire":
+    case "redirect_wire":
       return [entry.from, entry.to];
     case "prompt":
       return [entry.actor];

@@ -30,6 +30,7 @@ import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
+import { sendAlongWires, type WireDirection, type WireEnd, type WireSender } from "./wire-message";
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { busyStateOf, closeNode } from "./node-close";
 import { managerEndRun, managerStartRun, type RunTracker } from "./run-tracker";
@@ -362,7 +363,7 @@ export class ApiServer {
       return this.terminalRemember(id, body);
     }
     if (method === "GET" && pathname === "/workspace/nodes") {
-      return this.workspaceNodes();
+      return this.workspaceNodes(url.searchParams.get("for"));
     }
     if (method === "GET" && pathname.match(/^\/workspace\/node\/[^/]+\/[^/]+$/)) {
       const parts = pathname.split("/");
@@ -407,6 +408,10 @@ export class ApiServer {
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-prompt$/)) {
       const id = pathname.split("/")[2];
       return this.sendPromptToNode(id, body);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-to-connected$/)) {
+      const id = pathname.split("/")[2];
+      return this.sendToConnected(id, body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/spawn-terminal$/)) {
       const id = pathname.split("/")[2];
@@ -1220,21 +1225,34 @@ export class ApiServer {
     const connected = (await this.execRenderer(
       `window.__tcApi.getConnectionsForNode(${JSON.stringify(kind)}, ${JSON.stringify(id)})`,
     )) as Array<
-      | {
-          kind: "terminal";
-          id: string;
-          ptyId: number | null;
-          terminalType: string | null;
-          worktreePath: string | null;
-        }
-      | { kind: "browser"; id: string }
-      | { kind: "note"; id: string }
+      (
+        | {
+            kind: "terminal";
+            id: string;
+            ptyId: number | null;
+            terminalType: string | null;
+            worktreePath: string | null;
+          }
+        | { kind: "browser"; id: string }
+        | { kind: "note"; id: string }
+      ) & { direction: WireDirection }
     >;
 
     const win = this.deps.getWindow();
     const notified: Array<{ kind: string; id: string; ok: boolean; reason?: string }> = [];
 
     for (const target of connected) {
+      // A wire runs the way it was drawn unless it was made two-way; an
+      // event doesn't travel up one that points at the emitter.
+      if (target.direction === "from_it") {
+        notified.push({
+          kind: target.kind,
+          id: target.id,
+          ok: false,
+          reason: "the wire runs the other way, into you",
+        });
+        continue;
+      }
       // Notes are connectable so their provenance is visible on the canvas,
       // but they hold no agent and no view — there is nothing for an event
       // to do to one. Skipped before the pulse so a note never lights up as
@@ -1280,13 +1298,16 @@ export class ApiServer {
             typeof payload.message === "string"
               ? payload.message
               : JSON.stringify(payload);
+          // A shell runs what it's given, so it gets the message bare: the
+          // label would become part of the command.
+          const isAgent = findAgentAdapter(target.terminalType) !== null;
           const request: ComposerSubmitRequest = {
             terminalId: target.id,
             ptyId: target.ptyId,
             terminalType:
               target.terminalType as ComposerSubmitRequest["terminalType"],
             worktreePath: target.worktreePath,
-            text: `[Event: ${type} from ${kind}:${id}] ${message}`,
+            text: isAgent ? `[Event: ${type} from ${kind}:${id}] ${message}` : message,
             images: [],
           };
           const result = await this.submitToTerminal(request);
@@ -1387,9 +1408,15 @@ export class ApiServer {
     return { ok: true, filePath };
   }
 
-  /** Backs the list_nodes MCP tool — open to any terminal, no gating. */
-  private async workspaceNodes() {
-    return this.execRenderer("window.__tcApi.listWorkspaceNodes()");
+  /**
+   * Backs the list_nodes MCP tool — open to any terminal, no gating. With
+   * `forTerminalId`, each node also says whether and which way it is wired
+   * to that terminal.
+   */
+  private async workspaceNodes(forTerminalId: string | null) {
+    return this.execRenderer(
+      `window.__tcApi.listWorkspaceNodes(${JSON.stringify(forTerminalId)})`,
+    );
   }
 
   /** Backs the get_node_state MCP tool — open to any terminal, no gating. */
@@ -1591,8 +1618,68 @@ export class ApiServer {
 
   /** Backs the send_prompt_to_node MCP tool. */
   private async sendPromptToNode(terminalId: string, body: any) {
-    await this.requireWorkspaceManager(terminalId);
+    try {
+      await this.requireWorkspaceManager(terminalId);
+    } catch (err) {
+      // An agent reaching for this to talk to a node it is wired to wants
+      // send_to_connected; say so rather than leave it stuck on the role.
+      const target = typeof body?.id === "string" ? body.id : null;
+      const ends = target ? (await this.wiresOf(terminalId))?.ends ?? [] : [];
+      if (target && ends.some((end) => end.id === target)) {
+        throw Object.assign(
+          new Error(
+            `${(err as Error).message} You are wired to "${target}" on the canvas, though: use send_to_connected to send it a message.`,
+          ),
+          { status: 403, code: "not_workspace_manager" },
+        );
+      }
+      throw err;
+    }
     return this.nodePrompts.send(terminalId, body);
+  }
+
+  private wiresOf(terminalId: string) {
+    return this.execRenderer(
+      `window.__tcApi.getWiresOfTerminal(${JSON.stringify(terminalId)})`,
+    ) as Promise<{ sender: WireSender; ends: WireEnd[] } | null>;
+  }
+
+  /** Backs the send_to_connected MCP tool: open to any terminal, gated by the wire. */
+  private sendToConnected(terminalId: string, body: any) {
+    const win = this.deps.getWindow();
+    return sendAlongWires(
+      {
+        wiresOf: (id) => this.wiresOf(id),
+        deliverToTerminal: async (delivery) => {
+          const result = await this.submitToTerminal({
+            ...delivery,
+            terminalType: delivery.terminalType as ComposerSubmitRequest["terminalType"],
+            images: [],
+          });
+          return { ok: result.ok, detail: result.ok ? undefined : (result.detail ?? result.error) };
+        },
+        appendToNote: async (noteId, source, text) =>
+          (await this.execRenderer(
+            `window.__tcApi.appendToNote(${JSON.stringify(noteId)}, ${JSON.stringify(source)}, ${JSON.stringify(text)})`,
+          )) as { ok: boolean; detail?: string },
+        recordPrompt: ({ target, by, text }) =>
+          this.deps.recordAgentPrompt({
+            targetTerminalId: target,
+            by: `terminal:${by}`,
+            text,
+          }),
+        pulse: (event) =>
+          sendToWindow(win, "canvas-bridge:event", {
+            ...event,
+            sourceKind: "terminal",
+            sourceId: terminalId,
+            type: "message",
+          }),
+        newId: () => randomUUID(),
+      },
+      terminalId,
+      body,
+    );
   }
 
   /** Backs the start_task MCP tool. */
