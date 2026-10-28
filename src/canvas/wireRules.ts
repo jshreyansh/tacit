@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { MAX_AUTOMATIC_HOPS, envelopePreview, stepFromMessage } from "../../shared/wire-envelope";
 import { RULE_TRIGGERS, consoleErrorsText, ruleWords, withinHourlyLimit, type RuleTrigger, type WireRule } from "../../shared/wire-rules";
 import { resolveConnectionType } from "../../shared/connection-types";
+import { replyKey } from "../../shared/agent-reply";
 import { useConnectionStore, type ConnectionData, type ConnectionEndpoint } from "../stores/connectionStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { usePinStore } from "../stores/pinStore";
@@ -177,12 +178,24 @@ async function deliver(
  * An agent finished a turn with this reply (src/browser/chatReplyDelivery.ts
  * calls this once the reply is read). Its hop is one more than the message
  * a rule last delivered into it, which that turn was answering.
+ *
+ * A turn that answered another agent's question has already gone back to
+ * that agent as the answer (electron/wire-asks.ts); a rule doesn't send it
+ * there a second time, or ask about it.
  */
-export async function agentTurnFinished(terminalId: string, reply: string): Promise<void> {
+export async function agentTurnFinished(
+  terminalId: string,
+  reply: string,
+  key: string = replyKey({ text: reply }),
+): Promise<void> {
   const endpoint = { kind: "terminal" as const, id: terminalId };
   const hop = (hopInto.get(terminalId) ?? 0) + 1;
   hopInto.delete(terminalId);
   for (const { wire, rule } of rulesFor(endpoint, "turn_finished")) {
+    const target = rule.at === "from" ? wire.to : wire.from;
+    if (target.kind === "terminal" && (await window.tacit.wires.replyAnswered({ from: terminalId, to: target.id, key }))) {
+      continue;
+    }
     await fire(wire, rule, reply, hop);
   }
 }

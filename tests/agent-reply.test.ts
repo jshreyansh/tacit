@@ -17,6 +17,7 @@ import {
   findTerminalForSession,
   isReplyTranscriptProvider,
   replyDeliveryNotification,
+  replyKey,
   telemetrySaysBusy,
 } from "../shared/agent-reply";
 
@@ -105,7 +106,7 @@ const claudeFinal = {
 test("a finished Claude task yields the final message, whole and unmodified", () => {
   const raw = jsonl(claudeUserPrompt, claudeToolCall, claudeToolResult, claudeFinal);
   const result = extractFinalAssistantReply(raw, "claude");
-  assert.deepEqual(result, { status: "ready", text: FINAL_TEXT });
+  assert.deepEqual(result, { status: "ready", text: FINAL_TEXT, turn: "a-2" });
 });
 
 test("the code block survives extraction verbatim", () => {
@@ -181,6 +182,7 @@ test("trailing system entries after the final message are ignored", () => {
   assert.deepEqual(extractFinalAssistantReply(raw, "claude"), {
     status: "ready",
     text: FINAL_TEXT,
+    turn: "a-2",
   });
 });
 
@@ -190,6 +192,7 @@ test("a tail that begins mid-line still reads", () => {
   assert.deepEqual(extractFinalAssistantReply(raw, "claude"), {
     status: "ready",
     text: FINAL_TEXT,
+    turn: "a-2",
   });
 });
 
@@ -243,6 +246,7 @@ test("a completed Codex task yields the final agent message", () => {
   assert.deepEqual(extractFinalAssistantReply(raw, "codex"), {
     status: "ready",
     text: CODEX_TEXT,
+    turn: "2026-08-30T11:00:10.000Z",
   });
 });
 
@@ -270,6 +274,7 @@ test("Codex reads the answer off the completion event when it carries one", () =
   assert.deepEqual(extractFinalAssistantReply(raw, "codex"), {
     status: "ready",
     text: "Done: 3 files changed.",
+    turn: "2026-08-30T11:00:10.000Z",
   });
 });
 
@@ -282,7 +287,33 @@ test("Codex falls back to the response_item text when the event names no message
   assert.deepEqual(extractFinalAssistantReply(raw, "codex"), {
     status: "ready",
     text: CODEX_TEXT,
+    turn: "2026-08-30T11:00:10.000Z",
   });
+});
+
+test("two Codex turns ending in the same words are told apart by their turn ids", () => {
+  // Counting to five twice: both turns end in "5", and each is its own reply.
+  const done = (turnId: string, at: string) => ({
+    timestamp: at,
+    type: "event_msg",
+    payload: { type: "task_complete", turn_id: turnId, last_agent_message: "5" },
+  });
+  const first = jsonl(codexMeta, codexUser, done("turn-1", "2026-08-30T11:00:10.000Z"));
+  const second = first + jsonl(codexUser, done("turn-2", "2026-08-30T11:01:10.000Z"));
+  assert.deepEqual(extractFinalAssistantReply(first, "codex"), { status: "ready", text: "5", turn: "turn-1" });
+  assert.deepEqual(extractFinalAssistantReply(second, "codex"), { status: "ready", text: "5", turn: "turn-2" });
+});
+
+test("a reply's key is its turn where the transcript names one, else its words", () => {
+  assert.equal(replyKey({ text: "5", turn: "t-1" }), "turn:t-1");
+  assert.notEqual(replyKey({ text: "5", turn: "t-1" }), replyKey({ text: "5", turn: "t-2" }));
+  assert.equal(replyKey({ text: "5" }), "text:5");
+});
+
+test("two Claude turns ending in the same words are told apart by their message ids", () => {
+  const again = { ...claudeFinal, uuid: "a-9", parentUuid: "u-9" };
+  const raw = jsonl(claudeUserPrompt, claudeFinal, { ...claudeUserPrompt, uuid: "u-9" }, again);
+  assert.deepEqual(extractFinalAssistantReply(raw, "claude"), { status: "ready", text: FINAL_TEXT, turn: "a-9" });
 });
 
 // --- Role-log transcripts (kimi, wuu) --------------------------------------

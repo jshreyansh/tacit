@@ -28,7 +28,7 @@ import { resolveSessionFile, type SessionType } from "./session-watcher.ts";
 const TAIL_BYTES = 512 * 1024;
 
 export type FinalReplyResult =
-  | { status: "ready"; text: string }
+  | { status: "ready"; text: string; turn?: string }
   | { status: "mid-task" }
   | { status: "no-reply" }
   /** No transcript to read: unresolvable path, unreadable file, or opencode. */

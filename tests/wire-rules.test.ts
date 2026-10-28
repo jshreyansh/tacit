@@ -75,6 +75,8 @@ type Sent = { to: string; body: string; payload: string };
 async function engine() {
   const sent: Sent[] = [];
   const notes: string[] = [];
+  /** Turns that already went back as an ask's answer: "from>to>key". */
+  const answered = new Set<string>();
   const storage = new Map<string, string>();
   const localStorage = {
     getItem: (k: string) => storage.get(k) ?? null,
@@ -98,6 +100,7 @@ async function engine() {
             sent.push({ to: req.target.terminalId, body: req.envelope.body, payload: req.envelope.payload });
             return { ok: true };
           },
+          replyAnswered: async (q: { from: string; to: string; key: string }) => answered.delete(`${q.from}>${q.to}>${q.key}`),
         },
       },
     },
@@ -132,13 +135,30 @@ async function engine() {
     },
     pending: null,
   });
-  return { rules, sent, notes, useConnectionStore, restore: () => useNotificationStore.setState({ notify }) };
+  return { rules, sent, notes, answered, useConnectionStore, restore: () => useNotificationStore.setState({ notify }) };
 }
 
 test("a finished reply goes to the other agent, labelled as a reply", async () => {
   const e = await engine();
   await e.rules.agentTurnFinished("cx", "The diff looks safe.");
   assert.deepEqual(e.sent, [{ to: "cl", body: "The diff looks safe.", payload: "reply" }]);
+  e.restore();
+});
+
+test("a turn that answered an ask isn't sent to the asker again by a rule, and isn't asked about", async () => {
+  const e = await engine();
+  // Claude asked Codex; the turn's reply already went back to Claude as the
+  // answer. The rule passing Codex's replies to Claude skips that turn, even
+  // one that would ask first.
+  e.useConnectionStore.getState().putConnectionRule("w", { id: "r-cx", when: "turn_finished", at: "from", consent: "ask", perHour: 100 });
+  e.answered.add("cx>cl>turn:t-1");
+  await e.rules.agentTurnFinished("cx", "5", "turn:t-1");
+  assert.equal(e.sent.length, 0);
+  assert.equal(e.rules.useRulePromptStore.getState().prompts.length, 0, "no prompt for a turn already answered");
+  // The next turn, ending in the same words, is a reply like any other.
+  e.useConnectionStore.getState().putConnectionRule("w", { id: "r-cx", when: "turn_finished", at: "from", consent: "always", perHour: 100 });
+  await e.rules.agentTurnFinished("cx", "5", "turn:t-2");
+  assert.deepEqual(e.sent, [{ to: "cl", body: "5", payload: "reply" }]);
   e.restore();
 });
 

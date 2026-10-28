@@ -687,7 +687,7 @@ export interface TacitAPI {
       provider: string;
       cwd: string;
     }) => Promise<
-      | { status: "ready"; text: string }
+      | { status: "ready"; text: string; turn?: string }
       | { status: "mid-task" }
       | { status: "no-reply" }
       | { status: "unavailable"; reason: string }
@@ -1384,6 +1384,11 @@ export interface TacitAPI {
     discardWaiting: (terminalId: string) => Promise<{ discarded: number }>;
     /** Send, from a wire's panel, into a terminal at the end of the wire. */
     sendToTerminal: (request: WireSendRequest) => Promise<WireSendResult>;
+    /**
+     * Whether a finished turn of `from` (keyed by shared/agent-reply.ts
+     * replyKey) already went to `to` as the answer to its question.
+     */
+    replyAnswered: (input: { from: string; to: string; key: string }) => Promise<boolean>;
   };
   browser: {
     notifyWired: (

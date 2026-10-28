@@ -15,6 +15,7 @@
  * the answer won't come back by itself.
  */
 
+import { replyKey } from "../shared/agent-reply";
 import { envelopePreview } from "../shared/wire-envelope";
 
 export interface PendingAsk {
@@ -33,7 +34,7 @@ export interface PendingAsk {
 }
 
 export type ReplyRead =
-  | { status: "ready"; text: string }
+  | { status: "ready"; text: string; turn?: string }
   | { status: "mid-task" }
   | { status: "no-reply" }
   | { status: "unavailable"; reason: string };
@@ -76,6 +77,8 @@ export class WireAsks {
   private readonly active = new Map<string, PendingAsk>();
   /** Accepted but still in the target's mailbox, by id. */
   private readonly queued = new Map<string, PendingAsk>();
+  /** The last turn of each target that went back as an answer, and to whom. */
+  private readonly answered = new Map<string, { askerId: string; key: string }>();
 
   constructor(private readonly deps: AskDeps) {}
 
@@ -126,6 +129,7 @@ export class WireAsks {
     if (this.active.get(targetId) !== ask) return;
     this.active.delete(targetId);
     if (reply.status === "ready") {
+      this.answered.set(targetId, { askerId: ask.askerId, key: replyKey(reply) });
       await this.deps.answer(ask, answerText(ask, reply.text));
     } else if (reply.status === "no-reply") {
       await this.deps.answer(ask, `[${ask.targetTitle} (terminal ${ask.targetId}) finished without saying anything in answer to ${about(ask)}.]`);
@@ -134,8 +138,22 @@ export class WireAsks {
     }
   }
 
+  /**
+   * Whether this finished turn of the target already went to `toId` as the
+   * answer to its question. A rule on the wire that passes the target's
+   * replies on to the asker skips that turn, so the asker isn't sent the
+   * same words twice. A match is used up: the next turn is passed on.
+   */
+  alreadyAnswered(targetId: string, toId: string, key: string): boolean {
+    const last = this.answered.get(targetId);
+    if (!last || last.askerId !== toId || last.key !== key) return false;
+    this.answered.delete(targetId);
+    return true;
+  }
+
   /** The target closed: nothing more will come from it. */
   targetGone(targetId: string): void {
+    this.answered.delete(targetId);
     const ask = this.active.get(targetId);
     if (ask) {
       this.active.delete(targetId);

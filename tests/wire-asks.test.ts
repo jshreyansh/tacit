@@ -126,3 +126,19 @@ test("an answer that really is the same as the last reply still goes back, after
   await h.asks.turnEnded("cx");
   assert.match(h.answers[0].text, /\] ok$/);
 });
+
+test("the turn that answered is remembered, once, so a rule doesn't send it to the asker again", async () => {
+  let reply: ReplyRead = { status: "no-reply" };
+  const h = harness(() => reply);
+  h.asks.register(h.ask());
+  h.asks.started("q1");
+  reply = { status: "ready", text: "5", turn: "t-1" };
+  await h.asks.turnEnded("cx");
+  assert.equal(h.answers.length, 1);
+  // Not this turn to someone else, nor another turn to the asker.
+  assert.equal(h.asks.alreadyAnswered("cx", "someone-else", "turn:t-1"), false);
+  assert.equal(h.asks.alreadyAnswered("cx", "cl", "turn:t-2"), false);
+  assert.equal(h.asks.alreadyAnswered("cx", "cl", "turn:t-1"), true);
+  // Used up: asked again, it's no longer an answer already sent.
+  assert.equal(h.asks.alreadyAnswered("cx", "cl", "turn:t-1"), false);
+});

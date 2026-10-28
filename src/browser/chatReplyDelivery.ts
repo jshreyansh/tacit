@@ -40,6 +40,7 @@ import {
   findTerminalForSession,
   isReplyTranscriptProvider,
   replyDeliveryNotification,
+  replyKey,
   telemetrySaysBusy,
 } from "../../shared/agent-reply";
 import { useConnectionStore } from "../stores/connectionStore";
@@ -64,14 +65,16 @@ import type { TerminalData } from "../types";
 const DELIVER_ACTION = "deliver_reply";
 
 /**
- * The last reply delivered per terminal.
+ * The last reply delivered per terminal, by the turn it ended.
  *
  * Turn completion reaches the renderer twice on Claude — once from the Stop
  * hook and once from the transcript watcher — and both are worth keeping: the
  * hook is precise, the watcher is what covers a CLI running without hooks.
- * Comparing the text is what makes them idempotent, and it costs nothing that
- * a genuinely repeated answer is delivered once, since it is the same words
- * arriving in the same chat.
+ * Comparing the turn is what makes them idempotent. It is the turn and not the
+ * text because two turns can end in the same words ("5" after counting to five
+ * twice), and a rule passing replies to another agent has to pass both. Only
+ * where the transcript names no turn (kimi, wuu) does the text stand in, and
+ * there a repeated answer goes once.
  */
 const lastDelivered = new Map<string, string>();
 
@@ -631,11 +634,12 @@ async function deliverForTerminal(
     return;
   }
 
-  if (lastDelivered.get(terminalId) === reply.text) return;
-  lastDelivered.set(terminalId, reply.text);
+  const deliveryKey = replyKey(reply);
+  if (lastDelivered.get(terminalId) === deliveryKey) return;
+  lastDelivered.set(terminalId, deliveryKey);
 
   await writeReplyToNotes(noteTargets, getTerminalDisplayTitle(terminal), reply.text);
-  await agentTurnFinished(terminalId, reply.text);
+  await agentTurnFinished(terminalId, reply.text, deliveryKey);
 
   for (const target of targets) {
     if (target.kind !== "browser") {

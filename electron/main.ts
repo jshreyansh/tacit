@@ -3954,6 +3954,17 @@ function setupIpc() {
     return { discarded: apiServer.discardWaiting(terminalId) };
   });
 
+  // Whether a rule passing an agent's reply on would repeat an ask's answer:
+  // the turn already went to that agent as the answer to its question.
+  ipcMain.handle("wire:reply-answered", (event, input: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("wire:reply-answered is only for the app's window");
+    const { from, to, key } = (input ?? {}) as Record<string, unknown>;
+    const ok = (value: unknown, max: number): value is string =>
+      typeof value === "string" && value.length > 0 && value.length <= max;
+    if (!ok(from, 200) || !ok(to, 200) || !ok(key, 20_000)) throw new Error("from, to and key are required");
+    return apiServer.replyAlreadyAnswered(from, to, key);
+  });
+
   // Send, from a wire's panel: the user passing a page, a selection or a
   // note along a wire into a terminal. The text is labelled here, from the
   // envelope, not by the window, so a page is always marked as page content.

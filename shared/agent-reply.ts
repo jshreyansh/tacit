@@ -38,8 +38,13 @@ export function isReplyTranscriptProvider(
 }
 
 export type ReplyExtraction =
-  /** The task is over and this is what it ended with, unmodified. */
-  | { status: "ready"; text: string }
+  /**
+   * The task is over and this is what it ended with, unmodified. `turn` names
+   * the turn it ended, when the transcript says: the final message's id on
+   * Claude, the completed turn's id on Codex. Two turns that end in the same
+   * words are still two replies.
+   */
+  | { status: "ready"; text: string; turn?: string }
   /**
    * The agent is still working. Not an error and not worth telling anyone
    * about — the completion signal simply arrived from something that was not
@@ -100,8 +105,18 @@ function hasToolUse(content: unknown): boolean {
   return content.some((block) => asObject(block)?.type === "tool_use");
 }
 
-function finish(text: string): ReplyExtraction {
-  return text.trim().length > 0 ? { status: "ready", text } : { status: "no-reply" };
+/**
+ * One finished turn, as a key: the turn's id where the transcript names one,
+ * else its words. What makes two signals for one turn pass a reply on once,
+ * and two turns ending in the same words pass it on twice.
+ */
+export function replyKey(reply: { text: string; turn?: string }): string {
+  return reply.turn ? `turn:${reply.turn}` : `text:${reply.text}`;
+}
+
+function finish(text: string, turn?: string | null): ReplyExtraction {
+  if (text.trim().length === 0) return { status: "no-reply" };
+  return turn ? { status: "ready", text, turn } : { status: "ready", text };
 }
 
 /**
@@ -130,7 +145,7 @@ function extractClaudeReply(entries: Record<string, unknown>[]): ReplyExtraction
     if (message.stop_reason === "tool_use" || hasToolUse(message.content)) {
       return { status: "mid-task" };
     }
-    return finish(visibleText(message.content));
+    return finish(visibleText(message.content), typeof entry.uuid === "string" ? entry.uuid : null);
   }
   return { status: "no-reply" };
 }
@@ -149,6 +164,7 @@ function extractCodexReply(entries: Record<string, unknown>[]): ReplyExtraction 
   let lastAssistantText = "";
   let completionIndex = -1;
   let completionMessage: string | null = null;
+  let completionTurn: string | null = null;
 
   entries.forEach((entry, index) => {
     const payload = asObject(entry.payload);
@@ -162,6 +178,12 @@ function extractCodexReply(entries: Record<string, unknown>[]): ReplyExtraction 
       }
       if (payload.type === "task_complete" || payload.type === "turn_complete") {
         completionIndex = index;
+        // Older builds don't name the turn; the event's time still tells it
+        // apart from the one before.
+        completionTurn =
+          typeof payload.turn_id === "string" ? payload.turn_id
+          : typeof entry.timestamp === "string" ? entry.timestamp
+          : null;
         // Codex names the answer on the completion event itself, which is the
         // most authoritative version of it available.
         completionMessage =
@@ -193,11 +215,11 @@ function extractCodexReply(entries: Record<string, unknown>[]): ReplyExtraction 
   });
 
   if (completionIndex < 0) return { status: "mid-task" };
-  if (completionMessage !== null) return finish(completionMessage);
+  if (completionMessage !== null) return finish(completionMessage, completionTurn);
   if (lastAssistantIndex < 0 || lastAssistantIndex > completionIndex) {
     return { status: "mid-task" };
   }
-  return finish(lastAssistantText);
+  return finish(lastAssistantText, completionTurn);
 }
 
 /**

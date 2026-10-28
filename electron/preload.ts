@@ -157,7 +157,7 @@ contextBridge.exposeInMainWorld("tacit", {
       cwd: string;
     }) =>
       ipcRenderer.invoke("session:final-reply", input) as Promise<
-        | { status: "ready"; text: string }
+        | { status: "ready"; text: string; turn?: string }
         | { status: "mid-task" }
         | { status: "no-reply" }
         | { status: "unavailable"; reason: string }
@@ -1140,6 +1140,8 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("wire-mailbox:discard", terminalId) as Promise<{ discarded: number }>,
     sendToTerminal: (request: import("../src/types").WireSendRequest) =>
       ipcRenderer.invoke("wire:send-to-terminal", request) as Promise<import("../src/types").WireSendResult>,
+    replyAnswered: (input: { from: string; to: string; key: string }) =>
+      ipcRenderer.invoke("wire:reply-answered", input) as Promise<boolean>,
   },
   browser: {
     notifyWired: (

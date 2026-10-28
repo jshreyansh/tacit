@@ -1855,6 +1855,11 @@ export class ApiServer {
   }
 
   /** The waiting badge's Discard: questions in it are answered as dropped. */
+  /** Whether a finished turn of `fromId` already went to `toId` as an ask's answer. */
+  replyAlreadyAnswered(fromId: string, toId: string, key: string): boolean {
+    return this.wireAsks.alreadyAnswered(fromId, toId, key);
+  }
+
   discardWaiting(terminalId: string): number {
     for (const item of this.wireMailbox.waiting(terminalId)) if (item.askId) this.wireAsks.dropped(item.askId);
     return this.wireMailbox.discard(terminalId);
