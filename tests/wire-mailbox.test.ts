@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { TURN_START_GRACE_MS, WireMailbox, snapshotSaysBusy, type MailItem } from "../electron/wire-mailbox";
+import { BUSY_EVIDENCE_MS, TURN_START_GRACE_MS, WireMailbox, snapshotSaysBusy, type MailItem } from "../electron/wire-mailbox";
 
 // Messages to a busy agent wait for its turn to end, then go one at a time.
 
@@ -135,11 +135,25 @@ test("a closed terminal's waiting messages are dropped", async () => {
   assert.deepEqual(h.changes.at(-1), ["cx", 0]);
 });
 
-test("busy means mid-turn or waiting on its user; nothing known means idle", () => {
-  for (const turn_state of ["thinking", "in_turn", "tool_running", "tool_pending", "awaiting_input"]) {
-    assert.equal(snapshotSaysBusy({ turn_state }), true, turn_state);
+test("busy means mid-turn with something on screen lately, or waiting on its user", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  const fresh = "2026-10-28T11:59:50Z";
+  const stale = new Date(now - BUSY_EVIDENCE_MS).toISOString();
+  for (const turn_state of ["thinking", "in_turn", "tool_running", "tool_pending"]) {
+    assert.equal(snapshotSaysBusy({ turn_state, last_output_at: fresh }, now), true, turn_state);
   }
-  assert.equal(snapshotSaysBusy({ turn_state: "turn_complete" }), false);
-  assert.equal(snapshotSaysBusy({ turn_state: "turn_complete", active_tool_calls: 1 }), true);
-  assert.equal(snapshotSaysBusy(null), false);
+  assert.equal(snapshotSaysBusy({ turn_state: "turn_complete", last_output_at: fresh }, now), false);
+  assert.equal(snapshotSaysBusy({ turn_state: "turn_complete", active_tool_calls: 1, last_session_event_at: fresh }, now), true);
+  assert.equal(snapshotSaysBusy(null, now), false);
+});
+
+test("a turn state left over from before a restart, with nothing on screen since, isn't believed", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  const stale = new Date(now - BUSY_EVIDENCE_MS).toISOString();
+  assert.equal(snapshotSaysBusy({ turn_state: "thinking", last_output_at: stale, last_session_event_at: stale }, now), false);
+  assert.equal(snapshotSaysBusy({ turn_state: "thinking" }, now), false);
+});
+
+test("an agent waiting on its user is busy however quiet, so nothing is typed into its question", () => {
+  assert.equal(snapshotSaysBusy({ turn_state: "awaiting_input" }, Date.parse("2026-10-28T12:00:00Z")), true);
 });

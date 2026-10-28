@@ -12,6 +12,7 @@ import {
 import {
   flipConnectionInScene,
   setConnectionBrowserAccessInScene,
+  setConnectionNoteModeInScene,
   setConnectionPlainInScene,
   setConnectionPurposeInScene,
   setConnectionTwoWayInScene,
@@ -76,6 +77,8 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
   const bothStart = nodeContract(fromRole).startsThings && nodeContract(toRole).startsThings;
   const browserHead = toRole === "browser" && nodeContract(fromRole).startsThings;
   const readOnly = connection.limits?.browser === "read";
+  const noteIntoAgent = (fromRole === "note" || fromRole === "task") && toRole === "agent";
+  const reread = connection.noteMode === "reread";
   const replyRule =
     fromRole === "agent" && toRole === "browser"
       ? ("sends-replies-to" as const)
@@ -244,6 +247,22 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
             { key: "read", label: t.connection_access_read, active: readOnly, onPick: () => setConnectionBrowserAccessInScene(connection.id, "read") },
           ]}
         />
+      )}
+
+      {!plain && noteIntoAgent && (
+        <>
+          <Segmented
+            options={[
+              { key: "send", label: t.connection_note_send, active: !reread, onPick: () => setConnectionNoteModeInScene(connection.id, "send") },
+              { key: "reread", label: t.connection_note_reread, active: reread, onPick: () => setConnectionNoteModeInScene(connection.id, "reread") },
+            ]}
+          />
+          {reread && (
+            <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-faint)]">
+              {t.connection_note_reread_hint}
+            </div>
+          )}
+        </>
       )}
 
       {!plain && replyRule && (

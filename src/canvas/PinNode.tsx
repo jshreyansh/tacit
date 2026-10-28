@@ -52,6 +52,9 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
   return (
     <div
       data-record-node={`note:${pin.id}`}
+      // A wire being dragged can end here (src/canvas/ConnectionLayer.tsx).
+      data-connect-kind="note"
+      data-connect-id={pin.id}
       className="flex h-full w-full flex-col overflow-hidden rounded-lg border"
       style={
         task

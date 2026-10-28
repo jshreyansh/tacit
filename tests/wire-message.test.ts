@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { sendAlongWires, type WireEnd, type WireMessageDeps } from "../electron/wire-message.ts";
+import {
+  askAlongWire,
+  handOffAlongWire,
+  handOffText,
+  sendAlongWires,
+  type AskDeliveryDeps,
+  type WireEnd,
+  type WireMessageDeps,
+} from "../electron/wire-message.ts";
 
 // send_to_connected: an agent passing a message along a wire the user drew.
 
@@ -97,4 +105,60 @@ test("a message to a busy agent is reported as waiting, not as lost or delivered
   h.deps.deliverToTerminal = async () => ({ ok: true, queued: true, waiting: 2 });
   const result = await sendAlongWires(h.deps, "me", { message: "review the diff", to: "cx" });
   assert.deepEqual(result.delivered, [{ kind: "terminal", id: "cx", ok: true, queued: true, waiting: 2 }]);
+});
+
+// ask and hand_off: one agent at a time, only over a wire that allows it.
+
+const codexAgent: WireEnd = { ...codex, can: ["tell", "ask", "hand_off"] };
+
+function askHarness(ends: WireEnd[], comesBack = true) {
+  const sent: Array<{ text: string; ask: unknown }> = [];
+  const deps: AskDeliveryDeps = {
+    wiresOf: async (id) => (id === "me" ? { sender: { id: "me", title: "Claude" }, ends } : null),
+    deliverQuestion: async ({ text, ask }) => { sent.push({ text, ask }); return { ok: true }; },
+    answersComeBack: () => comesBack,
+    newId: () => "q1",
+  };
+  return { deps, sent };
+}
+
+test("ask types a question that says its answer goes back, and registers it for the answer", async () => {
+  const h = askHarness([codexAgent]);
+  const result = await askAlongWire(h.deps, "me", { to: "cx", question: "Is the diff safe?" });
+  assert.equal(result.ok, true);
+  assert.match(h.sent[0].text, /^\[Question from Claude \(terminal me\)/);
+  assert.deepEqual(h.sent[0].ask, { id: "q1", askerId: "me", askerTitle: "Claude", targetTitle: "codex", question: "Is the diff safe?" });
+  assert.match(String((result as { answer: string }).answer), /will arrive in this terminal/);
+});
+
+test("an agent whose answer can't be read is asked plainly, and the asker is told it won't come back", async () => {
+  const h = askHarness([{ ...codexAgent, terminalType: "opencode" }], false);
+  const result = await askAlongWire(h.deps, "me", { to: "cx", question: "Search the docs" });
+  assert.equal(h.sent[0].ask, null);
+  assert.match(h.sent[0].text, /^\[From Claude/);
+  assert.match(String((result as { answer: string }).answer), /won't come back by itself/);
+});
+
+test("only an agent at the far end of a live wire can be asked or handed work", async () => {
+  const shellEnd: WireEnd = { ...shell, can: ["run"] };
+  await rejects(askAlongWire(askHarness([shellEnd]).deps, "me", { to: "sh", question: "hi" }), "not_an_agent");
+  await rejects(askAlongWire(askHarness([{ ...codexAgent, direction: "from_it" }]).deps, "me", { to: "cx", question: "hi" }), "wrong_direction");
+  await rejects(askAlongWire(askHarness([{ ...codexAgent, plain: true }]).deps, "me", { to: "cx", question: "hi" }), "wire_carries_nothing");
+  await rejects(askAlongWire(askHarness([codexAgent]).deps, "me", { question: "hi" }), "invalid_to");
+  await rejects(askAlongWire(askHarness([codexAgent]).deps, "me", { to: "cx", question: " " }), "empty_message");
+});
+
+test("hand_off tells the receiver the sender has stopped and it's theirs to finish", async () => {
+  const h = harness([codexAgent]);
+  const result = await handOffAlongWire(h.deps, "me", { to: "cx", work: "Finish the migration in shared/." });
+  assert.equal(result.ok, true);
+  assert.equal(h.typed[0].text, handOffText({ id: "me", title: "claude" }, "Finish the migration in shared/."));
+  assert.match(h.typed[0].text, /has stopped working on this, and it is yours to finish/);
+});
+
+test("a shell can't ask, because the answer typed into it would run as a command", async () => {
+  const h = askHarness([codexAgent]);
+  h.deps.wiresOf = async () => ({ sender: { id: "me", title: "Terminal", role: "shell" }, ends: [codexAgent] });
+  await rejects(askAlongWire(h.deps, "me", { to: "cx", question: "hi" }), "asker_is_a_shell");
+  assert.equal(h.sent.length, 0);
 });

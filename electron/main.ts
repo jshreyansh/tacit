@@ -416,7 +416,7 @@ function promptHandoffRefs(terminalId: string, text: string | null): CaptureRefe
 }
 /** Set once the API server exists: a terminal's turn state changed, so a
  * message waiting for it may go now (electron/wire-mailbox.ts). */
-let pokeWireMailbox: ((terminalId: string, exited: boolean) => void) | null = null;
+let pokeWireMailbox: ((terminalId: string, snapshot: { turn_state?: string; derived_status?: string }) => void) | null = null;
 
 const telemetryService = new TelemetryService({
   // An agent's own web tools (WebFetch, web_search, a browser MCP server).
@@ -451,7 +451,7 @@ const telemetryService = new TelemetryService({
     );
   },
   onSnapshotChanged: (terminalId, snapshot) => {
-    pokeWireMailbox?.(terminalId, snapshot.derived_status === "exited");
+    pokeWireMailbox?.(terminalId, snapshot);
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
     for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
       captureService.record(entry, captureCanvasId, new Date(), { method: "main" });
@@ -791,12 +791,7 @@ const apiServer = new ApiServer({
       { method: "main" },
     );
   },
-});pokeWireMailbox = (terminalId, exited) => {
-  // A terminal that exited takes nothing more; what waited for it is
-  // dropped rather than typed into whatever starts there next.
-  if (exited) apiServer.wireMailbox.forget(terminalId);
-  else void apiServer.wireMailbox.poke(terminalId);
-};
+});pokeWireMailbox = (terminalId, snapshot) => apiServer.onTerminalSnapshot(terminalId, snapshot);
 
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -3956,7 +3951,7 @@ function setupIpc() {
   ipcMain.handle("wire-mailbox:discard", (event, terminalId: unknown) => {
     if (!isMainWindowSender(event)) throw new Error("wire-mailbox:discard is only for the app's window");
     if (typeof terminalId !== "string" || !terminalId) throw new Error("terminalId is required");
-    return { discarded: apiServer.wireMailbox.discard(terminalId) };
+    return { discarded: apiServer.discardWaiting(terminalId) };
   });
 
   // Send, from a wire's panel: the user passing a page, a selection or a

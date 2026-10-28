@@ -43,7 +43,9 @@ export function wireNoticeText(input: WireNoticeInput): string | null {
     case "agent": {
       parts.push(`Another agent is wired to you on the canvas: ${name(other)}.`);
       const verbs: string[] = [];
-      if (has("tell")) verbs.push("send it a message with send_to_connected");
+      if (has("ask")) verbs.push("ask it a question with ask (its answer comes back to you)");
+      if (has("tell")) verbs.push("tell it something with send_to_connected");
+      if (has("hand_off")) verbs.push("pass work to it with hand_off");
       if (verbs.length) parts.push(`You can ${joinWords(verbs)}.`);
       if (input.twoWay) parts.push("The wire runs both ways, so it can reach you too.");
       break;
@@ -55,7 +57,7 @@ export function wireNoticeText(input: WireNoticeInput): string | null {
       parts.push(`A note is wired to you on the canvas: ${name(other)}. send_to_connected adds your message to it.`);
       break;
     case "task":
-      parts.push(`A task is wired to you on the canvas: ${name(other)}. send_to_connected adds your message to it.`);
+      parts.push(`A task is wired to you on the canvas: ${name(other)}. Log what you've done in it with send_to_connected: each message becomes a done step (its first line).`);
       break;
   }
   if (input.purpose) parts.push(`The wire's purpose: ${input.purpose.replace(/[.\s]+$/, "")}.`);

@@ -269,6 +269,9 @@ export function summarize(entry: CaptureEntry): string {
       if (entry.purpose !== undefined) {
         changes.push(entry.purpose ? `its purpose is now "${entry.purpose}"` : "its purpose was cleared");
       }
+      if (entry.note_mode) {
+        changes.push(entry.note_mode === "reread" ? "the agent now rereads the note as standing context" : "the note is now sent by hand");
+      }
       if (entry.browser_access) {
         changes.push(entry.browser_access === "read" ? "it is now read-only" : "it can drive the page again");
       }

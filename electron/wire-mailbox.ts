@@ -29,6 +29,8 @@ export interface MailItem {
   from: string;
   preview: string;
   at: number;
+  /** Set when it is a question whose answer goes back (electron/wire-asks.ts). */
+  askId?: string;
 }
 
 export interface MailboxDeps {
@@ -162,23 +164,43 @@ export class WireMailbox {
 }
 
 /**
+ * How recently an agent must have shown activity for "mid-turn" to be
+ * believed. A working agent redraws its screen all the time (a spinner, a
+ * timer, streamed text), so a turn state with nothing on screen for this long
+ * is left over: an agent restarted mid-turn resumes at its prompt while the
+ * old "thinking" stays on record, and its messages would wait forever.
+ */
+export const BUSY_EVIDENCE_MS = 45_000;
+
+/**
  * Whether a telemetry snapshot says the agent is in the middle of a turn.
- * "Awaiting input" counts as busy: the agent asked its user something, and a
- * wire message typed in then would be taken as the answer.
+ * "Awaiting input" always counts as busy, however quiet: the agent asked its
+ * user something, and a wire message typed in then would be taken as the
+ * answer, or pick an option in a permission prompt.
  */
 export function snapshotSaysBusy(
-  snapshot: { turn_state?: string; derived_status?: string; active_tool_calls?: number; foreground_tool?: string | null } | null,
+  snapshot: {
+    turn_state?: string;
+    active_tool_calls?: number;
+    foreground_tool?: string | null;
+    last_output_at?: string | null;
+    last_session_event_at?: string | null;
+  } | null,
+  now: number = Date.now(),
 ): boolean {
   if (!snapshot) return false;
-  if ((snapshot.active_tool_calls ?? 0) > 0) return true;
-  if (snapshot.foreground_tool) return true;
-  switch (snapshot.turn_state) {
-    case "thinking":
-    case "in_turn":
-    case "tool_running":
-    case "tool_pending":
-    case "awaiting_input":
-      return true;
-  }
-  return false;
+  if (snapshot.turn_state === "awaiting_input") return true;
+  const mid =
+    (snapshot.active_tool_calls ?? 0) > 0 ||
+    !!snapshot.foreground_tool ||
+    snapshot.turn_state === "thinking" ||
+    snapshot.turn_state === "in_turn" ||
+    snapshot.turn_state === "tool_running" ||
+    snapshot.turn_state === "tool_pending";
+  if (!mid) return false;
+  const latest = Math.max(
+    Date.parse(snapshot.last_output_at ?? "") || 0,
+    Date.parse(snapshot.last_session_event_at ?? "") || 0,
+  );
+  return now - latest < BUSY_EVIDENCE_MS;
 }

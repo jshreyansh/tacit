@@ -100,3 +100,16 @@ export function deliveredText(envelope: WireEnvelope, role: NodeRole): string | 
 export function envelopePreview(body: string, max = 80): string {
   return body.replace(/\s+/g, " ").trim().slice(0, max);
 }
+
+/** Longest step a message becomes in a task's list. */
+export const MAX_STEP_LENGTH = 160;
+
+/**
+ * A message logged into a task becomes one step: its first non-empty line,
+ * short enough to read in the list. The task is a log of what was done, not
+ * a copy of the conversation.
+ */
+export function stepFromMessage(body: string): string {
+  const first = body.split("\n").map((line) => line.trim()).find((line) => line.length > 0) ?? "";
+  return first.length > MAX_STEP_LENGTH ? `${first.slice(0, MAX_STEP_LENGTH - 1)}…` : first;
+}

@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import {
   MAX_AUTOMATIC_HOPS,
   deliveredText,
+  MAX_STEP_LENGTH,
   envelopePreview,
   hopAllowed,
+  stepFromMessage,
   textForAgent,
   type WireEnvelope,
 } from "../shared/wire-envelope";
@@ -63,4 +65,12 @@ test("automatic chains stop after a fixed number of hops", () => {
 test("a preview is the first words on one line", () => {
   assert.equal(envelopePreview("  fix\n\nthe   login  "), "fix the login");
   assert.equal(envelopePreview("x".repeat(200)).length, 80);
+});
+
+test("a message logged into a task becomes one short step: its first line", () => {
+  assert.equal(stepFromMessage("\n  Fixed the redirect  \nDetails follow"), "Fixed the redirect");
+  const long = stepFromMessage("x".repeat(500));
+  assert.equal(long.length, MAX_STEP_LENGTH);
+  assert.ok(long.endsWith("…"));
+  assert.equal(stepFromMessage("   \n  "), "");
 });

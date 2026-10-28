@@ -62,6 +62,7 @@ import {
 } from "./browser/downloadNotice";
 import { useConnectionStore } from "./stores/connectionStore";
 import { installWireMailbox } from "./stores/wireMailboxStore";
+import { installRereadNotes } from "./canvas/rereadNotes";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
 import { driveBrowserCard } from "./browser/driveBrowserCard";
 import {
@@ -70,7 +71,7 @@ import {
   listAgentBrowserProfiles,
 } from "./browser/agentBrowserProfiles";
 import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
-import { nodeTitle, wireEndsOf } from "./canvas/wireEnds";
+import { endpointRole, nodeTitle, wireEndsOf } from "./canvas/wireEnds";
 import { ABILITY_WORDS } from "../shared/node-contracts";
 import { subscribePinEvents, usePinStore } from "./stores/pinStore";
 import {
@@ -486,6 +487,7 @@ export function App() {
   // whole interaction — nothing reads the response back.
   useEffect(() => installReplyDelivery(), []);
   useEffect(() => installWireMailbox(), []);
+  useEffect(() => installRereadNotes(), []);
   // Where pasted text came from (SHR-62): which node has focus, and copies
   // made inside browser tiles.
   useEffect(() => installHandoffFocusTracking(), []);
@@ -786,7 +788,11 @@ export function App() {
         if (!found) return null;
         return JSON.parse(
           JSON.stringify({
-            sender: { id: terminalId, title: nodeTitle("terminal", terminalId) ?? terminalId },
+            sender: {
+              id: terminalId,
+              title: nodeTitle("terminal", terminalId) ?? terminalId,
+              role: endpointRole({ kind: "terminal", id: terminalId }),
+            },
             ends: wireEndsOf("terminal", terminalId),
           }),
         );

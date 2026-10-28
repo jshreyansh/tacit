@@ -160,7 +160,9 @@ test("an agent wired to another agent hears the wire's purpose and how to reach 
     twoWay: true,
   })!;
   assert.match(text, /"Codex" \(terminal t12\)/);
+  assert.match(text, /ask it a question with ask \(its answer comes back to you\)/);
   assert.match(text, /send_to_connected/);
+  assert.match(text, /hand_off/);
   assert.match(text, /The wire's purpose: review each diff\./);
   assert.match(text, /both ways/);
 });

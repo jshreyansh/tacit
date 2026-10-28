@@ -70,6 +70,12 @@ export interface ConnectionData {
   limits?: WireLimits;
   /** WIRE_MODEL_VERSION when written; absent on older saves. */
   v?: number;
+  /**
+   * A note or task wired into an agent: "reread" makes it standing context,
+   * sent when set and again whenever the note changes. Absent means Send:
+   * the user passes it along with the Send button.
+   */
+  noteMode?: "reread";
 }
 
 interface PendingConnection {
@@ -103,6 +109,8 @@ interface ConnectionStore {
   setConnectionTwoWay: (id: string, twoWay: boolean) => void;
   /** Set or clear what the wire is for. Returns whether anything changed. */
   setConnectionPurpose: (id: string, purpose: string | undefined) => boolean;
+  /** Send (once, by hand) or Reread (standing context). Returns whether it changed. */
+  setConnectionNoteMode: (id: string, mode: "send" | "reread") => boolean;
   /** Replace the wire's limits. Returns whether anything changed. */
   setConnectionLimits: (id: string, limits: WireLimits | undefined) => boolean;
   startPending: (from: ConnectionEndpoint, cursor: { x: number; y: number }) => void;
@@ -197,8 +205,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       delete next.customPrompt;
     }
     // A limit belongs to the end it narrows; turned round, that end is now
-    // the tail and the limit no longer applies to anything.
+    // the tail and the limit no longer applies to anything. Reread is about
+    // a note at the tail, so it goes too.
     delete next.limits;
+    delete next.noteMode;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
   },
@@ -218,6 +228,18 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const next: ConnectionData = { ...existing };
     if (normalized) next.purpose = normalized;
     else delete next.purpose;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
+  },
+
+  setConnectionNoteMode: (id, mode) => {
+    const existing = get().connections[id];
+    if (!existing) return false;
+    if ((existing.noteMode ?? "send") === mode) return false;
+    const next: ConnectionData = { ...existing };
+    if (mode === "reread") next.noteMode = "reread";
+    else delete next.noteMode;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
     return true;

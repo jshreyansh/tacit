@@ -1,5 +1,6 @@
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { MAX_ENVELOPE_LENGTH, envelopePreview, textForAgent } from "../shared/wire-envelope";
+import { questionText } from "./wire-asks";
 
 /**
  * Backs the send_to_connected MCP tool: an agent passing a message along a
@@ -25,6 +26,9 @@ export interface WireEnd {
   carries: boolean;
   /** True for a plain link, which carries nothing either way. */
   plain?: boolean;
+  /** What the sender may do there (shared/node-contracts.ts): ask and
+   * hand_off are checked against this. */
+  can?: string[];
   /** Terminal only: null while its PTY has not started or has exited. */
   ptyId?: number | null;
   terminalType?: string | null;
@@ -34,6 +38,8 @@ export interface WireEnd {
 export interface WireSender {
   id: string;
   title: string;
+  /** "agent" or "shell"; absent from older callers, treated as an agent. */
+  role?: string;
 }
 
 export interface WireMessageDeps {
@@ -188,4 +194,120 @@ async function deliverOne(
   return result.queued
     ? { ...base, ok: true, queued: true, waiting: result.waiting }
     : { ...base, ok: true };
+}
+
+/**
+ * One node named with `to` that the sender may reach with `ability`, or a
+ * refusal that says what to ask the user for. Shared by ask and hand_off,
+ * which always go to one node, never to everything wired.
+ */
+function oneTarget(ends: WireEnd[], to: unknown, ability: "ask" | "hand_off"): WireEnd {
+  if (typeof to !== "string" || to.trim() === "") {
+    fail(400, "invalid_to", "to is required: the id of the agent you're wired to, from list_nodes.");
+  }
+  const end = ends.find((e) => e.id === to);
+  if (!end) {
+    fail(403, "not_wired", `Nothing wired to you has the id "${to}". Ask the user to draw a wire from you to it on the canvas. list_nodes shows what you're wired to.`);
+  }
+  if (end.direction === "from_it") {
+    fail(403, "wrong_direction", `The wire between you and ${describe(end)} runs the other way: it reaches you, you can't start anything there. Ask the user to turn the wire round or make it two-way.`);
+  }
+  if (end.plain) {
+    fail(403, "wire_carries_nothing", `The wire to ${describe(end)} is a plain link: it records that you're related and carries nothing. Ask the user to make it live.`);
+  }
+  if (!(end.can ?? []).includes(ability)) {
+    fail(403, "not_an_agent", `${describe(end)} isn't an agent, so it can't be ${ability === "ask" ? "asked" : "handed work"}. Use send_to_connected to send it a message.`);
+  }
+  if (end.ptyId == null || !end.terminalType || !end.worktreePath) {
+    fail(409, "not_running", `${describe(end)} isn't running.`);
+  }
+  return end;
+}
+
+function requireText(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim() === "") fail(400, "empty_message", `${field} is empty; nothing was sent.`);
+  if (value.length > MAX_WIRE_MESSAGE_LENGTH) {
+    fail(400, "message_too_long", `${field} is ${value.length} characters; the limit is ${MAX_WIRE_MESSAGE_LENGTH}. Put long content in a file and send its path.`);
+  }
+  return value;
+}
+
+export interface AskDeliveryDeps extends Pick<WireMessageDeps, "wiresOf" | "pulse" | "newId"> {
+  /** Like deliverToTerminal, with the ask attached so its answer can be
+   * routed once it has been typed in. */
+  deliverQuestion: (delivery: {
+    terminalId: string;
+    ptyId: number;
+    terminalType: string;
+    worktreePath: string;
+    text: string;
+    ask: { id: string; askerId: string; askerTitle: string; targetTitle: string; question: string } | null;
+  }) => Promise<{ ok: boolean; detail?: string; queued?: boolean; waiting?: number }>;
+  /** Whether this kind of agent's reply can be read back from its transcript. */
+  answersComeBack: (terminalType: string) => boolean;
+}
+
+/** Backs the ask MCP tool: a question whose answer comes back to the asker. */
+export async function askAlongWire(deps: AskDeliveryDeps, senderId: string, body: unknown) {
+  const input = (body ?? {}) as Record<string, unknown>;
+  const question = requireText(input.question, "question");
+  const wires = await deps.wiresOf(senderId);
+  if (!wires) fail(404, "not_on_canvas", "This terminal isn't on the open canvas.");
+  // The answer is typed into the asker. Typed into a shell it would run as a
+  // command, whatever the other agent wrote.
+  if (wires.sender.role === "shell") {
+    fail(403, "asker_is_a_shell", "A shell can't receive an answer: it would run it as a command. Use send_to_connected to send the message.");
+  }
+  const end = oneTarget(wires.ends, input.to, "ask");
+  const comesBack = deps.answersComeBack(end.terminalType!);
+  const id = deps.newId();
+  const text = comesBack
+    ? questionText(wires.sender, question)
+    : wireMessageText(question, wires.sender, end.terminalType!);
+  deps.pulse?.({ phase: "start", requestId: id, targetKind: "terminal", targetId: end.id, preview: envelopePreview(question) });
+  const result = await deps.deliverQuestion({
+    terminalId: end.id,
+    ptyId: end.ptyId!,
+    terminalType: end.terminalType!,
+    worktreePath: end.worktreePath!,
+    text,
+    ask: comesBack
+      ? { id, askerId: wires.sender.id, askerTitle: wires.sender.title, targetTitle: end.title ?? end.id, question }
+      : null,
+  });
+  deps.pulse?.({ phase: "end", requestId: id, targetKind: "terminal", targetId: end.id, ok: result.ok });
+  if (!result.ok) return { ok: false, reason: result.detail ?? "the terminal refused the input" };
+  return {
+    ok: true,
+    ...(result.queued ? { queued: true, waiting: result.waiting } : {}),
+    answer: comesBack
+      ? `${describe(end)} has your question${result.queued ? " (it's busy, so it gets it when its current turn ends)" : ""}. Its answer will arrive in this terminal as a new message when it finishes; carry on meanwhile.`
+      : `${describe(end)} has your question, but this kind of agent doesn't let Tacit read its answer, so it won't come back by itself.`,
+  };
+}
+
+/** What the receiving agent is told when work is handed to it. */
+export function handOffText(sender: WireSender, work: string): string {
+  return `[Handed off by ${sender.title} (terminal ${sender.id}), over a wire on the canvas: ${sender.title} has stopped working on this, and it is yours to finish.] ${work}`;
+}
+
+/** Backs the hand_off MCP tool: the sender is done; the receiver carries on. */
+export async function handOffAlongWire(deps: Pick<WireMessageDeps, "wiresOf" | "deliverToTerminal" | "pulse" | "newId">, senderId: string, body: unknown) {
+  const input = (body ?? {}) as Record<string, unknown>;
+  const work = requireText(input.work, "work");
+  const wires = await deps.wiresOf(senderId);
+  if (!wires) fail(404, "not_on_canvas", "This terminal isn't on the open canvas.");
+  const end = oneTarget(wires.ends, input.to, "hand_off");
+  const id = deps.newId();
+  deps.pulse?.({ phase: "start", requestId: id, targetKind: "terminal", targetId: end.id, preview: envelopePreview(work) });
+  const result = await deps.deliverToTerminal({
+    terminalId: end.id,
+    ptyId: end.ptyId!,
+    terminalType: end.terminalType!,
+    worktreePath: end.worktreePath!,
+    text: handOffText(wires.sender, work),
+  });
+  deps.pulse?.({ phase: "end", requestId: id, targetKind: "terminal", targetId: end.id, ok: result.ok });
+  if (!result.ok) return { ok: false, reason: result.detail ?? "the terminal refused the input" };
+  return { ok: true, ...(result.queued ? { queued: true, waiting: result.waiting } : {}) };
 }

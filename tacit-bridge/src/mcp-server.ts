@@ -145,7 +145,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Send a message to what you're wired to on the canvas",
       description:
-        "Sends a message along the wires the user drew from you on the canvas. A wired agent gets it as a new prompt labelled with who it's from (it arrives after the agent's current turn if it is busy), so you can hand it work or answer it; a wired shell terminal runs the message as a command; a wired note has it added to the end. Give `to` to reach one node, or leave it out to reach everything wired from you. Open to any terminal: the wire is the permission, no manager role needed. A wire runs one way, from where it was drawn to where it was dropped, unless the user made it two-way; list_nodes shows each node's `wire` as seen from you: to_it (you can send), from_it (it sends to you), both_ways, or relates_only (records a relationship, carries nothing).",
+        "Sends a message along the wires the user drew from you on the canvas, with nothing expected back (use ask when you want an answer, hand_off to pass work on). A wired agent gets it as a new prompt labelled with who it's from (it arrives after the agent's current turn if it is busy); a wired shell terminal runs the message as a command; a wired note has it added to the end. Give `to` to reach one node, or leave it out to reach everything wired from you. Open to any terminal: the wire is the permission, no manager role needed. A wire runs one way, from where it was drawn to where it was dropped, unless the user made it two-way; list_nodes shows each node's `wire` as seen from you: to_it (you can send), from_it (it sends to you), both_ways, or relates_only (records a relationship, carries nothing).",
       inputSchema: {
         message: z.string().describe("What to send: an instruction or answer for an agent, or a command for a shell"),
         to: z
@@ -164,6 +164,44 @@ export function createTacitBridgeServer(): McpServer {
         `/terminal/${encodeURIComponent(terminalId)}/send-to-connected`,
         { message, to },
       );
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "ask",
+    {
+      title: "Ask an agent you're wired to",
+      description:
+        "Asks an agent you're wired to on the canvas a question, and its answer comes back to you: when it finishes the turn your question starts, its final reply is delivered into this terminal as a new message labelled as the answer. If it is busy, the question waits until its current turn ends. Don't wait or poll for the answer; carry on, and it arrives on its own. Use it for planner/executor, reviewer or search set-ups: \"review this diff\", \"find how the auth library handles redirects\". The wire is the permission: list_nodes shows which agents you can ask (`can` includes ask). One question at a time per agent is clearest.",
+      inputSchema: {
+        to: z.string().describe("The id of the agent you're wired to, from list_nodes"),
+        question: z.string().describe("The question or request, complete enough to answer without you"),
+      },
+    },
+    async ({ to, question }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
+      const result = await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/ask`, { to, question });
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "hand_off",
+    {
+      title: "Hand work to an agent you're wired to",
+      description:
+        "Hands work to an agent you're wired to on the canvas: you're done with it, and it carries on from here. It receives the work as a new message saying it was handed off by you. Nothing comes back automatically; use ask instead if you want an answer. Write the work so it can be finished without you: what was done, what's left, where things are. If the agent is busy, it gets this when its current turn ends.",
+      inputSchema: {
+        to: z.string().describe("The id of the agent you're wired to, from list_nodes"),
+        work: z.string().describe("What to do, with the context needed to finish it"),
+      },
+    },
+    async ({ to, work }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
+      const result = await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/hand-off`, { to, work });
       return textResult(JSON.stringify(result, null, 2));
     },
   );

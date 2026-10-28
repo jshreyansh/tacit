@@ -20,6 +20,7 @@ import {
 import { wireNoticeText } from "../../shared/wire-notice";
 import { abilitiesFor, endpointRole, nodeTitle } from "../canvas/wireEnds";
 import { migrateWires } from "../canvas/wireMigration";
+import { sendStandingNote } from "../canvas/rereadNotes";
 
 interface CreateConnectionOptions {
   origin?: ConnectionOrigin;
@@ -183,6 +184,30 @@ export function setConnectionBrowserAccessInScene(
     by,
   });
   void notifyWireEnds(id);
+}
+
+/**
+ * Send a note along by hand, or make it standing context the agent rereads.
+ * Switching to Reread sends it at once (src/canvas/rereadNotes.ts keeps it
+ * current after that).
+ */
+export function setConnectionNoteModeInScene(
+  id: string,
+  mode: "send" | "reread",
+  by: CaptureActor = "user",
+): void {
+  const store = useConnectionStore.getState();
+  if (!store.setConnectionNoteMode(id, mode)) return;
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({
+    kind: "edit_wire",
+    from: captureRef(applied.from),
+    to: captureRef(applied.to),
+    note_mode: mode,
+    by,
+  });
+  if (mode === "reread") void sendStandingNote(applied);
 }
 
 /**

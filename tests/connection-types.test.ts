@@ -120,3 +120,14 @@ test("turning a wire round drops its browser limit, which no longer narrows anyt
   store.getState().flipConnection(id);
   assert.equal("limits" in store.getState().connections[id]!, false);
 });
+
+test("a note wire is Send unless set to Reread, and turning it round drops Reread", () => {
+  const store = freshStore();
+  const id = store.getState().addConnection({ kind: "note", id: "n1" }, { kind: "terminal", id: "t1" })!;
+  assert.equal(store.getState().connections[id]!.noteMode, undefined);
+  assert.equal(store.getState().setConnectionNoteMode(id, "reread"), true);
+  assert.equal(store.getState().connections[id]!.noteMode, "reread");
+  assert.equal(store.getState().setConnectionNoteMode(id, "reread"), false);
+  store.getState().flipConnection(id);
+  assert.equal("noteMode" in store.getState().connections[id]!, false);
+});

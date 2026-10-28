@@ -30,9 +30,19 @@ import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
-import { sendAlongWires, type WireDirection, type WireEnd, type WireSender } from "./wire-message";
+import {
+  askAlongWire,
+  handOffAlongWire,
+  sendAlongWires,
+  type WireDirection,
+  type WireEnd,
+  type WireSender,
+} from "./wire-message";
+import { WireAsks } from "./wire-asks";
+import { readFinalAssistantReply } from "./reply-transcript";
+import { isReplyTranscriptProvider } from "../shared/agent-reply";
 import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
-import { envelopePreview } from "../shared/wire-envelope";
+import { envelopePreview, stepFromMessage } from "../shared/wire-envelope";
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { busyStateOf, closeNode } from "./node-close";
 import { managerEndRun, managerStartRun, type RunTracker } from "./run-tracker";
@@ -132,7 +142,11 @@ export class ApiServer {
 
   /** Messages along wires to agents that are mid-turn (electron/wire-mailbox.ts). */
   readonly wireMailbox: WireMailbox;
+  /** Questions asked over wires whose answers go back (electron/wire-asks.ts). */
+  private readonly wireAsks: WireAsks;
   private readonly mailboxSweep: ReturnType<typeof setInterval>;
+  /** Last turn state seen per terminal, to notice a turn ending. */
+  private readonly lastTurnState = new Map<string, string | undefined>();
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
@@ -146,10 +160,39 @@ export class ApiServer {
         }),
       now: () => Date.now(),
     });
-    // Turn ends arrive as telemetry changes (main.ts pokes the mailbox), but
-    // a signal can be missed; this catches anything left waiting.
+    this.wireAsks = new WireAsks({
+      readReply: (ask) => {
+        const snapshot = this.deps.telemetryService.getTerminalSnapshot(ask.targetId);
+        return readFinalAssistantReply({
+          sessionId: snapshot?.session_id ?? "",
+          provider: snapshot?.provider ?? "unknown",
+          cwd: ask.cwd,
+        });
+      },
+      answer: async (ask, text) => {
+        const asker = await this.findNode(ask.askerId);
+        if (!asker || asker.kind !== "terminal" || asker.ptyId == null || !asker.terminalType || !asker.worktreePath) {
+          console.warn(`[wire-asks] ${ask.askerId} is gone; the answer from ${ask.targetId} wasn't delivered`);
+          return;
+        }
+        await this.deliverAlongWire({
+          terminalId: asker.id,
+          ptyId: asker.ptyId,
+          terminalType: asker.terminalType,
+          worktreePath: asker.worktreePath,
+          text,
+          from: `terminal:${ask.targetId}`,
+        });
+      },
+      now: () => Date.now(),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+    // Turn ends arrive as telemetry changes (main.ts calls
+    // onTerminalSnapshot), but a signal can be missed; this catches
+    // anything left waiting, and gives up on answers that never came.
     this.mailboxSweep = setInterval(() => {
       for (const terminalId of this.wireMailbox.terminalsWithMail()) void this.wireMailbox.poke(terminalId);
+      void this.wireAsks.sweep();
     }, 3_000);
     this.mailboxSweep.unref?.();
     this.workerAdmission = new WorkerAdmission({
@@ -439,6 +482,12 @@ export class ApiServer {
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-prompt$/)) {
       const id = pathname.split("/")[2];
       return this.sendPromptToNode(id, body);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/ask$/)) {
+      return this.askConnected(pathname.split("/")[2], body);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/hand-off$/)) {
+      return this.handOffConnected(pathname.split("/")[2], body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/send-to-connected$/)) {
       const id = pathname.split("/")[2];
@@ -1722,7 +1771,38 @@ export class ApiServer {
     });
     if (!result.ok) return { ok: false, detail: result.detail ?? result.error };
     this.deps.recordAgentPrompt({ targetTerminalId: item.terminalId, by: item.from, text: item.text });
+    if (item.askId) this.wireAsks.started(item.askId);
     return { ok: true };
+  }
+
+  /**
+   * A terminal's telemetry changed (main.ts). A turn that just ended may
+   * answer a question asked over a wire, and lets the next waiting message
+   * go; a terminal that exited takes nothing more.
+   */
+  onTerminalSnapshot(terminalId: string, snapshot: { turn_state?: string; derived_status?: string }): void {
+    if (snapshot.derived_status === "exited") {
+      this.lastTurnState.delete(terminalId);
+      this.wireAsks.targetGone(terminalId);
+      for (const item of this.wireMailbox.waiting(terminalId)) if (item.askId) this.wireAsks.dropped(item.askId);
+      this.wireMailbox.forget(terminalId);
+      return;
+    }
+    const before = this.lastTurnState.get(terminalId);
+    this.lastTurnState.set(terminalId, snapshot.turn_state);
+    const ended = snapshot.turn_state === "turn_complete" || snapshot.turn_state === "turn_aborted";
+    if (ended && before !== snapshot.turn_state) {
+      // Read the answer before anything else is typed in and starts a turn.
+      void this.wireAsks.turnEnded(terminalId).then(() => this.wireMailbox.poke(terminalId));
+      return;
+    }
+    void this.wireMailbox.poke(terminalId);
+  }
+
+  /** The waiting badge's Discard: questions in it are answered as dropped. */
+  discardWaiting(terminalId: string): number {
+    for (const item of this.wireMailbox.waiting(terminalId)) if (item.askId) this.wireAsks.dropped(item.askId);
+    return this.wireMailbox.discard(terminalId);
   }
 
   /**
@@ -1737,6 +1817,7 @@ export class ApiServer {
     worktreePath: string;
     text: string;
     from: CaptureNodeRef;
+    askId?: string;
   }): Promise<{ ok: boolean; detail?: string; queued?: boolean; waiting?: number }> {
     const item: MailItem = {
       id: randomUUID(),
@@ -1746,12 +1827,95 @@ export class ApiServer {
       from: delivery.from,
       preview: envelopePreview(delivery.text),
       at: Date.now(),
+      ...(delivery.askId ? { askId: delivery.askId } : {}),
     };
     if (!findAgentAdapter(delivery.terminalType)) return this.typeMailItem(item);
     const result = await this.wireMailbox.submit(item);
     return result.status === "queued"
       ? { ok: true, queued: true, waiting: result.waiting }
       : { ok: result.ok, detail: result.detail };
+  }
+
+  /** The pulse along a wire while something is on its way. */
+  private wirePulse(sourceId: string) {
+    const win = this.deps.getWindow();
+    return (event: { phase: "start" | "end"; requestId: string; targetKind: string; targetId: string; ok?: boolean; preview?: string }) =>
+      sendToWindow(win, "canvas-bridge:event", { ...event, sourceKind: "terminal", sourceId, type: "message" });
+  }
+
+  /**
+   * A message arriving at a pin over a wire. A note has it added to its
+   * text; a task logs it as a done step, written as the agent that sent it
+   * so the task's history says who did what.
+   */
+  private async deliverToPin(
+    pinId: string,
+    senderId: string,
+    senderTitle: string,
+    text: string,
+  ): Promise<{ ok: boolean; detail?: string }> {
+    const pin = (await this.execRenderer(
+      `window.__tcApi.getNodeState("pin", ${JSON.stringify(pinId)})`,
+    )) as { id: string; repo: string; kind?: "task" | "note"; x?: number; y?: number; steps?: Array<{ text: string; status: "pending" | "active" | "done" }> } | null;
+    if (!pin) return { ok: false, detail: "that note or task is gone" };
+    if (pinKind(pin) !== "task") {
+      return (await this.execRenderer(
+        `window.__tcApi.appendToNote(${JSON.stringify(pinId)}, ${JSON.stringify(senderTitle)}, ${JSON.stringify(text)})`,
+      )) as { ok: boolean; detail?: string };
+    }
+    const step = stepFromMessage(text);
+    if (!step) return { ok: false, detail: "nothing to log" };
+    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
+    try {
+      this.deps.taskStore.update(
+        resolveCanvasProjectRoot(pin.repo, projects),
+        pin.id,
+        { steps: [...(pin.steps ?? []), { text: step, status: "done" }] },
+        `terminal:${senderId}`,
+      );
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Backs the ask MCP tool. */
+  private askConnected(terminalId: string, body: any) {
+    return askAlongWire(
+      {
+        wiresOf: (id) => this.wiresOf(id),
+        deliverQuestion: async ({ ask, ...delivery }) => {
+          if (ask) {
+            this.wireAsks.register({
+              ...ask,
+              targetId: delivery.terminalId,
+              cwd: delivery.worktreePath,
+              at: Date.now(),
+            });
+          }
+          return this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}`, ...(ask ? { askId: ask.id } : {}) });
+        },
+        answersComeBack: (terminalType) => isReplyTranscriptProvider(terminalType),
+        pulse: this.wirePulse(terminalId),
+        newId: () => randomUUID(),
+      },
+      terminalId,
+      body,
+    );
+  }
+
+  /** Backs the hand_off MCP tool. */
+  private handOffConnected(terminalId: string, body: any) {
+    return handOffAlongWire(
+      {
+        wiresOf: (id) => this.wiresOf(id),
+        deliverToTerminal: (delivery) => this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}` }),
+        pulse: this.wirePulse(terminalId),
+        newId: () => randomUUID(),
+      },
+      terminalId,
+      body,
+    );
   }
 
   private sendToConnected(terminalId: string, body: any) {
@@ -1761,10 +1925,7 @@ export class ApiServer {
         wiresOf: (id) => this.wiresOf(id),
         deliverToTerminal: (delivery) =>
           this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}` }),
-        appendToNote: async (noteId, source, text) =>
-          (await this.execRenderer(
-            `window.__tcApi.appendToNote(${JSON.stringify(noteId)}, ${JSON.stringify(source)}, ${JSON.stringify(text)})`,
-          )) as { ok: boolean; detail?: string },
+        appendToNote: (noteId, source, text) => this.deliverToPin(noteId, terminalId, source, text),
         pulse: (event) =>
           sendToWindow(win, "canvas-bridge:event", {
             ...event,

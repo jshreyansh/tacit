@@ -147,6 +147,8 @@ export type CaptureEvent =
       purpose?: string;
       /** "read" or "drive" when the browser limit changed. */
       browser_access?: "read" | "drive";
+      /** "send" or "reread" when a note wire's mode changed. */
+      note_mode?: "send" | "reread";
       by: CaptureActor;
     }
   | {

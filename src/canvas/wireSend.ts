@@ -67,6 +67,8 @@ export async function sendOverWire(
   connection: ConnectionData,
   from: ConnectionEndpoint,
   payload: PayloadKind,
+  /** Said before the content, e.g. that a note is standing context. */
+  lead?: string,
 ): Promise<SendOutcome> {
   if (!sendChoices(connection, from).includes(payload)) {
     return { ok: false, detail: "This wire doesn't carry that from here." };
@@ -80,6 +82,7 @@ export async function sendOverWire(
     return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
   if (!body) return { ok: false, detail: "There is nothing to send." };
+  if (lead) body = `${lead}\n\n${body}`;
   if (body.length > MAX_ENVELOPE_LENGTH) body = body.slice(0, MAX_ENVELOPE_LENGTH);
 
   const requestId = crypto.randomUUID();
