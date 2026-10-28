@@ -136,6 +136,20 @@ export type CaptureEvent =
       by: CaptureActor;
     }
   | {
+      /**
+       * Something else about a wire changed: what it is for, or a limit on
+       * what its head offers. Only the fields that changed are present.
+       */
+      kind: "edit_wire";
+      from: CaptureNodeRef;
+      to: CaptureNodeRef;
+      /** The new purpose; "" when it was cleared. */
+      purpose?: string;
+      /** "read" or "drive" when the browser limit changed. */
+      browser_access?: "read" | "drive";
+      by: CaptureActor;
+    }
+  | {
       kind: "unwire";
       from: CaptureNodeRef;
       to: CaptureNodeRef;
@@ -483,6 +497,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "wire":
     case "retype_wire":
     case "redirect_wire":
+    case "edit_wire":
     case "unwire": return event.from;
     case "topology": return null;
     case "spawn_refused": return null;

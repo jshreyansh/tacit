@@ -2,84 +2,71 @@
  * How a typed wire looks: the words at its midpoint, and the stroke that has to
  * carry the same meaning once the words are gone.
  *
- * The split is deliberate. There are nine types and three families
- * (shared/connection-types.ts), because nine line styles would be nine things
- * nobody can tell apart. So the exact type is spelled out in the label while you
- * are close enough to read it, and the family is encoded in the stroke, which
- * survives all the way out to map zoom:
+ * The words come from what the wire does (shared/node-contracts.ts) or the
+ * purpose the user gave it. The family (shared/connection-types.ts) is
+ * encoded in the stroke, which survives all the way out to map zoom:
  *
  *   action     — solid.           Something happens.
  *   knowledge  — dashed.          Something is known.
  *   structural — faint hairline.  Nothing runs.
- *
- * `custom` keeps its family's stroke and adds a small hollow diamond at the
- * midpoint. It is not given a family of its own because it *has* a family — what
- * makes it worth spotting from across the board is that a person wrote the rule
- * by hand, which is a different axis from what the wire does. Hence a marker on
- * top of the stroke rather than a fourth stroke competing with three.
- *
- * Pure and free of React/DOM so both halves can be unit-tested.
  */
+import type { Ability } from "../../shared/node-contracts";
 import {
-  connectionTypeSpec,
   resolveConnectionType,
   type ConnectionFamily,
   type TypedConnectionLike,
 } from "../../shared/connection-types";
 import { truncateLabel } from "./connectionLabels";
 
-/**
- * How much of a custom instruction is shown on the wire.
- *
- * Enough to recognise which bespoke rule this is, not enough to read it —
- * "custom" alone would make every hand-written wire on the canvas
- * indistinguishable, which defeats the point of hand-writing one. The full
- * sentence lives in the menu.
- */
-export const MAX_WIRE_PROMPT_LENGTH = 24;
-
-/** Minimal shape needed to render a wire's label. */
-export interface LabelledConnectionLike extends TypedConnectionLike {
-  customPrompt?: string;
-}
-
-/** The instruction, collapsed and elided to fit on a wire. */
-export function shortCustomPrompt(
-  prompt: string | undefined,
-  max = MAX_WIRE_PROMPT_LENGTH,
-): string | null {
-  if (typeof prompt !== "string") return null;
-  const short = truncateLabel(prompt, max);
-  return short.length > 0 ? short : null;
-}
+/** Longest purpose shown on a wire before it is cut short. */
+export const MAX_WIRE_LABEL_LENGTH = 28;
 
 /**
- * The words drawn at the wire's midpoint.
- *
- * Reads as a phrase between the two endpoints — "Claude Code *sends replies to*
- * ChatGPT" — which is the guard against this becoming an if-then builder: every
- * type is a fixed sentence you can say aloud off the canvas.
+ * The words on a wire, which say what it does rather than what it is
+ * called: the user's purpose when they wrote one, else what the tail can do
+ * to the head (`drives`, `messages`), else that nothing travels.
+ * Returns an i18n key, or the purpose itself.
  */
-export function formatConnectionTypeLabel(
-  connection: LabelledConnectionLike,
-): string {
-  const spec = connectionTypeSpec(resolveConnectionType(connection));
-  if (spec.type !== "custom") return spec.label;
-  const prompt = shortCustomPrompt(connection.customPrompt);
-  // A custom wire with no instruction yet is still honestly "custom"; it just
-  // has nothing bespoke to show.
-  return prompt ? `${spec.label} · ${prompt}` : spec.label;
+export type WireLabel =
+  | { kind: "purpose"; text: string }
+  | { kind: "words"; key: WireLabelKey };
+
+export type WireLabelKey =
+  | "wire_label_link"
+  | "wire_label_replies_chat"
+  | "wire_label_replies_note"
+  | "wire_label_drives"
+  | "wire_label_reads"
+  | "wire_label_messages"
+  | "wire_label_runs"
+  | "wire_label_adds"
+  | "wire_label_logs"
+  | "wire_label_sends";
+
+export function wireLabel(input: {
+  connection: TypedConnectionLike & { purpose?: string };
+  /** What the tail may do to the head. */
+  tailAbilities: readonly Ability[];
+}): WireLabel {
+  const type = resolveConnectionType(input.connection);
+  if (type === "relates-to") return { kind: "words", key: "wire_label_link" };
+  if (input.connection.purpose) {
+    return { kind: "purpose", text: truncateLabel(input.connection.purpose, MAX_WIRE_LABEL_LENGTH) };
+  }
+  if (type === "sends-replies-to") return { kind: "words", key: "wire_label_replies_chat" };
+  if (type === "writes-to" && input.connection.from.kind === "terminal") {
+    return { kind: "words", key: "wire_label_replies_note" };
+  }
+  const has = (a: Ability) => input.tailAbilities.includes(a);
+  if (has("drive")) return { kind: "words", key: "wire_label_drives" };
+  if (has("read") && input.connection.to.kind === "browser") return { kind: "words", key: "wire_label_reads" };
+  if (has("tell")) return { kind: "words", key: "wire_label_messages" };
+  if (has("run")) return { kind: "words", key: "wire_label_runs" };
+  if (has("append")) return { kind: "words", key: "wire_label_adds" };
+  if (has("log")) return { kind: "words", key: "wire_label_logs" };
+  return { kind: "words", key: "wire_label_sends" };
 }
 
-/** Whether this wire gets the hand-written marker. */
-export function hasCustomMarker(connection: TypedConnectionLike): boolean {
-  return resolveConnectionType(connection) === "custom";
-}
-
-/**
- * Working view is the zoomed-in editing read; overview is the soft map read the
- * layer crossfades to below 0.6. Both encode family, at different weights.
- */
 export type WireView = "working" | "overview";
 
 export interface ConnectionStrokeStyle {

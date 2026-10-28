@@ -264,6 +264,16 @@ export function summarize(entry: CaptureEntry): string {
       return entry.two_way
         ? `made the wire between ${entry.from} and ${entry.to} two-way`
         : `made the wire run one way, from ${entry.from} to ${entry.to}`;
+    case "edit_wire": {
+      const changes: string[] = [];
+      if (entry.purpose !== undefined) {
+        changes.push(entry.purpose ? `its purpose is now "${entry.purpose}"` : "its purpose was cleared");
+      }
+      if (entry.browser_access) {
+        changes.push(entry.browser_access === "read" ? "it is now read-only" : "it can drive the page again");
+      }
+      return `changed the wire from ${entry.from} to ${entry.to}: ${changes.join("; ") || "no change"}`;
+    }
     case "close":
       return `closed ${entry.node}${entry.reason ? ` — ${entry.reason.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "rename":
@@ -312,6 +322,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "unwire":
     case "retype_wire":
     case "redirect_wire":
+    case "edit_wire":
       return [entry.from, entry.to];
     case "prompt":
       return [entry.actor];

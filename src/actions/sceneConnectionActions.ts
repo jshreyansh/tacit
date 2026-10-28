@@ -5,7 +5,6 @@ import {
   type ConnectionEndpoint,
   type ConnectionOrigin,
 } from "../stores/connectionStore";
-import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
@@ -13,16 +12,19 @@ import { findTerminal, getLivePtyId } from "./terminalLookup";
 import { captureRef, recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
 import {
+  defaultConnectionType,
   isTwoWay,
-  newWireConnectionType,
   resolveConnectionType,
   type ConnectionType,
 } from "../../shared/connection-types";
+import { wireNoticeText } from "../../shared/wire-notice";
+import { abilitiesFor, endpointRole, nodeTitle } from "../canvas/wireEnds";
+import { migrateWires } from "../canvas/wireMigration";
 
 interface CreateConnectionOptions {
   origin?: ConnectionOrigin;
   /**
-   * Whether to push the terminal↔browser capability notice into the agent.
+   * Whether to tell the agents at its ends what the wire gives them.
    * Defaults to true for manual wires (the user just did something and the
    * agent should hear about it) and false for spawn wires — see
    * createConnectionInScene.
@@ -50,7 +52,7 @@ export function createConnectionInScene(
   options: CreateConnectionOptions = {},
 ): string | null {
   const origin = options.origin ?? "manual";
-  // Spawn wires stay silent by default: notifyIfTerminalBrowserWired pushes
+  // Spawn wires stay silent by default: notifyWireEnds pushes
   // a real auto-submitted turn into the terminal, and firing that while the
   // agent is still inside its own spawn_browser tool call would interrupt
   // the very turn that asked for the browser. The spawn tool's own result
@@ -58,12 +60,12 @@ export function createConnectionInScene(
   const announce = options.announce ?? origin === "manual";
   const existing = useConnectionStore.getState().connections;
   const id = useConnectionStore.getState().addConnection(from, to, origin);
-  // A wire someone just drew gets a meaning this build runs, so the line
-  // never promises something that then doesn't happen.
+  // Stamped so the record says what the pair meant when it was drawn; what
+  // the wire allows comes from its ends (shared/node-contracts.ts).
   if (id && !existing[id] && origin === "manual") {
-    useConnectionStore.getState().setConnectionType(id, newWireConnectionType(from.kind, to.kind));
+    useConnectionStore.getState().setConnectionType(id, defaultConnectionType(from.kind, to.kind));
   }
-  if (id && announce) notifyIfTerminalBrowserWired(from, to);
+  if (id && !existing[id] && announce) void notifyWireEnds(id);
   // addConnection returns the existing id for an already-wired pair, so
   // checking whether the id was already known is what keeps a re-wire of the
   // same pair out of the record — otherwise the idempotent callers would each
@@ -121,6 +123,7 @@ export function flipConnectionInScene(id: string, by: CaptureActor = "user"): vo
   if (!store.connections[id]) return;
   store.flipConnection(id);
   recordRedirect(id, by);
+  void notifyWireEnds(id);
 }
 
 /** Let both ends send along a wire, or only the end it was drawn from. */
@@ -134,6 +137,74 @@ export function setConnectionTwoWayInScene(
   if (!existing || isTwoWay(existing) === twoWay) return;
   store.setConnectionTwoWay(id, twoWay);
   recordRedirect(id, by);
+  // Only the end that gained something hears about it: the head of a wire
+  // that just became two-way.
+  if (twoWay) void notifyWireEnds(id, existing.to);
+}
+
+/**
+ * Say what a wire is for. The agent at its tail is told, because the
+ * purpose is what tells it when to use the wire.
+ */
+export function setConnectionPurposeInScene(
+  id: string,
+  purpose: string | undefined,
+  by: CaptureActor = "user",
+): void {
+  const store = useConnectionStore.getState();
+  if (!store.setConnectionPurpose(id, purpose)) return;
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({
+    kind: "edit_wire",
+    from: captureRef(applied.from),
+    to: captureRef(applied.to),
+    purpose: applied.purpose ?? "",
+    by,
+  });
+  if (applied.purpose) void notifyWireEnds(id);
+}
+
+/** Let the agent only read a wired browser, or drive it again. */
+export function setConnectionBrowserAccessInScene(
+  id: string,
+  access: "read" | "drive",
+  by: CaptureActor = "user",
+): void {
+  const store = useConnectionStore.getState();
+  if (!store.setConnectionLimits(id, access === "read" ? { browser: "read" } : undefined)) return;
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({
+    kind: "edit_wire",
+    from: captureRef(applied.from),
+    to: captureRef(applied.to),
+    browser_access: access,
+    by,
+  });
+  void notifyWireEnds(id);
+}
+
+/**
+ * Make a wire a plain link, which carries nothing, or a live one again.
+ * Recorded as a retype, which is what it is in the stored record.
+ */
+export function setConnectionPlainInScene(
+  id: string,
+  plain: boolean,
+  by: CaptureActor = "user",
+): void {
+  const existing = useConnectionStore.getState().connections[id];
+  if (!existing) return;
+  const wasPlain = resolveConnectionType(existing) === "relates-to";
+  if (wasPlain === plain) return;
+  setConnectionTypeInScene(
+    id,
+    plain ? "relates-to" : defaultConnectionType(existing.from.kind, existing.to.kind),
+    undefined,
+    by,
+  );
+  if (!plain) void notifyWireEnds(id);
 }
 
 function recordRedirect(id: string, by: CaptureActor): void {
@@ -278,35 +349,53 @@ export function waitForTerminalReady(
   });
 }
 
-async function notifyIfTerminalBrowserWired(
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint,
-) {
-  const terminalEndpoint =
-    from.kind === "terminal" ? from : to.kind === "terminal" ? to : null;
-  const browserEndpoint =
-    from.kind === "browser" ? from : to.kind === "browser" ? to : null;
-  if (!terminalEndpoint || !browserEndpoint) return;
+/**
+ * Tell the agents at a wire's ends what it now lets them do.
+ *
+ * Pushed as a real turn into each agent, through the same composer-submit
+ * path pin dispatch uses (electron/main.ts's browser:notify-wired handler).
+ * Only agents are told: typing a notice into a shell would run it. An end
+ * the wire gives nothing to (the head of a one-way wire, a plain link) is
+ * skipped, since there is nothing for it to know. The notice is courtesy;
+ * what an agent may actually do is checked on every call.
+ */
+async function notifyWireEnds(
+  connectionId: string,
+  only?: ConnectionEndpoint,
+): Promise<void> {
+  const connection = useConnectionStore.getState().connections[connectionId];
+  if (!connection) return;
+  for (const self of [connection.from, connection.to]) {
+    if (self.kind !== "terminal") continue;
+    if (only && (only.kind !== self.kind || only.id !== self.id)) continue;
+    if (endpointRole(self) !== "agent") continue;
+    const other = self === connection.from ? connection.to : connection.from;
+    const text = wireNoticeText({
+      other: { role: endpointRole(other), id: other.id, title: nodeTitle(other.kind, other.id) },
+      abilities: abilitiesFor(connection, self),
+      purpose: connection.purpose,
+      twoWay: isTwoWay(connection),
+    });
+    if (text) await sendWireNotice(self.id, text);
+  }
+}
 
+async function sendWireNotice(terminalId: string, text: string): Promise<void> {
   // A terminal's ptyId is null until its real PTY process finishes spawning
-  // — connecting a browser to a terminal within the first moment or two of
-  // creating it would otherwise silently drop the wire-up notice with no
-  // PTY to write into yet.
-  const found = await waitForTerminalReady(terminalEndpoint.id);
-  const ptyId = found ? getLivePtyId(terminalEndpoint.id) : null;
+  // — wiring a terminal within the first moment or two of creating it would
+  // otherwise silently drop the notice with no PTY to write into yet.
+  const found = await waitForTerminalReady(terminalId);
+  const ptyId = found ? getLivePtyId(terminalId) : null;
   if (!found || ptyId == null) {
     useNotificationStore
       .getState()
       .notify(
         "warn",
-        "Couldn't announce the browser connection — the terminal's shell process isn't ready yet. The browser-bridge tools still work; just ask the agent to use them directly.",
+        "Couldn't tell the agent about the new wire: its terminal isn't ready yet. The wire still works; ask the agent to use it.",
       );
     return;
   }
   const { terminal, worktree } = found;
-
-  const card = useBrowserCardStore.getState().cards[browserEndpoint.id];
-  const shownAs = card?.title || card?.url || "a page";
   const result = await window.tacit.browser.notifyWired(
     {
       terminalId: terminal.id,
@@ -314,14 +403,14 @@ async function notifyIfTerminalBrowserWired(
       terminalType: terminal.type,
       worktreePath: worktree.path,
     },
-    `A browser on the canvas is wired to this terminal (showing: ${shownAs}). Read or drive it with the browser-bridge tools (browser_read, browser_navigate, browser_click, browser_eval) when the task needs it.`,
+    text,
   );
   if (!result.ok) {
     useNotificationStore
       .getState()
       .notify(
         "warn",
-        `Couldn't announce the browser connection to the terminal: ${result.detail ?? result.error}. The browser-bridge tools still work; just ask the agent to use them directly.`,
+        `Couldn't tell the agent about the new wire: ${result.detail ?? result.error}. The wire still works; ask the agent to use it.`,
       );
   }
 }
@@ -347,5 +436,5 @@ export function removeConnectionFromScene(
 export function restoreConnectionsInScene(
   connections: Record<string, ConnectionData>,
 ) {
-  useConnectionStore.setState({ connections, pending: null });
+  useConnectionStore.setState({ connections: migrateWires(connections), pending: null });
 }

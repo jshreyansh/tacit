@@ -608,6 +608,7 @@ const KIND_TOKEN: Record<string, string> = {
   unwire: "var(--text-faint)",
   retype_wire: "var(--purple)",
   redirect_wire: "var(--purple)",
+  edit_wire: "var(--purple)",
   rename: "var(--text-muted)",
   manager: "var(--amber)",
   browser_action: "var(--cyan)",

@@ -19,8 +19,11 @@ export interface WireEnd {
   title: string | null;
   /** Which way the wire runs, seen from the sender. */
   direction: WireDirection;
-  /** False for a wire that records a relationship and runs nothing. */
+  /** Whether a message sent along it arrives: worked out from the node
+   * contracts at both ends (shared/node-contracts.ts). */
   carries: boolean;
+  /** True for a plain link, which carries nothing either way. */
+  plain?: boolean;
   /** Terminal only: null while its PTY has not started or has exited. */
   ptyId?: number | null;
   terminalType?: string | null;
@@ -112,8 +115,11 @@ export async function sendAlongWires(
     if (end.direction === "from_it") {
       fail(403, "wrong_direction", `The wire between you and ${describe(end)} runs the other way: it sends to you. Ask the user to turn the wire round or make it two-way.`);
     }
-    if (!end.carries) {
-      fail(403, "wire_carries_nothing", `The wire to ${describe(end)} only records that you're related ("relates to"); it carries no messages. Ask the user to change what the wire means.`);
+    if (end.plain) {
+      fail(403, "wire_carries_nothing", `The wire to ${describe(end)} is a plain link: it records that you're related and carries nothing. Ask the user to make it live.`);
+    }
+    if (end.kind === "browser") {
+      fail(403, "wire_carries_nothing", `${describe(end)} is a browser; it doesn't take messages. Read or drive it with the browser_* tools.`);
     }
     targets = [end];
   } else {
@@ -127,7 +133,7 @@ export async function sendAlongWires(
           ? "Nothing is wired to you. Ask the user to draw a wire from you to the node on the canvas."
           : incoming > 0
             ? "Every wire touching you runs the other way, into you. Ask the user to turn one round or make it two-way."
-            : "The wires touching you only record relationships; none carries messages.",
+            : "None of the wires touching you carries messages: they are plain links, or lead to browsers, which you read and drive with the browser_* tools.",
       );
     }
   }

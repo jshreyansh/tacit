@@ -1,6 +1,13 @@
 /**
  * What a wire on the canvas means.
  *
+ * Since the wiring model (docs/architecture/wiring-model.md), what a live
+ * wire lets each end do is worked out from the nodes at its ends, in
+ * shared/node-contracts.ts. The type below survives as the stored record:
+ * `relates-to` marks a plain link, the reply rules ride on their types, and
+ * every other value loads as a live wire. The history that follows is why
+ * types existed.
+ *
  * Connections used to be adjacency: you drew a line and the app guessed a
  * behaviour from the node kinds at each end. Agent-to-browser was read as "may
  * drive that page"; everything else did nothing, indistinguishably. One line
@@ -86,63 +93,7 @@ export function isConnectionType(value: unknown): value is ConnectionType {
   return typeof value === "string" && value in SPECS;
 }
 
-/**
- * The wires that actually do something, as `type from>to`.
- *
- * Keyed by the pair and not by the type alone, because the same type runs at
- * one pair and not another and the difference is not cosmetic. `sends replies
- * to` delivers into a browser node and does nothing at all between two
- * terminals — the delivery code says so out loud when it hits that case.
- * `writes to` appends an agent's answer to a note, but a browser node has no
- * completion signal to fire on, so the same label between a page and a note is
- * a relationship the canvas records rather than a behaviour it runs.
- *
- * This is a statement about the build, not about the design, which is why it is
- * a table here rather than a field on the spec: a family says what a
- * relationship *means* and is permanent; this says what this build *does* and is
- * expected to shrink. Add a line in the same commit that lands the behaviour.
- */
-const RUNNING: ReadonlySet<string> = new Set([
-  "controls terminal>browser",
-  "sends-replies-to terminal>browser",
-  "writes-to terminal>note",
-  // The agent at the source passes work on with send_to_connected.
-  "hands-off-to terminal>terminal",
-]);
-
-/** Whether drawing this wire, between these two kinds, makes something happen. */
-export function connectionRuns(
-  type: ConnectionType,
-  from: ConnectionEndpointKind,
-  to: ConnectionEndpointKind,
-): boolean {
-  return RUNNING.has(`${type} ${pairKey(from, to)}`);
-}
-
-/**
- * Whether this wire reads as though it does something but does not do it yet.
- *
- * Not simply the inverse of `connectionRuns`. `relates-to` does not run either,
- * but it says so — its label is a relationship and its family is the faint
- * hairline that already means "nothing happens here". Marking it would report a
- * gap that is not one.
- *
- * What needs marking is the wire whose label makes a promise the build does not
- * keep: "hands off to" drawn as a solid action line, doing nothing. That is the
- * set the UI decorates, and it empties as behaviours land.
- */
-export function isPendingBehaviour(
-  type: ConnectionType,
-  from: ConnectionEndpointKind,
-  to: ConnectionEndpointKind,
-): boolean {
-  return (
-    !connectionRuns(type, from, to) &&
-    connectionTypeSpec(type).family !== "structural"
-  );
-}
-
-/** `from-kind → to-kind`, the key both tables below are indexed by. */
+/** `from-kind → to-kind`, the key the defaults below are indexed by. */
 function pairKey(
   from: ConnectionEndpointKind,
   to: ConnectionEndpointKind,
@@ -159,7 +110,10 @@ function pairKey(
  * such a wire already did, so nothing drawn before this existed behaves
  * differently and no migration is needed.
  *
- * Pairs with no sensible action fall to `relates-to` rather than inventing one.
+ * What a live wire *does* no longer comes from its type: it is worked out from
+the two ends (shared/node-contracts.ts). The type now says whether a wire is
+a plain link (`relates-to`) and, for `sends-replies-to` and `writes-to`,
+carries the rule it runs; the other values are kept so saved wires load.
  */
 const DEFAULTS: Record<string, ConnectionType> = {
   "terminal>browser": "controls",
@@ -167,10 +121,14 @@ const DEFAULTS: Record<string, ConnectionType> = {
   "terminal>terminal": "hands-off-to",
   "browser>browser": "sends-page-to",
   "note>terminal": "instructs",
-  "terminal>note": "writes-to",
+  // Not `writes-to`: passing every reply on is a rule the user turns on,
+  // not something drawing a wire does by itself.
+  "terminal>note": "feeds-context-to",
   "browser>note": "writes-to",
-  "note>browser": "relates-to",
-  "note>note": "relates-to",
+  // Neither end starts things, but you can still send a note's text along
+  // it, so a new wire between them is live, not a bare link.
+  "note>browser": "feeds-context-to",
+  "note>note": "feeds-context-to",
 };
 
 export function defaultConnectionType(
@@ -178,65 +136,6 @@ export function defaultConnectionType(
   to: ConnectionEndpointKind,
 ): ConnectionType {
   return DEFAULTS[pairKey(from, to)] ?? "relates-to";
-}
-
-/**
- * Which types this pair may be, i.e. what the menu offers.
- *
- * Only valid entries are listed — no greyed-out rows for combinations that can
- * never apply, which is a menu teaching you about restrictions instead of
- * offering you choices.
- */
-const EXTRA_CHOICES: Record<string, ConnectionType[]> = {
-  "terminal>browser": ["sends-replies-to"],
-  "terminal>terminal": ["sends-replies-to"],
-};
-
-export function validConnectionTypes(
-  from: ConnectionEndpointKind,
-  to: ConnectionEndpointKind,
-): ConnectionType[] {
-  const key = pairKey(from, to);
-  const primary = DEFAULTS[key] ?? "relates-to";
-  const seen = new Set<ConnectionType>();
-  const out: ConnectionType[] = [];
-  // Only what this build runs is offered: a menu of "not yet" rows promised
-  // behaviour that drawing the wire then didn't deliver. Custom comes back
-  // when it runs.
-  for (const type of [primary, ...(EXTRA_CHOICES[key] ?? [])]) {
-    if (!seen.has(type) && connectionRuns(type, from, to)) { seen.add(type); out.push(type); }
-  }
-  // Always available, and always last: recording a bare relationship is
-  // meaningful for any pair.
-  if (!seen.has("relates-to")) out.push("relates-to");
-  return out;
-}
-
-/**
- * The rows a wire's menu shows: what the pair can be, led by the wire's
- * current meaning when that is one this build no longer offers, so the menu
- * never opens with nothing marked and an old wire can be moved off it.
- */
-export function menuConnectionTypes(
-  from: ConnectionEndpointKind,
-  to: ConnectionEndpointKind,
-  current: ConnectionType,
-): ConnectionType[] {
-  const offered = validConnectionTypes(from, to);
-  return offered.includes(current) ? offered : [current, ...offered];
-}
-
-/**
- * The type a wire the user just drew is given: what the pair means by
- * default when this build runs it, else a bare relationship. Stamped at
- * creation, so wires drawn before keep the meaning they were drawn with.
- */
-export function newWireConnectionType(
-  from: ConnectionEndpointKind,
-  to: ConnectionEndpointKind,
-): ConnectionType {
-  const primary = defaultConnectionType(from, to);
-  return connectionRuns(primary, from, to) ? primary : "relates-to";
 }
 
 /** Minimal shape of a stored wire for working out who may send along it. */
@@ -267,21 +166,6 @@ export function wireDirectionFrom(
   if (!isFrom && !isTo) return null;
   if (isTwoWay(connection)) return "both_ways";
   return isFrom ? "to_it" : "from_it";
-}
-
-/**
- * The wire types an agent's messages travel along. A bare relationship
- * records and runs nothing, and a wire whose behaviour isn't built yet must
- * not quietly start doing something else.
- */
-const MESSAGE_TYPES: ReadonlySet<ConnectionType> = new Set([
-  "hands-off-to",
-  "sends-replies-to",
-  "writes-to",
-]);
-
-export function wireCarriesMessages(connection: TypedConnectionLike): boolean {
-  return MESSAGE_TYPES.has(resolveConnectionType(connection));
 }
 
 /** Minimal shape of a stored connection; the store's own type is wider. */

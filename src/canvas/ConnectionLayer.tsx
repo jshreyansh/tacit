@@ -35,7 +35,6 @@ import { describeEndpoint, type EndpointLabelContext } from "./connectionLabels"
 import {
   connectionFamily,
   connectionTypeSpec,
-  isPendingBehaviour,
   isTwoWay,
   resolveConnectionType,
 } from "../../shared/connection-types";
@@ -49,13 +48,10 @@ import {
   wireCurve,
   type WireCurve,
 } from "./wireGeometry";
-import {
-  connectionStrokeStyle,
-  formatConnectionTypeLabel,
-  hasCustomMarker,
-} from "./connectionTypeStyle";
+import { connectionStrokeStyle, wireLabel } from "./connectionTypeStyle";
 import { connectionLabelLayout } from "./connectionLabelScale";
-import { ConnectionTypeMenu } from "./ConnectionTypeMenu";
+import { WirePanel } from "./WirePanel";
+import { abilitiesFor } from "./wireEnds";
 
 /**
  * Draws every connection between canvas items — terminals, browser tiles and
@@ -236,41 +232,6 @@ function curveMidpoint(a: EndpointRect, b: EndpointRect): Point {
   const cx = (x1 + x2) / 2 + (-dy / len) * offset;
   const cy = (y1 + y2) / 2 + (dx / len) * offset;
   return { x: 0.25 * x1 + 0.5 * cx + 0.25 * x2, y: 0.25 * y1 + 0.5 * cy + 0.25 * y2 };
-}
-
-/**
- * The hand-written marker: a small hollow diamond straddling the wire.
- *
- * Hollow and unfilled so it reads as an annotation on the line rather than the
- * activity pulse (a filled circle), and diamond rather than round so the two are
- * still distinguishable when both are on the same wire.
- */
-function CustomMarker({
-  at,
-  scale,
-  color,
-  opacity,
-}: {
-  at: Point;
-  scale: number;
-  color: string;
-  opacity: number;
-}) {
-  const half = 3.5 / scale;
-  return (
-    <rect
-      x={at.x - half}
-      y={at.y - half}
-      width={half * 2}
-      height={half * 2}
-      transform={`rotate(45 ${at.x} ${at.y})`}
-      fill="none"
-      stroke={color}
-      strokeWidth={1}
-      vectorEffect="non-scaling-stroke"
-      style={{ opacity, transition: "opacity 0.15s ease" }}
-    />
-  );
 }
 
 export function ConnectionLayer() {
@@ -617,7 +578,6 @@ export function ConnectionLayer() {
             const family = connectionFamily(connection);
             const workingStroke = connectionStrokeStyle(family, "working");
             const overviewStroke = connectionStrokeStyle(family, "overview");
-            const isCustom = hasCustomMarker(connection);
 
             // The arrow is where things arrive: at the end it was dropped on,
             // and at both ends of a two-way wire. A bare relationship carries
@@ -692,14 +652,6 @@ export function ConnectionLayer() {
                     )}
                   </>
                 )}
-                {overviewOpacity < 1 && isCustom && (
-                  <CustomMarker
-                    at={curvePoint(curve, 0.5)}
-                    scale={viewport.scale}
-                    color={wireColor}
-                    opacity={1 - overviewOpacity}
-                  />
-                )}
                 {isOverview && (
                   <path
                     d={curvedPath(from, to)}
@@ -723,16 +675,6 @@ export function ConnectionLayer() {
                       transition:
                         "stroke var(--duration-quick) var(--ease-out-soft), opacity var(--duration-quick) var(--ease-out-soft)",
                     }}
-                  />
-                )}
-                {isOverview && isCustom && (
-                  <CustomMarker
-                    at={curveMidpoint(from, to)}
-                    scale={viewport.scale}
-                    color={
-                      isHighlighted ? highlightColor : "var(--text-secondary)"
-                    }
-                    opacity={0.7 * overviewOpacity}
                   />
                 )}
                 {/* A browser-bridge call has no message to show, only that the
@@ -994,25 +936,20 @@ export function ConnectionLayer() {
             };
             const type = resolveConnectionType(connection);
             const spec = connectionTypeSpec(type);
-            const isCustom = type === "custom";
             const twoWay = isTwoWay(connection) && spec.family !== "structural";
-            // Pair-aware: the same label runs at one pair and not another, so
-            // the endpoints decide the mark, not the type on its own.
-            const pending = isPendingBehaviour(
-              type,
-              connection.from.kind,
-              connection.to.kind,
-            );
+            const label = wireLabel({
+              connection,
+              tailAbilities: abilitiesFor(connection, connection.from),
+            });
+            const labelText = label.kind === "purpose" ? label.text : t[label.key];
 
             return (
               <button
                 key={`type-label:${connection.id}`}
                 type="button"
                 data-scene-box-select-block
-                aria-label={t.connection_type_label_aria.replace(
-                  "{type}",
-                  spec.label,
-                )}
+                aria-label={t.connection_label_aria.replace("{label}", labelText)}
+                title={connection.purpose}
                 className="absolute rounded-full border transition-colors duration-quick hover:text-[var(--text-primary)] hover:border-[var(--accent)]/50"
                 style={{
                   left: viewport.x + mid.x * viewport.scale,
@@ -1030,18 +967,11 @@ export function ConnectionLayer() {
                   textOverflow: "ellipsis",
                   background: "var(--surface)",
                   borderColor: "var(--border)",
-                  // A type whose behaviour has not landed gets a dashed border:
-                  // the label still says what the wire means, because that is
-                  // recorded and true, while the broken outline says the words
-                  // are not yet a promise the app keeps. The stroke itself is
-                  // left alone — family is what the relationship *means*, and
-                  // encoding a temporary fact about the build in the permanent
-                  // visual vocabulary would have to be unwound later.
-                  borderStyle: pending ? "dashed" : "solid",
-                  // Structural wires say nothing runs, so their label recedes
-                  // the same way their stroke does.
+                  borderStyle: "solid",
+                  // Plain links say nothing runs, so their label recedes the
+                  // same way their stroke does.
                   color:
-                    spec.family === "structural" || pending
+                    spec.family === "structural"
                       ? "var(--text-muted)"
                       : "var(--text-secondary)",
                   opacity: labelLayout.opacity,
@@ -1061,11 +991,8 @@ export function ConnectionLayer() {
                   });
                 }}
               >
-                {/* Echoes the diamond drawn on the wire, so the label and the
-                    marker read as one thing rather than two coincidences. */}
-                {isCustom ? "◇ " : ""}
                 {twoWay ? "⇄ " : ""}
-                {formatConnectionTypeLabel(connection)}
+                {labelText}
               </button>
             );
           })}
@@ -1129,21 +1056,13 @@ export function ConnectionLayer() {
           ConfirmDialog portals to document.body, so it escapes that anyway. */}
       {typeMenuTarget && (
         <div style={{ pointerEvents: "auto" }}>
-          <ConnectionTypeMenu
+          <WirePanel
+            key={typeMenuTarget.connection.id}
             x={typeMenuTarget.x}
             y={typeMenuTarget.y}
-            connectionId={typeMenuTarget.connection.id}
-            fromKind={typeMenuTarget.connection.from.kind}
-            toKind={typeMenuTarget.connection.to.kind}
-            current={resolveConnectionType(typeMenuTarget.connection)}
-            currentPrompt={typeMenuTarget.connection.customPrompt}
+            connection={typeMenuTarget.connection}
             fromName={describeEndpoint(typeMenuTarget.connection.from, labelContext)}
             toName={describeEndpoint(typeMenuTarget.connection.to, labelContext)}
-            twoWay={isTwoWay(typeMenuTarget.connection)}
-            canRedirect={
-              typeMenuTarget.connection.from.kind === "terminal" &&
-              typeMenuTarget.connection.to.kind === "terminal"
-            }
             recent={
               recentByPair[
                 connectionEventPairKey(typeMenuTarget.connection.from, typeMenuTarget.connection.to)
@@ -1164,7 +1083,7 @@ export function ConnectionLayer() {
               // The label is the primary way in; this exists for the case
               // where the label is too small to aim at, or hidden.
               {
-                label: t.connection_change_type,
+                label: t.connection_open_panel,
                 onClick: () =>
                   setTypeMenu({
                     x: menu.x,

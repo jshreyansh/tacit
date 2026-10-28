@@ -57,12 +57,23 @@ test("with no `to`, everything wired from you gets it; a note has it added", asy
   assert.deepEqual(h.notes, [{ id: "n1", source: "claude", text: "done" }]);
 });
 
-test("a wire pointing at you, or one that only relates, carries nothing from you", async () => {
-  const h = harness([{ ...shell, direction: "from_it" }, { ...codex, carries: false }]);
+test("a wire pointing at you, or a plain link, carries nothing from you", async () => {
+  const h = harness([{ ...shell, direction: "from_it" }, { ...codex, carries: false, plain: true }]);
   await rejects(sendAlongWires(h.deps, "me", { message: "ls", to: "sh" }), "wrong_direction");
-  await rejects(sendAlongWires(h.deps, "me", { message: "ls", to: "cx" }), "wire_carries_nothing");
+  await assert.rejects(
+    sendAlongWires(h.deps, "me", { message: "ls", to: "cx" }),
+    (err: { code?: string; message: string }) => err.code === "wire_carries_nothing" && /plain link/.test(err.message),
+  );
   await rejects(sendAlongWires(h.deps, "me", { message: "ls" }), "not_wired");
   assert.equal(h.typed.length, 0);
+});
+
+test("a browser named with `to` is refused with the tools that do reach it", async () => {
+  const h = harness([{ kind: "browser", id: "b", title: "localhost", direction: "to_it", carries: false }]);
+  await assert.rejects(
+    sendAlongWires(h.deps, "me", { message: "hi", to: "b" }),
+    (err: { code?: string; message: string }) => err.code === "wire_carries_nothing" && /browser_\*/.test(err.message),
+  );
 });
 
 test("a node you aren't wired to isn't reachable, and nothing is sent with no wires", async () => {

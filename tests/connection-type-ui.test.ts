@@ -9,109 +9,56 @@ import {
   connectionLabelLayout,
 } from "../src/canvas/connectionLabelScale";
 import {
-  MAX_WIRE_PROMPT_LENGTH,
+  MAX_WIRE_LABEL_LENGTH,
   connectionStrokeStyle,
-  formatConnectionTypeLabel,
-  hasCustomMarker,
-  shortCustomPrompt,
+  wireLabel,
 } from "../src/canvas/connectionTypeStyle";
 import {
-  MAX_CUSTOM_PROMPT_LENGTH,
   connectionTypeSpec,
-  validConnectionTypes,
-  menuConnectionTypes,
-  resolveConnectionType,
   type ConnectionEndpointKind,
   type ConnectionFamily,
 } from "../shared/connection-types";
+import type { Ability } from "../shared/node-contracts";
 
 const wire = (
   from: ConnectionEndpointKind,
   to: ConnectionEndpointKind,
-  over: { type?: string; customPrompt?: string } = {},
+  over: { type?: string; purpose?: string } = {},
 ) => ({
   from: { kind: from },
   to: { kind: to },
   ...(over.type ? { type: over.type as never } : {}),
-  ...(over.customPrompt ? { customPrompt: over.customPrompt } : {}),
+  ...(over.purpose ? { purpose: over.purpose } : {}),
 });
 
-/** What the menu actually puts on screen, in order. */
-const menuRows = (from: ConnectionEndpointKind, to: ConnectionEndpointKind) =>
-  menuConnectionTypes(from, to, resolveConnectionType({ from: { kind: from }, to: { kind: to } })).map(
-    (type) => connectionTypeSpec(type).label,
-  );
+const label = (w: ReturnType<typeof wire>, tailAbilities: Ability[] = []) => {
+  const l = wireLabel({ connection: w, tailAbilities });
+  return l.kind === "purpose" ? `purpose:${l.text}` : l.key;
+};
 
 // ---------------------------------------------------------------- label text
 
-test("a wire says what it is, even when nobody chose a type", () => {
-  // The label reads the meaning through resolveConnectionType, so an untyped
-  // wire is labelled with what it actually does rather than left blank.
-  assert.equal(formatConnectionTypeLabel(wire("terminal", "browser")), "controls");
-  assert.equal(
-    formatConnectionTypeLabel(wire("browser", "terminal")),
-    "feeds context to",
-  );
-  assert.equal(formatConnectionTypeLabel(wire("note", "note")), "relates to");
+test("a wire says what it does, from what its tail can do to its head", () => {
+  assert.equal(label(wire("terminal", "browser"), ["read", "drive"]), "wire_label_drives");
+  assert.equal(label(wire("terminal", "browser"), ["read"]), "wire_label_reads");
+  assert.equal(label(wire("terminal", "terminal"), ["tell", "ask", "hand_off"]), "wire_label_messages");
+  assert.equal(label(wire("terminal", "terminal"), ["run"]), "wire_label_runs");
+  assert.equal(label(wire("terminal", "note"), ["read", "append"]), "wire_label_adds");
+  assert.equal(label(wire("terminal", "note"), ["read", "log"]), "wire_label_logs");
+  // A tail that starts nothing still sends its contents along.
+  assert.equal(label(wire("note", "terminal"), []), "wire_label_sends");
 });
 
-test("an explicit type wins over the inferred one", () => {
-  assert.equal(
-    formatConnectionTypeLabel(wire("terminal", "browser", { type: "sends-replies-to" })),
-    "sends replies to",
-  );
+test("the user's purpose wins over the generic words, and is cut short", () => {
+  assert.equal(label(wire("terminal", "terminal", { purpose: "review each diff" }), ["tell"]), "purpose:review each diff");
+  const long = label(wire("terminal", "terminal", { purpose: "x".repeat(200) }), ["tell"]);
+  assert.ok(long.length - "purpose:".length <= MAX_WIRE_LABEL_LENGTH, long);
 });
 
-test("a type this build doesn't know degrades to the inferred label, not a blank", () => {
-  assert.equal(
-    formatConnectionTypeLabel(wire("terminal", "browser", { type: "teleports-to" })),
-    "controls",
-  );
-});
-
-test("a custom wire shows enough of its instruction to be recognised", () => {
-  const label = formatConnectionTypeLabel(
-    wire("terminal", "terminal", {
-      type: "custom",
-      customPrompt: "send only the final summary",
-    }),
-  );
-  assert.ok(label.startsWith("custom · "), `expected a custom label, got ${label}`);
-  // Recognisable means some of the user's own words survive.
-  assert.ok(label.includes("send only"), label);
-});
-
-test("a long instruction is elided rather than allowed to cover the canvas", () => {
-  const prompt = "x".repeat(MAX_CUSTOM_PROMPT_LENGTH);
-  const short = shortCustomPrompt(prompt);
-  assert.ok(short);
-  assert.ok(
-    short!.length <= MAX_WIRE_PROMPT_LENGTH,
-    `${short!.length} > ${MAX_WIRE_PROMPT_LENGTH}`,
-  );
-  assert.ok(short!.endsWith("…"), short!);
-});
-
-test("whitespace in an instruction is collapsed before it is drawn", () => {
-  assert.equal(shortCustomPrompt("  send   only "), "send only");
-  assert.equal(shortCustomPrompt("   "), null);
-  assert.equal(shortCustomPrompt(undefined), null);
-});
-
-test("custom with no instruction yet is still honestly labelled custom", () => {
-  assert.equal(
-    formatConnectionTypeLabel(wire("note", "note", { type: "custom" })),
-    "custom",
-  );
-});
-
-test("only a custom wire gets the hand-written marker", () => {
-  assert.equal(hasCustomMarker(wire("note", "note", { type: "custom" })), true);
-  assert.equal(hasCustomMarker(wire("terminal", "browser")), false);
-  assert.equal(
-    hasCustomMarker(wire("terminal", "terminal", { type: "hands-off-to" })),
-    false,
-  );
+test("a plain link says so even with a purpose, and reply rules name the rule", () => {
+  assert.equal(label(wire("terminal", "terminal", { type: "relates-to", purpose: "x" })), "wire_label_link");
+  assert.equal(label(wire("terminal", "browser", { type: "sends-replies-to" }), ["drive"]), "wire_label_replies_chat");
+  assert.equal(label(wire("terminal", "note", { type: "writes-to" }), ["append"]), "wire_label_replies_note");
 });
 
 // -------------------------------------------------------------- stroke style
@@ -202,48 +149,5 @@ test("a nonsense scale cannot take the layer down with a NaN font size", () => {
     const layout = connectionLabelLayout(scale);
     assert.ok(Number.isFinite(layout.fontPx), `${scale} produced ${layout.fontPx}`);
     assert.ok(Number.isFinite(layout.opacity));
-  }
-});
-
-// --------------------------------------------------------------- menu rows
-
-test("the menu offers readable phrases, in order, with relates to last", () => {
-  assert.deepEqual(menuRows("terminal", "browser"), ["controls", "sends replies to", "relates to"]);
-  assert.deepEqual(menuRows("terminal", "terminal"), ["hands off to", "relates to"]);
-  // An untyped older wire's inferred meaning leads, so it shows as current.
-  assert.deepEqual(menuRows("note", "terminal"), ["instructs", "relates to"]);
-  assert.deepEqual(menuRows("note", "note"), ["relates to"]);
-});
-
-test("no row is a dead end: every offered type has a label and only custom asks", () => {
-  const kinds: ConnectionEndpointKind[] = ["terminal", "browser", "note"];
-  for (const from of kinds) {
-    for (const to of kinds) {
-      const types = validConnectionTypes(from, to);
-      assert.equal(types.at(-1), "relates-to", `${from}>${to} must end with relates-to`);
-      for (const type of types) {
-        const spec = connectionTypeSpec(type);
-        assert.ok(spec.label.length > 0, `${type} has no label`);
-        assert.equal(
-          spec.needsInput,
-          type === "custom",
-          `${type} asks for input it shouldn't`,
-        );
-      }
-    }
-  }
-});
-
-test("the wire's current meaning is always one of the rows the menu shows", () => {
-  // Otherwise the menu would open with nothing marked as current.
-  const kinds: ConnectionEndpointKind[] = ["terminal", "browser", "note"];
-  for (const from of kinds) {
-    for (const to of kinds) {
-      const label = formatConnectionTypeLabel(wire(from, to));
-      assert.ok(
-        menuRows(from, to).includes(label),
-        `${from}>${to} is labelled "${label}", which its menu does not offer`,
-      );
-    }
   }
 });

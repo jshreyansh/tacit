@@ -1,10 +1,21 @@
 import { create } from "zustand";
 import { useWorkspaceStore } from "./workspaceStore";
 import {
+  defaultConnectionType,
   normalizeCustomPrompt,
-  validConnectionTypes,
   type ConnectionType,
 } from "../../shared/connection-types";
+import {
+  normalizeWirePurpose,
+  type WireLimits,
+} from "../../shared/node-contracts";
+
+/**
+ * Which wiring model a stored wire was written under. Wires without it were
+ * saved before docs/architecture/wiring-model.md and are converted once on
+ * load (src/canvas/wireMigration.ts).
+ */
+export const WIRE_MODEL_VERSION = 2;
 
 // "note" endpoints use the pin's own id, which buildPinFlowNodes
 // (src/canvas/nodeProjection.ts) already uses as the canvas node id, so it
@@ -52,6 +63,13 @@ export interface ConnectionData {
    * `isTwoWay` (shared/connection-types.ts) so that default is applied.
    */
   twoWay?: boolean;
+  /** What the wire is for, in the user's words: shown on the wire and told
+   * to the agents at its ends. */
+  purpose?: string;
+  /** Narrowing of what the head offers, e.g. a read-only browser. */
+  limits?: WireLimits;
+  /** WIRE_MODEL_VERSION when written; absent on older saves. */
+  v?: number;
 }
 
 interface PendingConnection {
@@ -83,6 +101,10 @@ interface ConnectionStore {
    * dropped, so the wire falls back to what that direction means. */
   flipConnection: (id: string) => void;
   setConnectionTwoWay: (id: string, twoWay: boolean) => void;
+  /** Set or clear what the wire is for. Returns whether anything changed. */
+  setConnectionPurpose: (id: string, purpose: string | undefined) => boolean;
+  /** Replace the wire's limits. Returns whether anything changed. */
+  setConnectionLimits: (id: string, limits: WireLimits | undefined) => boolean;
   startPending: (from: ConnectionEndpoint, cursor: { x: number; y: number }) => void;
   updatePendingCursor: (cursor: { x: number; y: number }) => void;
   /**
@@ -140,6 +162,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       to,
       createdAt: Date.now(),
       origin,
+      v: WIRE_MODEL_VERSION,
     };
     set((state) => ({
       connections: { ...state.connections, [id]: connection },
@@ -166,10 +189,16 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const existing = get().connections[id];
     if (!existing) return;
     const next: ConnectionData = { ...existing, from: existing.to, to: existing.from };
-    if (next.type && !validConnectionTypes(next.from.kind, next.to.kind).includes(next.type)) {
-      delete next.type;
+    // A plain link stays a plain link. Anything else takes what the new
+    // direction means by default: a reply rule written for one direction
+    // means nothing the other way round.
+    if (existing.type !== "relates-to") {
+      next.type = defaultConnectionType(next.from.kind, next.to.kind);
       delete next.customPrompt;
     }
+    // A limit belongs to the end it narrows; turned round, that end is now
+    // the tail and the limit no longer applies to anything.
+    delete next.limits;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
   },
@@ -179,6 +208,34 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     if (!existing || existing.twoWay === twoWay) return;
     set((state) => ({ connections: { ...state.connections, [id]: { ...existing, twoWay } } }));
     markDirty();
+  },
+
+  setConnectionPurpose: (id, purpose) => {
+    const existing = get().connections[id];
+    if (!existing) return false;
+    const normalized = normalizeWirePurpose(purpose);
+    if (existing.purpose === normalized) return false;
+    const next: ConnectionData = { ...existing };
+    if (normalized) next.purpose = normalized;
+    else delete next.purpose;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
+  },
+
+  setConnectionLimits: (id, limits) => {
+    const existing = get().connections[id];
+    if (!existing) return false;
+    const cleaned: WireLimits = {};
+    if (limits?.browser === "read") cleaned.browser = "read";
+    const before = JSON.stringify(existing.limits ?? {});
+    if (before === JSON.stringify(cleaned)) return false;
+    const next: ConnectionData = { ...existing };
+    if (Object.keys(cleaned).length) next.limits = cleaned;
+    else delete next.limits;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
   },
 
   removeConnection: (id) => {

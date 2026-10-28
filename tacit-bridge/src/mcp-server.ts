@@ -462,17 +462,23 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "list_nodes",
     {
-      title: "List every node on the canvas",
+      title: "List what you're wired to on the canvas",
       description:
-        "Lists every terminal, browser, and note on the current canvas — id, kind, position, size, type, status, and startedBy: \"user\", or the agent that started it as \"terminal:<id>\" (yours if it's your own id). Your own terminal has you: true. A node wired to you has `wire`, seen from you: to_it (send_to_connected reaches it), from_it (it sends to you), both_ways, or relates_only (a recorded relationship that carries nothing). Nodes an agent started count toward the worker limit; ones the user opened don't. Open to any terminal, not just the workdesk manager. Use this to see what already exists before spawning something new or connecting nodes.",
-      inputSchema: {},
+        "Lists the nodes you're wired to on the canvas, and your own terminal (you: true). Each wired node has `wire`, seen from you: to_it (you can start things there), from_it (it reaches you; you can't start anything there), both_ways, or relates_only (a plain link that carries nothing); `purpose`, what the user drew the wire for, when they wrote one; and `can`, what you may do there (e.g. drive, read, tell, run commands in, add to). Pass all: true to list every terminal, browser and note on the canvas instead; the workdesk manager always gets everything. Every node has id, kind, position, size, type, status, and startedBy: \"user\" or the agent that started it as \"terminal:<id>\". Nodes an agent started count toward the worker limit; ones the user opened don't.",
+      inputSchema: {
+        all: z
+          .boolean()
+          .optional()
+          .describe("List every node on the canvas, not only what you're wired to"),
+      },
     },
-    async () => {
+    async ({ all }) => {
       const terminalId = getTerminalId();
-      const result = await apiRequest(
-        "GET",
-        terminalId ? `/workspace/nodes?for=${encodeURIComponent(terminalId)}` : "/workspace/nodes",
-      );
+      const query = new URLSearchParams();
+      if (terminalId) query.set("for", terminalId);
+      if (all) query.set("all", "1");
+      const suffix = query.toString();
+      const result = await apiRequest("GET", suffix ? `/workspace/nodes?${suffix}` : "/workspace/nodes");
       return textResult(JSON.stringify(result, null, 2));
     },
   );

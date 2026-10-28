@@ -92,6 +92,14 @@ function isBrowserConnectorRoute(method: string, pathname: string): boolean {
   return method === "POST" && BROWSER_CONNECTOR_ROUTES.has(pathname);
 }
 
+/** What a read-only wire to a browser still allows. */
+const READ_ONLY_BROWSER_ACTIONS: ReadonlySet<string> = new Set(["read", "screenshot"]);
+
+interface BrowserBinding {
+  browserId: string | null;
+  access: "read" | "drive" | null;
+}
+
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
@@ -363,7 +371,7 @@ export class ApiServer {
       return this.terminalRemember(id, body);
     }
     if (method === "GET" && pathname === "/workspace/nodes") {
-      return this.workspaceNodes(url.searchParams.get("for"));
+      return this.workspaceNodes(url.searchParams.get("for"), url.searchParams.get("all") === "1");
     }
     if (method === "GET" && pathname.match(/^\/workspace\/node\/[^/]+\/[^/]+$/)) {
       const parts = pathname.split("/");
@@ -1068,7 +1076,7 @@ export class ApiServer {
     if (!params || typeof params !== "object" || Array.isArray(params)) {
       throw Object.assign(new Error("params must be an object"), { status: 400 });
     }
-    const actor = await this.resolveBrowserActionActor(id, body?.actor);
+    const actor = await this.resolveBrowserActionActor(id, body?.actor, action);
 
     // Lets the canvas visually pulse the connection while a browser-bridge
     // tool call is actually in flight (see src/canvas/ConnectionLayer.tsx,
@@ -1109,12 +1117,27 @@ export class ApiServer {
     }
   }
 
-  private async resolveBrowserActionActor(browserId: string, candidate: unknown): Promise<string> {
+  private async resolveBrowserActionActor(browserId: string, candidate: unknown, action: string): Promise<string> {
     if (typeof candidate !== "string" || !candidate.startsWith("terminal:")) return "system";
     const terminalId = candidate.slice("terminal:".length);
     if (!terminalId || terminalId.includes(":")) return "system";
-    const binding = await this.terminalBrowserBinding(terminalId);
-    return binding?.browserId === browserId ? candidate : "system";
+    const binding = (await this.terminalBrowserBinding(terminalId)) as BrowserBinding | null;
+    // The wire is the permission: a terminal reaches only the browser it is
+    // wired to, along the wire's direction, and a read-only wire allows
+    // reading and nothing that changes the page.
+    if (binding?.browserId !== browserId) {
+      throw Object.assign(
+        new Error("This terminal isn't wired to that browser. Ask the user to draw a wire from it to the browser."),
+        { status: 403, code: "not_wired" },
+      );
+    }
+    if (binding.access === "read" && !READ_ONLY_BROWSER_ACTIONS.has(action)) {
+      throw Object.assign(
+        new Error(`The wire to this browser is read-only, so "${action}" is refused. browser_read still works; ask the user to let the wire drive the page if you need to.`),
+        { status: 403, code: "read_only" },
+      );
+    }
+    return candidate;
   }
 
   private browserConnectComplete(body: any) {
@@ -1235,7 +1258,7 @@ export class ApiServer {
           }
         | { kind: "browser"; id: string }
         | { kind: "note"; id: string }
-      ) & { direction: WireDirection }
+      ) & { direction: WireDirection; can: string[] }
     >;
 
     const win = this.deps.getWindow();
@@ -1337,6 +1360,13 @@ export class ApiServer {
               ok: false,
               reason: "no payload.url to navigate to",
             });
+          } else if (!target.can.includes("drive")) {
+            notified.push({
+              kind: "browser",
+              id: target.id,
+              ok: false,
+              reason: "the wire to this browser is read-only",
+            });
           } else {
             await this.browserUpdate(target.id, { url });
             notified.push({ kind: "browser", id: target.id, ok: true });
@@ -1415,11 +1445,19 @@ export class ApiServer {
   /**
    * Backs the list_nodes MCP tool — open to any terminal, no gating. With
    * `forTerminalId`, each node also says whether and which way it is wired
-   * to that terminal.
+   * to that terminal, what the wire is for and what it may do there.
    */
-  private async workspaceNodes(forTerminalId: string | null) {
+  private async workspaceNodes(forTerminalId: string | null, all: boolean) {
+    // An agent sees what it is wired to; the workdesk manager, which reaches
+    // every node in its workdesk, sees everything, as does anyone who asks.
+    const everything =
+      all ||
+      !forTerminalId ||
+      ((await this.execRenderer(
+        `window.__tcApi.isWorkspaceManager(${JSON.stringify(forTerminalId)})`,
+      )) as boolean);
     return this.execRenderer(
-      `window.__tcApi.listWorkspaceNodes(${JSON.stringify(forTerminalId)})`,
+      `window.__tcApi.listWorkspaceNodes(${JSON.stringify(forTerminalId)}, ${JSON.stringify(everything)})`,
     );
   }
 

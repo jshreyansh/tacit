@@ -477,6 +477,7 @@ export const en = {
   activity_kind_unwire: "unwired",
   activity_kind_retype_wire: "rewired",
   activity_kind_redirect_wire: "rewired",
+  activity_kind_edit_wire: "wire changed",
   activity_kind_rename: "renamed",
   activity_kind_manager: "manager",
   activity_kind_browser_action: "browser",
@@ -1149,28 +1150,47 @@ export const en = {
   connection_endpoint_unknown_terminal: "a terminal that no longer exists",
   connection_endpoint_unknown_browser: "a browser that no longer exists",
   connection_endpoint_unknown_note: "a note that no longer exists",
-  connection_change_type: "Change type…",
-  connection_type_menu_aria_label: "Connection type",
+  wire_label_link: "relates to",
+  wire_label_replies_chat: "sends replies to",
+  wire_label_replies_note: "writes replies to",
+  wire_label_drives: "drives",
+  wire_label_reads: "reads",
+  wire_label_messages: "messages",
+  wire_label_runs: "runs in",
+  wire_label_adds: "adds to",
+  wire_label_logs: "logs to",
+  wire_label_sends: "sends to",
+  connection_open_panel: "Wire settings…",
+  connection_panel_aria: "Wire",
   connection_flip: "Turn round",
   connection_two_way: "Both ways",
   connection_recent_heading: "Recent messages",
   connection_message_failed: "didn't arrive",
-  // Formatted with the wire's current type — the label on the wire is a
-  // button, so it needs to say what pressing it does.
-  connection_type_label_aria: "Connection type: {type}. Change it.",
-  // Which rows run is now marked per row, because a single line could not say
-  // *which* ones and went stale the moment `sends replies to` landed. This
-  // explains the marker rather than restating the list.
-  connection_type_inactive_note:
-    "Marked rows are recorded and drawn, but nothing runs yet.",
-  connection_type_pending_row: "not yet",
-  connection_type_custom_title: "What happens in transit",
-  connection_type_custom_placeholder: "e.g. send only the final summary",
-  connection_type_custom_apply: "Apply",
-  // Formatted with the remaining character count.
-  connection_type_custom_remaining: "{n} characters left",
-  connection_type_custom_caveat:
-    "Interpreted, so it may not do exactly what you pictured — and it costs one model call each time this wire delivers something.",
+  // Formatted with what the wire's label says. The label is a button.
+  connection_label_aria: "Wire: {label}. Open its settings.",
+  connection_purpose_label: "Purpose",
+  connection_purpose_placeholder: "What is this wire for?",
+  connection_live: "Live",
+  connection_plain: "Just a link",
+  connection_plain_note: "A plain link: it's drawn and recorded, and nothing travels over it.",
+  connection_access_drive: "Can drive",
+  connection_access_read: "Read only",
+  // {node} is one end, {list} what it can do, {other} the other end:
+  // "Claude can read and drive localhost".
+  connection_can: "{node} can {list} {other}.",
+  connection_can_join: ", ",
+  connection_can_last: " and ",
+  connection_starts_nothing: "{node} doesn't start things, so nothing runs from its side.",
+  connection_ability_drive: "drive",
+  connection_ability_read: "read",
+  connection_ability_tell: "message",
+  connection_ability_ask: "ask",
+  connection_ability_hand_off: "hand off to",
+  connection_ability_run: "run commands in",
+  connection_ability_append: "add to",
+  connection_ability_log: "log steps in",
+  connection_reply_rule_browser: "Paste each finished reply into this page's chat",
+  connection_reply_rule_note: "Add each finished reply to this note",
 
   canvas_empty_eyebrow: "Getting started",
   canvas_empty_line_lead: "Create your first space.",

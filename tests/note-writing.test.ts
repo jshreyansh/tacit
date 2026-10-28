@@ -71,7 +71,9 @@ test("a note at the ceiling refuses the write instead of trimming itself", () =>
 test("only outgoing writes-to wires into notes are resolved", () => {
   const wires = [
     { id: "w1", from: { kind: "terminal", id: "t1" }, to: { kind: "note", id: "n1" }, type: "writes-to" },
-    // Untyped terminal>note already means writes-to by default.
+    // Untyped: passing replies on is a rule the user turns on, not what
+    // drawing the wire does. Wires saved before this are stamped writes-to
+    // on load (src/canvas/wireMigration.ts).
     { id: "w2", from: { kind: "terminal", id: "t1" }, to: { kind: "note", id: "n2" } },
     // Pointing at the agent, not away from it.
     { id: "w3", from: { kind: "note", id: "n3" }, to: { kind: "terminal", id: "t1" }, type: "writes-to" },
@@ -82,8 +84,5 @@ test("only outgoing writes-to wires into notes are resolved", () => {
     // No completion signal exists for a browser node to fire on.
     { id: "w6", from: { kind: "browser", id: "b1" }, to: { kind: "note", id: "n6" }, type: "writes-to" },
   ];
-  assert.deepEqual(resolveNoteWriteTargets("t1", wires), [
-    { wireId: "w1", id: "n1" },
-    { wireId: "w2", id: "n2" },
-  ]);
+  assert.deepEqual(resolveNoteWriteTargets("t1", wires), [{ wireId: "w1", id: "n1" }]);
 });

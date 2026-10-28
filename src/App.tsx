@@ -60,7 +60,7 @@ import {
   downloadDoneNotice,
   downloadStartedNotice,
 } from "./browser/downloadNotice";
-import { useConnectionStore, connectionsInvolving } from "./stores/connectionStore";
+import { useConnectionStore } from "./stores/connectionStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
 import { BrowserController, resolveBrowserNodeBinding } from "./browser/browserController";
 import {
@@ -70,6 +70,7 @@ import {
 } from "./browser/agentBrowserProfiles";
 import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
 import { nodeTitle, wireEndsOf } from "./canvas/wireEnds";
+import { ABILITY_WORDS } from "../shared/node-contracts";
 import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
 import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { subscribePinEvents, usePinStore } from "./stores/pinStore";
@@ -724,25 +725,21 @@ export function App() {
       },
 
       // Backs the tacit-bridge MCP server's gating check
-      // (tacit-bridge/src/mcp-server.ts): a terminal's browser tools stay inert until this
-      // resolves to a real id. "Most recently connected wins" if a terminal
-      // somehow ends up wired to more than one browser tile.
+      // (tacit-bridge/src/mcp-server.ts) and the server's per-call check in
+      // electron/api-server.ts: a terminal's browser tools work only on a
+      // browser it may read over a wire, which follows the wire's direction
+      // and skips plain links. "Most recently connected wins" if a terminal
+      // can reach more than one browser. `access` is "read" when the wire is
+      // read-only.
       getBrowserBindingForTerminal: (terminalId: string) => {
-        const connections = connectionsInvolving(
-          useConnectionStore.getState().connections,
-          "terminal",
-          terminalId,
-        );
-        let mostRecent: { id: string; createdAt: number } | null = null;
-        for (const connection of connections) {
-          const other =
-            connection.from.kind === "browser" ? connection.from : connection.to;
-          if (other.kind !== "browser") continue;
-          if (!mostRecent || connection.createdAt > mostRecent.createdAt) {
-            mostRecent = { id: other.id, createdAt: connection.createdAt };
+        let best: { id: string; createdAt: number; access: "read" | "drive" } | null = null;
+        for (const end of wireEndsOf("terminal", terminalId)) {
+          if (end.kind !== "browser" || !end.can.includes("read")) continue;
+          if (!best || end.createdAt > best.createdAt) {
+            best = { id: end.id, createdAt: end.createdAt, access: end.can.includes("drive") ? "drive" : "read" };
           }
         }
-        return { browserId: mostRecent?.id ?? null };
+        return { browserId: best?.id ?? null, access: best?.access ?? null };
       },
 
       // Backs the remember MCP tool (tacit-bridge/src/mcp-server.ts via
@@ -765,7 +762,8 @@ export function App() {
       // Each end says which way its wire runs, so an event doesn't travel
       // up a wire that points at the emitter.
       getConnectionsForNode: (kind: ConnectionEndpoint["kind"], id: string) => {
-        return wireEndsOf(kind, id).map((end) => {
+        // A plain link carries nothing, events included.
+        return wireEndsOf(kind, id).filter((end) => !end.plain).map((end) => {
           if (end.kind === "terminal") {
             return {
               kind: "terminal" as const,
@@ -774,12 +772,13 @@ export function App() {
               terminalType: end.terminalType ?? null,
               worktreePath: end.worktreePath ?? null,
               direction: end.direction,
+              can: end.can,
             };
           }
           // A note is reported so callers can see it is connected, but it has
           // no reaction — nodeEmit (electron/api-server.ts) skips notes
           // rather than treating them as a drivable endpoint.
-          return { kind: end.kind, id: end.id, direction: end.direction };
+          return { kind: end.kind, id: end.id, direction: end.direction, can: end.can };
         });
       },
 
@@ -808,13 +807,19 @@ export function App() {
       // one flat space, same as focusableNodes.ts's collector does for
       // focus view. Pins without x/y (list/drawer-only, never placed on the
       // canvas) are excluded, same as focusableNodes.ts excludes them.
-      listWorkspaceNodes: (forTerminalId?: string | null) => {
-        // Seen from the asking terminal: itself, and which way each node is
-        // wired to it (absent when it isn't).
-        const wires = new Map<string, string>();
+      listWorkspaceNodes: (forTerminalId?: string | null, everything = true) => {
+        // Seen from the asking terminal: itself, which way each node is
+        // wired to it, what the wire is for and what it may do there.
+        // Without `everything`, only those nodes: an agent's view grows with
+        // its wires, not with the canvas.
+        const wires = new Map<string, { wire: string; purpose?: string; can: string[] }>();
         if (forTerminalId) {
           for (const end of wireEndsOf("terminal", forTerminalId)) {
-            wires.set(`${end.kind === "note" ? "pin" : end.kind}:${end.id}`, end.carries ? end.direction : "relates_only");
+            wires.set(`${end.kind === "note" ? "pin" : end.kind}:${end.id}`, {
+              wire: end.plain ? "relates_only" : end.direction,
+              ...(end.purpose ? { purpose: end.purpose } : {}),
+              can: end.can.map((ability) => ABILITY_WORDS[ability]),
+            });
           }
         }
         const nodes: Array<{
@@ -830,6 +835,8 @@ export function App() {
           startedBy: string | null;
           you?: true;
           wire?: string;
+          purpose?: string;
+          can?: string[];
         }> = [];
 
         const { projects } = useProjectStore.getState();
@@ -891,7 +898,14 @@ export function App() {
           for (const node of nodes) {
             if (node.kind === "terminal" && node.id === forTerminalId) node.you = true;
             const wire = wires.get(`${node.kind}:${node.id}`);
-            if (wire) node.wire = wire;
+            if (wire) {
+              node.wire = wire.wire;
+              if (wire.purpose) node.purpose = wire.purpose;
+              node.can = wire.can;
+            }
+          }
+          if (!everything) {
+            return JSON.parse(JSON.stringify(nodes.filter((node) => node.you || node.wire)));
           }
         }
         return JSON.parse(JSON.stringify(nodes));
