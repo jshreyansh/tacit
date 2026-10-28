@@ -278,6 +278,7 @@ export function ConnectionLayer() {
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const [waitingMenu, setWaitingMenu] = useState<{ x: number; y: number; terminalId: string } | null>(null);
   const waitingMail = useWireMailboxStore((s) => s.waiting);
+  const hydraStatus = useWireMailboxStore((s) => s.hydra);
   // Opened by clicking a wire's type label — a separate piece of state from
   // `menu` (the right-click one) so the two can never fight over one anchor.
   const [typeMenu, setTypeMenu] = useState<{
@@ -944,7 +945,14 @@ export function ConnectionLayer() {
               connection,
               tailAbilities: abilitiesFor(connection, connection.from),
             });
-            const labelText = label.kind === "purpose" ? label.text : t[label.key];
+            // A Hydra worker's wire says what the worker is and how it's going.
+            const hydra =
+              !connection.purpose && connection.to.kind === "terminal" ? hydraStatus[connection.to.id] : undefined;
+            const labelText = hydra
+              ? t.wire_label_hydra.replace("{role}", hydra.role).replace("{status}", t[`hydra_status_${hydra.status}` as const])
+              : label.kind === "purpose"
+                ? label.text
+                : t[label.key];
 
             return (
               <button

@@ -1112,6 +1112,28 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("wire-mailbox:changed", listener);
       return () => ipcRenderer.removeListener("wire-mailbox:changed", listener);
     },
+    /** A tracked hand-off came back stuck or failed (electron/tracked-handoff.ts). */
+    onTrackedFlag: (
+      callback: (payload: import("../src/types").TrackedHandoffFlag) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").TrackedHandoffFlag,
+      ) => callback(payload);
+      ipcRenderer.on("wire:tracked-flag", listener);
+      return () => ipcRenderer.removeListener("wire:tracked-flag", listener);
+    },
+    /** Role and status of a Hydra worker, for the label on its wire. */
+    onHydraStatus: (
+      callback: (payload: import("../src/types").HydraWireStatus) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").HydraWireStatus,
+      ) => callback(payload);
+      ipcRenderer.on("wire:hydra-status", listener);
+      return () => ipcRenderer.removeListener("wire:hydra-status", listener);
+    },
     flushWaiting: (terminalId: string) =>
       ipcRenderer.invoke("wire-mailbox:flush", terminalId) as Promise<{ delivered: number; failed: number }>,
     discardWaiting: (terminalId: string) =>

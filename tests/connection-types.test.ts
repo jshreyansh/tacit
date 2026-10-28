@@ -131,3 +131,19 @@ test("a note wire is Send unless set to Reread, and turning it round drops Rerea
   store.getState().flipConnection(id);
   assert.equal("noteMode" in store.getState().connections[id]!, false);
 });
+
+test("a wire's tracking is Auto unless set, and its role goes when it's turned round", () => {
+  const store = freshStore();
+  const id = store.getState().addConnection({ kind: "terminal", id: "t1" }, { kind: "terminal", id: "t2" })!;
+  assert.equal(store.getState().connections[id]!.track, undefined);
+  assert.equal(store.getState().setConnectionTracking(id, "always"), true);
+  assert.equal(store.getState().connections[id]!.track, "always");
+  assert.equal(store.getState().setConnectionTracking(id, "auto"), true);
+  assert.equal("track" in store.getState().connections[id]!, false);
+  assert.equal(store.getState().setConnectionRole(id, "reviewer"), true);
+  assert.equal(store.getState().setConnectionRole(id, "wizard" as never), true, "an unknown role clears it");
+  assert.equal("role" in store.getState().connections[id]!, false);
+  store.getState().setConnectionRole(id, "qa");
+  store.getState().flipConnection(id);
+  assert.equal("role" in store.getState().connections[id]!, false);
+});

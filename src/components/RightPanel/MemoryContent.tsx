@@ -609,6 +609,7 @@ const KIND_TOKEN: Record<string, string> = {
   retype_wire: "var(--purple)",
   redirect_wire: "var(--purple)",
   edit_wire: "var(--purple)",
+  tracked_handoff: "var(--purple)",
   rename: "var(--text-muted)",
   manager: "var(--amber)",
   browser_action: "var(--cyan)",

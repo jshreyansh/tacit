@@ -19,7 +19,10 @@ import {
   setConnectionTypeInScene,
   addRuleInScene,
   removeRuleInScene,
+  setConnectionRoleInScene,
+  setConnectionTrackingInScene,
 } from "../actions/sceneConnectionActions";
+import { WIRE_ROLES, isWireRole } from "../../shared/wire-tracking";
 import { rulesOffered, type RuleTrigger } from "../../shared/wire-rules";
 import type { ConnectionData } from "../stores/connectionStore";
 import type { WireMessage } from "../stores/bridgeActivityStore";
@@ -81,6 +84,8 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
   const browserHead = toRole === "browser" && nodeContract(fromRole).startsThings;
   const readOnly = connection.limits?.browser === "read";
   const noteIntoAgent = (fromRole === "note" || fromRole === "task") && toRole === "agent";
+  const agentToAgent = fromRole === "agent" && toRole === "agent";
+  const tracking = connection.track ?? "auto";
   const reread = connection.noteMode === "reread";
   const replyRule =
     fromRole === "agent" && toRole === "browser"
@@ -277,6 +282,50 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
               {t.connection_note_reread_hint}
             </div>
           )}
+        </>
+      )}
+
+      {!plain && agentToAgent && (
+        <div className="px-3 pb-2 flex flex-col gap-1.5">
+          <label className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
+            <span>{t.connection_role_label.replace("{other}", toName)}</span>
+            <select
+              value={connection.role ?? ""}
+              aria-label={t.connection_role_label.replace("{other}", toName)}
+              className="bg-transparent border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
+              onChange={(event) =>
+                setConnectionRoleInScene(connection.id, isWireRole(event.target.value) ? event.target.value : null)
+              }
+            >
+              <option value="">{t.connection_role_none}</option>
+              {WIRE_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">{t.connection_track_label}</span>
+        </div>
+      )}
+      {!plain && agentToAgent && (
+        <>
+          <Segmented
+            options={(["off", "auto", "always"] as const).map((mode) => ({
+              key: mode,
+              label: mode === "off" ? t.connection_track_off : mode === "auto" ? t.connection_track_auto : t.connection_track_always,
+              active: tracking === mode,
+              onPick: () => setConnectionTrackingInScene(connection.id, mode),
+            }))}
+          />
+          <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-faint)]">
+            {(tracking === "auto"
+              ? t.connection_track_hint_auto
+              : tracking === "always"
+                ? t.connection_track_hint_always
+                : t.connection_track_hint_off
+            ).replace("{other}", toName)}
+          </div>
         </>
       )}
 

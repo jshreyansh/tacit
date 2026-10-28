@@ -192,16 +192,29 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Hand work to an agent you're wired to",
       description:
-        "Hands work to an agent you're wired to on the canvas: you're done with it, and it carries on from here. It receives the work as a new message saying it was handed off by you. Nothing comes back automatically; use ask instead if you want an answer. Write the work so it can be finished without you: what was done, what's left, where things are. If the agent is busy, it gets this when its current turn ends.",
+        "Hands work to an agent you're wired to on the canvas: you're done with it, and it carries on from here. It receives the work as a new message saying it was handed off by you. Write the work so it can be finished without you: what was done, what's left, where things are. If the agent is busy, it gets this when its current turn ends. Some hand-offs are tracked (Hydra's result contract): the receiver gets a task sheet and writes a report and a typed result (completed, stuck, error), and the outcome comes back to you as a new message. The wire's setting decides; on Auto, a hand-off is tracked when it changes code (say so with changes_code), when the wire gives the receiver a role, or when you ask for a typed result. Otherwise nothing comes back automatically; use ask if you want an answer.",
       inputSchema: {
         to: z.string().describe("The id of the agent you're wired to, from list_nodes"),
         work: z.string().describe("What to do, with the context needed to finish it"),
+        changes_code: z
+          .boolean()
+          .optional()
+          .describe("True if the work will change code; on an Auto wire this makes it tracked"),
+        typed_result: z
+          .boolean()
+          .optional()
+          .describe("True to get a typed result (completed, stuck, error) back"),
       },
     },
-    async ({ to, work }) => {
+    async ({ to, work, changes_code, typed_result }) => {
       const terminalId = getTerminalId();
       if (!terminalId) return textResult("Not running inside a Tacit terminal.");
-      const result = await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/hand-off`, { to, work });
+      const result = await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/hand-off`, {
+        to,
+        work,
+        changes_code,
+        typed_result,
+      });
       return textResult(JSON.stringify(result, null, 2));
     },
   );

@@ -1312,6 +1312,17 @@ export class TelemetryService {
     return held;
   }
 
+  /** Live terminals a Hydra workbench dispatched, with where their assignment lives. */
+  hydraWorkers(): Array<{ terminalId: string; workflowId: string; assignmentId: string; repoPath: string }> {
+    const out: Array<{ terminalId: string; workflowId: string; assignmentId: string; repoPath: string }> = [];
+    for (const [id, state] of this.terminals) {
+      const { workflow_id, assignment_id, repo_path, pty_alive } = state.snapshot;
+      if (!pty_alive || !workflow_id || !assignment_id || !repo_path) continue;
+      out.push({ terminalId: id, workflowId: workflow_id, assignmentId: assignment_id, repoPath: repo_path });
+    }
+    return out;
+  }
+
   getTerminalSnapshot(terminalId: string): TerminalTelemetrySnapshot | null {
     const state = this.terminals.get(terminalId);
     if (!state) return null;

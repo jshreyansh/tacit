@@ -270,6 +270,8 @@ export function summarize(entry: CaptureEntry): string {
         changes.push(entry.purpose ? `its purpose is now "${entry.purpose}"` : "its purpose was cleared");
       }
       if (entry.rule) changes.push(entry.rule);
+      if (entry.track) changes.push(`hand-offs along it are tracked: ${entry.track}`);
+      if (entry.role !== undefined) changes.push(entry.role ? `its far end plays the ${entry.role} role` : "its role was cleared");
       if (entry.note_mode) {
         changes.push(entry.note_mode === "reread" ? "the agent now rereads the note as standing context" : "the note is now sent by hand");
       }
@@ -278,6 +280,10 @@ export function summarize(entry: CaptureEntry): string {
       }
       return `changed the wire from ${entry.from} to ${entry.to}: ${changes.join("; ") || "no change"}`;
     }
+    case "tracked_handoff":
+      return entry.state === "started"
+        ? `handed tracked work from ${entry.from} to ${entry.to} (${entry.dir})`
+        : `tracked hand-off from ${entry.from} to ${entry.to}: ${entry.state}${entry.stuck_reason ? ` (${entry.stuck_reason})` : ""}`;
     case "close":
       return `closed ${entry.node}${entry.reason ? ` — ${entry.reason.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "rename":
@@ -327,6 +333,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "retype_wire":
     case "redirect_wire":
     case "edit_wire":
+    case "tracked_handoff":
       return [entry.from, entry.to];
     case "prompt":
       return [entry.actor];

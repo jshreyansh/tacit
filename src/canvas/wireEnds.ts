@@ -49,6 +49,10 @@ export interface WireEndView {
   carries: boolean;
   purpose?: string;
   limits?: WireLimits;
+  /** Hydra tracking for hand-offs along the wire (shared/wire-tracking.ts). */
+  track: "off" | "auto" | "always";
+  /** The Hydra role this end plays for the node asking, when the wire gives one. */
+  hydraRole?: string;
   createdAt: number;
   ptyId?: number | null;
   terminalType?: string | null;
@@ -109,8 +113,10 @@ export function wireEndsOf(kind: ConnectionEndpointKind, id: string): WireEndVie
       can,
       sends: payloadsOver(connection, self, selfRole, role),
       carries: carriesMessages(can),
+      track: connection.track ?? "auto",
       createdAt: connection.createdAt,
     };
+    if (connection.role && other === connection.to) end.hydraRole = connection.role;
     if (connection.purpose) end.purpose = connection.purpose;
     if (connection.limits) end.limits = connection.limits;
     if (other.kind === "terminal") {

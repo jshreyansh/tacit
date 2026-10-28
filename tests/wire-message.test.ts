@@ -148,9 +148,19 @@ test("only an agent at the far end of a live wire can be asked or handed work", 
   await rejects(askAlongWire(askHarness([codexAgent]).deps, "me", { to: "cx", question: " " }), "empty_message");
 });
 
+function handOffDeps(h: ReturnType<typeof harness>, tracked: string[] = []) {
+  return {
+    ...h.deps,
+    track: ({ id, why }: { id: string; why: string }) => {
+      tracked.push(why);
+      return { notice: `TRACKED ${id}`, dir: `/w/.hydra/handoffs/${id}` };
+    },
+  };
+}
+
 test("hand_off tells the receiver the sender has stopped and it's theirs to finish", async () => {
   const h = harness([codexAgent]);
-  const result = await handOffAlongWire(h.deps, "me", { to: "cx", work: "Finish the migration in shared/." });
+  const result = await handOffAlongWire(handOffDeps(h), "me", { to: "cx", work: "Finish the migration in shared/." });
   assert.equal(result.ok, true);
   assert.equal(h.typed[0].text, handOffText({ id: "me", title: "claude" }, "Finish the migration in shared/."));
   assert.match(h.typed[0].text, /has stopped working on this, and it is yours to finish/);
@@ -161,4 +171,29 @@ test("a shell can't ask, because the answer typed into it would run as a command
   h.deps.wiresOf = async () => ({ sender: { id: "me", title: "Terminal", role: "shell" }, ends: [codexAgent] });
   await rejects(askAlongWire(h.deps, "me", { to: "cx", question: "hi" }), "asker_is_a_shell");
   assert.equal(h.sent.length, 0);
+});
+
+test("a hand-off is tracked by the wire's switch and the work's signals, and the sender is told", async () => {
+  const tracked: string[] = [];
+  // Auto, nothing to go on: light.
+  const light = harness([codexAgent]);
+  const r1 = await handOffAlongWire(handOffDeps(light, tracked), "me", { to: "cx", work: "Look at this" });
+  assert.equal((r1 as { tracked: boolean }).tracked, false);
+  assert.doesNotMatch(light.typed[0].text, /TRACKED/);
+
+  // Auto, changes code: tracked, and the receiver gets the notice.
+  const code = harness([codexAgent]);
+  const r2 = await handOffAlongWire(handOffDeps(code, tracked), "me", { to: "cx", work: "Fix auth.ts", changes_code: true });
+  assert.equal((r2 as { tracked: boolean }).tracked, true);
+  assert.match(code.typed[0].text, /\n\nTRACKED /);
+
+  // Off wins over the signals; a role on the wire tracks on Auto.
+  const off = harness([{ ...codexAgent, track: "off" }]);
+  await handOffAlongWire(handOffDeps(off, tracked), "me", { to: "cx", work: "Fix auth.ts", changes_code: true });
+  assert.doesNotMatch(off.typed[0].text, /TRACKED/);
+  const role = harness([{ ...codexAgent, hydraRole: "reviewer" }]);
+  await handOffAlongWire(handOffDeps(role, tracked), "me", { to: "cx", work: "Review this" });
+  assert.match(role.typed[0].text, /TRACKED/);
+
+  assert.deepEqual(tracked, ["the work changes code", "the wire gives the receiver the reviewer role"]);
 });

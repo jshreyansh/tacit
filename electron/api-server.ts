@@ -39,6 +39,9 @@ import {
   type WireSender,
 } from "./wire-message";
 import { WireAsks } from "./wire-asks";
+import { TrackedHandoffs, trackedNotice, type TrackedHandoff } from "./tracked-handoff";
+import { loadRole } from "../hydra/src/roles/loader";
+import { HydraStatusFeed, readHydraStatus } from "./hydra-wire-status";
 import { readFinalAssistantReply } from "./reply-transcript";
 import { isReplyTranscriptProvider } from "../shared/agent-reply";
 import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
@@ -144,6 +147,9 @@ export class ApiServer {
   readonly wireMailbox: WireMailbox;
   /** Questions asked over wires whose answers go back (electron/wire-asks.ts). */
   private readonly wireAsks: WireAsks;
+  /** Hand-offs tracked by Hydra's result contract (electron/tracked-handoff.ts). */
+  private readonly trackedHandoffs: TrackedHandoffs;
+  private readonly hydraStatus = new HydraStatusFeed();
   private readonly mailboxSweep: ReturnType<typeof setInterval>;
   /** Last turn state seen per terminal, to notice a turn ending. */
   private readonly lastTurnState = new Map<string, string | undefined>();
@@ -187,12 +193,61 @@ export class ApiServer {
       now: () => Date.now(),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
+    this.trackedHandoffs = new TrackedHandoffs({
+      writeFile: (file, content) => {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, content, "utf8");
+      },
+      readFile: (file) => {
+        try {
+          return fs.readFileSync(file, "utf8");
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+          throw err;
+        }
+      },
+      modifiedAt: (file) => {
+        try {
+          return fs.statSync(file).mtimeMs;
+        } catch {
+          return null;
+        }
+      },
+      tellSender: (handoff, text) => this.typeIntoTerminal(handoff.senderId, text, `terminal:${handoff.targetId}`),
+      tellTarget: (handoff, text) => this.typeIntoTerminal(handoff.targetId, text, `terminal:${handoff.senderId}`),
+      flag: (handoff, outcome, reason) =>
+        sendToWindow(this.deps.getWindow(), "wire:tracked-flag", {
+          senderTitle: handoff.senderTitle,
+          targetTitle: handoff.targetTitle,
+          outcome,
+          reason: reason ?? null,
+          report: path.join(handoff.dir, "report.md"),
+        }),
+      record: (handoff, state, reason) =>
+        this.deps.recordDecision({
+          kind: "tracked_handoff",
+          from: `terminal:${handoff.senderId}`,
+          to: `terminal:${handoff.targetId}`,
+          handoff_id: handoff.id,
+          state,
+          ...(reason ? { stuck_reason: reason } : {}),
+          dir: handoff.dir,
+          by: `terminal:${handoff.targetId}`,
+        }),
+      now: () => Date.now(),
+      join: (...parts) => path.join(...parts),
+    });
     // Turn ends arrive as telemetry changes (main.ts calls
     // onTerminalSnapshot), but a signal can be missed; this catches
     // anything left waiting, and gives up on answers that never came.
     this.mailboxSweep = setInterval(() => {
       for (const terminalId of this.wireMailbox.terminalsWithMail()) void this.wireMailbox.poke(terminalId);
       void this.wireAsks.sweep();
+      void this.trackedHandoffs.sweep().catch((err) => console.warn("[tracked-handoff] sweep failed", err));
+      const statuses = this.deps.telemetryService.hydraWorkers().map(readHydraStatus).filter((s) => s !== null);
+      for (const status of this.hydraStatus.changes(statuses)) {
+        sendToWindow(this.deps.getWindow(), "wire:hydra-status", status);
+      }
     }, 3_000);
     this.mailboxSweep.unref?.();
     this.workerAdmission = new WorkerAdmission({
@@ -1904,12 +1959,60 @@ export class ApiServer {
     );
   }
 
+  /** Types text into a terminal found by id, through its mailbox if it's an agent. */
+  private async typeIntoTerminal(terminalId: string, text: string, from: CaptureNodeRef): Promise<void> {
+    const node = await this.findNode(terminalId);
+    if (!node || node.kind !== "terminal" || node.ptyId == null || !node.terminalType || !node.worktreePath) {
+      console.warn(`[wires] ${terminalId} is gone; a message for it wasn't delivered`);
+      return;
+    }
+    await this.deliverAlongWire({
+      terminalId,
+      ptyId: node.ptyId,
+      terminalType: node.terminalType,
+      worktreePath: node.worktreePath,
+      text,
+      from,
+    });
+  }
+
   /** Backs the hand_off MCP tool. */
   private handOffConnected(terminalId: string, body: any) {
     return handOffAlongWire(
       {
         wiresOf: (id) => this.wiresOf(id),
         deliverToTerminal: (delivery) => this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}` }),
+        track: ({ id, sender, end, work, why }) => {
+          const handoff: TrackedHandoff = {
+            id,
+            senderId: sender.id,
+            senderTitle: sender.title,
+            targetId: end.id,
+            targetTitle: end.title ?? end.id,
+            dir: path.join(end.worktreePath!, ".hydra", "handoffs", id),
+            startedAt: Date.now(),
+          };
+          let role: { name: string; description: string; body: string } | null = null;
+          if (end.hydraRole) {
+            try {
+              const definition = loadRole(end.hydraRole, end.worktreePath!);
+              role = { name: definition.name, description: definition.description, body: definition.body };
+            } catch (err) {
+              console.warn(`[tracked-handoff] role ${end.hydraRole} couldn't be loaded`, err);
+            }
+          }
+          this.trackedHandoffs.start({ handoff, work, why, role });
+          this.deps.recordDecision({
+            kind: "tracked_handoff",
+            from: `terminal:${sender.id}`,
+            to: `terminal:${end.id}`,
+            handoff_id: id,
+            state: "started",
+            dir: handoff.dir,
+            by: `terminal:${sender.id}`,
+          });
+          return { notice: trackedNotice(handoff, why), dir: handoff.dir };
+        },
         pulse: this.wirePulse(terminalId),
         newId: () => randomUUID(),
       },

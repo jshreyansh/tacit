@@ -10,6 +10,7 @@ import {
   type WireLimits,
 } from "../../shared/node-contracts";
 import type { WireRule } from "../../shared/wire-rules";
+import { isWireRole, type WireRole, type WireTracking } from "../../shared/wire-tracking";
 
 /**
  * Which wiring model a stored wire was written under. Wires without it were
@@ -80,6 +81,11 @@ export interface ConnectionData {
   /** When something happens at one end, send something to the other
    * (shared/wire-rules.ts). */
   rules?: WireRule[];
+  /** Hydra tracking for hand-offs along it (shared/wire-tracking.ts).
+   * Absent means Auto. */
+  track?: "off" | "always";
+  /** A Hydra role the head plays for the tail (dev, reviewer, ...). */
+  role?: WireRole;
 }
 
 interface PendingConnection {
@@ -115,6 +121,8 @@ interface ConnectionStore {
   setConnectionPurpose: (id: string, purpose: string | undefined) => boolean;
   /** Send (once, by hand) or Reread (standing context). Returns whether it changed. */
   setConnectionNoteMode: (id: string, mode: "send" | "reread") => boolean;
+  setConnectionTracking: (id: string, tracking: WireTracking) => boolean;
+  setConnectionRole: (id: string, role: WireRole | null) => boolean;
   /** Add a rule, or replace the one with the same id. */
   putConnectionRule: (id: string, rule: WireRule) => void;
   removeConnectionRule: (id: string, ruleId: string) => boolean;
@@ -216,6 +224,9 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     // a note at the tail, so it goes too.
     delete next.limits;
     delete next.noteMode;
+    // The role is what the head plays for the tail; turned round, it no
+    // longer describes anyone.
+    delete next.role;
     // A rule names its end as "from" or "to"; turned round, those swap.
     if (next.rules) {
       next.rules = next.rules.map((rule) => ({ ...rule, at: rule.at === "from" ? "to" : "from" }));
@@ -251,6 +262,29 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const next: ConnectionData = { ...existing };
     if (mode === "reread") next.noteMode = "reread";
     else delete next.noteMode;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
+  },
+
+  setConnectionTracking: (id, tracking) => {
+    const existing = get().connections[id];
+    if (!existing || (existing.track ?? "auto") === tracking) return false;
+    const next: ConnectionData = { ...existing };
+    if (tracking === "auto") delete next.track;
+    else next.track = tracking;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
+  },
+
+  setConnectionRole: (id, role) => {
+    const existing = get().connections[id];
+    const cleaned = isWireRole(role) ? role : undefined;
+    if (!existing || existing.role === cleaned) return false;
+    const next: ConnectionData = { ...existing };
+    if (cleaned) next.role = cleaned;
+    else delete next.role;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
     return true;

@@ -1,6 +1,7 @@
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { MAX_ENVELOPE_LENGTH, envelopePreview, textForAgent } from "../shared/wire-envelope";
 import { questionText } from "./wire-asks";
+import { shouldTrack, trackingReason } from "../shared/wire-tracking";
 
 /**
  * Backs the send_to_connected MCP tool: an agent passing a message along a
@@ -29,6 +30,10 @@ export interface WireEnd {
   /** What the sender may do there (shared/node-contracts.ts): ask and
    * hand_off are checked against this. */
   can?: string[];
+  /** Hydra tracking switch of the wire (shared/wire-tracking.ts). */
+  track?: "off" | "auto" | "always";
+  /** The Hydra role this end plays for the sender, if the wire gives one. */
+  hydraRole?: string;
   /** Terminal only: null while its PTY has not started or has exited. */
   ptyId?: number | null;
   terminalType?: string | null;
@@ -291,23 +296,44 @@ export function handOffText(sender: WireSender, work: string): string {
   return `[Handed off by ${sender.title} (terminal ${sender.id}), over a wire on the canvas: ${sender.title} has stopped working on this, and it is yours to finish.] ${work}`;
 }
 
+export interface HandOffDeps extends Pick<WireMessageDeps, "wiresOf" | "deliverToTerminal" | "pulse" | "newId"> {
+  /** Sets up a tracked hand-off (electron/tracked-handoff.ts) and returns
+   * what the receiver is told about it. */
+  track: (input: { id: string; sender: WireSender; end: WireEnd; work: string; why: string }) => { notice: string; dir: string };
+}
+
 /** Backs the hand_off MCP tool: the sender is done; the receiver carries on. */
-export async function handOffAlongWire(deps: Pick<WireMessageDeps, "wiresOf" | "deliverToTerminal" | "pulse" | "newId">, senderId: string, body: unknown) {
+export async function handOffAlongWire(deps: HandOffDeps, senderId: string, body: unknown) {
   const input = (body ?? {}) as Record<string, unknown>;
   const work = requireText(input.work, "work");
   const wires = await deps.wiresOf(senderId);
   if (!wires) fail(404, "not_on_canvas", "This terminal isn't on the open canvas.");
   const end = oneTarget(wires.ends, input.to, "hand_off");
   const id = deps.newId();
+  const signals = { changesCode: input.changes_code === true, typedResult: input.typed_result === true, role: end.hydraRole };
+  const tracked = shouldTrack(end.track, signals)
+    ? deps.track({ id, sender: wires.sender, end, work, why: trackingReason(end.track, signals) })
+    : null;
   deps.pulse?.({ phase: "start", requestId: id, targetKind: "terminal", targetId: end.id, preview: envelopePreview(work) });
   const result = await deps.deliverToTerminal({
     terminalId: end.id,
     ptyId: end.ptyId!,
     terminalType: end.terminalType!,
     worktreePath: end.worktreePath!,
-    text: handOffText(wires.sender, work),
+    text: tracked ? `${handOffText(wires.sender, work)}\n\n${tracked.notice}` : handOffText(wires.sender, work),
   });
   deps.pulse?.({ phase: "end", requestId: id, targetKind: "terminal", targetId: end.id, ok: result.ok });
   if (!result.ok) return { ok: false, reason: result.detail ?? "the terminal refused the input" };
-  return { ok: true, ...(result.queued ? { queued: true, waiting: result.waiting } : {}) };
+  return {
+    ok: true,
+    ...(result.queued ? { queued: true, waiting: result.waiting } : {}),
+    ...(tracked
+      ? {
+          tracked: true,
+          why: trackingReason(end.track, signals),
+          result_dir: tracked.dir,
+          note: `${describe(end)} will write a report and a result; the outcome comes back to you as a new message. Carry on meanwhile.`,
+        }
+      : { tracked: false }),
+  };
 }

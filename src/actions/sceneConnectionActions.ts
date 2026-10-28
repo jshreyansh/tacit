@@ -21,6 +21,7 @@ import { wireNoticeText } from "../../shared/wire-notice";
 import { abilitiesFor, endpointRole, nodeTitle } from "../canvas/wireEnds";
 import { migrateWires } from "../canvas/wireMigration";
 import { sendStandingNote } from "../canvas/rereadNotes";
+import type { WireRole, WireTracking } from "../../shared/wire-tracking";
 import {
   DEFAULT_RULE_PER_HOUR,
   ruleWords,
@@ -262,6 +263,23 @@ function recordRuleChange(connection: ConnectionData, rule: WireRule, what: stri
   });
 }
 
+/** The Hydra tracking switch for hand-offs along a wire. */
+export function setConnectionTrackingInScene(id: string, tracking: WireTracking, by: CaptureActor = "user"): void {
+  if (!useConnectionStore.getState().setConnectionTracking(id, tracking)) return;
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({ kind: "edit_wire", from: captureRef(applied.from), to: captureRef(applied.to), track: tracking, by });
+}
+
+/** The role the agent at the head plays for the one at the tail. */
+export function setConnectionRoleInScene(id: string, role: WireRole | null, by: CaptureActor = "user"): void {
+  if (!useConnectionStore.getState().setConnectionRole(id, role)) return;
+  const applied = useConnectionStore.getState().connections[id];
+  if (!applied) return;
+  recordDecision({ kind: "edit_wire", from: captureRef(applied.from), to: captureRef(applied.to), role: applied.role ?? "", by });
+  if (applied.role) void notifyWireEnds(id);
+}
+
 /**
  * Make a wire a plain link, which carries nothing, or a live one again.
  * Recorded as a retype, which is what it is in the stored record.
@@ -451,6 +469,8 @@ async function notifyWireEnds(
       other: { role: endpointRole(other), id: other.id, title: nodeTitle(other.kind, other.id) },
       abilities: abilitiesFor(connection, self),
       purpose: connection.purpose,
+      // The role describes the head, for the tail.
+      role: self === connection.from ? connection.role : undefined,
       twoWay: isTwoWay(connection),
     });
     if (text) await sendWireNotice(self.id, text);

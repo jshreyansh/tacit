@@ -15,6 +15,8 @@ export interface WireNoticeInput {
   /** What the agent may now do to the other end. */
   abilities: readonly Ability[];
   purpose?: string;
+  /** The Hydra role the other end plays for this one (dev, reviewer, ...). */
+  role?: string;
   /** Whether the other end may also start things back. */
   twoWay: boolean;
 }
@@ -60,6 +62,7 @@ export function wireNoticeText(input: WireNoticeInput): string | null {
       parts.push(`A task is wired to you on the canvas: ${name(other)}. Log what you've done in it with send_to_connected: each message becomes a done step (its first line).`);
       break;
   }
+  if (input.role) parts.push(`It is your ${input.role}: hand it ${input.role === "reviewer" ? "work to review" : input.role === "qa" ? "things to test" : "work in that role"} with hand_off.`);
   if (input.purpose) parts.push(`The wire's purpose: ${input.purpose.replace(/[.\s]+$/, "")}.`);
   parts.push("Use it when the task needs it; there is nothing to do about this now. list_nodes shows everything you're wired to.");
   return parts.join(" ");

@@ -151,6 +151,26 @@ export type CaptureEvent =
       note_mode?: "send" | "reread";
       /** A rule added, changed or removed, in words. */
       rule?: string;
+      /** "off", "auto" or "always" when the Hydra tracking switch changed. */
+      track?: "off" | "auto" | "always";
+      /** The role given to the head; "" when it was cleared. */
+      role?: string;
+      by: CaptureActor;
+    }
+  | {
+      /**
+       * A hand-off along a wire tracked by Hydra's result contract
+       * (electron/tracked-handoff.ts): started, then its outcome.
+       */
+      kind: "tracked_handoff";
+      from: CaptureNodeRef;
+      to: CaptureNodeRef;
+      handoff_id: string;
+      state: "started" | "completed" | "stuck" | "error" | "timed_out";
+      stuck_reason?: string;
+      /** Folder with task.md, report.md and result.json. */
+      dir: string;
+      /** The sender when it starts; the receiver for its outcome. */
       by: CaptureActor;
     }
   | {
@@ -502,6 +522,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "retype_wire":
     case "redirect_wire":
     case "edit_wire":
+    case "tracked_handoff":
     case "unwire": return event.from;
     case "topology": return null;
     case "spawn_refused": return null;

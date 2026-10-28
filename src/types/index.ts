@@ -1376,6 +1376,8 @@ export interface TacitAPI {
   };
   wires: {
     onMailboxChanged: (callback: (payload: WireMailboxChange) => void) => () => void;
+    onTrackedFlag: (callback: (payload: TrackedHandoffFlag) => void) => () => void;
+    onHydraStatus: (callback: (payload: HydraWireStatus) => void) => () => void;
     /** Deliver everything waiting for an agent now, in order. */
     flushWaiting: (terminalId: string) => Promise<{ delivered: number; failed: number }>;
     /** Throw away what is waiting for an agent. */
@@ -1564,4 +1566,20 @@ export interface WireSendResult {
   /** The agent was mid-turn; it gets this when the turn ends. */
   queued?: boolean;
   waiting?: number;
+}
+
+/** A tracked hand-off along a wire that came back stuck or failed. */
+export interface TrackedHandoffFlag {
+  senderTitle: string;
+  targetTitle: string;
+  outcome: "completed" | "stuck" | "error";
+  reason: string | null;
+  report: string;
+}
+
+/** A Hydra worker's role and assignment status (electron/hydra-wire-status.ts). */
+export interface HydraWireStatus {
+  terminalId: string;
+  role: string;
+  status: "pending" | "claimed" | "in_progress" | "completed" | "timed_out" | "failed";
 }
