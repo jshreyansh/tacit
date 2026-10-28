@@ -149,6 +149,8 @@ export type CaptureEvent =
       browser_access?: "read" | "drive";
       /** "send" or "reread" when a note wire's mode changed. */
       note_mode?: "send" | "reread";
+      /** A rule added, changed or removed, in words. */
+      rule?: string;
       by: CaptureActor;
     }
   | {

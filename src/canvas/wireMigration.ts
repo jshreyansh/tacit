@@ -1,5 +1,6 @@
 import { normalizeWirePurpose } from "../../shared/node-contracts";
 import { defaultConnectionType } from "../../shared/connection-types";
+import { normalizeRules } from "../../shared/wire-rules";
 import { WIRE_MODEL_VERSION, type ConnectionData } from "../stores/connectionStore";
 
 /**
@@ -20,6 +21,11 @@ import { WIRE_MODEL_VERSION, type ConnectionData } from "../stores/connectionSto
  * safe to run on every load.
  */
 export function migrateWire(wire: ConnectionData): ConnectionData {
+  if (wire.rules !== undefined) {
+    // Rules come back from a file; anything malformed is dropped, not run.
+    const rules = normalizeRules(wire.rules);
+    wire = rules.length ? { ...wire, rules } : (({ rules: _, ...rest }) => rest)(wire);
+  }
   if ((wire.v ?? 0) >= WIRE_MODEL_VERSION) return wire;
   let next: ConnectionData = { ...wire, v: WIRE_MODEL_VERSION };
 

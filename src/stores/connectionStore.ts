@@ -9,6 +9,7 @@ import {
   normalizeWirePurpose,
   type WireLimits,
 } from "../../shared/node-contracts";
+import type { WireRule } from "../../shared/wire-rules";
 
 /**
  * Which wiring model a stored wire was written under. Wires without it were
@@ -76,6 +77,9 @@ export interface ConnectionData {
    * the user passes it along with the Send button.
    */
   noteMode?: "reread";
+  /** When something happens at one end, send something to the other
+   * (shared/wire-rules.ts). */
+  rules?: WireRule[];
 }
 
 interface PendingConnection {
@@ -111,6 +115,9 @@ interface ConnectionStore {
   setConnectionPurpose: (id: string, purpose: string | undefined) => boolean;
   /** Send (once, by hand) or Reread (standing context). Returns whether it changed. */
   setConnectionNoteMode: (id: string, mode: "send" | "reread") => boolean;
+  /** Add a rule, or replace the one with the same id. */
+  putConnectionRule: (id: string, rule: WireRule) => void;
+  removeConnectionRule: (id: string, ruleId: string) => boolean;
   /** Replace the wire's limits. Returns whether anything changed. */
   setConnectionLimits: (id: string, limits: WireLimits | undefined) => boolean;
   startPending: (from: ConnectionEndpoint, cursor: { x: number; y: number }) => void;
@@ -209,6 +216,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     // a note at the tail, so it goes too.
     delete next.limits;
     delete next.noteMode;
+    // A rule names its end as "from" or "to"; turned round, those swap.
+    if (next.rules) {
+      next.rules = next.rules.map((rule) => ({ ...rule, at: rule.at === "from" ? "to" : "from" }));
+    }
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
   },
@@ -240,6 +251,24 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const next: ConnectionData = { ...existing };
     if (mode === "reread") next.noteMode = "reread";
     else delete next.noteMode;
+    set((state) => ({ connections: { ...state.connections, [id]: next } }));
+    markDirty();
+    return true;
+  },
+
+  putConnectionRule: (id, rule) => {
+    const existing = get().connections[id];
+    if (!existing) return;
+    const rules = [...(existing.rules ?? []).filter((r) => r.id !== rule.id), rule];
+    set((state) => ({ connections: { ...state.connections, [id]: { ...existing, rules } } }));
+    markDirty();
+  },
+
+  removeConnectionRule: (id, ruleId) => {
+    const existing = get().connections[id];
+    if (!existing?.rules?.some((r) => r.id === ruleId)) return false;
+    const next: ConnectionData = { ...existing, rules: existing.rules.filter((r) => r.id !== ruleId) };
+    if (!next.rules?.length) delete next.rules;
     set((state) => ({ connections: { ...state.connections, [id]: next } }));
     markDirty();
     return true;

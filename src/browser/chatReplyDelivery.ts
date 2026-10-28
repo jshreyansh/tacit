@@ -26,6 +26,7 @@
  * strictly kinder than delivering it out of order.
  */
 
+import { agentTurnFinished, hasRules } from "../canvas/wireRules";
 import {
   buildChatDeliveryScript,
   type ChatDeliveryScriptResult,
@@ -460,7 +461,10 @@ export async function handleAgentTurnComplete(signal: {
   // period, one reading of the transcript, whether the answer is going into a
   // chat page, into a note, or into both.
   const noteTargets = resolveNoteWriteTargets(terminalId, wires);
-  if (targets.length === 0 && noteTargets.length === 0) return;
+  // Rules on wires (src/canvas/wireRules.ts) that pass a finished reply on
+  // ride the same signal and the same reading of the transcript.
+  const hasTurnRules = hasRules({ kind: "terminal", id: terminalId }, "turn_finished");
+  if (targets.length === 0 && noteTargets.length === 0 && !hasTurnRules) return;
 
   // Supersede any pending delivery for this terminal: the agent spoke again,
   // so whatever it said before was not its last word.
@@ -610,6 +614,10 @@ async function deliverForTerminal(
   if (reply.status === "mid-task" || reply.status === "no-reply") return;
 
   if (reply.status === "unavailable") {
+    if (targets.length === 0 && noteTargets.length === 0) {
+      notify("warn", `Couldn't read ${getTerminalDisplayTitle(terminal)}'s reply, so a rule on its wire didn't run.`);
+      return;
+    }
     // This one *is* worth saying. The user drew a wire and is entitled to know
     // it did not fire, even though the reason is ours rather than theirs.
     const label = [
@@ -627,6 +635,7 @@ async function deliverForTerminal(
   lastDelivered.set(terminalId, reply.text);
 
   await writeReplyToNotes(noteTargets, getTerminalDisplayTitle(terminal), reply.text);
+  await agentTurnFinished(terminalId, reply.text);
 
   for (const target of targets) {
     if (target.kind !== "browser") {

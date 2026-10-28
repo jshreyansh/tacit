@@ -63,6 +63,7 @@ import {
 import { useConnectionStore } from "./stores/connectionStore";
 import { installWireMailbox } from "./stores/wireMailboxStore";
 import { installRereadNotes } from "./canvas/rereadNotes";
+import { RulePrompts } from "./components/RulePrompts";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
 import { driveBrowserCard } from "./browser/driveBrowserCard";
 import {
@@ -1232,6 +1233,7 @@ export function App() {
     >
       <TitleStrip />
       <SettingsModalHost />
+      <RulePrompts />
       <LeftRail />
       <WorkdeskView />
       <NodeTray />

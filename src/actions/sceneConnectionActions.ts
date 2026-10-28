@@ -21,6 +21,12 @@ import { wireNoticeText } from "../../shared/wire-notice";
 import { abilitiesFor, endpointRole, nodeTitle } from "../canvas/wireEnds";
 import { migrateWires } from "../canvas/wireMigration";
 import { sendStandingNote } from "../canvas/rereadNotes";
+import {
+  DEFAULT_RULE_PER_HOUR,
+  ruleWords,
+  type RuleTrigger,
+  type WireRule,
+} from "../../shared/wire-rules";
 
 interface CreateConnectionOptions {
   origin?: ConnectionOrigin;
@@ -208,6 +214,52 @@ export function setConnectionNoteModeInScene(
     by,
   });
   if (mode === "reread") void sendStandingNote(applied);
+}
+
+/**
+ * Add a rule to a wire: when `when` happens at the `at` end, send to the
+ * other end. New rules ask the user before they run (shared/wire-rules.ts).
+ */
+export function addRuleInScene(
+  id: string,
+  when: RuleTrigger,
+  at: "from" | "to",
+  by: CaptureActor = "user",
+): void {
+  const connection = useConnectionStore.getState().connections[id];
+  if (!connection) return;
+  const rule: WireRule = { id: crypto.randomUUID(), when, at, consent: "ask", perHour: DEFAULT_RULE_PER_HOUR };
+  useConnectionStore.getState().putConnectionRule(id, rule);
+  recordRuleChange(connection, rule, "added a rule", by);
+}
+
+export function removeRuleInScene(id: string, ruleId: string, by: CaptureActor = "user"): void {
+  const connection = useConnectionStore.getState().connections[id];
+  const rule = connection?.rules?.find((r) => r.id === ruleId);
+  if (!connection || !rule) return;
+  if (!useConnectionStore.getState().removeConnectionRule(id, ruleId)) return;
+  recordRuleChange(connection, rule, "removed the rule", by);
+}
+
+/** The user chose Always on a rule's prompt: it runs without asking now. */
+export function setRuleAlwaysInScene(id: string, ruleId: string, by: CaptureActor = "user"): void {
+  const connection = useConnectionStore.getState().connections[id];
+  const rule = connection?.rules?.find((r) => r.id === ruleId);
+  if (!connection || !rule || rule.consent === "always") return;
+  useConnectionStore.getState().putConnectionRule(id, { ...rule, consent: "always" });
+  recordRuleChange(connection, rule, "let the rule run without asking", by);
+}
+
+function recordRuleChange(connection: ConnectionData, rule: WireRule, what: string, by: CaptureActor): void {
+  const eventEnd = rule.at === "from" ? connection.from : connection.to;
+  const otherEnd = rule.at === "from" ? connection.to : connection.from;
+  recordDecision({
+    kind: "edit_wire",
+    from: captureRef(connection.from),
+    to: captureRef(connection.to),
+    rule: `${what}: ${ruleWords(rule, nodeTitle(eventEnd.kind, eventEnd.id) ?? eventEnd.id, nodeTitle(otherEnd.kind, otherEnd.id) ?? otherEnd.id)}`,
+    by,
+  });
 }
 
 /**

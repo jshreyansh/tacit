@@ -17,7 +17,10 @@ import {
   setConnectionPurposeInScene,
   setConnectionTwoWayInScene,
   setConnectionTypeInScene,
+  addRuleInScene,
+  removeRuleInScene,
 } from "../actions/sceneConnectionActions";
+import { rulesOffered, type RuleTrigger } from "../../shared/wire-rules";
 import type { ConnectionData } from "../stores/connectionStore";
 import type { WireMessage } from "../stores/bridgeActivityStore";
 import { abilitiesFor, endpointRole } from "./wireEnds";
@@ -178,6 +181,18 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
     } else setSendStatus({ tone: "ok", text: t.connection_send_sent });
   };
 
+  // Rules: what is on the wire, and what else the two ends allow.
+  const rules = plain ? [] : (connection.rules ?? []);
+  const offered = rulesOffered(fromRole, toRole, plain).filter(
+    (o) => !rules.some((r) => r.when === o.when && r.at === o.at),
+  );
+  const ruleSentence = (when: RuleTrigger, at: "from" | "to") => {
+    const event = at === "from" ? fromName : toName;
+    const other = at === "from" ? toName : fromName;
+    const template = when === "turn_finished" ? t.connection_rule_turn_finished : t.connection_rule_console_error;
+    return template.replace("{event}", event).replace("{other}", other);
+  };
+
   const forwardLine = plain
     ? null
     : describe(fromName, toName, forward, fromRole, sends.some((s) => s.from === connection.from));
@@ -287,6 +302,43 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
             </span>
           </span>
         </button>
+      )}
+
+      {(rules.length > 0 || offered.length > 0) && (
+        <div className="mt-1 pt-1 border-t border-[var(--border)]" data-testid="wire-rules">
+          <div className="px-3 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+            {t.connection_rules_heading}
+          </div>
+          {rules.map((rule) => (
+            <div key={rule.id} className="px-3 py-1.5 flex items-start justify-between gap-2 text-[12px]">
+              <span className="text-[var(--text-secondary)] leading-snug">
+                {ruleSentence(rule.when, rule.at)}
+                <span className="block text-[10px] text-[var(--text-faint)]">
+                  {rule.consent === "always" ? t.connection_rule_always : t.connection_rule_asks}
+                </span>
+              </span>
+              <button
+                type="button"
+                aria-label={t.connection_rule_remove}
+                title={t.connection_rule_remove}
+                className="text-[var(--text-faint)] hover:text-[var(--red)] px-1"
+                onClick={() => removeRuleInScene(connection.id, rule.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {offered.map((o) => (
+            <button
+              key={`${o.when}:${o.at}`}
+              type="button"
+              className={ROW}
+              onClick={() => addRuleInScene(connection.id, o.when, o.at)}
+            >
+              + {ruleSentence(o.when, o.at)}
+            </button>
+          ))}
+        </div>
       )}
 
       {sends.length > 0 && (

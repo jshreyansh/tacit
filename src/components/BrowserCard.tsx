@@ -1,6 +1,7 @@
 /// <reference types="electron" />
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import { browserConsoleError } from "../canvas/wireRules";
 import {
   removeBrowserCardFromScene,
   updateBrowserCardInScene,
@@ -194,7 +195,16 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     wv.addEventListener("did-navigate-in-page", onNavigate);
     wv.addEventListener("did-fail-load", onFailLoad);
     wv.addEventListener("found-in-page", onFoundInPage);
+    // Errors the page logs, for a rule that tells a wired agent about them
+    // (src/canvas/wireRules.ts). Level 3 is console.error.
+    const onConsole = ((e: Event & { level: number; message: string; sourceId: string; line: number }) => {
+      if (e.level < 3) return;
+      const where = e.sourceId ? ` (${e.sourceId}${e.line ? `:${e.line}` : ""})` : "";
+      browserConsoleError(card.id, `${e.message}${where}`);
+    }) as EventListener;
+    wv.addEventListener("console-message", onConsole);
     return () => {
+      wv.removeEventListener("console-message", onConsole);
       wv.removeEventListener("page-title-updated", onTitle);
       wv.removeEventListener("did-navigate", onNavigate);
       wv.removeEventListener("did-navigate-in-page", onNavigate);
