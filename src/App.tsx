@@ -61,8 +61,9 @@ import {
   downloadStartedNotice,
 } from "./browser/downloadNotice";
 import { useConnectionStore } from "./stores/connectionStore";
+import { installWireMailbox } from "./stores/wireMailboxStore";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
-import { BrowserController, resolveBrowserNodeBinding } from "./browser/browserController";
+import { driveBrowserCard } from "./browser/driveBrowserCard";
 import {
   checkAgentActionOnCard,
   decideSpawnProfile,
@@ -71,8 +72,6 @@ import {
 import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
 import { nodeTitle, wireEndsOf } from "./canvas/wireEnds";
 import { ABILITY_WORDS } from "../shared/node-contracts";
-import { legacyWebviewBrowserAdapter } from "./browser/legacyWebviewBrowserAdapter";
-import { connectedTabBrowserAdapter } from "./browser/connectedTabBrowserAdapter";
 import { subscribePinEvents, usePinStore } from "./stores/pinStore";
 import {
   useCanvasRegistryStore,
@@ -127,9 +126,6 @@ import { setWindowFullScreen } from "./toolbar/titleStripHeight";
 // already tile the full viewport with their own opaque backgrounds, so
 // dropping this one is safe on mac and never visible on other platforms.
 const IS_MAC = (window.tacit?.app.platform ?? "darwin") === "darwin";
-const browserController = new BrowserController();
-browserController.register(legacyWebviewBrowserAdapter);
-browserController.register(connectedTabBrowserAdapter);
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -489,6 +485,7 @@ export function App() {
   // typed into the chat page at the other end and submitted, and that is the
   // whole interaction — nothing reads the response back.
   useEffect(() => installReplyDelivery(), []);
+  useEffect(() => installWireMailbox(), []);
   // Where pasted text came from (SHR-62): which node has focus, and copies
   // made inside browser tiles.
   useEffect(() => installHandoffFocusTracking(), []);
@@ -1211,51 +1208,8 @@ export function App() {
         return { ok: id !== null, id };
       },
 
-      // Provider-neutral browser control. Existing cards resolve to the
-      // managed legacy-webview adapter; connected tabs use another adapter.
-      driveBrowserCard: async (
-        id: string,
-        action: string,
-        params: Record<string, unknown> = {},
-        actor: string = "system",
-      ) => {
-        const card = useBrowserCardStore.getState().cards[id];
-        if (!card) throw new Error(`Browser card not found: ${id}`);
-        // Re-checked here, on every single action, rather than once when the
-        // node was spawned: revoking a profile has to stop a task that is
-        // already running, and a permission decided minutes ago is worth
-        // nothing by then. The node is never closed — the user tightened a
-        // permission, they did not ask to lose the page.
-        const permission = checkAgentActionOnCard(id);
-        if (!permission.allowed) {
-          recordDecision({
-            kind: "browser_action",
-            node: `browser:${id}`,
-            action,
-            backend: resolveBrowserNodeBinding(card).kind,
-            by: actor,
-            ok: false,
-            error: `${permission.code}: ${permission.message}`,
-          });
-          throw new Error(`${permission.code}: ${permission.message}`);
-        }
-        const result = await browserController.execute(card, action, params);
-        recordDecision({
-          kind: "browser_action",
-          node: `browser:${id}`,
-          action,
-          backend: result.backend,
-          by: actor,
-          ok: result.ok,
-          ...(typeof params.url === "string" ? { url: params.url } : {}),
-          ...(!result.ok ? { error: result.error.message } : {}),
-        });
-        if (!result.ok) {
-          throw new Error(`${result.error.code}: ${result.error.message}`);
-        }
-        // Preserve the existing HTTP/MCP response shape during migration.
-        return result.data;
-      },
+      // Backs the browser_* tools (src/browser/driveBrowserCard.ts).
+      driveBrowserCard,
     };
 
     (window as any).__tcApi = api;

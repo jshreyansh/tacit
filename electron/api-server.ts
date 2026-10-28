@@ -31,6 +31,8 @@ import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import { sendAlongWires, type WireDirection, type WireEnd, type WireSender } from "./wire-message";
+import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
+import { envelopePreview } from "../shared/wire-envelope";
 import { findAgentAdapter } from "../shared/agent-adapters";
 import { busyStateOf, closeNode } from "./node-close";
 import { managerEndRun, managerStartRun, type RunTracker } from "./run-tracker";
@@ -128,8 +130,28 @@ export class ApiServer {
 
   private readonly workerAdmission: WorkerAdmission;
 
+  /** Messages along wires to agents that are mid-turn (electron/wire-mailbox.ts). */
+  readonly wireMailbox: WireMailbox;
+  private readonly mailboxSweep: ReturnType<typeof setInterval>;
+
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+    this.wireMailbox = new WireMailbox({
+      isBusy: (terminalId) => snapshotSaysBusy(this.deps.telemetryService.getTerminalSnapshot(terminalId)),
+      deliver: (item) => this.typeMailItem(item),
+      changed: (terminalId, waiting) =>
+        sendToWindow(this.deps.getWindow(), "wire-mailbox:changed", {
+          terminalId,
+          waiting: waiting.map(({ id, from, preview, at }) => ({ id, from, preview, at })),
+        }),
+      now: () => Date.now(),
+    });
+    // Turn ends arrive as telemetry changes (main.ts pokes the mailbox), but
+    // a signal can be missed; this catches anything left waiting.
+    this.mailboxSweep = setInterval(() => {
+      for (const terminalId of this.wireMailbox.terminalsWithMail()) void this.wireMailbox.poke(terminalId);
+    }, 3_000);
+    this.mailboxSweep.unref?.();
     this.workerAdmission = new WorkerAdmission({
       caps: deps.workerCaps,
       count: () => this.execRenderer("window.__tcApi.countManagerWorkers()"),
@@ -164,6 +186,7 @@ export class ApiServer {
   }
 
   stop() {
+    clearInterval(this.mailboxSweep);
     this.server?.close();
   }
 
@@ -1687,29 +1710,61 @@ export class ApiServer {
   }
 
   /** Backs the send_to_connected MCP tool: open to any terminal, gated by the wire. */
+  /** Types one waiting message into its agent and records it as a prompt. */
+  private async typeMailItem(item: MailItem): Promise<{ ok: boolean; detail?: string }> {
+    const result = await this.submitToTerminal({
+      terminalId: item.terminalId,
+      ptyId: item.target.ptyId,
+      terminalType: item.target.terminalType as ComposerSubmitRequest["terminalType"],
+      worktreePath: item.target.worktreePath,
+      text: item.text,
+      images: [],
+    });
+    if (!result.ok) return { ok: false, detail: result.detail ?? result.error };
+    this.deps.recordAgentPrompt({ targetTerminalId: item.terminalId, by: item.from, text: item.text });
+    return { ok: true };
+  }
+
+  /**
+   * Hands text to a terminal at the end of a wire. An agent gets it through
+   * its mailbox, so it waits if the agent is mid-turn; a shell gets it at
+   * once, because it runs it. Recording happens when it is actually typed.
+   */
+  async deliverAlongWire(delivery: {
+    terminalId: string;
+    ptyId: number;
+    terminalType: string;
+    worktreePath: string;
+    text: string;
+    from: CaptureNodeRef;
+  }): Promise<{ ok: boolean; detail?: string; queued?: boolean; waiting?: number }> {
+    const item: MailItem = {
+      id: randomUUID(),
+      terminalId: delivery.terminalId,
+      target: { ptyId: delivery.ptyId, terminalType: delivery.terminalType, worktreePath: delivery.worktreePath },
+      text: delivery.text,
+      from: delivery.from,
+      preview: envelopePreview(delivery.text),
+      at: Date.now(),
+    };
+    if (!findAgentAdapter(delivery.terminalType)) return this.typeMailItem(item);
+    const result = await this.wireMailbox.submit(item);
+    return result.status === "queued"
+      ? { ok: true, queued: true, waiting: result.waiting }
+      : { ok: result.ok, detail: result.detail };
+  }
+
   private sendToConnected(terminalId: string, body: any) {
     const win = this.deps.getWindow();
     return sendAlongWires(
       {
         wiresOf: (id) => this.wiresOf(id),
-        deliverToTerminal: async (delivery) => {
-          const result = await this.submitToTerminal({
-            ...delivery,
-            terminalType: delivery.terminalType as ComposerSubmitRequest["terminalType"],
-            images: [],
-          });
-          return { ok: result.ok, detail: result.ok ? undefined : (result.detail ?? result.error) };
-        },
+        deliverToTerminal: (delivery) =>
+          this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}` }),
         appendToNote: async (noteId, source, text) =>
           (await this.execRenderer(
             `window.__tcApi.appendToNote(${JSON.stringify(noteId)}, ${JSON.stringify(source)}, ${JSON.stringify(text)})`,
           )) as { ok: boolean; detail?: string },
-        recordPrompt: ({ target, by, text }) =>
-          this.deps.recordAgentPrompt({
-            targetTerminalId: target,
-            by: `terminal:${by}`,
-            text,
-          }),
         pulse: (event) =>
           sendToWindow(win, "canvas-bridge:event", {
             ...event,

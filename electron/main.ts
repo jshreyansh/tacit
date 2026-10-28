@@ -93,7 +93,9 @@ import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
 import { detectAgents, locateCommand, runVersion } from "./agent-detect";
 import { writeShellIntegrationFiles } from "./shell-integration";
-import { applyLaunchPlan } from "../shared/agent-adapters";
+import { applyLaunchPlan, findAgentAdapter } from "../shared/agent-adapters";
+import { deliveredText } from "../shared/wire-envelope";
+import { parseWireSendRequest } from "./wire-send";
 import {
   isCliRegistered,
   registerCli,
@@ -412,6 +414,10 @@ function promptHandoffRefs(terminalId: string, text: string | null): CaptureRefe
     label: "handoff",
   }));
 }
+/** Set once the API server exists: a terminal's turn state changed, so a
+ * message waiting for it may go now (electron/wire-mailbox.ts). */
+let pokeWireMailbox: ((terminalId: string, exited: boolean) => void) | null = null;
+
 const telemetryService = new TelemetryService({
   // An agent's own web tools (WebFetch, web_search, a browser MCP server).
   onToolUse: (terminalId, tool, at) => webReads.noteToolUse(terminalId, tool, at),
@@ -445,6 +451,7 @@ const telemetryService = new TelemetryService({
     );
   },
   onSnapshotChanged: (terminalId, snapshot) => {
+    pokeWireMailbox?.(terminalId, snapshot.derived_status === "exited");
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
     for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
       captureService.record(entry, captureCanvasId, new Date(), { method: "main" });
@@ -784,7 +791,13 @@ const apiServer = new ApiServer({
       { method: "main" },
     );
   },
-});
+});pokeWireMailbox = (terminalId, exited) => {
+  // A terminal that exited takes nothing more; what waited for it is
+  // dropped rather than typed into whatever starts there next.
+  if (exited) apiServer.wireMailbox.forget(terminalId);
+  else void apiServer.wireMailbox.poke(terminalId);
+};
+
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
   const pin = taskStore.get(repo, pinId);
@@ -3932,6 +3945,41 @@ function setupIpc() {
   // composer-submit pipeline as pin:dispatch-to-terminal — real injected
   // user-turn text, auto-submitted (unlike the pin flow, which pastes only)
   // so the agent picks it up on its own without the user pressing Enter.
+  // The waiting badge on an agent (src/canvas/ConnectionLayer.tsx): deliver
+  // what is waiting now, or throw it away. Only the app's window, one
+  // terminal at a time.
+  ipcMain.handle("wire-mailbox:flush", async (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("wire-mailbox:flush is only for the app's window");
+    if (typeof terminalId !== "string" || !terminalId) throw new Error("terminalId is required");
+    return apiServer.wireMailbox.flush(terminalId);
+  });
+  ipcMain.handle("wire-mailbox:discard", (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("wire-mailbox:discard is only for the app's window");
+    if (typeof terminalId !== "string" || !terminalId) throw new Error("terminalId is required");
+    return { discarded: apiServer.wireMailbox.discard(terminalId) };
+  });
+
+  // Send, from a wire's panel: the user passing a page, a selection or a
+  // note along a wire into a terminal. The text is labelled here, from the
+  // envelope, not by the window, so a page is always marked as page content.
+  ipcMain.handle("wire:send-to-terminal", async (event, request: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("wire:send-to-terminal is only for the app's window");
+    const parsed = parseWireSendRequest(request);
+    if (!parsed.ok) return { ok: false, detail: parsed.detail };
+    const { target, envelope } = parsed;
+    if (!ptyManager.getPid(target.ptyId)) return { ok: false, detail: "That terminal isn't running." };
+    const role = findAgentAdapter(target.terminalType) ? "agent" : "shell";
+    const text = deliveredText(envelope, role);
+    if (text === null) {
+      return { ok: false, detail: "A shell runs what it's given, so it only takes commands from an agent or another shell." };
+    }
+    return apiServer.deliverAlongWire({
+      ...target,
+      text,
+      from: `${envelope.from.kind}:${envelope.from.id}`,
+    });
+  });
+
   ipcMain.handle(
     "browser:notify-wired",
     async (

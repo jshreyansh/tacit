@@ -1,4 +1,5 @@
 import { findAgentAdapter } from "../shared/agent-adapters";
+import { MAX_ENVELOPE_LENGTH, envelopePreview, textForAgent } from "../shared/wire-envelope";
 
 /**
  * Backs the send_to_connected MCP tool: an agent passing a message along a
@@ -38,16 +39,16 @@ export interface WireSender {
 export interface WireMessageDeps {
   /** The sender and everything wired to it, or null if it isn't on the canvas. */
   wiresOf: (terminalId: string) => Promise<{ sender: WireSender; ends: WireEnd[] } | null>;
+  /** Types it into the terminal, or queues it for an agent that is
+   * mid-turn; records it as a prompt when it is actually typed. */
   deliverToTerminal: (delivery: {
     terminalId: string;
     ptyId: number;
     terminalType: string;
     worktreePath: string;
     text: string;
-  }) => Promise<{ ok: boolean; detail?: string }>;
+  }) => Promise<{ ok: boolean; detail?: string; queued?: boolean; waiting?: number }>;
   appendToNote: (noteId: string, source: string, text: string) => Promise<{ ok: boolean; detail?: string }>;
-  /** Writes the decision-record entry: who told which terminal what. */
-  recordPrompt: (entry: { target: string; by: string; text: string }) => void;
   /** Lights the wire while the message travels. */
   pulse?: (event: { phase: "start" | "end"; requestId: string; targetKind: string; targetId: string; ok?: boolean; preview?: string }) => void;
   newId: () => string;
@@ -58,10 +59,14 @@ export interface WireDelivery {
   id: string;
   ok: boolean;
   reason?: string;
+  /** The agent was mid-turn: the message arrives when the turn ends. */
+  queued?: boolean;
+  /** How many messages are waiting for it, this one included. */
+  waiting?: number;
 }
 
 /** Longest message accepted; well past any instruction, short of a file dump. */
-export const MAX_WIRE_MESSAGE_LENGTH = 20_000;
+export const MAX_WIRE_MESSAGE_LENGTH = MAX_ENVELOPE_LENGTH;
 
 /**
  * Labelled for an agent so it knows who is talking and can answer back along
@@ -71,7 +76,7 @@ export const MAX_WIRE_MESSAGE_LENGTH = 20_000;
  */
 export function wireMessageText(message: string, sender: WireSender, terminalType: string): string {
   return findAgentAdapter(terminalType)
-    ? `[From ${sender.title} (terminal ${sender.id}), over a wire on the canvas] ${message}`
+    ? textForAgent({ from: { kind: "terminal", id: sender.id, title: sender.title, role: "agent" }, payload: "text", body: message, hop: 0 })
     : message;
 }
 
@@ -139,7 +144,7 @@ export async function sendAlongWires(
   }
 
   const delivered: WireDelivery[] = [];
-  const preview = message.replace(/\s+/g, " ").trim().slice(0, 80);
+  const preview = envelopePreview(message);
   for (const end of targets) {
     const requestId = deps.newId();
     deps.pulse?.({ phase: "start", requestId, targetKind: end.kind, targetId: end.id, preview });
@@ -180,6 +185,7 @@ async function deliverOne(
     text,
   });
   if (!result.ok) return { ...base, ok: false, reason: result.detail ?? "the terminal refused the input" };
-  deps.recordPrompt({ target: end.id, by: sender.id, text });
-  return { ...base, ok: true };
+  return result.queued
+    ? { ...base, ok: true, queued: true, waiting: result.waiting }
+    : { ...base, ok: true };
 }

@@ -18,18 +18,16 @@ const note: WireEnd = { kind: "note", id: "n1", title: "Findings", direction: "t
 function harness(ends: WireEnd[]) {
   const typed: Array<{ terminalId: string; text: string }> = [];
   const notes: Array<{ id: string; source: string; text: string }> = [];
-  const recorded: Array<{ target: string; by: string }> = [];
   const pulses: string[] = [];
   let n = 0;
   const deps: WireMessageDeps = {
     wiresOf: async (id) => (id === "me" ? { sender: { id: "me", title: "claude" }, ends } : null),
     deliverToTerminal: async (d) => { typed.push({ terminalId: d.terminalId, text: d.text }); return { ok: true }; },
     appendToNote: async (id, source, text) => { notes.push({ id, source, text }); return { ok: true }; },
-    recordPrompt: (e) => recorded.push({ target: e.target, by: e.by }),
     pulse: (e) => pulses.push(`${e.phase}:${e.targetId}`),
     newId: () => `r${++n}`,
   };
-  return { deps, typed, notes, recorded, pulses };
+  return { deps, typed, notes, pulses };
 }
 
 const rejects = (promise: Promise<unknown>, code: string) =>
@@ -40,7 +38,6 @@ test("a shell wired from you runs the message as a command, bare", async () => {
   const result = await sendAlongWires(h.deps, "me", { message: "ls", to: "sh" });
   assert.equal(result.ok, true);
   assert.deepEqual(h.typed, [{ terminalId: "sh", text: "ls" }]);
-  assert.deepEqual(h.recorded, [{ target: "sh", by: "me" }]);
   assert.deepEqual(h.pulses, ["start:sh", "end:sh"]);
 });
 
@@ -93,4 +90,11 @@ test("an empty or oversized message is refused", async () => {
   const h = harness([shell]);
   await rejects(sendAlongWires(h.deps, "me", { message: "  " }), "empty_message");
   await rejects(sendAlongWires(h.deps, "me", { message: "x".repeat(20_001) }), "message_too_long");
+});
+
+test("a message to a busy agent is reported as waiting, not as lost or delivered", async () => {
+  const h = harness([codex]);
+  h.deps.deliverToTerminal = async () => ({ ok: true, queued: true, waiting: 2 });
+  const result = await sendAlongWires(h.deps, "me", { message: "review the diff", to: "cx" });
+  assert.deepEqual(result.delivered, [{ kind: "terminal", id: "cx", ok: true, queued: true, waiting: 2 }]);
 });

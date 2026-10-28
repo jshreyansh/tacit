@@ -20,6 +20,9 @@ import {
 import type { ConnectionData } from "../stores/connectionStore";
 import type { WireMessage } from "../stores/bridgeActivityStore";
 import { abilitiesFor, endpointRole } from "./wireEnds";
+import { sendChoices, sendOverWire } from "./wireSend";
+import type { PayloadKind } from "../../shared/node-contracts";
+import type { ConnectionEndpoint } from "../stores/connectionStore";
 import { useT } from "../i18n/useT";
 
 /**
@@ -60,6 +63,8 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [purpose, setPurpose] = useState(connection.purpose ?? "");
+  const [sendStatus, setSendStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [sending, setSending] = useState(false);
 
   const type = resolveConnectionType(connection);
   const plain = type === "relates-to";
@@ -128,9 +133,9 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
     [connection.id, connection.purpose],
   );
 
-  const describe = (node: string, other: string, abilities: Ability[], role: typeof fromRole) => {
+  const describe = (node: string, other: string, abilities: Ability[], role: typeof fromRole, canSend: boolean) => {
     if (!nodeContract(role).startsThings) {
-      return t.connection_starts_nothing.replace("{node}", node);
+      return (canSend ? t.connection_starts_nothing_send : t.connection_starts_nothing).replace("{node}", node);
     }
     if (abilities.length === 0) return null;
     const words = abilities.map((ability) => t[`connection_ability_${ability}` as const]);
@@ -141,8 +146,40 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
     return t.connection_can.replace("{node}", node).replace("{list}", list).replace("{other}", other);
   };
 
-  const forwardLine = plain ? null : describe(fromName, toName, forward, fromRole);
-  const backwardLine = plain || !twoWay ? null : describe(toName, fromName, backward, toRole);
+  // What each end can send to the other right now, tail first.
+  const sends: Array<{ from: ConnectionEndpoint; other: string; payload: PayloadKind }> = plain
+    ? []
+    : [
+        ...sendChoices(connection, connection.from).map((payload) => ({ from: connection.from, other: toName, payload })),
+        ...sendChoices(connection, connection.to).map((payload) => ({ from: connection.to, other: fromName, payload })),
+      ];
+  const sendLabel = (payload: PayloadKind, other: string, toBrowser: boolean) => {
+    const template =
+      payload === "page" ? t.connection_send_page
+      : payload === "selection" ? t.connection_send_selection
+      : payload === "url" ? (toBrowser ? t.connection_send_url_open : t.connection_send_url)
+      : t.connection_send_text;
+    return template.replace("{other}", other);
+  };
+  const send = async (from: ConnectionEndpoint, other: string, payload: PayloadKind) => {
+    setSending(true);
+    setSendStatus(null);
+    const outcome = await sendOverWire(connection, from, payload);
+    setSending(false);
+    if (!outcome.ok) setSendStatus({ tone: "error", text: t.connection_send_failed.replace("{detail}", outcome.detail) });
+    else if (outcome.queued) {
+      setSendStatus({
+        tone: "ok",
+        text: t.connection_send_queued.replace("{other}", other).replace("{n}", String(outcome.waiting ?? 1)),
+      });
+    } else setSendStatus({ tone: "ok", text: t.connection_send_sent });
+  };
+
+  const forwardLine = plain
+    ? null
+    : describe(fromName, toName, forward, fromRole, sends.some((s) => s.from === connection.from));
+  const backwardLine =
+    plain || !twoWay ? null : describe(toName, fromName, backward, toRole, sends.some((s) => s.from === connection.to));
 
   return (
     <div
@@ -231,6 +268,38 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
             </span>
           </span>
         </button>
+      )}
+
+      {sends.length > 0 && (
+        <div className="mt-1 pt-1 border-t border-[var(--border)]">
+          <div className="px-3 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+            {t.connection_send_heading}
+          </div>
+          {sends.map(({ from, other, payload }) => {
+            const toBrowser = (from === connection.from ? toRole : fromRole) === "browser";
+            return (
+              <button
+                key={`${from.kind}:${from.id}:${payload}`}
+                type="button"
+                className={ROW}
+                disabled={sending}
+                onClick={() => void send(from, other, payload)}
+              >
+                ↗ {sendLabel(payload, other, toBrowser)}
+              </button>
+            );
+          })}
+          {sendStatus && (
+            <div
+              role="status"
+              className={`px-3 pb-1.5 text-[11px] leading-snug ${
+                sendStatus.tone === "error" ? "text-[var(--red)]" : "text-[var(--text-muted)]"
+              }`}
+            >
+              {sendStatus.text}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-1 pt-1 border-t border-[var(--border)]">

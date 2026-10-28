@@ -1374,6 +1374,15 @@ export interface TacitAPI {
       callback: (sessionId: string, event: AgentStreamEvent) => void,
     ) => () => void;
   };
+  wires: {
+    onMailboxChanged: (callback: (payload: WireMailboxChange) => void) => () => void;
+    /** Deliver everything waiting for an agent now, in order. */
+    flushWaiting: (terminalId: string) => Promise<{ delivered: number; failed: number }>;
+    /** Throw away what is waiting for an agent. */
+    discardWaiting: (terminalId: string) => Promise<{ discarded: number }>;
+    /** Send, from a wire's panel, into a terminal at the end of the wire. */
+    sendToTerminal: (request: WireSendRequest) => Promise<WireSendResult>;
+  };
   browser: {
     notifyWired: (
       target: {
@@ -1532,4 +1541,27 @@ declare global {
   interface Window {
     tacit: TacitAPI;
   }
+}
+
+/** What is waiting for one agent along its wires (electron/wire-mailbox.ts). */
+export interface WireMailboxChange {
+  terminalId: string;
+  waiting: Array<{ id: string; from: string; preview: string; at: number }>;
+}
+
+export interface WireSendRequest {
+  target: { terminalId: string; ptyId: number; terminalType: string; worktreePath: string };
+  envelope: {
+    from: { kind: "terminal" | "browser" | "note"; id: string; title: string; role: "agent" | "shell" | "browser" | "note" | "task" };
+    payload: "text" | "command" | "url" | "page" | "selection" | "reply" | "step";
+    body: string;
+  };
+}
+
+export interface WireSendResult {
+  ok: boolean;
+  detail?: string;
+  /** The agent was mid-turn; it gets this when the turn ends. */
+  queued?: boolean;
+  waiting?: number;
 }

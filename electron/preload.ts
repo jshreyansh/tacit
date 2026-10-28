@@ -1100,6 +1100,25 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("agent:event", listener);
     },
   },
+  wires: {
+    /** Something along a wire is waiting for an agent mid-turn, or stopped waiting. */
+    onMailboxChanged: (
+      callback: (payload: import("../src/types").WireMailboxChange) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").WireMailboxChange,
+      ) => callback(payload);
+      ipcRenderer.on("wire-mailbox:changed", listener);
+      return () => ipcRenderer.removeListener("wire-mailbox:changed", listener);
+    },
+    flushWaiting: (terminalId: string) =>
+      ipcRenderer.invoke("wire-mailbox:flush", terminalId) as Promise<{ delivered: number; failed: number }>,
+    discardWaiting: (terminalId: string) =>
+      ipcRenderer.invoke("wire-mailbox:discard", terminalId) as Promise<{ discarded: number }>,
+    sendToTerminal: (request: import("../src/types").WireSendRequest) =>
+      ipcRenderer.invoke("wire:send-to-terminal", request) as Promise<import("../src/types").WireSendResult>,
+  },
   browser: {
     notifyWired: (
       target: {

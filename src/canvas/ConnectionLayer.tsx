@@ -51,6 +51,7 @@ import {
 import { connectionStrokeStyle, wireLabel } from "./connectionTypeStyle";
 import { connectionLabelLayout } from "./connectionLabelScale";
 import { WirePanel } from "./WirePanel";
+import { useWireMailboxStore } from "../stores/wireMailboxStore";
 import { abilitiesFor } from "./wireEnds";
 
 /**
@@ -275,6 +276,8 @@ export function ConnectionLayer() {
     connectionId: string;
   } | null>(null);
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
+  const [waitingMenu, setWaitingMenu] = useState<{ x: number; y: number; terminalId: string } | null>(null);
+  const waitingMail = useWireMailboxStore((s) => s.waiting);
   // Opened by clicking a wire's type label — a separate piece of state from
   // `menu` (the right-click one) so the two can never fight over one anchor.
   const [typeMenu, setTypeMenu] = useState<{
@@ -999,6 +1002,48 @@ export function ConnectionLayer() {
         </div>
       )}
 
+      {/* How many messages along wires are waiting for an agent's turn to
+          end (electron/wire-mailbox.ts), over the agent's top-right corner.
+          Clicking it offers to deliver them now or throw them away. */}
+      {overviewOpacity < 1 && Object.keys(waitingMail).length > 0 && (
+        <div className="absolute inset-0" style={{ pointerEvents: "none" }}>
+          {Object.entries(waitingMail).map(([terminalId, items]) => {
+            const rect = rectByKey.get(`terminal:${terminalId}`);
+            if (!rect) return null;
+            return (
+              <button
+                key={`waiting:${terminalId}`}
+                type="button"
+                data-scene-box-select-block
+                data-testid="wire-waiting-badge"
+                title={`${t.wire_waiting_title}\n${items.map((item) => `• ${item.preview}`).join("\n")}`}
+                className="absolute rounded-full border text-[11px]"
+                style={{
+                  left: viewport.x + (rect.x + rect.w) * viewport.scale,
+                  top: viewport.y + rect.y * viewport.scale,
+                  transform: "translate(-100%, calc(-100% - 6px))",
+                  pointerEvents: "auto",
+                  padding: "1px 8px",
+                  fontFamily: '"Geist Mono", monospace',
+                  background: "var(--surface)",
+                  borderColor: "color-mix(in srgb, var(--accent) 55%, var(--border))",
+                  color: "var(--accent)",
+                  opacity: 1 - overviewOpacity,
+                  cursor: "pointer",
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setWaitingMenu({ x: event.clientX, y: event.clientY, terminalId });
+                }}
+              >
+                ✉ {t.wire_waiting_badge.replace("{n}", String(items.length))}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* The first words of each message, beside the node it is arriving at,
           for as long as its dot is on the wire. */}
       {labelLayout.visible && overviewOpacity < 1 && (
@@ -1070,6 +1115,28 @@ export function ConnectionLayer() {
             }
             nameOf={(endpoint) => describeEndpoint(endpoint, labelContext)}
             onClose={() => setTypeMenu(null)}
+          />
+        </div>
+      )}
+
+      {waitingMenu && (
+        <div style={{ pointerEvents: "auto" }}>
+          <ContextMenu
+            x={waitingMenu.x}
+            y={waitingMenu.y}
+            items={[
+              {
+                label: t.wire_waiting_deliver,
+                onClick: () => void window.tacit.wires.flushWaiting(waitingMenu.terminalId),
+              },
+              { type: "separator" },
+              {
+                label: t.wire_waiting_discard,
+                danger: true,
+                onClick: () => void window.tacit.wires.discardWaiting(waitingMenu.terminalId),
+              },
+            ]}
+            onClose={() => setWaitingMenu(null)}
           />
         </div>
       )}
