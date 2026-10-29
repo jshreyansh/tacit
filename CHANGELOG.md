@@ -4,6 +4,8 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-29
+
 ### Fixed
 - **A failed file write or a failed update installer no longer crashes Tacit.** Copying an agent's transcript into the record, downloading an update, and starting the update's installer could each fail in a way nothing listened for, which takes the whole app down. Each is now reported where those failures already go: a warning for a transcript copy, and the updater's error for an update. A wait on a file that had failed no longer hangs.
 - **A Hydra worker that hadn't started yet gets its task after a restart.** A worker still at a question when Tacit restarted (such as "trust this folder?") came back without its task, sitting at an empty prompt, because its task counted as sent. A Claude or Codex worker with no session never got it, so it is sent again.
