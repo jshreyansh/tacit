@@ -5,6 +5,7 @@ import { transcriptPath } from "../shared/capture";
 import { maskSecrets } from "../shared/secret-mask";
 import { exportOpenCodeSession } from "./opencode-session";
 import { RECORD_DIR_MODE, RECORD_FILE_MODE } from "./capture-service";
+import { endStream, watchFailure, writeChunk } from "./stream-safety";
 
 /**
  * Keeps a copy of each agent session a run used, under the record
@@ -85,12 +86,13 @@ async function copyMasked(from: string, to: string): Promise<void> {
   fs.mkdirSync(path.dirname(to), { recursive: true, mode: RECORD_DIR_MODE });
   const temp = `${to}.${process.pid}.tmp`;
   const out = fs.createWriteStream(temp, { encoding: "utf-8", mode: RECORD_FILE_MODE });
+  // Listened to at once: a failed open or write is reported here, not
+  // thrown as an uncaught exception (electron/stream-safety.ts).
+  const failure = watchFailure(out);
   try {
     const lines = readline.createInterface({ input: fs.createReadStream(from, { encoding: "utf-8" }), crlfDelay: Infinity });
-    for await (const line of lines) {
-      if (!out.write(`${maskSecrets(line)}\n`)) await new Promise<void>((resolve) => out.once("drain", () => resolve()));
-    }
-    await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())));
+    for await (const line of lines) await writeChunk(out, `${maskSecrets(line)}\n`, failure);
+    await endStream(out, failure);
     fs.renameSync(temp, to);
   } catch (error) {
     out.destroy();

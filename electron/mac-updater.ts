@@ -18,11 +18,12 @@ import {
 import { join, resolve, dirname } from "path";
 import { createHash } from "crypto";
 import { gunzipSync } from "zlib";
-import { spawn, execFile } from "child_process";
+import { execFile } from "child_process";
 import type { BrowserWindow } from "electron";
 import { emitUpdaterEvent } from "./updater-state";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
 import { UpdaterLog } from "./updater-log";
+import { endStream, orFailure, spawnDetached, watchFailure, writeChunk } from "./stream-safety";
 
 const GITHUB_OWNER = "jshreyansh";
 const GITHUB_REPO = "tacit";
@@ -147,8 +148,12 @@ function downloadFile(
       if (settled) return;
       settled = true;
       stream.destroy();
+      request.abort();
       reject(err);
     };
+    // A file that can't be written fails the download like a network error
+    // does, instead of an uncaught exception (electron/stream-safety.ts).
+    stream.on("error", fail);
 
     request.on("response", (response) => {
       if (response.statusCode !== 200) {
@@ -164,6 +169,7 @@ function downloadFile(
       });
       response.on("end", () => {
         stream.end(() => {
+          if (settled) return;
           settled = true;
           resolve();
         });
@@ -404,6 +410,9 @@ async function downloadDifferential(
 
   const oldFd = openSync(oldZipPath, "r");
   const outStream = createWriteStream(destPath);
+  // Every wait below also ends if the file can't be written
+  // (electron/stream-safety.ts).
+  const failure = watchFailure(outStream);
   let downloaded = 0;
   let resolvedUrl = newFileUrl;
   let rangeCount = 0;
@@ -412,31 +421,26 @@ async function downloadDifferential(
     for (const op of operations) {
       if (op.kind === OperationKind.COPY) {
         // Read from old ZIP and write to output
-        await new Promise<void>((res, rej) => {
-          const readStream = createReadStream("", {
-            fd: oldFd,
-            autoClose: false,
-            start: op.start,
-            end: op.end - 1,
-          });
-          readStream.on("error", rej);
-          readStream.pipe(outStream, { end: false });
-          readStream.once("end", res);
-        });
+        await orFailure(
+          new Promise<void>((res, rej) => {
+            const readStream = createReadStream("", {
+              fd: oldFd,
+              autoClose: false,
+              start: op.start,
+              end: op.end - 1,
+            });
+            readStream.on("error", rej);
+            readStream.pipe(outStream, { end: false });
+            readStream.once("end", res);
+          }),
+          failure,
+        );
       } else {
         // Download range from remote
         const result = await downloadRange(resolvedUrl, op.start, op.end);
         resolvedUrl = result.resolvedUrl;
 
-        await new Promise<void>((res, rej) => {
-          const ok = outStream.write(result.data, (err) => {
-            if (err) rej(err);
-            else res();
-          });
-          if (!ok) {
-            outStream.once("drain", () => res());
-          }
-        });
+        await writeChunk(outStream, result.data, failure);
 
         downloaded += result.data.length;
         onProgress(
@@ -452,11 +456,10 @@ async function downloadDifferential(
       }
     }
 
-    await new Promise<void>((res, rej) => {
-      outStream.end((err: Error | null) => (err ? rej(err) : res()));
-    });
+    await endStream(outStream, failure);
   } finally {
     closeSync(oldFd);
+    if (failure.error()) outStream.destroy();
   }
 }
 
@@ -893,11 +896,19 @@ export class MacCustomUpdater {
     const scriptPath = join(stagingDir, "install.sh");
     writeFileSync(scriptPath, script, { mode: 0o755 });
 
-    const child = spawn("bash", [scriptPath], {
-      detached: true,
-      stdio: "ignore",
+    // An installer that can't start is reported, not thrown as an uncaught
+    // exception (electron/stream-safety.ts); the app stays on this version.
+    spawnDetached("bash", [scriptPath], (err) => {
+      this.installing = false;
+      this.log.record({
+        outcome: "newer",
+        reason: "installer-did-not-start",
+        currentVersion: app.getVersion(),
+        ...(this.pendingUpdate ? { remoteVersion: this.pendingUpdate.version } : {}),
+        detail: err.message,
+      });
+      emitUpdaterEvent(this.window, "updater:error", { message: `The update's installer couldn't start: ${err.message}` });
     });
-    child.unref();
   }
 
   /** Persist pending update state so downloads survive app restarts. */
