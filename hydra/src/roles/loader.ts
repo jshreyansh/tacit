@@ -72,7 +72,12 @@ export class RoleLoadError extends Error {
 
 function getBuiltinSearchDirs(): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
+  // Set by a host that bundles this loader somewhere the role files aren't:
+  // Tacit's main process (electron/main.ts) points it at the copy shipped
+  // with its CLI.
+  const explicit = process.env.HYDRA_BUILTIN_ROLES_DIR?.trim();
   return [
+    ...(explicit ? [explicit] : []),
     path.join(here, "builtin"), // dev: src/roles/loader.ts → src/roles/builtin
     path.join(here, "roles", "builtin"), // dist: dist/hydra.js → dist/roles/builtin
   ];

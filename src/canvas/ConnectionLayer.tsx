@@ -48,10 +48,10 @@ import {
   wireCurve,
   type WireCurve,
 } from "./wireGeometry";
-import { connectionStrokeStyle, wireLabel } from "./connectionTypeStyle";
+import { connectionStrokeStyle, wireLabel, wireRoleLabel } from "./connectionTypeStyle";
 import { connectionLabelLayout } from "./connectionLabelScale";
 import { WirePanel } from "./WirePanel";
-import { useWireMailboxStore } from "../stores/wireMailboxStore";
+import { handoffKey, useWireMailboxStore } from "../stores/wireMailboxStore";
 import { abilitiesFor } from "./wireEnds";
 
 /**
@@ -280,6 +280,7 @@ export function ConnectionLayer() {
   const waitingMail = useWireMailboxStore((s) => s.waiting);
   const heldMail = useWireMailboxStore((s) => s.held);
   const hydraStatus = useWireMailboxStore((s) => s.hydra);
+  const handoffStatus = useWireMailboxStore((s) => s.handoffs);
   // Opened by clicking a wire's type label — a separate piece of state from
   // `menu` (the right-click one) so the two can never fight over one anchor.
   const [typeMenu, setTypeMenu] = useState<{
@@ -946,11 +947,20 @@ export function ConnectionLayer() {
               connection,
               tailAbilities: abilitiesFor(connection, connection.from),
             });
-            // A Hydra worker's wire says what the worker is and how it's going.
-            const hydra =
-              !connection.purpose && connection.to.kind === "terminal" ? hydraStatus[connection.to.id] : undefined;
-            const labelText = hydra
-              ? t.wire_label_hydra.replace("{role}", hydra.role).replace("{status}", t[`hydra_status_${hydra.status}` as const])
+            // A Hydra worker's wire, or a wire that gives a role, says what
+            // the agent at its far end is and how its work is going.
+            const roleLabel = wireRoleLabel({
+              connection,
+              hydra: connection.to.kind === "terminal" ? hydraStatus[connection.to.id] : undefined,
+              handoffForward: handoffStatus[handoffKey(connection.from.id, connection.to.id)],
+              handoffBack: twoWay ? handoffStatus[handoffKey(connection.to.id, connection.from.id)] : undefined,
+            });
+            const labelText = roleLabel
+              ? roleLabel.status
+                ? t.wire_label_hydra
+                    .replace("{role}", roleLabel.role ?? t.wire_label_handoff)
+                    .replace("{status}", t[roleLabel.status as keyof typeof t] as string)
+                : roleLabel.role!
               : label.kind === "purpose"
                 ? label.text
                 : t[label.key];

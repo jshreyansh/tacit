@@ -67,6 +67,31 @@ export function wireLabel(input: {
   return { kind: "words", key: "wire_label_sends" };
 }
 
+/**
+ * What a wire's label says about the agent at its far end, when it says
+ * anything: a Hydra worker's role and how its assignment is going, or the
+ * role the wire gives (WirePanel) and how a tracked hand-off along it is
+ * going. The user's purpose, when written, says it instead (wireLabel).
+ * `status` is an i18n key; null when there is nothing to say.
+ */
+export function wireRoleLabel(input: {
+  connection: { purpose?: string; role?: string; from: { id: string }; to: { kind: string; id: string } };
+  /** The Hydra worker at the far end, if it is one. */
+  hydra?: { role: string; status: string };
+  /** The latest tracked hand-off each way along the wire, if any. */
+  handoffForward?: string;
+  handoffBack?: string;
+}): { role: string | null; status: string | null } | null {
+  const { connection, hydra } = input;
+  if (connection.purpose) return null;
+  if (hydra && connection.to.kind === "terminal") return { role: hydra.role, status: `hydra_status_${hydra.status}` };
+  if (input.handoffForward) return { role: connection.role ?? null, status: `handoff_status_${input.handoffForward}` };
+  // Back along a two-way wire: the role is the far end's, not the sender's.
+  if (input.handoffBack) return { role: null, status: `handoff_status_${input.handoffBack}` };
+  if (connection.role) return { role: connection.role, status: null };
+  return null;
+}
+
 export type WireView = "working" | "overview";
 
 export interface ConnectionStrokeStyle {

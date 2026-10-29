@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { HydraWireStatus, WireMailboxChange, WireRestartSummary } from "../types";
+import type { HydraWireStatus, TrackedHandoffStatus, WireMailboxChange, WireRestartSummary } from "../types";
 import { useNotificationStore } from "./notificationStore";
 import { findTerminal, terminalName } from "../actions/terminalLookup";
 
@@ -15,7 +15,12 @@ interface WireMailboxStore {
   /** Hydra workers' role and status, by terminal, for their wires' labels. */
   hydra: Record<string, HydraWireStatus>;
   applyHydra: (status: HydraWireStatus) => void;
+  /** The latest tracked hand-off between two agents, by `sender>target`. */
+  handoffs: Record<string, TrackedHandoffStatus["status"]>;
+  applyHandoff: (status: TrackedHandoffStatus) => void;
 }
+
+export const handoffKey = (senderId: string, targetId: string) => `${senderId}>${targetId}`;
 
 export const useWireMailboxStore = create<WireMailboxStore>((set) => ({
   waiting: {},
@@ -32,6 +37,9 @@ export const useWireMailboxStore = create<WireMailboxStore>((set) => ({
     }),
   hydra: {},
   applyHydra: (status) => set((state) => ({ hydra: { ...state.hydra, [status.terminalId]: status } })),
+  handoffs: {},
+  applyHandoff: ({ senderId, targetId, status }) =>
+    set((state) => ({ handoffs: { ...state.handoffs, [handoffKey(senderId, targetId)]: status } })),
 }));
 
 export function installWireMailbox(): () => void {
@@ -49,12 +57,14 @@ export function installWireMailbox(): () => void {
   });
   const offHydra = window.tacit.wires.onHydraStatus((status) => useWireMailboxStore.getState().applyHydra(status));
   const offSummary = window.tacit.wires.onRestartSummary((summary) => void tellRestartSummary(summary));
+  const offHandoff = window.tacit.wires.onHandoffStatus((status) => useWireMailboxStore.getState().applyHandoff(status));
   const offNotice = window.tacit.wires.onNotice(({ message }) => useNotificationStore.getState().notify("warn", message));
   return () => {
     offMail();
     offFlag();
     offHydra();
     offSummary();
+    offHandoff();
     offNotice();
   };
 }

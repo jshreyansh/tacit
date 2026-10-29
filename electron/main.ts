@@ -759,6 +759,11 @@ taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:removed", ...payload });
 });
 
+// Hydra's built-in roles ship with the CLI (vite.config.ts copies them to
+// dist-cli/roles/builtin); the loader bundled into this process looks for
+// them next to itself, where they aren't, unless told.
+process.env.HYDRA_BUILTIN_ROLES_DIR = path.join(getCliDir(), "roles", "builtin");
+
 const apiServer = new ApiServer({
   wireStatePath: path.join(TACIT_DIR, "wire-state.json"),
   getWindow: () => mainWindow,

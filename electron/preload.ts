@@ -1144,6 +1144,16 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("wire:restart-summary", listener);
       return () => ipcRenderer.removeListener("wire:restart-summary", listener);
     },
+    onHandoffStatus: (
+      callback: (payload: import("../src/types").TrackedHandoffStatus) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").TrackedHandoffStatus,
+      ) => callback(payload);
+      ipcRenderer.on("wire:handoff-status", listener);
+      return () => ipcRenderer.removeListener("wire:handoff-status", listener);
+    },
     onNotice: (callback: (payload: { message: string }) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: { message: string }) => callback(payload);
       ipcRenderer.on("wire:notice", listener);

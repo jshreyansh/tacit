@@ -298,8 +298,13 @@ export function handOffText(sender: WireSender, work: string): string {
 
 export interface HandOffDeps extends Pick<WireMessageDeps, "wiresOf" | "deliverToTerminal" | "pulse" | "newId"> {
   /** Sets up a tracked hand-off (electron/tracked-handoff.ts) and returns
-   * what the receiver is told about it. */
-  track: (input: { id: string; sender: WireSender; end: WireEnd; work: string; why: string }) => { notice: string; dir: string };
+   * what the receiver is told about it, and why the wire's role couldn't be
+   * given to it when it couldn't. */
+  track: (input: { id: string; sender: WireSender; end: WireEnd; work: string; why: string }) => {
+    notice: string;
+    dir: string;
+    roleProblem?: string;
+  };
 }
 
 /** Backs the hand_off MCP tool: the sender is done; the receiver carries on. */
@@ -333,6 +338,7 @@ export async function handOffAlongWire(deps: HandOffDeps, senderId: string, body
           why: trackingReason(end.track, signals),
           result_dir: tracked.dir,
           note: `${describe(end)} will write a report and a result; the outcome comes back to you as a new message. Carry on meanwhile.`,
+          ...(tracked.roleProblem ? { role_problem: tracked.roleProblem } : {}),
         }
       : { tracked: false }),
   };

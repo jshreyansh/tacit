@@ -23,7 +23,7 @@ import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
 } from "./composer-submit";
-import type { ComposerSubmitRequest } from "../src/types";
+import type { ComposerSubmitRequest, TrackedHandoffStatus } from "../src/types";
 import type { RecallService } from "./recall-service";
 import type { RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
@@ -256,7 +256,7 @@ export class ApiServer {
           reason: reason ?? null,
           report: path.join(handoff.dir, "report.md"),
         }),
-      record: (handoff, state, reason) =>
+      record: (handoff, state, reason) => {
         this.deps.recordDecision({
           kind: "tracked_handoff",
           from: `terminal:${handoff.senderId}`,
@@ -266,7 +266,9 @@ export class ApiServer {
           ...(reason ? { stuck_reason: reason } : {}),
           dir: handoff.dir,
           by: `terminal:${handoff.targetId}`,
-        }),
+        });
+        this.sendHandoffStatus(handoff, state === "completed" ? "done" : state);
+      },
       now: () => Date.now(),
       join: (...parts) => path.join(...parts),
       changed: () => this.scheduleWireStateSave(),
@@ -1963,6 +1965,7 @@ export class ApiServer {
       this.followingUpRestart = false;
     }
     this.wireMailbox.resend();
+    for (const handoff of this.trackedHandoffs.all()) this.sendHandoffStatus(handoff, "working");
     if (followUp) {
       const held = this.wireMailbox
         .heldTerminals()
@@ -1983,6 +1986,15 @@ export class ApiServer {
       return;
     }
     await this.typeIntoTerminal(terminalId, text, from);
+  }
+
+  /** How a tracked hand-off is going, for the label on its wire. */
+  private sendHandoffStatus(handoff: TrackedHandoff, status: TrackedHandoffStatus["status"]): void {
+    sendToWindow(this.deps.getWindow(), "wire:handoff-status", {
+      senderId: handoff.senderId,
+      targetId: handoff.targetId,
+      status,
+    } satisfies TrackedHandoffStatus);
   }
 
   private heldMail(terminalId: string, text: string, from: CaptureNodeRef): MailItem {
@@ -2167,15 +2179,19 @@ export class ApiServer {
             startedAt: Date.now(),
           };
           let role: { name: string; description: string; body: string } | null = null;
+          let roleProblem: string | undefined;
           if (end.hydraRole) {
             try {
               const definition = loadRole(end.hydraRole, end.worktreePath!);
               role = { name: definition.name, description: definition.description, body: definition.body };
             } catch (err) {
+              // The work still goes, without the role; the sender is told.
               console.warn(`[tracked-handoff] role ${end.hydraRole} couldn't be loaded`, err);
+              roleProblem = `The wire's role "${end.hydraRole}" couldn't be loaded (${err instanceof Error ? err.message : String(err)}), so the task sheet doesn't include it.`;
             }
           }
           this.trackedHandoffs.start({ handoff, work, why, role });
+          this.sendHandoffStatus(handoff, "working");
           this.deps.recordDecision({
             kind: "tracked_handoff",
             from: `terminal:${sender.id}`,
@@ -2185,7 +2201,7 @@ export class ApiServer {
             dir: handoff.dir,
             by: `terminal:${sender.id}`,
           });
-          return { notice: trackedNotice(handoff, why), dir: handoff.dir };
+          return { notice: trackedNotice(handoff, why), dir: handoff.dir, ...(roleProblem ? { roleProblem } : {}) };
         },
         pulse: this.wirePulse(terminalId),
         newId: () => randomUUID(),

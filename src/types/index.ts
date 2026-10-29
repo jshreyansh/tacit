@@ -1379,6 +1379,7 @@ export interface TacitAPI {
     onTrackedFlag: (callback: (payload: TrackedHandoffFlag) => void) => () => void;
     onHydraStatus: (callback: (payload: HydraWireStatus) => void) => () => void;
     onRestartSummary: (callback: (payload: WireRestartSummary) => void) => () => void;
+    onHandoffStatus: (callback: (payload: TrackedHandoffStatus) => void) => () => void;
     /** Something about the wires the user should know, e.g. saving failed. */
     onNotice: (callback: (payload: { message: string }) => void) => () => void;
     /** The window has loaded its workdesk and listens for wire events. */
@@ -1561,6 +1562,13 @@ export interface WireMailboxChange {
   waiting: Array<{ id: string; from: string; preview: string; at: number }>;
   /** Kept from before a restart: goes after the agent's next turn, or by hand. */
   held: boolean;
+}
+
+/** How a tracked hand-off along a wire is going (electron/tracked-handoff.ts). */
+export interface TrackedHandoffStatus {
+  senderId: string;
+  targetId: string;
+  status: "working" | "done" | "stuck" | "error" | "timed_out";
 }
 
 /** What wires were waiting on when the agents restarted (electron/api-server.ts). */

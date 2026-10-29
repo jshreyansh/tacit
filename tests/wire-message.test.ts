@@ -198,3 +198,22 @@ test("a hand-off is tracked by the wire's switch and the work's signals, and the
 
   assert.deepEqual(tracked, ["the work changes code", "the wire gives the receiver the reviewer role"]);
 });
+
+test("when the wire's role couldn't be loaded, the work still goes and the sender is told why", async () => {
+  const h = harness([{ ...codexAgent, hydraRole: "designer" }]);
+  const result = await handOffAlongWire(
+    {
+      ...h.deps,
+      track: ({ id }: { id: string }) => ({
+        notice: `TRACKED ${id}`,
+        dir: `/w/.hydra/handoffs/${id}`,
+        roleProblem: `The wire's role "designer" couldn't be loaded (not found), so the task sheet doesn't include it.`,
+      }),
+    },
+    "me",
+    { to: "cx", work: "Polish the header" },
+  );
+  assert.equal(result.ok, true);
+  assert.match(h.typed[0].text, /TRACKED/);
+  assert.match(String((result as { role_problem?: string }).role_problem), /role "designer" couldn't be loaded/);
+});

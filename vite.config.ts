@@ -116,6 +116,24 @@ function buildCli(): Plugin {
   };
 }
 
+/**
+ * Hydra's built-in roles (dev, reviewer, qa, designer, janitor, lead) are
+ * Markdown files its loader reads at run time, from `roles/builtin` next to
+ * the bundle (hydra/src/roles/loader.ts). Bundling doesn't carry them, so
+ * they are copied; the app ships dist-cli whole, and its main process reads
+ * the same copy (HYDRA_BUILTIN_ROLES_DIR in electron/main.ts). Without
+ * this, a packaged Hydra knew no roles at all (0.40.0).
+ */
+function copyHydraRoles(): void {
+  const from = "hydra/src/roles/builtin";
+  const to = "dist-cli/roles/builtin";
+  fs.rmSync(to, { recursive: true, force: true });
+  fs.mkdirSync(to, { recursive: true });
+  for (const name of fs.readdirSync(from)) {
+    if (name.endsWith(".md")) fs.copyFileSync(path.join(from, name), path.join(to, name));
+  }
+}
+
 function buildHydra(): Plugin {
   const outfile = "dist-cli/hydra.js";
   const opts = {
@@ -130,6 +148,7 @@ function buildHydra(): Plugin {
   return {
     name: "build-hydra",
     async buildStart() {
+      copyHydraRoles();
       if (this.meta.watchMode) {
         const ctx = await esbuildCtx(opts);
         await ctx.watch();

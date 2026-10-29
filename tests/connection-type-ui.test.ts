@@ -12,6 +12,7 @@ import {
   MAX_WIRE_LABEL_LENGTH,
   connectionStrokeStyle,
   wireLabel,
+  wireRoleLabel,
 } from "../src/canvas/connectionTypeStyle";
 import {
   connectionTypeSpec,
@@ -149,5 +150,41 @@ test("a nonsense scale cannot take the layer down with a NaN font size", () => {
     const layout = connectionLabelLayout(scale);
     assert.ok(Number.isFinite(layout.fontPx), `${scale} produced ${layout.fontPx}`);
     assert.ok(Number.isFinite(layout.opacity));
+  }
+});
+
+test("a wire's label names the role of the agent at its far end, and how its work is going", () => {
+  const wire = { from: { id: "lead" }, to: { kind: "terminal", id: "worker" } };
+  // A Hydra worker: its assignment's role and status.
+  assert.deepEqual(wireRoleLabel({ connection: wire, hydra: { role: "qa", status: "in_progress" } }), {
+    role: "qa",
+    status: "hydra_status_in_progress",
+  });
+  // A role given on the wire, before anything is handed off, and while a
+  // tracked hand-off along it runs and when it ends.
+  const withRole = { ...wire, role: "reviewer" };
+  assert.deepEqual(wireRoleLabel({ connection: withRole }), { role: "reviewer", status: null });
+  assert.deepEqual(wireRoleLabel({ connection: withRole, handoffForward: "working" }), { role: "reviewer", status: "handoff_status_working" });
+  assert.deepEqual(wireRoleLabel({ connection: withRole, handoffForward: "stuck" }), { role: "reviewer", status: "handoff_status_stuck" });
+  // A tracked hand-off with no role: "hand-off · done" (the window fills the word in).
+  assert.deepEqual(wireRoleLabel({ connection: wire, handoffForward: "done" }), { role: null, status: "handoff_status_done" });
+  // One the other way along a two-way wire doesn't borrow the far end's role.
+  assert.deepEqual(wireRoleLabel({ connection: withRole, handoffBack: "working" }), { role: null, status: "handoff_status_working" });
+  // The user's own words win; and a plain wire has nothing to add.
+  assert.equal(wireRoleLabel({ connection: { ...withRole, purpose: "review the auth change" }, handoffForward: "working" }), null);
+  assert.equal(wireRoleLabel({ connection: wire }), null);
+});
+
+test("every role and status the label can show has words in each language", async () => {
+  const { en } = await import("../src/i18n/en");
+  const { zh } = await import("../src/i18n/zh");
+  const keys = [
+    "wire_label_handoff",
+    ...["working", "done", "stuck", "error", "timed_out"].map((s) => `handoff_status_${s}`),
+    ...["pending", "claimed", "in_progress", "completed", "timed_out", "failed"].map((s) => `hydra_status_${s}`),
+  ];
+  for (const key of keys) {
+    assert.equal(typeof (en as Record<string, unknown>)[key], "string", `en ${key}`);
+    assert.equal(typeof (zh as Record<string, unknown>)[key], "string", `zh ${key}`);
   }
 });

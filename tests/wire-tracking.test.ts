@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { shouldTrack, trackingReason } from "../shared/wire-tracking";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { WIRE_ROLES, shouldTrack, trackingReason } from "../shared/wire-tracking";
+import { loadRole } from "../hydra/src/roles/loader";
 import {
   HANDOFF_WORKBENCH_ID,
   TRACKED_TIMEOUT_MS,
@@ -183,4 +188,65 @@ test("after a restart the receiver is reminded where its task sheet is and what 
   assert.match(text, /^\[Tacit restarted while you were on the tracked hand-off from Claude\./);
   assert.match(text, /\/w\/\.hydra\/handoffs\/h1\/report\.md and then \/w\/\.hydra\/handoffs\/h1\/result\.json/);
   assert.match(text, /\/w\/\.hydra\/handoffs\/h1\/task\.md/);
+});
+
+// ------------------------------------------------------- the five roles
+
+function withEmptyHome(t: test.TestContext): string {
+  // So a role in the user's own ~/.hydra/roles can't stand in for a built-in.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "wire-roles-home-"));
+  const previous = process.env.HOME;
+  process.env.HOME = home;
+  t.after(() => {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  const repo = path.join(home, "repo");
+  fs.mkdirSync(repo);
+  return repo;
+}
+
+test("each role a wire can give is a built-in Hydra role, and its task sheet carries it", (t) => {
+  const repo = withEmptyHome(t);
+  assert.deepEqual([...WIRE_ROLES], ["dev", "reviewer", "qa", "designer", "janitor"]);
+  for (const name of WIRE_ROLES) {
+    const role = loadRole(name, repo);
+    assert.equal(role.source, "builtin", name);
+    assert.equal(role.name, name);
+    // Auto tracks a hand-off to any of them.
+    assert.equal(shouldTrack("auto", { role: name }), true, name);
+    assert.equal(trackingReason("auto", { role: name }), `the wire gives the receiver the ${name} role`);
+    const sheet = taskSheet({
+      handoff: handoff(),
+      work: "Do the thing",
+      why: trackingReason("auto", { role: name }),
+      role: { name: role.name, description: role.description, body: role.body },
+    });
+    assert.match(sheet, new RegExp(`## Your role: ${name}\n\n${role.description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), name);
+    assert.match(sheet, new RegExp(`You are additionally playing (the|a) \\*\\*${name}\\*\\* role`), name);
+    // The result contract follows the role, whatever the role says.
+    assert.match(sheet, /## When you finish, or if you get stuck/);
+  }
+});
+
+test("a host that bundles the loader away from the role files points it at them", (t) => {
+  const repo = withEmptyHome(t);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wire-roles-builtin-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(dir, "reviewer.md"),
+    "---\nname: reviewer\ndescription: Shipped copy.\nterminals:\n  - cli: codex\n---\n\nThe shipped reviewer.\n",
+  );
+  const previous = process.env.HYDRA_BUILTIN_ROLES_DIR;
+  process.env.HYDRA_BUILTIN_ROLES_DIR = dir;
+  t.after(() => {
+    if (previous === undefined) delete process.env.HYDRA_BUILTIN_ROLES_DIR;
+    else process.env.HYDRA_BUILTIN_ROLES_DIR = previous;
+  });
+  const role = loadRole("reviewer", repo);
+  assert.equal(role.description, "Shipped copy.");
+  assert.equal(role.file_path, path.join(dir, "reviewer.md"));
+  // A role not in that folder is still found in the others.
+  assert.equal(loadRole("dev", repo).source, "builtin");
 });
