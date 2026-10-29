@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import {
   extractFinalAssistantReply,
   findTerminalForSession,
+  canReadFinalReply,
   isReplyTranscriptProvider,
   replyDeliveryNotification,
   replyKey,
@@ -362,9 +363,17 @@ test("an empty or unparseable transcript delivers nothing", () => {
 test("only transcript formats with a readable tail are supported", () => {
   assert.equal(isReplyTranscriptProvider("claude"), true);
   assert.equal(isReplyTranscriptProvider("codex"), true);
-  // opencode keeps a directory of per-message files, so there is no tail.
+  // opencode keeps its turns in a database, not a transcript with a tail.
   assert.equal(isReplyTranscriptProvider("opencode"), false);
   assert.equal(isReplyTranscriptProvider("shell"), false);
+});
+
+test("OpenCode's replies can be read too, from its database; a shell's can't", () => {
+  assert.equal(canReadFinalReply("claude"), true);
+  assert.equal(canReadFinalReply("codex"), true);
+  assert.equal(canReadFinalReply("opencode"), true);
+  assert.equal(canReadFinalReply("antigravity"), false);
+  assert.equal(canReadFinalReply("shell"), false);
 });
 
 // --- Session to terminal ---------------------------------------------------

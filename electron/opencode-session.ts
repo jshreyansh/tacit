@@ -6,6 +6,7 @@ import type {
   NormalizedSessionTelemetryEvent,
   TelemetryProvider,
 } from "../shared/telemetry.ts";
+import type { ReplyExtraction } from "../shared/agent-reply.ts";
 
 export interface OpenCodeFoundSession {
   sessionId: string;
@@ -335,7 +336,7 @@ function sessionTable(db: SqliteDatabase): string {
   return isOpenCodeV2(db) ? "session_v2" : "session";
 }
 
-interface OpenCodeEntryRow {
+export interface OpenCodeEntryRow {
   id?: string;
   type?: string;
   seq?: number;
@@ -439,6 +440,97 @@ function readOpenCodeEntries(
     }
   }
   return { events, eventKeys, firstUserPrompt: extractOpenCodeFirstUserPrompt(dbPath, sessionId) };
+}
+
+// ------------------------------------------------------- the final reply
+
+function replyOf(text: string, turn: string | undefined): ReplyExtraction {
+  if (!text.trim()) return { status: "no-reply" };
+  return turn ? { status: "ready", text, turn } : { status: "ready", text };
+}
+
+/** What the user sees of an assistant step: its text, not reasoning or tools. */
+function visibleOpenCodeText(items: readonly unknown[]): string {
+  return items
+    .map((value) => getObject(value))
+    .filter((item): item is Record<string, unknown> => item !== null && getString(item.type) === "text" && item.synthetic !== true)
+    .map(textFromOpenCodePart)
+    .filter((text) => text.trim())
+    .join("\n");
+}
+
+/** Entries that say where a 2.0 turn is; the rest (system notices, model switches) don't. */
+const OPEN_CODE_TURN_ENTRIES = new Set(["user", "assistant", "idle"]);
+
+/**
+ * OpenCode 2.0: a turn ends with an `idle` entry. The reply is the text of
+ * the turn's last assistant step that has any; a turn ending any way but
+ * "succeeded" (interrupted, failed) has no reply to pass on. `rows` are one
+ * session's entries in order.
+ */
+export function finalReplyFromOpenCodeEntries(rows: readonly OpenCodeEntryRow[]): ReplyExtraction {
+  let end = rows.length - 1;
+  while (end >= 0 && !OPEN_CODE_TURN_ENTRIES.has(rows[end]?.type ?? "")) end -= 1;
+  if (end < 0) return { status: "no-reply" };
+  const last = rows[end]!;
+  if (last.type !== "idle") return { status: "mid-task" };
+  if (getString(safeParseObject(last.data)?.outcome) !== "succeeded") return { status: "no-reply" };
+  for (let index = end - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.type === "user") break;
+    if (row.type !== "assistant") continue;
+    const entry = safeParseObject(row.data);
+    const text = visibleOpenCodeText(Array.isArray(entry?.content) ? entry.content : []);
+    if (text.trim()) return replyOf(text, last.id);
+  }
+  return { status: "no-reply" };
+}
+
+/**
+ * OpenCode 1.x: the last message decides. An assistant message that
+ * finished with `stop` is the reply; one still going, or that stopped to
+ * call tools, is mid-task. `messages` are in order, `parts` keyed by message.
+ */
+export function finalReplyFromOpenCodeMessages(
+  messages: ReadonlyArray<{ id: string; data: Record<string, unknown> }>,
+  parts: ReadonlyMap<string, readonly Record<string, unknown>[]>,
+): ReplyExtraction {
+  const last = messages.at(-1);
+  if (!last) return { status: "no-reply" };
+  if (getString(last.data.role) !== "assistant") return { status: "mid-task" };
+  if (getObject(last.data.error)) return { status: "no-reply" };
+  if (getString(last.data.finish) !== "stop") return { status: "mid-task" };
+  return replyOf(visibleOpenCodeText(parts.get(last.id) ?? []), last.id);
+}
+
+/**
+ * The reply an OpenCode session's last finished turn ended with, read from
+ * its database (it keeps no transcript file). Null when the database can't
+ * be read.
+ */
+export function readOpenCodeFinalReply(dbPath: string, sessionId: string): ReplyExtraction | null {
+  return withOpenCodeDb(dbPath, (db) => {
+    if (isOpenCodeV2(db)) {
+      const rows = (db
+        .prepare("SELECT id, type, seq, time_created, time_updated, data FROM session_message WHERE session_id = ? ORDER BY seq DESC LIMIT ?")
+        .all(sessionId, OPEN_CODE_EVENT_LIMIT) as OpenCodeEntryRow[]).reverse();
+      return finalReplyFromOpenCodeEntries(rows);
+    }
+    const messages = (db
+      .prepare("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1")
+      .all(sessionId) as OpenCodeMessageRow[])
+      .map((row) => ({ id: row.id ?? "", data: safeParseObject(row.data) ?? {} }))
+      .filter((row) => row.id);
+    const last = messages[0];
+    const parts = new Map<string, Record<string, unknown>[]>();
+    if (last) {
+      const rows = db
+        .prepare("SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC, id ASC")
+        .all(last.id) as OpenCodePartRow[];
+      parts.set(last.id, rows.map((row) => safeParseObject(row.data)).filter((p): p is Record<string, unknown> => p !== null));
+    }
+    return finalReplyFromOpenCodeMessages(messages, parts);
+  });
 }
 
 export function resolveOpenCodeSessionFile(

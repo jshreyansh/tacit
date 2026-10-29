@@ -132,7 +132,8 @@ test("ask types a question that says its answer goes back, and registers it for 
 });
 
 test("an agent whose answer can't be read is asked plainly, and the asker is told it won't come back", async () => {
-  const h = askHarness([{ ...codexAgent, terminalType: "opencode" }], false);
+  // Antigravity keeps no transcript Tacit can read its reply from.
+  const h = askHarness([{ ...codexAgent, terminalType: "antigravity" }], false);
   const result = await askAlongWire(h.deps, "me", { to: "cx", question: "Search the docs" });
   assert.equal(h.sent[0].ask, null);
   assert.match(h.sent[0].text, /^\[From Claude/);

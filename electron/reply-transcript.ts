@@ -18,6 +18,7 @@ import {
   type ReplyExtraction,
 } from "../shared/agent-reply.ts";
 import { resolveSessionFile, type SessionType } from "./session-watcher.ts";
+import { readOpenCodeFinalReply } from "./opencode-session.ts";
 
 /**
  * How much of the end to read. Generous enough that a final message with a
@@ -31,7 +32,7 @@ export type FinalReplyResult =
   | { status: "ready"; text: string; turn?: string }
   | { status: "mid-task" }
   | { status: "no-reply" }
-  /** No transcript to read: unresolvable path, unreadable file, or opencode. */
+  /** Nothing to read: unresolvable path, unreadable file or database. */
   | { status: "unavailable"; reason: string };
 
 function readTail(filePath: string): string | null {
@@ -62,9 +63,7 @@ export function readFinalAssistantReply(input: {
   provider: string;
   cwd: string;
 }): FinalReplyResult {
-  if (!isReplyTranscriptProvider(input.provider)) {
-    // opencode keeps its turns in a directory of per-message files rather than
-    // one appended log, so there is no tail to read. Saying so beats guessing.
+  if (input.provider !== "opencode" && !isReplyTranscriptProvider(input.provider)) {
     return { status: "unavailable", reason: `unsupported-provider:${input.provider}` };
   }
   if (!input.sessionId) {
@@ -77,6 +76,12 @@ export function readFinalAssistantReply(input: {
     input.cwd,
   );
   if (!filePath) return { status: "unavailable", reason: "session-file-not-found" };
+
+  // OpenCode keeps its turns in a database, not an appended log: the session
+  // file is that database, read by electron/opencode-session.ts.
+  if (input.provider === "opencode") {
+    return readOpenCodeFinalReply(filePath, input.sessionId) ?? { status: "unavailable", reason: "database-unreadable" };
+  }
 
   const raw = readTail(filePath);
   if (raw === null) return { status: "unavailable", reason: "transcript-unreadable" };

@@ -44,7 +44,7 @@ import { WireStateFile, WIRE_STATE_VERSION, type WireState } from "./wire-state"
 import { loadRole } from "../hydra/src/roles/loader";
 import { HydraStatusFeed, readHydraStatus } from "./hydra-wire-status";
 import { readFinalAssistantReply } from "./reply-transcript";
-import { isReplyTranscriptProvider } from "../shared/agent-reply";
+import { canReadFinalReply } from "../shared/agent-reply";
 import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
 import { envelopePreview, stepFromMessage } from "../shared/wire-envelope";
 import { findAgentAdapter } from "../shared/agent-adapters";
@@ -2124,7 +2124,7 @@ export class ApiServer {
           }
           return this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}`, ...(ask ? { askId: ask.id } : {}) });
         },
-        answersComeBack: (terminalType) => isReplyTranscriptProvider(terminalType),
+        answersComeBack: (terminalType) => canReadFinalReply(terminalType),
         pulse: this.wirePulse(terminalId),
         newId: () => randomUUID(),
       },

@@ -1091,21 +1091,31 @@ export class SessionWatcher {
       }
     }
 
-    let lastNotifiedMtime = 0;
-    try {
-      lastNotifiedMtime = fs.statSync(filePath).mtimeMs;
-    } catch {}
+    // When the session last changed on disk, or null if its file is gone.
+    // OpenCode writes into its database's -wal file; the database itself
+    // changes only when SQLite checkpoints, so it alone says nothing about
+    // a turn (29 Oct: rules on OpenCode's finished turns never ran).
+    const modifiedAt = (): number | null => {
+      const of = (file: string): number | null => {
+        try {
+          return fs.statSync(file).mtimeMs;
+        } catch {
+          return null;
+        }
+      };
+      const main = of(filePath);
+      if (main === null || type !== "opencode") return main;
+      return Math.max(main, of(`${filePath}-wal`) ?? 0);
+    };
+
+    const lastNotifiedMtime = modifiedAt() ?? 0;
 
     let debounceTimer: NodeJS.Timeout | null = null;
     let awaitingNewTurn = false;
 
     const tryCheck = (source: string): boolean => {
-      let currentMtime = 0;
-      try {
-        currentMtime = fs.statSync(filePath).mtimeMs;
-      } catch {
-        return false;
-      }
+      const currentMtime = modifiedAt();
+      if (currentMtime === null) return false;
 
       const entry = this.entries.get(sessionId);
       if (!entry || currentMtime === entry.lastNotifiedMtime) return false;
@@ -1151,12 +1161,8 @@ export class SessionWatcher {
           `[SessionWatcher] fs.watch event=${event} file=${changedFile} session=${sessionId}`,
         );
 
-      let newMtime = 0;
-      try {
-        newMtime = fs.statSync(filePath).mtimeMs;
-      } catch {
-        return;
-      }
+      const newMtime = modifiedAt();
+      if (newMtime === null) return;
 
       const entry = this.entries.get(sessionId);
       if (!entry) return;
@@ -1172,8 +1178,11 @@ export class SessionWatcher {
 
     // Fallback polling: fs.watch on macOS can miss events (rename from atomic writes).
     // Hooks are the primary turn-completion signal; this is a safety net.
-    const POLL_DELAY = 60_000;
-    const POLL_INTERVAL = 30_000;
+    // OpenCode has no hooks, and a folder watch on macOS misses its writes
+    // into the -wal file (electron/opencode-activity.ts), so it is polled
+    // from the start, often: a stat, and a database read only on a change.
+    const POLL_DELAY = type === "opencode" ? 0 : 60_000;
+    const POLL_INTERVAL = type === "opencode" ? 3_000 : 30_000;
     const startPolling = () => {
       const entry = this.entries.get(sessionId);
       if (!entry) return;

@@ -72,7 +72,7 @@ import {
   listAgentBrowserProfiles,
 } from "./browser/agentBrowserProfiles";
 import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
-import { endpointRole, nodeTitle, wireEndsOf } from "./canvas/wireEnds";
+import { endpointRole, isOnCanvas, nodeTitle, wireEndsOf } from "./canvas/wireEnds";
 import { ABILITY_WORDS } from "../shared/node-contracts";
 import { subscribePinEvents, usePinStore } from "./stores/pinStore";
 import {
@@ -1214,6 +1214,10 @@ export function App() {
         target: ConnectionEndpoint,
         requesterTerminalId?: string,
       ) => {
+        // An id that isn't on the canvas (a typo, a closed node) would make
+        // a wire to nothing, and tell the other end it was wired to a shell.
+        const missing = [source, target].find((end) => !isOnCanvas(end));
+        if (missing) return { ok: false, id: null, error: `There is no ${missing.kind} "${missing.id}" on the canvas; list_nodes shows what is.` };
         const id = createConnectionInScene(source, target, {
           by: requesterTerminalId ? `terminal:${requesterTerminalId}` : "user",
         });

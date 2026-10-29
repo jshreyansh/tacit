@@ -26,7 +26,10 @@ import {
   type ChatDeliveryOutcome,
 } from "./chat-delivery";
 
-/** Transcript formats this can read. `opencode` is deliberately absent. */
+/**
+ * Transcript formats this can read. `opencode` keeps its turns in a database,
+ * not a transcript; electron/opencode-session.ts reads its replies.
+ */
 export type ReplyTranscriptProvider = "claude" | "codex" | "kimi" | "wuu";
 
 export function isReplyTranscriptProvider(
@@ -35,6 +38,11 @@ export function isReplyTranscriptProvider(
   return (
     value === "claude" || value === "codex" || value === "kimi" || value === "wuu"
   );
+}
+
+/** Agents whose final reply can be read: the transcript formats, and OpenCode's database. */
+export function canReadFinalReply(value: unknown): boolean {
+  return isReplyTranscriptProvider(value) || value === "opencode";
 }
 
 export type ReplyExtraction =

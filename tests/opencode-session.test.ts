@@ -7,10 +7,14 @@ import { DatabaseSync } from "node:sqlite";
 import {
   exportOpenCodeSession,
   extractOpenCodeFirstUserPrompt,
+  finalReplyFromOpenCodeEntries,
+  finalReplyFromOpenCodeMessages,
   findBestOpenCodeSession,
+  readOpenCodeFinalReply,
   readOpenCodeSessionTelemetry,
   resolveOpenCodeSessionFile,
 } from "../electron/opencode-session.ts";
+import { readFinalAssistantReply } from "../electron/reply-transcript.ts";
 
 /**
  * OpenCode 2.0's layout (seen 14 Oct, v2.0.29): sessions in `session_v2`,
@@ -142,5 +146,95 @@ test("OpenCode 2.0: the first prompt and the transcript copy come from session_m
     const lines = exportOpenCodeSession(dbPath, "ses_new");
     assert.deepEqual(lines?.map((line) => JSON.parse(line).type), ["user", "assistant", "assistant", "idle"]);
     assert.equal(JSON.parse(lines?.[2] ?? "{}").data.content[0].text, "Done.");
+  });
+});
+
+// ------------------------------------------------------- the final reply
+
+// The shape of a real OpenCode 2.0 turn (29 Oct, a shell command then a
+// one-word answer): a step that called a tool, a system notice OpenCode adds
+// mid-turn, the answering step, then idle.
+const entry = (id: string, type: string, data: Record<string, unknown>) => ({ id, type, data: JSON.stringify(data) });
+const v2Turn = [
+  entry("msg_u", "user", { text: "Run sleep 25, then reply OC-FINISHED", files: [], agents: [] }),
+  entry("msg_a1", "assistant", {
+    content: [
+      { type: "reasoning", text: "Run it with the shell tool." },
+      { type: "tool", id: "call_1", name: "shell", state: { status: "completed" } },
+    ],
+    finish: "tool-calls",
+  }),
+  entry("msg_s", "system", { text: "The Code Mode tool catalog has changed." }),
+  entry("msg_a2", "assistant", {
+    content: [{ type: "reasoning", text: "Now just reply." }, { type: "text", text: "OC-FINISHED" }],
+    finish: "stop",
+  }),
+  entry("msg_i", "idle", { outcome: "succeeded" }),
+];
+
+test("OpenCode 2.0: a finished turn's reply is its last step's text, keyed by the idle entry", () => {
+  assert.deepEqual(finalReplyFromOpenCodeEntries(v2Turn), { status: "ready", text: "OC-FINISHED", turn: "msg_i" });
+});
+
+test("OpenCode 2.0: a turn with no idle entry yet is mid-task", () => {
+  assert.deepEqual(finalReplyFromOpenCodeEntries(v2Turn.slice(0, 4)), { status: "mid-task" });
+  assert.deepEqual(finalReplyFromOpenCodeEntries(v2Turn.slice(0, 3)), { status: "mid-task" }, "a system notice isn't an ending");
+  assert.deepEqual(finalReplyFromOpenCodeEntries(v2Turn.slice(0, 1)), { status: "mid-task" });
+});
+
+test("OpenCode 2.0: an interrupted turn has no reply to pass on", () => {
+  const interrupted = [...v2Turn.slice(0, 4), entry("msg_i", "idle", { outcome: "interrupted" })];
+  assert.deepEqual(finalReplyFromOpenCodeEntries(interrupted), { status: "no-reply" });
+});
+
+test("OpenCode 2.0: two turns ending in the same words are two replies", () => {
+  const again = [
+    ...v2Turn,
+    entry("msg_u2", "user", { text: "again" }),
+    entry("msg_a3", "assistant", { content: [{ type: "text", text: "OC-FINISHED" }], finish: "stop" }),
+    entry("msg_i2", "idle", { outcome: "succeeded" }),
+  ];
+  assert.deepEqual(finalReplyFromOpenCodeEntries(again), { status: "ready", text: "OC-FINISHED", turn: "msg_i2" });
+});
+
+test("OpenCode 2.0: a turn that ended without text has no reply; earlier turns' text isn't used", () => {
+  const silent = [
+    ...v2Turn,
+    entry("msg_u2", "user", { text: "run ls" }),
+    entry("msg_a3", "assistant", { content: [{ type: "tool", id: "c", name: "shell", state: { status: "completed" } }], finish: "stop" }),
+    entry("msg_i2", "idle", { outcome: "succeeded" }),
+  ];
+  assert.deepEqual(finalReplyFromOpenCodeEntries(silent), { status: "no-reply" });
+});
+
+test("OpenCode 1.x: the last message decides", () => {
+  const user = { id: "m1", data: { role: "user" } };
+  const step = { id: "m2", data: { role: "assistant", finish: "tool-calls" } };
+  const done = { id: "m3", data: { role: "assistant", finish: "stop" } };
+  const parts = new Map([["m3", [{ type: "reasoning", text: "x" }, { type: "text", text: "All done." }, { type: "text", text: "(file)", synthetic: true }]]]);
+  assert.deepEqual(finalReplyFromOpenCodeMessages([user, step, done], parts), { status: "ready", text: "All done.", turn: "m3" });
+  assert.deepEqual(finalReplyFromOpenCodeMessages([user, step], parts), { status: "mid-task" });
+  assert.deepEqual(finalReplyFromOpenCodeMessages([user], parts), { status: "mid-task" });
+  assert.deepEqual(finalReplyFromOpenCodeMessages([user, { id: "m4", data: { role: "assistant", error: { name: "Aborted" } } }], parts), { status: "no-reply" });
+});
+
+test("OpenCode 2.0: the reply is read from the database, through the same reader as Claude's and Codex's", () => {
+  withV2Db((dbPath, homeDir) => {
+    assert.deepEqual(readOpenCodeFinalReply(dbPath, "ses_new"), { status: "ready", text: "Done.", turn: "msg_i1" });
+    // readFinalAssistantReply finds the database from the session and folder.
+    const previousHome = process.env.HOME;
+    process.env.HOME = homeDir;
+    try {
+      assert.deepEqual(
+        readFinalAssistantReply({ sessionId: "ses_new", provider: "opencode", cwd: "/tmp/project" }),
+        { status: "ready", text: "Done.", turn: "msg_i1" },
+      );
+      assert.deepEqual(
+        readFinalAssistantReply({ sessionId: "ses_new", provider: "opencode", cwd: "/tmp/elsewhere" }),
+        { status: "unavailable", reason: "session-file-not-found" },
+      );
+    } finally {
+      process.env.HOME = previousHome;
+    }
   });
 });

@@ -6,6 +6,7 @@ import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 
 import {
+  SessionWatcher,
   checkTurnComplete,
   parseSessionTelemetryLine,
   resolveSessionFile,
@@ -556,4 +557,58 @@ test("claude telemetry parser passes on the session's title", () => {
   assert.equal(ai.title, "Tacit-wait-test temp folder cleanup");
   const [custom] = parseSessionTelemetryLine(JSON.stringify({ type: "custom-title", customTitle: "Codex limit exceeded" }), "claude");
   assert.equal(custom.title, "Codex limit exceeded");
+});
+
+test("opencode: a turn's end is noticed when only the database's -wal file changed", (t) => {
+  // OpenCode writes into opencode.db-wal; opencode.db itself changes only at
+  // a checkpoint. Watching the database's time alone, a finished turn was
+  // never noticed and rules on OpenCode's replies never ran (29 Oct).
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "session-watcher-opencode-"));
+  const previousXdg = process.env.XDG_DATA_HOME;
+  process.env.XDG_DATA_HOME = path.join(home, "data");
+  t.after(() => {
+    if (previousXdg === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = previousXdg;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  const dbPath = path.join(home, "data", "opencode", "opencode.db");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL);
+    CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);
+  `);
+  db.prepare("INSERT INTO session_v2 VALUES (?, ?, ?, ?)").run("ses_1", "/work/project", 1, 1);
+  const add = db.prepare("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)");
+  add.run("u1", "ses_1", "user", 1, 1, 1, JSON.stringify({ text: "hi" }));
+  db.close();
+  const wal = `${dbPath}-wal`;
+  fs.writeFileSync(wal, "");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(dbPath, old, old);
+  fs.utimesSync(wal, old, old);
+
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const watcher = new SessionWatcher();
+  t.after(() => watcher.unwatchAll());
+  let turnsEnded = 0;
+  const logs = t.mock.method(console, "log", () => {});
+  assert.equal(watcher.watch("ses_1", "opencode", "/work/project", () => turnsEnded++).ok, true);
+  assert.equal(turnsEnded, 0, "mid-turn when watching starts");
+
+  // The turn ends. The rows land in the database file here, but its time is
+  // put back: as far as the watcher can tell, only the -wal file changed.
+  const again = new DatabaseSync(dbPath);
+  again.prepare("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    "a1", "ses_1", "assistant", 2, 2, 2, JSON.stringify({ content: [{ type: "text", text: "hello" }], finish: "stop" }),
+  );
+  again.close();
+  fs.utimesSync(dbPath, old, old);
+  const now = new Date();
+  fs.utimesSync(wal, now, now);
+
+  t.mock.timers.tick(0); // polling starts at once for OpenCode
+  t.mock.timers.tick(3_000);
+  assert.equal(turnsEnded, 1, "the turn's end wasn't noticed within one poll");
+  logs.mock.restore();
 });

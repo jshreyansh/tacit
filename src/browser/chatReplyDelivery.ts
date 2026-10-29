@@ -38,7 +38,7 @@ import {
 } from "../../shared/chat-delivery";
 import {
   findTerminalForSession,
-  isReplyTranscriptProvider,
+  canReadFinalReply,
   replyDeliveryNotification,
   replyKey,
   telemetrySaysBusy,
@@ -595,7 +595,7 @@ async function deliverForTerminal(
   }
 
   const provider = terminal.type;
-  if (!isReplyTranscriptProvider(provider)) return;
+  if (!canReadFinalReply(provider)) return;
   if (!terminal.sessionId) return;
 
   // A tool still in flight contradicts the completion signal. The transcript

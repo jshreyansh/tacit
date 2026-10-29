@@ -67,3 +67,15 @@ test("kept messages are named by agent; ones for gone terminals are dropped and 
   await tellRestartSummary({ held: [], problem: "Tacit couldn't use what its wires were waiting on before it closed (not JSON), so nothing was kept." });
   assert.deepEqual(notes, [["warn", "Tacit couldn't use what its wires were waiting on before it closed (not JSON), so nothing was kept."]]);
 });
+
+test("a wire can only be drawn by an agent between nodes that are on the canvas", async () => {
+  // Same window as above; the stores keep what that test put in them.
+  const { isOnCanvas } = await import("../src/canvas/wireEnds");
+  const { useBrowserCardStore } = await import("../src/stores/browserCardStore");
+  assert.equal(isOnCanvas({ kind: "terminal", id: "cx" }), true);
+  assert.equal(isOnCanvas({ kind: "terminal", id: "1793253230635-1" }), false, "a closed terminal");
+  assert.equal(isOnCanvas({ kind: "browser", id: "nope" }), false);
+  useBrowserCardStore.setState({ cards: { b1: { id: "b1", url: "https://example.com" } } } as never);
+  assert.equal(isOnCanvas({ kind: "browser", id: "b1" }), true);
+  assert.equal(isOnCanvas({ kind: "note", id: "no-such-note" }), false);
+});

@@ -72,6 +72,13 @@ export function nodeTitle(kind: ConnectionEndpointKind, id: string): string | nu
   return pin?.title || null;
 }
 
+/** Whether a node is on the open canvas: a wire can't be drawn to one that isn't. */
+export function isOnCanvas(endpoint: ConnectionEndpoint): boolean {
+  if (endpoint.kind === "terminal") return findTerminal(endpoint.id) !== null;
+  if (endpoint.kind === "browser") return endpoint.id in useBrowserCardStore.getState().cards;
+  return Object.values(usePinStore.getState().pinsByProject).some((pins) => pins.some((p) => p.id === endpoint.id));
+}
+
 /** What a node on the canvas is, as far as wires care. */
 export function endpointRole(endpoint: ConnectionEndpoint): NodeRole {
   if (endpoint.kind === "terminal") {
