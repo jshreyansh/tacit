@@ -174,3 +174,30 @@ test("a Hydra worker keeps which assignment it is across a restart; a broken rec
   assert.ok(broken && "scene" in broken);
   assert.equal(broken.scene.projects[0].worktrees[0].terminals[0].hydra, undefined);
 });
+
+test("after a restart, a Hydra worker that never started gets its task again; others don't", () => {
+  const saved = (terminal: Record<string, unknown>) => ({
+    version: 2,
+    scene: {
+      version: 2, camera: { x: 0, y: 0, zoom: 1 }, browserCards: {}, annotations: [],
+      projects: [{ id: "p1", name: "App", path: "/app", worktrees: [{ id: "w1", name: "main", path: "/app", terminals: [{
+        id: "t1", title: "claude", type: "claude", minimized: false, focused: false, ptyId: null, status: "idle",
+        x: 0, y: 0, width: 800, height: 600, tags: [], initialPrompt: "Review the diff", ...terminal,
+      }] }] }],
+    },
+  });
+  const sent = (terminal: Record<string, unknown>) => {
+    const restored = readWorkspaceSnapshot(saved(terminal));
+    assert.ok(restored && "scene" in restored);
+    return restored.scene.projects[0].worktrees[0].terminals[0].initialPromptSent;
+  };
+  const hydra = { workflowId: "workbench-1", assignmentId: "check-dev", repoPath: "/app" };
+  // Stuck at "trust this folder?" when the app closed: no session, task never arrived.
+  assert.equal(sent({ hydra }), undefined);
+  assert.equal(sent({ hydra, type: "codex" }), undefined);
+  // It started: the task went out, and isn't sent twice.
+  assert.equal(sent({ hydra, sessionId: "s-1" }), true);
+  // Not a Hydra worker, or an agent whose sessions Tacit can't always see: as before.
+  assert.equal(sent({}), true);
+  assert.equal(sent({ hydra, type: "opencode" }), true);
+});

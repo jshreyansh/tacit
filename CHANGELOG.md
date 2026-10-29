@@ -5,6 +5,7 @@ All notable changes to Tacit will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **A Hydra worker that hadn't started yet gets its task after a restart.** A worker still at a question when Tacit restarted (such as "trust this folder?") came back without its task, sitting at an empty prompt, because its task counted as sent. A Claude or Codex worker with no session never got it, so it is sent again.
 - **Hydra's roles ship with the app.** The installed Hydra knew no roles at all (dev, reviewer, qa, designer, janitor, lead), so dispatching with a role couldn't work, and a hand-off over a wire with a role went without it. The role files now ship with Hydra, and the app reads the same copy. If a wire's role can't be loaded, the agent handing off is told.
 - **OpenCode's finished turns are noticed.** Tacit watched OpenCode's database file, which OpenCode only rewrites now and then; its work goes to a second file first. So a rule on OpenCode's replies, or a reply wire to a chat or note, never ran. Both files are checked now, every few seconds.
 - **The manager can't wire a node that isn't there.** Asked to connect a node by an id that isn't on the canvas, it made a wire to nothing and told the other end it had been wired to a shell. Now it's refused, with a pointer to list_nodes.

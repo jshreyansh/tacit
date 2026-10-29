@@ -38,6 +38,24 @@ import { clusterByTag } from "./clustering";
 import { validPtySize, type PtySize } from "../shared/pty-size";
 
 /** A saved terminal's Hydra ids, if they are whole. */
+/**
+ * Whether a saved terminal's initial prompt went out in an earlier run. It
+ * did for any terminal launched with one, whether or not the flag existed
+ * then, except a Hydra worker on Claude or Codex with no session: those
+ * agents' sessions are always captured, so none means the CLI never got
+ * past a question at startup (trust this folder, update now) and the task
+ * never reached it. Restored as sent, that worker came back idle, its task
+ * lost (29 Oct).
+ */
+function initialPromptWentOut(terminal: Record<string, unknown>): boolean | undefined {
+  if (typeof terminal.initialPrompt !== "string") return undefined;
+  const neverStarted =
+    readHydraIdentity(terminal.hydra) !== undefined &&
+    (terminal.type === "claude" || terminal.type === "codex") &&
+    typeof terminal.sessionId !== "string";
+  return neverStarted ? undefined : true;
+}
+
 function readHydraIdentity(value: unknown): HydraIdentity | undefined {
   if (!value || typeof value !== "object") return undefined;
   const v = value as Record<string, unknown>;
@@ -436,10 +454,7 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                       typeof terminal.initialPrompt === "string"
                         ? terminal.initialPrompt
                         : undefined,
-                    // A saved terminal was launched in an earlier run, so its
-                    // prompt went out then, whether or not this flag existed.
-                    initialPromptSent:
-                      typeof terminal.initialPrompt === "string" ? true : undefined,
+                    initialPromptSent: initialPromptWentOut(terminal),
                     minimized: terminal.minimized === true,
                     origin,
                     parentTerminalId:
@@ -585,8 +600,7 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
           id: t.id,
           initialPrompt:
             typeof t.initialPrompt === "string" ? t.initialPrompt : undefined,
-          initialPromptSent:
-            typeof t.initialPrompt === "string" ? true : undefined,
+          initialPromptSent: initialPromptWentOut(t),
           minimized: false,
           origin,
           parentTerminalId:
