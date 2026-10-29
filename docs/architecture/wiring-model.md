@@ -99,3 +99,14 @@ week. Same rules as the steps: unit tests, a live check, hand tests.
    Lead, where the worker's wire shows "role · status". A wire with a role
    shows the role on its label, and a tracked hand-off along it shows how
    it's going (working, done, stuck), as a Hydra worker's wire does.
+   - Found while testing: the packaged app's Hydra knew no roles (the role
+     files weren't copied into its build); they ship with it now.
+   - Every Hydra workbench is a new folder, and Claude and Codex ask
+     whether to trust each new folder, so workers stopped at that question.
+     Decided 29 Oct: Tacit trusts a workbench folder for an agent when the
+     folder is inside the repo and that agent already trusts the repo
+     (electron/agent-folder-trust.ts); otherwise the agent asks. A worker
+     waiting at a question shows "<role> · needs you".
+   - Hydra closes a worker's terminal once the Lead collects its result, so
+     a worker's wire shows "working" (or "needs you") and then goes; "done"
+     is seen only on wires whose worker stays open (tracked hand-offs).
