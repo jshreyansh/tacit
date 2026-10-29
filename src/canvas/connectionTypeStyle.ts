@@ -77,14 +77,16 @@ export function wireLabel(input: {
 export function wireRoleLabel(input: {
   connection: { purpose?: string; role?: string; from: { id: string }; to: { kind: string; id: string } };
   /** The Hydra worker at the far end, if it is one. */
-  hydra?: { role: string; status: string };
+  hydra?: { role: string; status: string; needsYou?: boolean };
   /** The latest tracked hand-off each way along the wire, if any. */
   handoffForward?: string;
   handoffBack?: string;
 }): { role: string | null; status: string | null } | null {
   const { connection, hydra } = input;
   if (connection.purpose) return null;
-  if (hydra && connection.to.kind === "terminal") return { role: hydra.role, status: `hydra_status_${hydra.status}` };
+  if (hydra && connection.to.kind === "terminal") {
+    return { role: hydra.role, status: hydra.needsYou ? "hydra_status_needs_you" : `hydra_status_${hydra.status}` };
+  }
   if (input.handoffForward) return { role: connection.role ?? null, status: `handoff_status_${input.handoffForward}` };
   // Back along a two-way wire: the role is the far end's, not the sender's.
   if (input.handoffBack) return { role: null, status: `handoff_status_${input.handoffBack}` };

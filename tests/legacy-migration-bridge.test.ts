@@ -145,3 +145,32 @@ test("v2 restore repairs invalid managed browser identity references", () => {
   assert.equal(restored.scene.browserCards.unsafe.identityId, "identity-default");
   assert.deepEqual(restored.scene.browserCards.unsafe.backend, { kind: "managed", engine: "legacy-webview", identityId: "identity-default" });
 });
+
+test("a Hydra worker keeps which assignment it is across a restart; a broken record is dropped", () => {
+  const worker = (hydra: unknown) => ({
+    version: 2,
+    scene: {
+      version: 2,
+      camera: { x: 0, y: 0, zoom: 1 },
+      browserCards: {},
+      annotations: [],
+      projects: [{
+        id: "p1", name: "App", path: "/app",
+        worktrees: [{
+          id: "w1", name: "main", path: "/app",
+          terminals: [{
+            id: "t1", title: "claude", type: "claude", minimized: false, focused: false, ptyId: null, status: "idle",
+            x: 0, y: 0, width: 800, height: 600, tags: [], hydra,
+          }],
+        }],
+      }],
+    },
+  });
+  const ids = { workflowId: "workbench-1", assignmentId: "check-dev", repoPath: "/app" };
+  const restored = readWorkspaceSnapshot(worker(ids));
+  assert.ok(restored && "scene" in restored);
+  assert.deepEqual(restored.scene.projects[0].worktrees[0].terminals[0].hydra, ids);
+  const broken = readWorkspaceSnapshot(worker({ workflowId: "workbench-1" }));
+  assert.ok(broken && "scene" in broken);
+  assert.equal(broken.scene.projects[0].worktrees[0].terminals[0].hydra, undefined);
+});

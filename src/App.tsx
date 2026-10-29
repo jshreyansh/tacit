@@ -86,7 +86,7 @@ import {
   wireSpawnedBrowser,
 } from "./actions/sceneConnectionActions";
 import type { ConnectionEndpoint } from "./stores/connectionStore";
-import type { TerminalType } from "./types";
+import type { HydraIdentity, TerminalType } from "./types";
 import { addScannedProjectAndFocus } from "./projects/projectCreation";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePinPreloader } from "./hooks/usePinPreloader";
@@ -625,6 +625,7 @@ export function App() {
         prompt?: string,
         autoApprove?: boolean,
         parentTerminalId?: string | null,
+        hydra?: HydraIdentity | null,
       ) => {
         const terminal = createTerminalInScene({
           projectId,
@@ -634,6 +635,7 @@ export function App() {
           autoApprove,
           origin: "agent",
           parentTerminalId: parentTerminalId ?? undefined,
+          ...(hydra ? { hydra } : {}),
         });
         return JSON.parse(JSON.stringify(terminal));
       },

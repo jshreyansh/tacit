@@ -15,7 +15,7 @@ import {
   taskSheet,
   type TrackedHandoff,
 } from "../electron/tracked-handoff";
-import { HydraStatusFeed } from "../electron/hydra-wire-status";
+import { HydraStatusFeed, NOT_STARTED_AFTER_MS, workerNeedsYou } from "../electron/hydra-wire-status";
 import { RESULT_SCHEMA_VERSION } from "../hydra/src/protocol";
 
 // When a hand-off is tracked by Hydra's result contract, and what happens then.
@@ -249,4 +249,37 @@ test("a host that bundles the loader away from the role files points it at them"
   assert.equal(role.file_path, path.join(dir, "reviewer.md"));
   // A role not in that folder is still found in the others.
   assert.equal(loadRole("dev", repo).source, "builtin");
+});
+
+// ------------------------------------------------------- needs you
+
+test("a worker that hasn't started after a while, or is asking something, needs you", () => {
+  const starting = { pty_alive: true, session_attached: false, turn_state: "unknown" };
+  // Just launched: give it time to start its session.
+  assert.equal(workerNeedsYou("in_progress", starting, 5_000), false);
+  // Still no session: it's at a question before its first turn (trust, update, sign in).
+  assert.equal(workerNeedsYou("in_progress", starting, NOT_STARTED_AFTER_MS), true);
+  assert.equal(workerNeedsYou("claimed", starting, NOT_STARTED_AFTER_MS), true);
+  // Working, or asking for a permission mid-turn.
+  assert.equal(workerNeedsYou("in_progress", { pty_alive: true, session_attached: true, turn_state: "tool_running" }, 60_000), false);
+  assert.equal(workerNeedsYou("in_progress", { pty_alive: true, session_attached: true, turn_state: "awaiting_input" }, 1_000), true);
+  // Finished, failed or gone: nothing to ask of anyone.
+  assert.equal(workerNeedsYou("completed", starting, 60_000), false);
+  assert.equal(workerNeedsYou("failed", starting, 60_000), false);
+  assert.equal(workerNeedsYou("in_progress", { ...starting, pty_alive: false }, 60_000), false);
+  assert.equal(workerNeedsYou("in_progress", null, 60_000), false);
+});
+
+test("the feed times each worker from when it first saw it, and sends needing you as a change", () => {
+  const feed = new HydraStatusFeed();
+  assert.equal(feed.seenFor("w1", 1_000), 0);
+  assert.equal(feed.seenFor("w1", 21_000), 20_000);
+  const working = { terminalId: "w1", role: "dev", status: "in_progress" as const };
+  assert.deepEqual(feed.changes([working]), [working]);
+  assert.deepEqual(feed.changes([{ ...working, needsYou: true }]), [{ ...working, needsYou: true }]);
+  assert.deepEqual(feed.changes([{ ...working, needsYou: true }]), []);
+  assert.deepEqual(feed.changes([working]), [working], "answered: back to working");
+  // A worker that's gone is forgotten, so a new one with its id starts timing afresh.
+  feed.changes([]);
+  assert.equal(feed.seenFor("w1", 90_000), 0);
 });

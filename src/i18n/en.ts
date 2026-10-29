@@ -1159,6 +1159,7 @@ export const en = {
   hydra_status_completed: "done",
   hydra_status_timed_out: "timed out",
   hydra_status_failed: "failed",
+  hydra_status_needs_you: "needs you",
   wire_label_handoff: "hand-off",
   handoff_status_working: "working",
   handoff_status_done: "done",

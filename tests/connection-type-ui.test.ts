@@ -160,6 +160,11 @@ test("a wire's label names the role of the agent at its far end, and how its wor
     role: "qa",
     status: "hydra_status_in_progress",
   });
+  // Waiting at a question in its terminal.
+  assert.deepEqual(wireRoleLabel({ connection: wire, hydra: { role: "qa", status: "in_progress", needsYou: true } }), {
+    role: "qa",
+    status: "hydra_status_needs_you",
+  });
   // A role given on the wire, before anything is handed off, and while a
   // tracked hand-off along it runs and when it ends.
   const withRole = { ...wire, role: "reviewer" };
@@ -181,7 +186,7 @@ test("every role and status the label can show has words in each language", asyn
   const keys = [
     "wire_label_handoff",
     ...["working", "done", "stuck", "error", "timed_out"].map((s) => `handoff_status_${s}`),
-    ...["pending", "claimed", "in_progress", "completed", "timed_out", "failed"].map((s) => `hydra_status_${s}`),
+    ...["pending", "claimed", "in_progress", "completed", "timed_out", "failed", "needs_you"].map((s) => `hydra_status_${s}`),
   ];
   for (const key of keys) {
     assert.equal(typeof (en as Record<string, unknown>)[key], "string", `en ${key}`);

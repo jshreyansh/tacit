@@ -41,8 +41,9 @@ import {
 import { WireAsks, interruptedText, type PendingAsk } from "./wire-asks";
 import { TrackedHandoffs, restartReminder, trackedNotice, type TrackedHandoff } from "./tracked-handoff";
 import { WireStateFile, WIRE_STATE_VERSION, type WireState } from "./wire-state";
+import { trustHydraFolder } from "./agent-folder-trust";
 import { loadRole } from "../hydra/src/roles/loader";
-import { HydraStatusFeed, readHydraStatus } from "./hydra-wire-status";
+import { HydraStatusFeed, readHydraStatus, workerNeedsYou } from "./hydra-wire-status";
 import { readFinalAssistantReply } from "./reply-transcript";
 import { canReadFinalReply } from "../shared/agent-reply";
 import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
@@ -281,7 +282,20 @@ export class ApiServer {
       for (const terminalId of this.wireMailbox.terminalsWithMail()) void this.wireMailbox.poke(terminalId);
       void this.wireAsks.sweep();
       void this.trackedHandoffs.sweep().catch((err) => console.warn("[tracked-handoff] sweep failed", err));
-      const statuses = this.deps.telemetryService.hydraWorkers().map(readHydraStatus).filter((s) => s !== null);
+      const now = Date.now();
+      const statuses = this.deps.telemetryService
+        .hydraWorkers()
+        .map((worker) => {
+          const status = readHydraStatus(worker);
+          if (!status) return null;
+          const needsYou = workerNeedsYou(
+            status.status,
+            this.deps.telemetryService.getTerminalSnapshot(worker.terminalId),
+            this.hydraStatus.seenFor(worker.terminalId, now),
+          );
+          return needsYou ? { ...status, needsYou } : status;
+        })
+        .filter((s) => s !== null);
       for (const status of this.hydraStatus.changes(statuses)) {
         sendToWindow(this.deps.getWindow(), "wire:hydra-status", status);
       }
@@ -846,8 +860,18 @@ export class ApiServer {
       });
     }
 
+    // A Hydra worker starts in a folder its agent hasn't seen, and would sit
+    // at the agent's "trust this folder?" question (electron/agent-folder-trust.ts).
+    const folderTrust =
+      workflowId && assignmentId && repoPath && (type === "claude" || type === "codex")
+        ? trustHydraFolder({ agent: type, repo: repoPath, folder: worktree })
+        : null;
+    if (folderTrust?.status === "failed") {
+      console.warn(`[folder-trust] couldn't trust ${worktree} for ${type}: ${folderTrust.detail}`);
+    }
+
     const terminal = await this.execRenderer(
-      `window.__tcApi.addTerminal(${JSON.stringify(projectId)}, ${JSON.stringify(worktreeId)}, ${JSON.stringify(type)}, ${JSON.stringify(prompt)}, ${JSON.stringify(!!autoApprove)}, ${JSON.stringify(parentTerminalId ?? null)})`,
+      `window.__tcApi.addTerminal(${JSON.stringify(projectId)}, ${JSON.stringify(worktreeId)}, ${JSON.stringify(type)}, ${JSON.stringify(prompt)}, ${JSON.stringify(!!autoApprove)}, ${JSON.stringify(parentTerminalId ?? null)}, ${JSON.stringify(workflowId && assignmentId && repoPath ? { workflowId, assignmentId, repoPath } : null)})`,
     );
     this.deps.telemetryService.registerTerminal({
       terminalId: terminal.id,
@@ -857,7 +881,12 @@ export class ApiServer {
       assignmentId,
       repoPath,
     });
-    return { id: terminal.id, type: terminal.type, title: terminal.title };
+    return {
+      id: terminal.id,
+      type: terminal.type,
+      title: terminal.title,
+      ...(folderTrust ? { folder_trust: folderTrust } : {}),
+    };
   }
 
   private async terminalList(worktreePath: string | null) {

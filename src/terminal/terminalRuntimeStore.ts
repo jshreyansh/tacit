@@ -1858,12 +1858,18 @@ async function spawnPty(
     theme: "dark" | "light";
     cols?: number;
     rows?: number;
+    workflowId?: string;
+    assignmentId?: string;
+    repoPath?: string;
   } = {
     cwd: runtime.meta.worktreePath,
     terminalId: runtime.meta.terminal.id,
     terminalType: runtime.meta.terminal.type,
     origin: runtime.meta.terminal.origin ?? "user",
     theme: useThemeStore.getState().theme,
+    // A Hydra worker says so each time it starts, restarts included, so its
+    // wire keeps its role and status (electron/hydra-wire-status.ts).
+    ...(runtime.meta.terminal.hydra ?? {}),
   };
 
   let sendInitialPrompt = false;

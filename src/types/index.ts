@@ -210,6 +210,12 @@ export interface TerminalData {
   tags: string[];
   origin?: TerminalOrigin;
   parentTerminalId?: string;
+  /**
+   * The Hydra assignment this terminal is the worker for, when Hydra
+   * dispatched it. Kept so its wire still shows its role and status after
+   * a restart (electron/hydra-wire-status.ts).
+   */
+  hydra?: HydraIdentity;
   scrollback?: string;
   sessionId?: string;
   initialPrompt?: string;
@@ -1604,9 +1610,18 @@ export interface TrackedHandoffFlag {
   report: string;
 }
 
+/** Which Hydra assignment a worker terminal belongs to. */
+export interface HydraIdentity {
+  workflowId: string;
+  assignmentId: string;
+  repoPath: string;
+}
+
 /** A Hydra worker's role and assignment status (electron/hydra-wire-status.ts). */
 export interface HydraWireStatus {
   terminalId: string;
   role: string;
   status: "pending" | "claimed" | "in_progress" | "completed" | "timed_out" | "failed";
+  /** Waiting at a question in its terminal rather than working. */
+  needsYou?: boolean;
 }

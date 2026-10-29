@@ -9,6 +9,7 @@ import type {
   TerminalType,
 } from "./types";
 import type { SceneDocument } from "./types/scene";
+import type { HydraIdentity } from "./types";
 import type {
   BrowserIdentity,
   WorkspaceCanvas,
@@ -35,6 +36,15 @@ import {
 } from "./canvas/sceneProjection";
 import { clusterByTag } from "./clustering";
 import { validPtySize, type PtySize } from "../shared/pty-size";
+
+/** A saved terminal's Hydra ids, if they are whole. */
+function readHydraIdentity(value: unknown): HydraIdentity | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  return typeof v.workflowId === "string" && typeof v.assignmentId === "string" && typeof v.repoPath === "string"
+    ? { workflowId: v.workflowId, assignmentId: v.assignmentId, repoPath: v.repoPath }
+    : undefined;
+}
 
 export interface LegacyWorkspaceSnapshot {
   version: 1;
@@ -436,6 +446,7 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                       typeof terminal.parentTerminalId === "string"
                         ? terminal.parentTerminalId
                         : undefined,
+                    hydra: readHydraIdentity(terminal.hydra),
                     ptyId: null,
                     ptySize: readPtySize(terminal.ptySize),
                     scrollback:
@@ -582,6 +593,7 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
             typeof t.parentTerminalId === "string"
               ? t.parentTerminalId
               : undefined,
+          hydra: readHydraIdentity(t.hydra),
           ptyId: null,
           ptySize: readPtySize(t.ptySize),
           scrollback:

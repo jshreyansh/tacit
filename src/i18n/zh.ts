@@ -1138,6 +1138,7 @@ export const zh = {
   hydra_status_completed: "已完成",
   hydra_status_timed_out: "已超时",
   hydra_status_failed: "失败",
+  hydra_status_needs_you: "需要你",
   wire_label_handoff: "交接",
   handoff_status_working: "工作中",
   handoff_status_done: "已完成",

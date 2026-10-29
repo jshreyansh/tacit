@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("tacit", {
       theme?: "dark" | "light";
       cols?: number;
       rows?: number;
+      workflowId?: string;
+      assignmentId?: string;
+      repoPath?: string;
     }) => ipcRenderer.invoke("terminal:create", options),
     destroy: (ptyId: number) => ipcRenderer.invoke("terminal:destroy", ptyId),
     getPid: (ptyId: number) =>

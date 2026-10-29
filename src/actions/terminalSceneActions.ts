@@ -1,4 +1,4 @@
-import type { TerminalData, TerminalOrigin, TerminalType } from "../types";
+import type { HydraIdentity, TerminalData, TerminalOrigin, TerminalType } from "../types";
 import {
   createTerminal as createProjectTerminal,
   destroyAllStashedTerminals as destroyAllProjectStashedTerminals,
@@ -27,6 +27,8 @@ interface CreateTerminalInSceneOptions {
   autoApprove?: boolean;
   origin?: TerminalOrigin;
   parentTerminalId?: string;
+  /** Set when Hydra dispatched this terminal as a worker. */
+  hydra?: HydraIdentity;
   position?: { x: number; y: number };
 }
 
@@ -117,9 +119,10 @@ export function createTerminalInScene({
   autoApprove,
   origin = "user",
   parentTerminalId,
+  hydra,
   position,
 }: CreateTerminalInSceneOptions): TerminalData {
-  const baseTerminal =
+  const made =
     terminal ??
     createProjectTerminal(
       type,
@@ -129,6 +132,7 @@ export function createTerminalInScene({
       origin,
       parentTerminalId,
     );
+  const baseTerminal = hydra ? { ...made, hydra } : made;
 
   // Compute placement if the caller did not specify explicit x/y on the
   // terminal record. The default createTerminal() returns x=0, y=0, so we

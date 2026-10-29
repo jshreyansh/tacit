@@ -55,7 +55,19 @@ export function installWireMailbox(): () => void {
       .getState()
       .notify("warn", `${flag.targetTitle} ${what} on the work ${flag.senderTitle} handed off. Its report: ${flag.report}`);
   });
-  const offHydra = window.tacit.wires.onHydraStatus((status) => useWireMailboxStore.getState().applyHydra(status));
+  const offHydra = window.tacit.wires.onHydraStatus((status) => {
+    const before = useWireMailboxStore.getState().hydra[status.terminalId];
+    useWireMailboxStore.getState().applyHydra(status);
+    // Said once as it starts: the worker's tile may be off screen.
+    if (status.needsYou && !before?.needsYou) {
+      useNotificationStore
+        .getState()
+        .notify(
+          "warn",
+          `The ${status.role} worker ${terminalName(status.terminalId) ?? status.terminalId} is waiting for you: its terminal is asking something (such as whether to trust its folder) before it can start.`,
+        );
+    }
+  });
   const offSummary = window.tacit.wires.onRestartSummary((summary) => void tellRestartSummary(summary));
   const offHandoff = window.tacit.wires.onHandoffStatus((status) => useWireMailboxStore.getState().applyHandoff(status));
   const offNotice = window.tacit.wires.onNotice(({ message }) => useNotificationStore.getState().notify("warn", message));
