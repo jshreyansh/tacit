@@ -760,6 +760,7 @@ taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
 });
 
 const apiServer = new ApiServer({
+  wireStatePath: path.join(TACIT_DIR, "wire-state.json"),
   getWindow: () => mainWindow,
   ptyManager,
   projectScanner,
@@ -1347,9 +1348,13 @@ const TITLE_STRIP_HEIGHT = 28;
     });
     if (rendererReady) {
       console.warn("[PtyManager] renderer reloaded – destroying orphaned PTYs");
+      apiServer.onAgentsStopping();
       await ptyManager.destroyAll();
     }
     rendererReady = true;
+    // Every agent starts again with this window: what wires were waiting on
+    // is held until each has had a turn (electron/wire-mailbox.ts).
+    apiServer.onAgentsRestarted();
     try {
       const port = await apiServer.start();
       desktopApiPort = port;
@@ -3948,6 +3953,14 @@ function setupIpc() {
     if (typeof terminalId !== "string" || !terminalId) throw new Error("terminalId is required");
     return apiServer.wireMailbox.flush(terminalId);
   });
+  // The window is listening for wire events again: after a restart, what is
+  // waiting is sent to it, and the agents waiting on interrupted questions
+  // and tracked hand-offs are told (held until each has had a turn).
+  ipcMain.handle("wires:window-ready", async (event) => {
+    if (!isMainWindowSender(event)) throw new Error("wires:window-ready is only for the app's window");
+    await apiServer.onWindowReady();
+  });
+
   ipcMain.handle("wire-mailbox:discard", (event, terminalId: unknown) => {
     if (!isMainWindowSender(event)) throw new Error("wire-mailbox:discard is only for the app's window");
     if (typeof terminalId !== "string" || !terminalId) throw new Error("terminalId is required");
@@ -4507,6 +4520,8 @@ app.on("will-quit", (event) => {
     // forever — window alive, unable to exit, and any pending update installer
     // waiting on a process that will never die.
     try {
+      // Before the agents stop, so their exits don't drop what waits for them.
+      apiServer.prepareToQuit();
       await requestFinalFlushAndWait(mainWindow);
       outputBatcher.dispose();
       await ptyManager.destroyAll();

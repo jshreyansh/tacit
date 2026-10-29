@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ASK_TIMEOUT_MS, WireAsks, answerText, questionText, type PendingAsk, type ReplyRead } from "../electron/wire-asks";
+import { ASK_TIMEOUT_MS, WireAsks, answerText, interruptedText, questionText, type PendingAsk, type ReplyRead } from "../electron/wire-asks";
 
 // Asking over a wire: the turn the question starts is the answer, and it
 // goes back to the asker.
@@ -9,17 +9,19 @@ import { ASK_TIMEOUT_MS, WireAsks, answerText, questionText, type PendingAsk, ty
 function harness(reply: () => ReplyRead) {
   const answers: Array<{ to: string; text: string }> = [];
   let now = 0;
+  let changes = 0;
   const asks = new WireAsks({
     readReply: () => reply(),
     answer: async (ask, text) => { answers.push({ to: ask.askerId, text }); },
     now: () => now,
     wait: async () => {},
+    changed: () => { changes += 1; },
   });
   const ask = (id = "q1", targetId = "cx"): PendingAsk => ({
     id, askerId: "cl", askerTitle: "Claude", targetId, targetTitle: "Codex",
     question: "Does the login redirect keep the query string?", cwd: "/w", at: now,
   });
-  return { asks, answers, ask, advance: (ms: number) => { now += ms; } };
+  return { asks, answers, ask, advance: (ms: number) => { now += ms; }, changes: () => changes };
 }
 
 test("the target is told its reply goes back to the asker", () => {
@@ -141,4 +143,45 @@ test("the turn that answered is remembered, once, so a rule doesn't send it to t
   assert.equal(h.asks.alreadyAnswered("cx", "cl", "turn:t-1"), true);
   // Used up: asked again, it's no longer an answer already sent.
   assert.equal(h.asks.alreadyAnswered("cx", "cl", "turn:t-1"), false);
+});
+
+test("what is pending is saved whenever it changes", async () => {
+  let reply: ReplyRead = { status: "no-reply" };
+  const h = harness(() => reply);
+  h.asks.register(h.ask());
+  assert.equal(h.changes(), 1);
+  assert.deepEqual(h.asks.snapshot().queued.map((a) => a.id), ["q1"]);
+  h.asks.started("q1");
+  assert.equal(h.changes(), 2);
+  assert.deepEqual(h.asks.snapshot(), { queued: [], active: [{ ...h.ask(), at: 0 }] });
+  reply = { status: "ready", text: "yes" };
+  await h.asks.turnEnded("cx");
+  assert.equal(h.changes(), 3);
+  assert.deepEqual(h.asks.snapshot(), { queued: [], active: [] });
+});
+
+test("after a restart a question being answered was interrupted; one still waiting stays", () => {
+  const h = harness(() => ({ status: "no-reply" }));
+  // Live before the window reloaded: one being answered.
+  h.asks.register(h.ask("q1", "cx"));
+  h.asks.started("q1");
+  // Saved when the app last closed: one waiting in a mailbox, one being answered.
+  const waiting = { ...h.ask("q2", "oc"), question: "still in the mailbox" };
+  const answering = { ...h.ask("q3", "cl2"), question: "was being answered" };
+  const interrupted = h.asks.restart({ queued: [waiting], active: [answering] });
+  assert.deepEqual(interrupted.map((a) => a.id).sort(), ["q1", "q3"]);
+  assert.deepEqual(h.asks.snapshot(), { queued: [waiting], active: [] });
+  assert.equal(h.answers.length, 0, "the askers are told by the caller, held until they've had a turn");
+  assert.match(interruptedText(answering), /^\[Codex \(terminal cl2\) was restarted with Tacit before it finished answering your question "was being answered"\. Ask again/);
+});
+
+test("a question restored from disk is answered as usual once it's typed in", async () => {
+  let reply: ReplyRead = { status: "no-reply" };
+  const h = harness(() => reply);
+  h.asks.restart({ queued: [h.ask("q9")], active: [] });
+  h.asks.started("q9");
+  reply = { status: "ready", text: "answered after the restart" };
+  await h.asks.turnEnded("cx");
+  assert.equal(h.answers.length, 1);
+  assert.match(h.answers[0].text, /answered after the restart$/);
 });

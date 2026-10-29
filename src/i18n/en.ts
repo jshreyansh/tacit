@@ -1236,6 +1236,8 @@ export const en = {
   connection_send_failed: "Not sent: {detail}",
   wire_waiting_badge: "{n} waiting",
   wire_waiting_title: "Messages along wires, waiting for this agent's turn to end",
+  wire_waiting_held_badge: "{n} kept",
+  wire_waiting_held_title: "Kept from before Tacit restarted: they go after this agent's next turn, or deliver them now",
   wire_waiting_deliver: "Deliver now",
   wire_waiting_discard: "Discard waiting messages",
   connection_reply_rule_browser: "Paste each finished reply into this page's chat",

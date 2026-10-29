@@ -1134,6 +1134,22 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("wire:hydra-status", listener);
       return () => ipcRenderer.removeListener("wire:hydra-status", listener);
     },
+    onRestartSummary: (
+      callback: (payload: import("../src/types").WireRestartSummary) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("../src/types").WireRestartSummary,
+      ) => callback(payload);
+      ipcRenderer.on("wire:restart-summary", listener);
+      return () => ipcRenderer.removeListener("wire:restart-summary", listener);
+    },
+    onNotice: (callback: (payload: { message: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { message: string }) => callback(payload);
+      ipcRenderer.on("wire:notice", listener);
+      return () => ipcRenderer.removeListener("wire:notice", listener);
+    },
+    windowReady: () => ipcRenderer.invoke("wires:window-ready") as Promise<void>,
     flushWaiting: (terminalId: string) =>
       ipcRenderer.invoke("wire-mailbox:flush", terminalId) as Promise<{ delivered: number; failed: number }>,
     discardWaiting: (terminalId: string) =>

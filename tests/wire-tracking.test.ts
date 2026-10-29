@@ -6,6 +6,7 @@ import {
   HANDOFF_WORKBENCH_ID,
   TRACKED_TIMEOUT_MS,
   TrackedHandoffs,
+  restartReminder,
   taskSheet,
   type TrackedHandoff,
 } from "../electron/tracked-handoff";
@@ -59,6 +60,7 @@ function harness() {
   const flags: string[] = [];
   const records: string[] = [];
   let now = 0;
+  let changes = 0;
   const tracker = new TrackedHandoffs({
     writeFile: (f, c) => { files.set(f, c); },
     readFile: (f) => files.get(f) ?? null,
@@ -69,13 +71,14 @@ function harness() {
     record: (_h, outcome, reason) => { records.push(`${outcome}${reason ? `:${reason}` : ""}`); },
     now: () => now,
     join: (...parts) => parts.join("/"),
+    changed: () => { changes += 1; },
   });
   const result = (outcome: string, extra: Record<string, unknown> = {}) =>
     JSON.stringify({
       schema_version: RESULT_SCHEMA_VERSION, workbench_id: HANDOFF_WORKBENCH_ID,
       assignment_id: "h1", run_id: "h1", outcome, report_file: "report.md", ...extra,
     });
-  return { tracker, files, mtimes, toSender, toTarget, flags, records, result, advance: (ms: number) => { now += ms; } };
+  return { tracker, files, mtimes, toSender, toTarget, flags, records, result, advance: (ms: number) => { now += ms; }, changes: () => changes };
 }
 
 test("starting writes the task sheet; nothing happens until there is a result", async () => {
@@ -141,4 +144,43 @@ test("a Hydra worker's status is sent only when it changes", () => {
   assert.deepEqual(feed.changes([s("in_progress")]), [s("in_progress")]);
   assert.deepEqual(feed.changes([s("in_progress")]), []);
   assert.deepEqual(feed.changes([s("completed")]), [s("completed")]);
+});
+
+// ------------------------------------------------------- across a restart
+
+test("what is tracked is saved whenever it changes", async () => {
+  const h = harness();
+  h.tracker.start({ handoff: handoff(), work: "do it", why: "x" });
+  assert.equal(h.changes(), 1);
+  assert.deepEqual(h.tracker.all().map((x) => x.id), ["h1"]);
+  h.files.set("/w/.hydra/handoffs/h1/report.md", "done");
+  h.files.set("/w/.hydra/handoffs/h1/result.json", h.result("completed"));
+  await h.tracker.sweep();
+  assert.equal(h.changes(), 2);
+  assert.deepEqual(h.tracker.all(), []);
+});
+
+test("a hand-off saved before the app closed is still tracked, with its timeout", async () => {
+  const h = harness();
+  h.tracker.restore([handoff()]);
+  assert.deepEqual(h.tracker.all().map((x) => x.id), ["h1"]);
+  // A result written while the app was closed is picked up.
+  h.files.set("/w/.hydra/handoffs/h1/report.md", "Finished while Tacit was closed.");
+  h.files.set("/w/.hydra/handoffs/h1/result.json", h.result("completed"));
+  await h.tracker.sweep();
+  assert.match(h.toSender[0], /finished it/);
+
+  // And one without a result still times out from when it started.
+  const later = harness();
+  later.tracker.restore([handoff()]);
+  later.advance(TRACKED_TIMEOUT_MS + 1);
+  await later.tracker.sweep();
+  assert.match(later.toSender[0], /no result from Codex .* after 6 hours/);
+});
+
+test("after a restart the receiver is reminded where its task sheet is and what to write", () => {
+  const text = restartReminder(handoff());
+  assert.match(text, /^\[Tacit restarted while you were on the tracked hand-off from Claude\./);
+  assert.match(text, /\/w\/\.hydra\/handoffs\/h1\/report\.md and then \/w\/\.hydra\/handoffs\/h1\/result\.json/);
+  assert.match(text, /\/w\/\.hydra\/handoffs\/h1\/task\.md/);
 });

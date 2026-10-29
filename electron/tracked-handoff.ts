@@ -52,6 +52,8 @@ export interface TrackedDeps {
   record: (handoff: TrackedHandoff, outcome: RunResult["outcome"] | "timed_out", reason?: string) => void;
   now: () => number;
   join: (...parts: string[]) => string;
+  /** What is tracked changed, so it can be saved (electron/wire-state.ts). */
+  changed: () => void;
 }
 
 export function taskSheet(input: {
@@ -102,6 +104,11 @@ export function trackedNotice(handoff: TrackedHandoff, why: string): string {
   return `This hand-off is tracked (${why}). Your task sheet is ${handoff.dir}/task.md. When you finish, or if you get stuck, write ${handoff.dir}/report.md and then ${handoff.dir}/result.json as the sheet says; ${handoff.senderTitle} gets the outcome.`;
 }
 
+/** To the receiver after a restart, when its tracked hand-off has no result yet. */
+export function restartReminder(handoff: TrackedHandoff): string {
+  return `[Tacit restarted while you were on the tracked hand-off from ${handoff.senderTitle}. If it isn't finished, carry on. When you finish, or if you get stuck, write ${handoff.dir}/report.md and then ${handoff.dir}/result.json as your task sheet (${handoff.dir}/task.md) says.]`;
+}
+
 export function outcomeText(handoff: TrackedHandoff, result: RunResult, report: string | null): string {
   const what =
     result.outcome === "completed" ? "finished it"
@@ -128,6 +135,18 @@ export class TrackedHandoffs {
   }): void {
     this.deps.writeFile(this.deps.join(input.handoff.dir, "task.md"), taskSheet(input));
     this.pending.set(input.handoff.id, input.handoff);
+    this.deps.changed();
+  }
+
+  /** Everything tracked, to be saved. */
+  all(): TrackedHandoff[] {
+    return [...this.pending.values()];
+  }
+
+  /** Tracked hand-offs saved when the app last closed. */
+  restore(saved: readonly TrackedHandoff[]): void {
+    for (const handoff of saved) this.pending.set(handoff.id, handoff);
+    this.deps.changed();
   }
 
   pendingFor(targetId: string): TrackedHandoff[] {
@@ -141,6 +160,7 @@ export class TrackedHandoffs {
       if (raw === null) {
         if (this.deps.now() - handoff.startedAt > TRACKED_TIMEOUT_MS) {
           this.pending.delete(handoff.id);
+          this.deps.changed();
           this.deps.record(handoff, "timed_out");
           await this.deps.tellSender(handoff, `[Tracked hand-off: no result from ${handoff.targetTitle} (terminal ${handoff.targetId}) after 6 hours; it is no longer tracked. Its task sheet: ${handoff.dir}/task.md]`);
         }
@@ -166,6 +186,7 @@ export class TrackedHandoffs {
         continue;
       }
       this.pending.delete(handoff.id);
+      this.deps.changed();
       const reportFile = result.report_file.startsWith("/")
         ? result.report_file
         : this.deps.join(handoff.dir, result.report_file.replace(/^\.\//, ""));

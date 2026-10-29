@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { HydraWireStatus, WireMailboxChange } from "../types";
+import type { HydraWireStatus, WireMailboxChange, WireRestartSummary } from "../types";
 import { useNotificationStore } from "./notificationStore";
+import { findTerminal, terminalName } from "../actions/terminalLookup";
 
 /**
  * What is waiting for each agent along its wires, mirrored from the main
@@ -8,6 +9,8 @@ import { useNotificationStore } from "./notificationStore";
  */
 interface WireMailboxStore {
   waiting: Record<string, WireMailboxChange["waiting"]>;
+  /** Agents whose waiting messages are kept from before a restart. */
+  held: Record<string, boolean>;
   apply: (change: WireMailboxChange) => void;
   /** Hydra workers' role and status, by terminal, for their wires' labels. */
   hydra: Record<string, HydraWireStatus>;
@@ -16,12 +19,16 @@ interface WireMailboxStore {
 
 export const useWireMailboxStore = create<WireMailboxStore>((set) => ({
   waiting: {},
-  apply: ({ terminalId, waiting }) =>
+  held: {},
+  apply: ({ terminalId, waiting, held }) =>
     set((state) => {
       const next = { ...state.waiting };
+      const nextHeld = { ...state.held };
       if (waiting.length) next[terminalId] = waiting;
       else delete next[terminalId];
-      return { waiting: next };
+      if (waiting.length && held) nextHeld[terminalId] = true;
+      else delete nextHeld[terminalId];
+      return { waiting: next, held: nextHeld };
     }),
   hydra: {},
   applyHydra: (status) => set((state) => ({ hydra: { ...state.hydra, [status.terminalId]: status } })),
@@ -41,9 +48,51 @@ export function installWireMailbox(): () => void {
       .notify("warn", `${flag.targetTitle} ${what} on the work ${flag.senderTitle} handed off. Its report: ${flag.report}`);
   });
   const offHydra = window.tacit.wires.onHydraStatus((status) => useWireMailboxStore.getState().applyHydra(status));
+  const offSummary = window.tacit.wires.onRestartSummary((summary) => void tellRestartSummary(summary));
+  const offNotice = window.tacit.wires.onNotice(({ message }) => useNotificationStore.getState().notify("warn", message));
   return () => {
     offMail();
     offFlag();
     offHydra();
+    offSummary();
+    offNotice();
   };
+}
+
+/**
+ * Tells main the window is listening and its workdesk is loaded, so what
+ * wires were waiting on before a restart can be matched to terminals
+ * (App.tsx calls this once the saved workdesk has been restored).
+ */
+export function wiresWindowReady(): Promise<void> {
+  return window.tacit.wires.windowReady();
+}
+
+/**
+ * After a restart: what was kept, for whom, and when it goes. Messages for a
+ * terminal that is no longer on the workdesk can't go anywhere; they are
+ * thrown away (a question among them is answered as dropped) and the user
+ * is told how many.
+ */
+export async function tellRestartSummary(summary: WireRestartSummary): Promise<void> {
+  const notify = useNotificationStore.getState().notify;
+  if (summary.problem) notify("warn", summary.problem);
+  const kept: string[] = [];
+  let dropped = 0;
+  for (const { terminalId, waiting } of summary.held) {
+    if (!findTerminal(terminalId)) {
+      dropped += (await window.tacit.wires.discardWaiting(terminalId)).discarded;
+      continue;
+    }
+    kept.push(`${waiting} for ${terminalName(terminalId) ?? terminalId}`);
+  }
+  if (kept.length > 0) {
+    notify(
+      "info",
+      `Kept from before Tacit restarted: ${kept.join(", ")}. Each agent gets its messages after its next turn, or click ✉ on it to deliver them now.`,
+    );
+  }
+  if (dropped > 0) {
+    notify("warn", `${dropped} waiting ${dropped === 1 ? "message was" : "messages were"} for terminals no longer on this workdesk, so ${dropped === 1 ? "it was" : "they were"} dropped.`);
+  }
 }

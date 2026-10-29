@@ -7,18 +7,24 @@ import { BUSY_EVIDENCE_MS, TURN_START_GRACE_MS, WireMailbox, snapshotSaysBusy, t
 
 function harness() {
   const busy = new Map<string, boolean>();
+  const turnStarted = new Map<string, number>();
   const typed: string[] = [];
   const changes: Array<[string, number]> = [];
+  const heldChanges: Array<[string, boolean]> = [];
   let now = 1_000;
   let refuse = false;
   const box = new WireMailbox({
     isBusy: (id) => busy.get(id) ?? false,
+    turnStartedAt: (id) => turnStarted.get(id) ?? null,
     deliver: async (item) => {
       if (refuse) return { ok: false, detail: "gone" };
       typed.push(item.text);
       return { ok: true };
     },
-    changed: (id, waiting) => changes.push([id, waiting.length]),
+    changed: (id, view) => {
+      changes.push([id, view.waiting.length]);
+      heldChanges.push([id, view.held]);
+    },
     now: () => now,
   });
   let n = 0;
@@ -32,7 +38,8 @@ function harness() {
     at: now,
   });
   return {
-    box, busy, typed, changes, item,
+    box, busy, turnStarted, typed, changes, heldChanges, item,
+    now: () => now,
     advance: (ms: number) => { now += ms; },
     setRefuse: (v: boolean) => { refuse = v; },
   };
@@ -156,4 +163,89 @@ test("a turn state left over from before a restart, with nothing on screen since
 
 test("an agent waiting on its user is busy however quiet, so nothing is typed into its question", () => {
   assert.equal(snapshotSaysBusy({ turn_state: "awaiting_input" }, Date.parse("2026-10-28T12:00:00Z")), true);
+});
+
+// ------------------------------------------------------- across a restart
+
+test("after a restart, waiting messages are held until the agent has had a turn", async () => {
+  const h = harness();
+  h.busy.set("cx", true);
+  await h.box.submit(h.item("one"));
+  await h.box.submit(h.item("two"));
+  h.box.holdAfterRestart();
+  assert.deepEqual(h.box.heldTerminals(), ["cx"]);
+  assert.equal(h.heldChanges.at(-1)?.[1], true, "the window is told they're held");
+  // The address they were queued with is gone: the terminal has a new PTY.
+  assert.ok(h.box.allWaiting().every((item) => item.target === undefined));
+
+  // Idle after the restart isn't enough: the agent may be at an update menu.
+  h.busy.set("cx", false);
+  h.advance(60_000);
+  await h.box.poke("cx");
+  assert.deepEqual(h.typed, []);
+
+  // A turn that started before the restart (left over in its transcript)
+  // doesn't count either.
+  h.turnStarted.set("cx", h.now() - 120_000);
+  h.busy.set("cx", true);
+  await h.box.poke("cx");
+  h.busy.set("cx", false);
+  h.turnStarted.delete("cx");
+  await h.box.poke("cx");
+  assert.deepEqual(h.typed, []);
+
+  // Someone got it to its prompt and it took a turn: now they go, in order.
+  h.advance(1_000);
+  h.turnStarted.set("cx", h.now());
+  h.busy.set("cx", true);
+  await h.box.poke("cx");
+  assert.deepEqual(h.typed, [], "not while that turn runs");
+  h.busy.set("cx", false);
+  h.turnStarted.delete("cx");
+  await h.box.poke("cx");
+  assert.deepEqual(h.typed, ["one"]);
+  assert.deepEqual(h.box.heldTerminals(), []);
+  assert.equal(h.heldChanges.at(-1)?.[1], false);
+  h.advance(TURN_START_GRACE_MS);
+  await h.box.poke("cx");
+  assert.deepEqual(h.typed, ["one", "two"]);
+});
+
+test("messages saved before the app closed come back held", async () => {
+  const h = harness();
+  const saved = { ...h.item("from before"), terminalId: "oc" };
+  h.box.holdAfterRestart([saved]);
+  assert.deepEqual(h.box.waiting("oc").map((i) => i.text), ["from before"]);
+  assert.deepEqual(h.box.heldTerminals(), ["oc"]);
+  await h.box.poke("oc");
+  assert.deepEqual(h.typed, []);
+});
+
+test("Deliver now sends held messages at once; Discard drops them and the hold", async () => {
+  const h = harness();
+  h.box.holdAfterRestart([h.item("a"), h.item("b", "cl")]);
+  assert.deepEqual(await h.box.flush("cx"), { delivered: 1, failed: 0 });
+  assert.deepEqual(h.typed, ["a"]);
+  assert.equal(h.box.discard("cl"), 1);
+  assert.deepEqual(h.box.heldTerminals(), []);
+  // A new message to "cl" after the discard isn't held.
+  await h.box.submit(h.item("c", "cl"));
+  assert.deepEqual(h.typed, ["a", "c"]);
+});
+
+test("a restart's notices are queued held without being tried", async () => {
+  const h = harness();
+  const { target: _gone, ...notice } = h.item("you were restarted");
+  h.box.enqueueHeld(notice);
+  assert.deepEqual(h.typed, []);
+  assert.deepEqual(h.box.heldTerminals(), ["cx"]);
+  assert.deepEqual(h.box.allWaiting().map((i) => i.text), ["you were restarted"]);
+});
+
+test("resend tells the window again what is waiting, e.g. after it reloaded", async () => {
+  const h = harness();
+  h.box.holdAfterRestart([h.item("a")]);
+  const before = h.changes.length;
+  h.box.resend();
+  assert.deepEqual(h.changes.slice(before), [["cx", 1]]);
 });

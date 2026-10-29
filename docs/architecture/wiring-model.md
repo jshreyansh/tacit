@@ -62,3 +62,40 @@ and hand tests.
 5. **Hydra on the wires.** The tracking switch; a tracked hand-off uses
    Hydra's result contract; dispatch labels its worker's wire with role and
    status.
+
+## Before the week (2026-10-29)
+
+Three gaps found in hand testing, closed before the build that runs the
+week. Same rules as the steps: unit tests, a live check, hand tests.
+
+6. **Wires survive a restart.** What is waiting for an agent (its mailbox),
+   questions still being answered, and tracked hand-offs are kept on disk
+   in the Tacit data folder (`wire-state.json`, readable only by the user)
+   and restored when the app starts.
+   - A restored message is not typed in until the agent is known to be at
+     its prompt again: its first turn after the restart ends, or the user
+     presses Deliver now. A CLI that has just restarted may be showing an
+     update menu or a trust question, and typed text plus Enter would answer
+     it. The user is told what is waiting and for whom.
+   - Delivery looks up the terminal's current PTY each time; the PTY a
+     message was queued for is gone after a restart.
+   - A question whose answer was being worked on when the app closed was
+     interrupted with its agent. The asker is told, with the question, and
+     can ask again.
+   - A tracked hand-off keeps its task sheet and timeout. The receiver is
+     reminded to finish and write its result, through its mailbox; the
+     result is checked as before.
+7. **OpenCode answers.** OpenCode keeps its turns in its database, not a
+   transcript file. Its final reply is read from there: in 2.0 a turn ends
+   with an `idle` entry, and the reply is the text of the last assistant
+   entry before it (1.x: the last assistant message that finished with
+   `stop`). With that, OpenCode can be asked a question and answer it, its
+   finished turns run rules, and its replies go to chats and notes like
+   Claude's and Codex's. Its turn state already comes from the database, so
+   its messages wait in the mailbox like the others' (checked live).
+8. **Roles, tested for real.** Each of Hydra's roles (dev, reviewer, qa,
+   designer, janitor) is checked twice: given to a wire, where a tracked
+   hand-off's task sheet carries the role, and dispatched by a real Hydra
+   Lead, where the worker's wire shows "role · status". A wire with a role
+   shows the role on its label, and a tracked hand-off along it shows how
+   it's going (working, done, stuck), as a Hydra worker's wire does.

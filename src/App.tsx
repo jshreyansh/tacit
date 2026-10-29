@@ -61,7 +61,7 @@ import {
   downloadStartedNotice,
 } from "./browser/downloadNotice";
 import { useConnectionStore } from "./stores/connectionStore";
-import { installWireMailbox } from "./stores/wireMailboxStore";
+import { installWireMailbox, wiresWindowReady } from "./stores/wireMailboxStore";
 import { installRereadNotes } from "./canvas/rereadNotes";
 import { RulePrompts } from "./components/RulePrompts";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
@@ -232,6 +232,11 @@ function useStatePersistence() {
       })
       .catch((err) => {
         console.error("[useStatePersistence] failed to load state:", err);
+      })
+      // With the workdesk in place, what wires were waiting on before a
+      // restart can be matched to its terminals.
+      .finally(() => {
+        wiresWindowReady().catch((err) => console.error("[wires] couldn't tell main the window is ready", err));
       });
   }, []);
 }

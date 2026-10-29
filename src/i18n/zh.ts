@@ -1210,6 +1210,8 @@ export const zh = {
   connection_send_failed: "未发送：{detail}",
   wire_waiting_badge: "{n} 条等待",
   wire_waiting_title: "沿连线发来、等待该智能体本轮结束的消息",
+  wire_waiting_held_badge: "{n} 条保留",
+  wire_waiting_held_title: "Tacit 重启前保留的消息：会在该智能体下一轮结束后送达，也可以立即送达",
   wire_waiting_deliver: "立即送达",
   wire_waiting_discard: "丢弃等待中的消息",
   connection_reply_rule_browser: "把每次完成的回复贴到此页面的对话框",

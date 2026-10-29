@@ -1378,6 +1378,11 @@ export interface TacitAPI {
     onMailboxChanged: (callback: (payload: WireMailboxChange) => void) => () => void;
     onTrackedFlag: (callback: (payload: TrackedHandoffFlag) => void) => () => void;
     onHydraStatus: (callback: (payload: HydraWireStatus) => void) => () => void;
+    onRestartSummary: (callback: (payload: WireRestartSummary) => void) => () => void;
+    /** Something about the wires the user should know, e.g. saving failed. */
+    onNotice: (callback: (payload: { message: string }) => void) => () => void;
+    /** The window has loaded its workdesk and listens for wire events. */
+    windowReady: () => Promise<void>;
     /** Deliver everything waiting for an agent now, in order. */
     flushWaiting: (terminalId: string) => Promise<{ delivered: number; failed: number }>;
     /** Throw away what is waiting for an agent. */
@@ -1554,6 +1559,15 @@ declare global {
 export interface WireMailboxChange {
   terminalId: string;
   waiting: Array<{ id: string; from: string; preview: string; at: number }>;
+  /** Kept from before a restart: goes after the agent's next turn, or by hand. */
+  held: boolean;
+}
+
+/** What wires were waiting on when the agents restarted (electron/api-server.ts). */
+export interface WireRestartSummary {
+  held: Array<{ terminalId: string; waiting: number }>;
+  /** The saved state couldn't be used, in words for the user. */
+  problem?: string;
 }
 
 export interface WireSendRequest {

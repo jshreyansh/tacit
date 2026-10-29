@@ -38,8 +38,9 @@ import {
   type WireEnd,
   type WireSender,
 } from "./wire-message";
-import { WireAsks } from "./wire-asks";
-import { TrackedHandoffs, trackedNotice, type TrackedHandoff } from "./tracked-handoff";
+import { WireAsks, interruptedText, type PendingAsk } from "./wire-asks";
+import { TrackedHandoffs, restartReminder, trackedNotice, type TrackedHandoff } from "./tracked-handoff";
+import { WireStateFile, WIRE_STATE_VERSION, type WireState } from "./wire-state";
 import { loadRole } from "../hydra/src/roles/loader";
 import { HydraStatusFeed, readHydraStatus } from "./hydra-wire-status";
 import { readFinalAssistantReply } from "./reply-transcript";
@@ -87,6 +88,11 @@ interface ApiServerDeps {
   webReads: Pick<WebReadTracker, "provenance">;
   /** Which agent a node runs; the record's `harness`. */
   harnessOf: (ref: string) => string | null;
+  /**
+   * Where what the wires are waiting on is kept across restarts
+   * (electron/wire-state.ts).
+   */
+  wireStatePath: string;
 }
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
@@ -153,17 +159,43 @@ export class ApiServer {
   private readonly mailboxSweep: ReturnType<typeof setInterval>;
   /** Last turn state seen per terminal, to notice a turn ending. */
   private readonly lastTurnState = new Map<string, string | undefined>();
+  private readonly wireStateFile: WireStateFile;
+  /** What was saved when the app last closed, until the first restart takes it in. */
+  private savedWireState: WireState | null;
+  private wireStateSave: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Whether the window is up and has said so (wires:window-ready). Until it
+   * is, nothing is delivered: delivery needs the canvas to find terminals.
+   */
+  private windowReady = false;
+  /** Set by a restart, told to the window once it is ready. */
+  private restartFollowUp: { interrupted: PendingAsk[]; problem?: string } | null = null;
+  /** While a restart's follow-up runs, messages to agents are held with the rest. */
+  private followingUpRestart = false;
+  /** Set as the app quits: what was saved then is what the next start gets. */
+  private wireStateFrozen = false;
+  /** Saving failed and the user was told; said once until it works again. */
+  private wireStateSaveFailed = false;
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+    this.wireStateFile = new WireStateFile(deps.wireStatePath);
+    const loaded = this.wireStateFile.load();
+    this.savedWireState = loaded.state;
+    if (loaded.problem) this.restartFollowUp = { interrupted: [], problem: loaded.problem };
     this.wireMailbox = new WireMailbox({
       isBusy: (terminalId) => snapshotSaysBusy(this.deps.telemetryService.getTerminalSnapshot(terminalId)),
+      turnStartedAt: (terminalId) =>
+        Date.parse(this.deps.telemetryService.getTerminalSnapshot(terminalId)?.turn_started_at ?? "") || null,
       deliver: (item) => this.typeMailItem(item),
-      changed: (terminalId, waiting) =>
+      changed: (terminalId, view) => {
         sendToWindow(this.deps.getWindow(), "wire-mailbox:changed", {
           terminalId,
-          waiting: waiting.map(({ id, from, preview, at }) => ({ id, from, preview, at })),
-        }),
+          waiting: view.waiting.map(({ id, from, preview, at }) => ({ id, from, preview, at })),
+          held: view.held,
+        });
+        this.scheduleWireStateSave();
+      },
       now: () => Date.now(),
     });
     this.wireAsks = new WireAsks({
@@ -192,6 +224,7 @@ export class ApiServer {
       },
       now: () => Date.now(),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      changed: () => this.scheduleWireStateSave(),
     });
     this.trackedHandoffs = new TrackedHandoffs({
       writeFile: (file, content) => {
@@ -213,8 +246,8 @@ export class ApiServer {
           return null;
         }
       },
-      tellSender: (handoff, text) => this.typeIntoTerminal(handoff.senderId, text, `terminal:${handoff.targetId}`),
-      tellTarget: (handoff, text) => this.typeIntoTerminal(handoff.targetId, text, `terminal:${handoff.senderId}`),
+      tellSender: (handoff, text) => this.tellTerminal(handoff.senderId, text, `terminal:${handoff.targetId}`),
+      tellTarget: (handoff, text) => this.tellTerminal(handoff.targetId, text, `terminal:${handoff.senderId}`),
       flag: (handoff, outcome, reason) =>
         sendToWindow(this.deps.getWindow(), "wire:tracked-flag", {
           senderTitle: handoff.senderTitle,
@@ -236,11 +269,13 @@ export class ApiServer {
         }),
       now: () => Date.now(),
       join: (...parts) => path.join(...parts),
+      changed: () => this.scheduleWireStateSave(),
     });
     // Turn ends arrive as telemetry changes (main.ts calls
     // onTerminalSnapshot), but a signal can be missed; this catches
     // anything left waiting, and gives up on answers that never came.
     this.mailboxSweep = setInterval(() => {
+      if (!this.windowReady) return;
       for (const terminalId of this.wireMailbox.terminalsWithMail()) void this.wireMailbox.poke(terminalId);
       void this.wireAsks.sweep();
       void this.trackedHandoffs.sweep().catch((err) => console.warn("[tracked-handoff] sweep failed", err));
@@ -1816,11 +1851,20 @@ export class ApiServer {
   /** Backs the send_to_connected MCP tool: open to any terminal, gated by the wire. */
   /** Types one waiting message into its agent and records it as a prompt. */
   private async typeMailItem(item: MailItem): Promise<{ ok: boolean; detail?: string }> {
+    let target = item.target;
+    if (!target) {
+      // Queued before a restart: the terminal has a new PTY now.
+      const node = await this.findNode(item.terminalId);
+      if (!node || node.kind !== "terminal" || node.ptyId == null || !node.terminalType || !node.worktreePath) {
+        return { ok: false, detail: "that terminal isn't running on the open canvas" };
+      }
+      target = { ptyId: node.ptyId, terminalType: node.terminalType, worktreePath: node.worktreePath };
+    }
     const result = await this.submitToTerminal({
       terminalId: item.terminalId,
-      ptyId: item.target.ptyId,
-      terminalType: item.target.terminalType as ComposerSubmitRequest["terminalType"],
-      worktreePath: item.target.worktreePath,
+      ptyId: target.ptyId,
+      terminalType: target.terminalType as ComposerSubmitRequest["terminalType"],
+      worktreePath: target.worktreePath,
       text: item.text,
       images: [],
     });
@@ -1836,6 +1880,9 @@ export class ApiServer {
    * go; a terminal that exited takes nothing more.
    */
   onTerminalSnapshot(terminalId: string, snapshot: { turn_state?: string; derived_status?: string }): void {
+    // While agents are being stopped and started again (onAgentsStopping),
+    // an exit isn't a closing; nothing is delivered until the window is back.
+    if (!this.windowReady) return;
     if (snapshot.derived_status === "exited") {
       this.lastTurnState.delete(terminalId);
       this.wireAsks.targetGone(terminalId);
@@ -1855,6 +1902,128 @@ export class ApiServer {
   }
 
   /** The waiting badge's Discard: questions in it are answered as dropped. */
+  /**
+   * Every agent was restarted: the app started, or the window reloaded and
+   * took its terminals with it (main.ts, did-finish-load). Waiting messages,
+   * including those saved when the app last closed, are held until each
+   * agent has had a turn (electron/wire-mailbox.ts); questions being
+   * answered were interrupted; tracked hand-offs carry on. The askers and
+   * receivers are told once the window is ready.
+   */
+  /**
+   * The window is about to reload or the app to quit: every agent is about
+   * to be stopped. Their exits aren't closings, so nothing waiting for them
+   * is dropped until the window is back (onWindowReady).
+   */
+  onAgentsStopping(): void {
+    this.windowReady = false;
+  }
+
+  /** The app is quitting: what is waiting is saved before the agents stop. */
+  prepareToQuit(): void {
+    this.onAgentsStopping();
+    this.saveWireStateNow();
+    this.wireStateFrozen = true;
+  }
+
+  onAgentsRestarted(): void {
+    this.windowReady = false;
+    const saved = this.savedWireState;
+    this.savedWireState = null;
+    this.wireMailbox.holdAfterRestart(saved?.mail ?? []);
+    const interrupted = this.wireAsks.restart(saved?.asks);
+    if (saved) this.trackedHandoffs.restore(saved.handoffs);
+    this.restartFollowUp = {
+      interrupted: [...(this.restartFollowUp?.interrupted ?? []), ...interrupted],
+      ...(this.restartFollowUp?.problem ? { problem: this.restartFollowUp.problem } : {}),
+    };
+    this.scheduleWireStateSave();
+  }
+
+  /**
+   * The window has loaded and listens for wire events (wires:window-ready).
+   * After a restart: askers whose questions were interrupted are told, and
+   * agents with tracked hand-offs still open are reminded, both held like
+   * the rest; then the window is told what is waiting.
+   */
+  async onWindowReady(): Promise<void> {
+    this.windowReady = true;
+    const followUp = this.restartFollowUp;
+    this.restartFollowUp = null;
+    if (followUp) {
+      this.followingUpRestart = true;
+      for (const ask of followUp.interrupted) {
+        this.wireMailbox.enqueueHeld(this.heldMail(ask.askerId, interruptedText(ask), `terminal:${ask.targetId}`));
+      }
+      // Results written while the app was closed are picked up first.
+      await this.trackedHandoffs.sweep().catch((err) => console.warn("[tracked-handoff] sweep failed", err));
+      for (const handoff of this.trackedHandoffs.all()) {
+        this.wireMailbox.enqueueHeld(this.heldMail(handoff.targetId, restartReminder(handoff), `terminal:${handoff.senderId}`));
+      }
+      this.followingUpRestart = false;
+    }
+    this.wireMailbox.resend();
+    if (followUp) {
+      const held = this.wireMailbox
+        .heldTerminals()
+        .map((terminalId) => ({ terminalId, waiting: this.wireMailbox.waiting(terminalId).length }));
+      if (held.length > 0 || followUp.problem) {
+        sendToWindow(this.deps.getWindow(), "wire:restart-summary", {
+          held,
+          ...(followUp.problem ? { problem: followUp.problem } : {}),
+        });
+      }
+    }
+  }
+
+  /** Types into an agent; during a restart's follow-up, held with the rest instead. */
+  private async tellTerminal(terminalId: string, text: string, from: CaptureNodeRef): Promise<void> {
+    if (this.followingUpRestart) {
+      this.wireMailbox.enqueueHeld(this.heldMail(terminalId, text, from));
+      return;
+    }
+    await this.typeIntoTerminal(terminalId, text, from);
+  }
+
+  private heldMail(terminalId: string, text: string, from: CaptureNodeRef): MailItem {
+    return { id: randomUUID(), terminalId, text, from, preview: envelopePreview(text), at: Date.now() };
+  }
+
+  private scheduleWireStateSave(): void {
+    if (this.wireStateSave) return;
+    this.wireStateSave = setTimeout(() => {
+      this.wireStateSave = null;
+      this.saveWireStateNow();
+    }, 200);
+  }
+
+  /** Writes what the wires are waiting on; also called as the app quits. */
+  saveWireStateNow(): void {
+    if (this.wireStateSave) {
+      clearTimeout(this.wireStateSave);
+      this.wireStateSave = null;
+    }
+    // Not taken in yet (the window never loaded): what was saved stands.
+    if (this.savedWireState || this.wireStateFrozen) return;
+    try {
+      this.wireStateFile.save({
+        version: WIRE_STATE_VERSION,
+        mail: this.wireMailbox.allWaiting(),
+        asks: this.wireAsks.snapshot(),
+        handoffs: this.trackedHandoffs.all(),
+      });
+      this.wireStateSaveFailed = false;
+    } catch (err) {
+      console.error("[wire-state] couldn't save what the wires are waiting on", err);
+      if (!this.wireStateSaveFailed) {
+        this.wireStateSaveFailed = true;
+        sendToWindow(this.deps.getWindow(), "wire:notice", {
+          message: `Tacit couldn't save what its wires are waiting on (${err instanceof Error ? err.message : String(err)}); if it restarts now, that is lost.`,
+        });
+      }
+    }
+  }
+
   /** Whether a finished turn of `fromId` already went to `toId` as an ask's answer. */
   replyAlreadyAnswered(fromId: string, toId: string, key: string): boolean {
     return this.wireAsks.alreadyAnswered(fromId, toId, key);

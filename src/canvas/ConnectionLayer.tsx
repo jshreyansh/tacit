@@ -278,6 +278,7 @@ export function ConnectionLayer() {
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const [waitingMenu, setWaitingMenu] = useState<{ x: number; y: number; terminalId: string } | null>(null);
   const waitingMail = useWireMailboxStore((s) => s.waiting);
+  const heldMail = useWireMailboxStore((s) => s.held);
   const hydraStatus = useWireMailboxStore((s) => s.hydra);
   // Opened by clicking a wire's type label — a separate piece of state from
   // `menu` (the right-click one) so the two can never fight over one anchor.
@@ -1024,7 +1025,7 @@ export function ConnectionLayer() {
                 type="button"
                 data-scene-box-select-block
                 data-testid="wire-waiting-badge"
-                title={`${t.wire_waiting_title}\n${items.map((item) => `• ${item.preview}`).join("\n")}`}
+                title={`${heldMail[terminalId] ? t.wire_waiting_held_title : t.wire_waiting_title}\n${items.map((item) => `• ${item.preview}`).join("\n")}`}
                 className="absolute rounded-full border text-[11px]"
                 style={{
                   left: viewport.x + (rect.x + rect.w) * viewport.scale,
@@ -1045,7 +1046,7 @@ export function ConnectionLayer() {
                   setWaitingMenu({ x: event.clientX, y: event.clientY, terminalId });
                 }}
               >
-                ✉ {t.wire_waiting_badge.replace("{n}", String(items.length))}
+                ✉ {(heldMail[terminalId] ? t.wire_waiting_held_badge : t.wire_waiting_badge).replace("{n}", String(items.length))}
               </button>
             );
           })}

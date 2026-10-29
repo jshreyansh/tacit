@@ -45,6 +45,8 @@ export interface AskDeps {
   answer: (ask: PendingAsk, text: string) => Promise<void>;
   now: () => number;
   wait: (ms: number) => Promise<void>;
+  /** What is pending changed, so it can be saved (electron/wire-state.ts). */
+  changed: () => void;
 }
 
 /** An answer that hasn't come in this long is given up on, and the asker told. */
@@ -68,6 +70,11 @@ function about(ask: PendingAsk): string {
   return `your question "${envelopePreview(ask.question, 60)}"`;
 }
 
+/** To the asker, when the agent it asked restarted before answering. */
+export function interruptedText(ask: PendingAsk): string {
+  return `[${ask.targetTitle} (terminal ${ask.targetId}) was restarted with Tacit before it finished answering ${about(ask)}. Ask again if you still need the answer.]`;
+}
+
 export function answerText(ask: PendingAsk, reply: string): string {
   return `[Answer from ${ask.targetTitle} (terminal ${ask.targetId}) to ${about(ask)}, over a wire on the canvas] ${reply}`;
 }
@@ -85,6 +92,7 @@ export class WireAsks {
   /** The question was accepted (typed in now, or waiting in the mailbox). */
   register(ask: PendingAsk): void {
     this.queued.set(ask.id, ask);
+    this.deps.changed();
   }
 
   /** The question was typed into the target: the turn starting now answers it. */
@@ -102,6 +110,7 @@ export class WireAsks {
       at: this.deps.now(),
       ...(before.status === "ready" ? { before: before.text } : {}),
     });
+    this.deps.changed();
   }
 
   /** The question was thrown away from the mailbox, unread. */
@@ -109,6 +118,7 @@ export class WireAsks {
     const ask = this.queued.get(askId);
     if (!ask) return;
     this.queued.delete(askId);
+    this.deps.changed();
     void this.deps.answer(ask, `[${ask.targetTitle} (terminal ${ask.targetId}) didn't get ${about(ask)}: it was discarded before it was delivered.]`);
   }
 
@@ -128,6 +138,7 @@ export class WireAsks {
     // was waiting.
     if (this.active.get(targetId) !== ask) return;
     this.active.delete(targetId);
+    this.deps.changed();
     if (reply.status === "ready") {
       this.answered.set(targetId, { askerId: ask.askerId, key: replyKey(reply) });
       await this.deps.answer(ask, answerText(ask, reply.text));
@@ -157,11 +168,33 @@ export class WireAsks {
     const ask = this.active.get(targetId);
     if (ask) {
       this.active.delete(targetId);
+      this.deps.changed();
       void this.deps.answer(ask, `[${ask.targetTitle} (terminal ${ask.targetId}) closed before answering ${about(ask)}.]`);
     }
     for (const [id, queued] of this.queued) {
       if (queued.targetId === targetId) this.dropped(id);
     }
+  }
+
+  /** What is pending, to be saved: the questions waiting and the ones being answered. */
+  snapshot(): { queued: PendingAsk[]; active: PendingAsk[] } {
+    return { queued: [...this.queued.values()], active: [...this.active.values()] };
+  }
+
+  /**
+   * Every agent restarted. Questions still in a mailbox wait there, held,
+   * and are answered as usual once typed in. A question being answered was
+   * interrupted with its agent: it is taken off, and returned so the asker
+   * can be told (interruptedText). `saved` is what was pending when the app
+   * last closed.
+   */
+  restart(saved?: { queued: PendingAsk[]; active: PendingAsk[] }): PendingAsk[] {
+    for (const ask of saved?.queued ?? []) this.queued.set(ask.id, ask);
+    const interrupted = [...(saved?.active ?? []), ...this.active.values()];
+    this.active.clear();
+    this.answered.clear();
+    this.deps.changed();
+    return interrupted;
   }
 
   /** Gives up on answers that have taken too long. */
@@ -170,6 +203,7 @@ export class WireAsks {
     for (const [targetId, ask] of this.active) {
       if (now - ask.at < ASK_TIMEOUT_MS) continue;
       this.active.delete(targetId);
+      this.deps.changed();
       await this.deps.answer(ask, `[No answer from ${ask.targetTitle} (terminal ${ask.targetId}) to ${about(ask)} after 30 minutes; it is no longer awaited.]`);
     }
   }
