@@ -122,6 +122,7 @@ import { findSessionFile, isSessionFile } from "./manager-chat/session-file";
 import { downloadableFont } from "../shared/font-registry";
 import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
+import { chatModeStore } from "./manager-chat/chat-modes";
 import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
 import { attachmentKind } from "../shared/chat-attachments";
 import type { ApprovalDecision } from "../shared/chat-events";
@@ -516,6 +517,7 @@ const chatEngine = new ChatEngine({
   onTurnEnded: (terminalId, sessionId) =>
     telemetryService.recordHookEvent(terminalId, { hook_event_name: "Stop", ...(sessionId ? { session_id: sessionId } : {}) }),
   limits: chatLimitStore(path.join(TACIT_DIR, "chat-limits.json")),
+  modes: chatModeStore(path.join(TACIT_DIR, "chat-modes.json")),
   // The agent's own record of the session, so the chat shows what was said
   // in the terminal and before a restart, as the terminal does.
   loadHistory: async (agent, sessionId) => {

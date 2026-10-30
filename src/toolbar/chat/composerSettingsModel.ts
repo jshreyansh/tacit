@@ -24,6 +24,11 @@ export function settingsView(t: Pick<ChatTranscript, "capabilities" | "settings"
   return { models, model, efforts, effort, modes, mode };
 }
 
+/** Whether an approval card can offer Auto: the agent has an Auto mode and the chat isn't in it. */
+export function canSwitchToAuto(t: Pick<ChatTranscript, "capabilities" | "settings">): boolean {
+  return !!t.capabilities?.modes.some((m) => m.id === "auto") && t.settings.mode !== "auto";
+}
+
 type EffortDict = {
   chat_effort_low: string;
   chat_effort_medium: string;

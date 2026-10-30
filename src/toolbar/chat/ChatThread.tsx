@@ -703,6 +703,7 @@ export function ApprovalCards({
   floating = false,
   glass = "",
   onPlanMode,
+  onSwitchToAuto,
   agent = "claude",
 }: {
   approvals: readonly PendingApproval[];
@@ -713,6 +714,11 @@ export function ApprovalCards({
   glass?: string;
   /** A plan accepted with how to go on: the mode to work in from here. */
   onPlanMode?: (mode: string) => void;
+  /**
+   * Allows this and puts the chat in Auto, where the agent decides what's
+   * safe without asking. Only when the agent has Auto and isn't in it.
+   */
+  onSwitchToAuto?: () => void;
   /** Whose modes a plan goes on in: Claude's accept-edits or ask, Codex's auto or read-only. */
   agent?: string;
 }) {
@@ -776,6 +782,20 @@ export function ApprovalCards({
               <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onAnswer(a.requestId, "allow_always")}>
                 {t.chat_approval_allow_always}
               </button>
+              {onSwitchToAuto && (
+                <button
+                  type="button"
+                  className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]"
+                  title={t.chat_approval_switch_auto_hint}
+                  onClick={() => {
+                    // The mode first, so what Claude does after this is in Auto.
+                    onSwitchToAuto();
+                    onAnswer(a.requestId, "allow_once");
+                  }}
+                >
+                  {t.chat_approval_switch_auto}
+                </button>
+              )}
               <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
                 {t.chat_approval_deny}
               </button>

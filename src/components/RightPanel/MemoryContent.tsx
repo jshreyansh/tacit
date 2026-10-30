@@ -5,6 +5,7 @@ import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useT } from "../../i18n/useT";
 import { useActivityFocusStore } from "../../stores/activityFocusStore";
 import { taskActorName } from "../../utils/taskActor";
+import { TaskControl } from "../../toolbar/TaskControl";
 
 const themeCache = { theme: "", vars: {} as Record<string, string> };
 
@@ -960,6 +961,8 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
         {scopeTabs}
+        {/* The open context: name it, end it, or record a new one. */}
+        <TaskControl variant="strip" inActivity />
         {activityLoading && entries.length === 0 ? (
           <div className="tc-label flex-1 flex items-center justify-center">
             {t.activity_loading}

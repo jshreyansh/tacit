@@ -119,6 +119,18 @@ export function allowKey(toolName: string, input: unknown): string {
   return toolName;
 }
 
+/**
+ * The rules an Always allow keeps: Claude's own suggestion when it made
+ * one; for an MCP tool without one (Tacit's tools come without), that
+ * tool by name, in the folder's local settings. Null when there's neither,
+ * so the allow holds for this chat only.
+ */
+export function alwaysRules(toolName: string, suggestions: unknown): unknown[] | null {
+  if (Array.isArray(suggestions) && suggestions.length > 0) return suggestions;
+  if (!toolName.startsWith("mcp__")) return null;
+  return [{ type: "addRules", rules: [{ toolName }], behavior: "allow", destination: "localSettings" }];
+}
+
 export function claudeArgs(sessionId: string | null, bridgeArgs: readonly string[]): string[] {
   return [
     "-p",
@@ -143,9 +155,9 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
   const pendingInputs = new Map<string, { input: unknown; suggestions: unknown; toolName: string; elicitation?: Elicitation }>();
   /**
    * What the person chose Always allow for, for the rest of this chat: a
-   * tool by name, or a shell command exactly. Claude's own suggested rule
-   * is sent too, but not every ask has one (Tacit's tools don't), and
-   * without this "always" would ask again next time.
+   * tool by name, or a shell command exactly. A kept rule goes to Claude
+   * too (alwaysRules), but not every ask gets one, and Claude can ask again
+   * before it reads the rule back.
    */
   const alwaysAllowed = new Set<string>();
   let interrupting = false;
@@ -257,14 +269,15 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
       const pending = pendingInputs.get(requestId);
       pendingInputs.delete(requestId);
       if (decision === "allow_always" && pending) alwaysAllowed.add(allowKey(pending.toolName, pending.input));
+      const rules = decision === "allow_always" && pending ? alwaysRules(pending.toolName, pending.suggestions) : null;
       if (decision === "deny") {
         // Keep planning: Claude stays in plan mode and revises, rather than stopping.
         const message = pending?.toolName === "ExitPlanMode" ? claudeKeepPlanningMessage(note) : undefined;
         write(claudeApprovalLine(requestId, false, undefined, message));
-      } else if (decision === "allow_always" && Array.isArray(pending?.suggestions) && pending.suggestions.length > 0) {
-        // Claude's own suggested rule, so it stops asking for this.
-        const line = JSON.parse(claudeApprovalLine(requestId, true, pending.input));
-        line.response.response.updatedPermissions = pending.suggestions;
+      } else if (rules) {
+        // A rule Claude keeps in the folder's settings, so later chats don't ask either.
+        const line = JSON.parse(claudeApprovalLine(requestId, true, pending?.input));
+        line.response.response.updatedPermissions = rules;
         write(`${JSON.stringify(line)}\n`);
       } else {
         write(claudeApprovalLine(requestId, true, pending?.input));

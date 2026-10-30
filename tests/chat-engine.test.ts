@@ -5,7 +5,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { ChatEngine, appendEvent, chatSettingsChange } from "../electron/manager-chat/chat-engine";
+import { ChatEngine, appendEvent, chatSettingsChange, keptMode, type ChatEngineDeps } from "../electron/manager-chat/chat-engine";
 import type { ChatEvent } from "../shared/chat-events";
 
 /** What Tacit wrote to Claude after asking what it offers (the initialize request it sends at start). */
@@ -43,6 +43,7 @@ function setup(
   agent: "claude" | "codex" | "opencode",
   sessionId: string | null = null,
   loadHistory?: (agent: "claude" | "codex" | "opencode", sessionId: string) => Promise<ChatEvent[] | null>,
+  deps: Partial<ChatEngineDeps> = {},
 ) {
   const logged: string[] = [];
   const child = new FakeChild();
@@ -60,6 +61,7 @@ function setup(
     now: () => new Date("2026-10-17T12:00:00Z"),
     log: (line) => logged.push(line),
     ...(loadHistory ? { loadHistory } : {}),
+    ...deps,
   });
   const started = engine.start({ terminalId: "t1", agent, cwd: "/repo", sessionId });
   return { child, spawned, events, turnsEnded, engine, started, logged };
@@ -324,6 +326,51 @@ test("Claude: Always allow covers the next ask for that tool (or that exact comm
   ask("r5", "Bash", { command: "rm -rf build" });
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(events.filter((e) => e.kind === "approval_request").map((e) => (e as { requestId: string }).requestId), ["r1", "r3", "r5"]);
+});
+
+test("Claude: Always allow on an MCP tool with no suggested rule keeps that tool in the folder's settings, so the next chat doesn't ask", async () => {
+  const { child, engine, started } = setup("claude");
+  await started;
+  child.print({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "mcp__tacit__list_tasks", input: {} } });
+  child.print({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Write", input: { file_path: "/repo/a" } } });
+  await tick();
+  engine.answer("t1", "r1", "allow_always");
+  engine.answer("t1", "r2", "allow_always");
+  const [mcp, write] = sentToClaude(child);
+  assert.deepEqual(mcp.response.response.updatedPermissions, [
+    { type: "addRules", rules: [{ toolName: "mcp__tacit__list_tasks" }], behavior: "allow", destination: "localSettings" },
+  ]);
+  // Claude's own tools keep only what Claude suggests: none here, so nothing is written down.
+  assert.equal(write.response.response.updatedPermissions, undefined);
+  assert.equal(write.response.response.behavior, "allow");
+});
+
+test("the mode picked is kept for the agent's next chat, which starts in it; Plan isn't kept", async () => {
+  const kept: Record<string, string> = {};
+  const modes = { get: (agent: string) => kept[agent] ?? null, set: (agent: string, mode: string) => void (kept[agent] = mode) };
+  const first = setup("claude", null, undefined, { modes });
+  await first.started;
+  assert.deepEqual(sentToClaude(first.child), []);
+  first.engine.configure("t1", { mode: "auto" });
+  first.engine.configure("t1", { mode: "plan" });
+  first.engine.configure("t1", { effort: "high" });
+  assert.deepEqual(kept, { claude: "auto" });
+
+  const next = setup("claude", null, undefined, { modes });
+  await next.started;
+  assert.deepEqual(sentToClaude(next.child).map((m) => m.request), [{ subtype: "set_permission_mode", mode: "auto" }]);
+});
+
+test("Codex's Full access isn't kept: the next chat doesn't start without a sandbox", () => {
+  assert.equal(keptMode("full-access"), null);
+  assert.equal(keptMode("plan"), null);
+  assert.equal(keptMode("auto"), "auto");
+  assert.equal(keptMode(null), null);
+  const kept: Record<string, string> = { codex: "auto" };
+  const modes = { get: (agent: string) => kept[agent] ?? null, set: (agent: string, mode: string) => void (kept[agent] = mode) };
+  const { engine } = setup("codex", null, undefined, { modes });
+  engine.configure("t1", { mode: "full-access" });
+  assert.deepEqual(kept, { codex: "auto" });
 });
 
 test("Codex: what it offers comes from model/list and the thread; a change applies to the next turn", async () => {

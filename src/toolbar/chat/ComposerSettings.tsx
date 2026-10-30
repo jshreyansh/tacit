@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatTranscript } from "../../../shared/chat-transcript";
 import { configureChat } from "../../actions/managerChatMode";
+import claudeModelIcon from "../../assets/model-icons/claude.png";
+import openaiModelIcon from "../../assets/model-icons/openai.png";
+import { AGENT_ICON } from "../agentIcons";
 import { MENU_WIDTH, effortLabel, menuPlace, settingsView } from "./composerSettingsModel";
 
 /**
@@ -26,6 +29,7 @@ function Chip({
   selected,
   onPick,
   hideLabelClass,
+  itemIcon,
 }: {
   icon: ReactNode;
   label: string;
@@ -35,6 +39,8 @@ function Chip({
   onPick: (id: string) => void;
   /** The container width under which only the icon shows. */
   hideLabelClass: string;
+  /** Shown at the start of each item in the menu: the model chip's provider mark. */
+  itemIcon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   // Where the menu sits, against the chip: it stays inside the message
@@ -82,15 +88,19 @@ function Chip({
               type="button"
               role="menuitemradio"
               aria-checked={item.id === selected}
-              className="tc-rail-btn flex w-full flex-col items-start gap-0.5 px-2.5 py-1.5 text-left"
+              className="tc-rail-btn flex w-full items-start gap-2 px-2.5 py-1.5 text-left"
               data-on={item.id === selected ? "" : undefined}
               onClick={() => {
                 setOpen(false);
                 onPick(item.id);
               }}
             >
-              <span className="text-[12.5px] text-[var(--text-primary)]">{item.label}</span>
-              {item.description && <span className="text-[11px] leading-snug text-[var(--text-muted)]">{item.description}</span>}
+              {/* Level with the name's line. */}
+              {itemIcon && <span className="mt-[3px] flex shrink-0 items-center">{itemIcon}</span>}
+              <span className="flex min-w-0 flex-col items-start gap-0.5">
+                <span className="text-[12.5px] text-[var(--text-primary)]">{item.label}</span>
+                {item.description && <span className="text-[11px] leading-snug text-[var(--text-muted)]">{item.description}</span>}
+              </span>
             </button>
           ))}
         </div>
@@ -99,7 +109,16 @@ function Chip({
   );
 }
 
-function ModelIcon() {
+/**
+ * Whose models the chip picks from: Claude's for Claude Code, ChatGPT's for
+ * Codex, OpenCode's own mark for OpenCode. The agents' own marks stay as
+ * they are elsewhere; this says where the model comes from.
+ */
+const MODEL_ICON: Record<string, string> = { claude: claudeModelIcon, codex: openaiModelIcon, opencode: AGENT_ICON.opencode };
+
+function ModelIcon({ agent }: { agent?: string }) {
+  const src = agent ? MODEL_ICON[agent] : undefined;
+  if (src) return <img src={src} alt="" width={13} height={13} className="h-[13px] w-[13px] shrink-0 object-contain" aria-hidden="true" />;
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
       <path d="M8 1.75l1.6 4.65L14.25 8 9.6 9.6 8 14.25 6.4 9.6 1.75 8 6.4 6.4z" />
@@ -171,7 +190,7 @@ function ModeIcon({ mode }: { mode: string | null }) {
   }
 }
 
-export function ComposerSettings({ terminalId, transcript }: { terminalId: string; transcript: ChatTranscript }) {
+export function ComposerSettings({ terminalId, transcript, agent }: { terminalId: string; transcript: ChatTranscript; agent?: string }) {
   const t = useT();
   const view = settingsView(transcript);
   if (!view) return null;
@@ -181,7 +200,8 @@ export function ComposerSettings({ terminalId, transcript }: { terminalId: strin
     <span className="flex min-w-0 items-center">
       {view.models.length > 0 && (
         <Chip
-          icon={<ModelIcon />}
+          icon={<ModelIcon agent={agent} />}
+          itemIcon={agent && MODEL_ICON[agent] ? <ModelIcon agent={agent} /> : undefined}
           label={view.model ? (view.model.short ?? view.model.label) : t.chat_settings_model}
           title={t.chat_settings_model}
           items={view.models}

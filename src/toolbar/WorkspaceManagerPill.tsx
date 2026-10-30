@@ -28,14 +28,16 @@ import { openPinFull } from "../tasks/TasksView";
 import { usePinStore } from "../stores/pinStore";
 import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSender } from "./chat/LongRunning";
 import { ComposerBox, useAttachments } from "./chat/Composer";
+import { useAutoGrow } from "../hooks/useAutoGrow";
 import { PaperclipIcon } from "./chat/Attachments";
-import { TaskControl } from "./TaskControl";
+import { useContextNotices } from "./TaskControl";
 import { previewLine } from "./sessionReaderModel";
 import { terminalName } from "../actions/terminalLookup";
 import { withMentions } from "../../shared/chat-attachments";
 import type { ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
+import { canSwitchToAuto } from "./chat/composerSettingsModel";
 import { QuestionForm } from "./chat/QuestionForm";
 import { ComposerSettings } from "./chat/ComposerSettings";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
@@ -119,6 +121,8 @@ const AGENT_HUE: Record<string, string> = {
  */
 export function WorkspaceManagerPill() {
   const t = useT();
+  // Context recording's controls are in Activity; what others do to it is said here.
+  useContextNotices();
   const bottomOffset = useComposerBottomOffset();
 
   const projects = useProjectStore((s) => s.projects);
@@ -205,6 +209,9 @@ export function WorkspaceManagerPill() {
 
   const [viewing, setViewing] = useState<ManagerSessionRow | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // The pill's own box, which grows a few lines with the draft before it scrolls.
+  const pillInputRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(pillInputRef, draft);
 
   // Read from telemetry rather than the terminal record: the transcript path is
   // discovered after the agent starts, and telemetry is where that lands. Null
@@ -867,6 +874,7 @@ export function WorkspaceManagerPill() {
                 approvals={transcript.approvals}
                 onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
                 onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
+                onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(managerTerminal.id, { mode: "auto" }) : undefined}
                 agent={managerTerminal.type}
               />
             </div>
@@ -926,6 +934,7 @@ export function WorkspaceManagerPill() {
               <label className="min-w-0 flex-1">
                 <span className="sr-only">{t.project_chat_placeholder}</span>
                 <textarea
+                  ref={pillInputRef}
                   rows={1}
                   value={draft}
                   disabled={sending}
@@ -982,8 +991,6 @@ export function WorkspaceManagerPill() {
             </button>
           )}
         </div>
-        {/* Recording what you work on, right of the pill. */}
-        <TaskControl variant="icon" shell="pill" />
       </div>
   );
 
@@ -1387,6 +1394,7 @@ export function WorkspaceManagerPill() {
           approvals={transcript.approvals}
           onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
           onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
+          onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(managerTerminal.id, { mode: "auto" }) : undefined}
           agent={managerTerminal.type}
         />
       )}
@@ -1466,9 +1474,8 @@ export function WorkspaceManagerPill() {
             disabled={sending}
             placeholder={running || queuedCount > 0 ? (chatMode ? t.chat_placeholder_queued : t.project_chat_placeholder_running) : t.project_chat_placeholder}
             attachments={attachments}
-            settings={chatMode ? <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} /> : undefined}
+            settings={chatMode ? <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} agent={managerTerminal.type} /> : undefined}
             meter={chatMode ? <UsageMeter transcript={transcript} agent={managerTerminal.type} /> : undefined}
-            record={<TaskControl variant="icon" shell="composer" />}
             canSend={(!!draft.trim() || attachments.items.length > 0) && !attachments.busy && !sending}
           />
         </div>
@@ -1492,16 +1499,18 @@ export function WorkspaceManagerPill() {
         aria-orientation="vertical"
         aria-label={t.project_chat_resize}
         title={t.project_chat_resize}
-        className="group absolute bottom-0 right-0 top-0 z-10 flex w-2 cursor-col-resize items-center justify-center"
+        className="group/resize absolute bottom-0 right-0 top-0 z-10 w-2 cursor-col-resize"
         onPointerDown={startResize}
         onDoubleClick={() => {
           useChatDockStore.getState().setWidth(440);
           useChatDockStore.getState().commitWidth();
         }}
       >
+        {/* The whole edge lights up on hover and while dragging, as the side
+            panel's does. A short grip in the middle read as a scrollbar. */}
         <span
-          className="h-11 w-[3px] rounded-full transition-colors duration-quick"
-          style={{ background: dragging ? "var(--cyan)" : "color-mix(in srgb, var(--text-muted) 55%, transparent)" }}
+          className={`absolute bottom-0 right-0 top-0 w-px transition-colors duration-quick ${dragging ? "" : "bg-transparent group-hover/resize:bg-[var(--accent)]"}`}
+          style={dragging ? { background: "var(--cyan)" } : undefined}
         />
       </div>
       )}

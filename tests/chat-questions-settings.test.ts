@@ -4,7 +4,7 @@ import { claudeAnswerInput, claudeCapabilities, claudeQuestions, createClaudeStr
 import { codexAsyncReply, codexCapabilities, codexModeOf, codexQuestionResult, createCodexStreamState, parseCodexAsyncReply, parseCodexMessage } from "../shared/chat-stream-codex";
 import { replayChat } from "../shared/chat-transcript";
 import { answersFor, canGoOn } from "../src/toolbar/chat/questionModel";
-import { MENU_WIDTH, menuPlace, settingsView } from "../src/toolbar/chat/composerSettingsModel";
+import { MENU_WIDTH, canSwitchToAuto, menuPlace, settingsView } from "../src/toolbar/chat/composerSettingsModel";
 import { askedAnswers } from "../src/toolbar/chat/threadMessages";
 
 // As claude 2.1.302 sent it in a live run.
@@ -202,6 +202,16 @@ test("the chips show the choice in use, or the agent's default", () => {
   assert.equal(haiku.effort, null);
   assert.equal(haiku.mode?.label, "Plan");
   assert.equal(settingsView({ capabilities: null, settings: { model: null, effort: null, mode: null } }), null);
+});
+
+test("an approval card offers Auto only when the agent has it and the chat isn't in it", () => {
+  const capabilities = { models: [], modes: [{ id: "default", label: "Ask" }, { id: "auto", label: "Auto" }] };
+  assert.equal(canSwitchToAuto({ capabilities, settings: { model: null, effort: null, mode: "default" } }), true);
+  assert.equal(canSwitchToAuto({ capabilities, settings: { model: null, effort: null, mode: null } }), true);
+  assert.equal(canSwitchToAuto({ capabilities, settings: { model: null, effort: null, mode: "auto" } }), false);
+  // A model without Auto: Claude doesn't offer the mode, so neither does the card.
+  assert.equal(canSwitchToAuto({ capabilities: { models: [], modes: [{ id: "default", label: "Ask" }] }, settings: { model: null, effort: null, mode: null } }), false);
+  assert.equal(canSwitchToAuto({ capabilities: null, settings: { model: null, effort: null, mode: null } }), false);
 });
 
 test("a chip's menu stays inside the message box, however narrow the chat", () => {

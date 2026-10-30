@@ -1,8 +1,9 @@
-import { useCallback, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatAttachResult, ChatAttachmentInfo } from "../../../shared/chat-events";
 import { attachChatFiles, pickChatAttachments } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
+import { useAutoGrow } from "../../hooks/useAutoGrow";
 import { AttachmentTray, PaperclipIcon } from "./Attachments";
 
 /**
@@ -66,7 +67,6 @@ export function ComposerBox({
   attachments,
   settings,
   meter,
-  record,
   trailing,
   showSend = true,
   canSend,
@@ -84,8 +84,6 @@ export function ComposerBox({
   settings?: ReactNode;
   /** The usage ring, beside send. */
   meter?: ReactNode;
-  /** The record button, left of the usage ring (the manager's chat only). */
-  record?: ReactNode;
   /** Stop, while a turn runs. */
   trailing?: ReactNode;
   showSend?: boolean;
@@ -94,6 +92,9 @@ export function ComposerBox({
 }) {
   const t = useT();
   const [dragging, setDragging] = useState(false);
+  const ownRef = useRef<HTMLTextAreaElement | null>(null);
+  const textRef = inputRef ?? ownRef;
+  useAutoGrow(textRef, value);
   const takesDrop = (e: React.DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-tacit-file");
   return (
     <div
@@ -130,7 +131,7 @@ export function ComposerBox({
       <label className="min-w-0">
         <span className="sr-only">{placeholder}</span>
         <textarea
-          ref={inputRef}
+          ref={textRef}
           rows={rows}
           value={value}
           disabled={disabled}
@@ -150,7 +151,7 @@ export function ComposerBox({
               onSubmit();
             }
           }}
-          className="block max-h-40 min-h-[1.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+          className={`block ${compact ? "max-h-32" : "max-h-[min(40vh,22rem)]"} min-h-[1.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]`}
         />
       </label>
       <div className="flex min-w-0 items-center gap-0.5">
@@ -165,7 +166,6 @@ export function ComposerBox({
           {attachments.busy ? <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : <PaperclipIcon size={15} />}
         </button>
         <span className="flex min-w-0 flex-1 items-center">{settings}</span>
-        {record}
         {meter && <span className="flex shrink-0 items-center">{meter}</span>}
         {trailing}
         {showSend && (

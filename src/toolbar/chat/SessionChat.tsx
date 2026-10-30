@@ -12,6 +12,7 @@ import {
 } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { ApprovalCards, ChatThread } from "./ChatThread";
+import { canSwitchToAuto } from "./composerSettingsModel";
 import { QuestionForm } from "./QuestionForm";
 import { ComposerSettings } from "./ComposerSettings";
 import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSender } from "./LongRunning";
@@ -158,6 +159,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         approvals={transcript.approvals}
         onAnswer={(id, decision, note) => void answerManagerApproval(terminalId, id, decision, note)}
         onPlanMode={(mode) => void configureChat(terminalId, { mode })}
+        onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(terminalId, { mode: "auto" }) : undefined}
         agent={agent}
       />
       <PlanCard transcript={transcript} />
@@ -170,7 +172,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         onSend={send}
         onStop={() => void interruptManagerChat(terminalId)}
         compact={compact}
-        settings={<ComposerSettings terminalId={terminalId} transcript={transcript} />}
+        settings={<ComposerSettings terminalId={terminalId} transcript={transcript} agent={agent} />}
         meter={<UsageMeter transcript={transcript} agent={agent} />}
       />
     </div>

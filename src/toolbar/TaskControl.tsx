@@ -9,71 +9,36 @@ import { taskActorName } from "../utils/taskActor";
 import { PILL_GLASS, useCloseOnOutsideClick } from "./pillChrome";
 
 /**
- * Context recording (T4.1), as a chip beside the workdesk manager's pill. A
- * context groups one piece of work's entries in the record (a "run" there).
- * Recording starts on its own when you first type into an agent, so this is
- * where you see that it has, name it, end it, or start one with a goal of
- * your own. It sat in the title strip until the layout redesign (SHR-127)
- * put it next to the pill, so what you tell the manager and what is being
- * recorded live in one place. Clicking it opens its card upward.
+ * Context recording (T4.1). A context groups one piece of work's entries in
+ * the record (a "run" there). Recording starts on its own when you first
+ * type into an agent and closes after 5 quiet minutes, so the controls live
+ * at the top of Activity, where the contexts are: see that one is open,
+ * name it, end it, or start one with a goal of your own. Until 29 Oct a
+ * record button sat beside the manager's pill and in its chat's message
+ * box; the record showed it was almost never pressed, so it was moved here
+ * rather than kept in front of every chat.
  */
 
 /** How long a just-started automatic task says where it came from. */
 const AUTO_HINT_MS = 6_000;
-/** Long enough for the pointer to cross from the button into its card. */
-const HOVER_LEAVE_MS = 180;
 
 /**
- * `icon`: a record button, right of the manager's pill (`shell: "pill"`)
- * or in the open chat's message box, left of the usage ring (`shell:
- * "composer"`); its cards open upward either way. Hovering says what it is;
- * a click asks what the context is about, then starts. While it records the
- * same logo pulses and its dot turns from gray to red; hovering or clicking
- * shows the context's card (name, what's recorded, End, Show in Activity).
- * It never turns into a stop button, which would read as stopping the
- * agent: the chat's own Stop sits beside it.
- * `pill`: the chip beside the manager's pill, its card opening upward.
- * `strip`: the context line under the docked chat's header, its card
- * opening downward over the conversation.
+ * `strip`: the context line at the top of Activity, its card opening
+ * downward over the list. `pill`: a chip with its card opening upward.
  */
 export function TaskControl({
   variant = "pill",
   trailing,
-  shell = "pill",
-}: { variant?: "icon" | "pill" | "strip"; trailing?: React.ReactNode; shell?: "pill" | "composer" } = {}) {
+  inActivity = false,
+}: { variant?: "pill" | "strip"; trailing?: React.ReactNode; inActivity?: boolean } = {}) {
   const t = useT();
   const [run, setRun] = useState<RunInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [autoHint, setAutoHint] = useState(false);
   const [, setTick] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
-  // The icon's hover card: shown while the pointer is over the button or
-  // its card, or something in the card has focus (renaming); `quiet` keeps
-  // it away after a click until the pointer leaves.
-  const [hovered, setHovered] = useState(false);
-  const [holding, setHolding] = useState(false);
-  const [quiet, setQuiet] = useState(false);
-  const leaveTimer = useRef<number | undefined>(undefined);
-  const hoverIn = () => {
-    window.clearTimeout(leaveTimer.current);
-    if (!hovered) setQuiet(false);
-    setHovered(true);
-  };
-  const hoverOut = () => {
-    window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = window.setTimeout(() => {
-      setHovered(false);
-      setQuiet(false);
-    }, HOVER_LEAVE_MS);
-  };
-  const close = useCallback(() => {
-    setOpen(false);
-    setQuiet(true);
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
   useCloseOnOutsideClick(open, rootRef, close);
-  useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
-  // Started or stopped: whatever was being typed is gone with its card.
-  useEffect(() => setHolding(false), [run?.run_id]);
 
   useEffect(() => {
     const api = window.tacit?.run;
@@ -90,15 +55,13 @@ export function TaskControl({
         window.clearTimeout(hintTimer);
         hintTimer = window.setTimeout(() => setAutoHint(false), AUTO_HINT_MS);
       }
-      const notice = noticeFor(change, next, t);
-      if (notice) useNotificationStore.getState().notify("info", notice);
     });
     return () => {
       cancelled = true;
       window.clearTimeout(hintTimer);
       off();
     };
-  }, [t]);
+  }, []);
 
   // The elapsed time only needs minutes.
   useEffect(() => {
@@ -108,90 +71,6 @@ export function TaskControl({
   }, [run]);
 
   const name = run?.goal ?? t.task_untitled;
-
-  if (variant === "icon") {
-    const label = run ? t.task_recording_label(name, elapsed(run.started_at)) : t.task_record_title;
-    const pill = shell === "pill";
-    const placement = pill ? "above-right" : "above-box";
-    // Hovering shows what it is (or, while recording, the context's card);
-    // a short delay lets the pointer cross the gap into the card.
-    const showCard = !quiet && (hovered || holding);
-    return (
-      // In the message box the card is placed against the box (not the
-      // button), spanning its width, so a narrow chat doesn't cut it off.
-      <div
-        ref={rootRef}
-        className={`flex shrink-0 flex-col items-center ${pill ? "pointer-events-auto relative" : ""}`}
-        onMouseEnter={hoverIn}
-        onMouseLeave={hoverOut}
-        // Typing in the card (renaming, a new context's goal) keeps it open.
-        onFocus={(e) => setHolding(e.target instanceof HTMLInputElement)}
-        onBlur={(e) => {
-          if (!(e.relatedTarget instanceof HTMLInputElement && e.currentTarget.contains(e.relatedTarget))) setHolding(false);
-        }}
-      >
-        <button
-          className={
-            pill
-              ? `tc-pill relative inline-flex h-12 w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-[var(--text-muted)] transition-transform duration-quick hover:text-[var(--text-primary)] active:scale-[0.94] ${PILL_GLASS}`
-              : "tc-rail-btn relative inline-flex h-7 w-7 shrink-0 items-center justify-center text-[var(--text-muted)] transition-transform duration-quick hover:text-[var(--text-primary)] active:scale-[0.94]"
-          }
-          style={pill && run ? { borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" } : undefined}
-          data-on={open ? "" : undefined}
-          // Recording, a click shows the context's card (End is there);
-          // otherwise it asks what the context is about, then starts.
-          onClick={() => {
-            if (run) {
-              setQuiet(false);
-              setHovered(true);
-              return;
-            }
-            setQuiet(true);
-            setOpen((v) => !v);
-          }}
-          aria-expanded={run ? undefined : open}
-          aria-haspopup={run ? undefined : "dialog"}
-          aria-label={label}
-        >
-          <RecordIcon size={pill ? 22 : 18} recording={!!run} />
-          {run && pill && <span className="tc-mono text-[8.5px] leading-none tabular-nums text-[var(--red)]">{elapsed(run.started_at)}</span>}
-        </button>
-        {/* Started on its own when you first typed to an agent: said beside it.
-            In the message box, over the box's left end: the chat's Stop sits
-            over its right end. */}
-        {autoHint && !open && !showCard && (
-          <div
-            className={`tc-float tc-enter-fade pointer-events-none absolute bottom-full z-50 mb-2 whitespace-nowrap px-2.5 py-1.5 text-[11.5px] text-[var(--text-secondary)] ${pill ? "right-0" : "left-0"}`}
-            style={{ borderRadius: 10 }}
-          >
-            {t.task_auto_hint}
-          </div>
-        )}
-        {!run && open && <TaskPanel run={null} onDone={close} placement={placement} />}
-        {run && showCard && (
-          <TaskPanel
-            run={run}
-            onDone={() => {
-              setQuiet(true);
-              setHolding(false);
-            }}
-            placement={placement}
-          />
-        )}
-        {!run && !open && showCard && (
-          <div
-            role="tooltip"
-            className={`tc-float tc-enter-fade-up pointer-events-none absolute bottom-full z-50 mb-2 p-3 text-left ${pill ? "right-0 w-[17rem]" : "inset-x-0"}`}
-            style={{ borderRadius: 14 }}
-          >
-            <div className="text-[12.5px] font-medium text-[var(--text-primary)]">{t.task_record}</div>
-            <p className="mt-1 text-[11.5px] leading-snug text-[var(--text-muted)]">{t.task_panel_what}</p>
-            <p className="mt-1.5 text-[11.5px] leading-snug text-[var(--text-secondary)]">{t.task_record_click}</p>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   if (variant === "strip") {
     return (
@@ -219,7 +98,7 @@ export function TaskControl({
           )}
           {trailing && <span className="ml-auto flex shrink-0 items-center gap-1.5">{trailing}</span>}
         </button>
-        {open && <TaskPanel run={run} onDone={close} placement="below" />}
+        {open && <TaskPanel run={run} onDone={close} placement="below" inActivity={inActivity} />}
       </div>
     );
   }
@@ -257,27 +136,18 @@ export function TaskControl({
   );
 }
 
-/** Record: a dotted screen with a record dot at its corner, gray until it records; then red, and the logo pulses. */
-function RecordIcon({ size, recording }: { size: number; recording: boolean }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={recording ? "animate-pulse" : undefined} aria-hidden="true">
-      <path
-        d="M16.8 17.5H4.7A2.7 2.7 0 0 1 2 14.8V5.7A2.7 2.7 0 0 1 4.7 3h13.6A2.7 2.7 0 0 1 21 5.7v5.1"
-        stroke="currentColor"
-        strokeWidth="1.05"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="1.2 2.2"
-      />
-      <path d="M5 6.1h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M7 14.1h7.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="18" cy="15.5" r="4.5" fill={recording ? "var(--red)" : "var(--text-muted)"} />
-      <circle cx="18" cy="15.5" r="2.9" stroke="white" strokeOpacity="0.75" strokeWidth="1.15" />
-    </svg>
-  );
-}
-
-function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; onDone: () => void; placement?: "above" | "above-right" | "above-box" | "below" }) {
+function TaskPanel({
+  run,
+  onDone,
+  placement = "above",
+  inActivity = false,
+}: {
+  run: RunInfo | null;
+  onDone: () => void;
+  placement?: "above" | "below";
+  /** Shown in Activity already: no link to it. */
+  inActivity?: boolean;
+}) {
   const t = useT();
   // "new" is a goal for a task to start; "rename" edits the open one's name.
   const [editing, setEditing] = useState<"new" | "rename" | null>(run ? null : "new");
@@ -337,17 +207,11 @@ function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; 
     <div
       role="dialog"
       aria-label={t.task_recording}
-      // Upward from the chip or record button beside the pill, or the one in
-      // the chat's message box; downward from the docked chat's context line,
-      // over the conversation.
+      // Upward from the chip; downward from Activity's context line, over the list.
       className={
         placement === "above"
           ? "tc-float tc-enter-fade-up absolute bottom-full left-0 z-10 mb-2 w-[22rem] p-3.5 text-[11px]"
-          : placement === "above-right"
-            ? "tc-float tc-enter-fade-up absolute bottom-full right-0 z-50 mb-2 w-[min(22rem,calc(100vw-2rem))] p-3.5 text-[11px]"
-            : placement === "above-box"
-              ? "tc-float tc-enter-fade-up absolute inset-x-0 bottom-full z-50 mb-2 p-3.5 text-[11px]"
-            : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
+          : "tc-float tc-enter-fade-down absolute left-2 right-2 top-full z-10 mt-1 p-3.5 text-[11px]"
       }
       style={{ borderRadius: 18 }}
       onKeyDown={(e) => {
@@ -393,9 +257,11 @@ function TaskPanel({ run, onDone, placement = "above" }: { run: RunInfo | null; 
             >
               {t.task_end}
             </button>
-            <button className={button} onClick={() => showInActivity(run.run_id)}>
-              {t.task_show_activity}
-            </button>
+            {!inActivity && (
+              <button className={button} onClick={() => showInActivity(run.run_id)}>
+                {t.task_show_activity}
+              </button>
+            )}
           </div>
           <div className="mt-2.5 border-t border-[var(--border)] pt-2.5">
             {editing === "new" ? (
@@ -443,6 +309,23 @@ function namedLine(run: RunInfo, t: Dict): string | null {
   if (run.goal_source === "prompt") return t.task_named_from_prompt;
   if (run.named_by && run.named_by !== "user") return t.task_named_by(who(run.named_by, t));
   return null;
+}
+
+/**
+ * Notices for what someone else did to the open context (a manager started,
+ * named or ended one; it closed after 5 quiet minutes). Mounted once, with
+ * the manager's pill, so they show whether or not Activity is open.
+ */
+export function useContextNotices(): void {
+  const t = useT();
+  useEffect(() => {
+    const api = window.tacit?.run;
+    if (!api) return;
+    return api.onChanged(({ run, change }) => {
+      const notice = noticeFor(change, run, t);
+      if (notice) useNotificationStore.getState().notify("info", notice);
+    });
+  }, [t]);
 }
 
 /**

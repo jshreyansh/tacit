@@ -55,8 +55,28 @@ export interface ChatEngineDeps {
     get: (agent: ChatAgent) => ChatLimitEvent | null;
     set: (agent: ChatAgent, limit: ChatLimitEvent) => void;
   };
+  /**
+   * The mode last picked for the agent's chats, kept across chats and
+   * restarts, so a new chat starts in it. Not every mode is kept (keptMode).
+   */
+  modes?: {
+    get: (agent: ChatAgent) => string | null;
+    set: (agent: ChatAgent, mode: string) => void;
+  };
   log?: (line: string) => void;
   now?: () => Date;
+}
+
+/**
+ * Modes a new chat may start in because an earlier one picked them. Plan
+ * is for one piece of work. Codex's Full access runs anything with no
+ * sandbox, and the kept mode holds in every folder, so it's picked each
+ * time rather than carried from one chat to the next.
+ */
+const NOT_KEPT_MODES = new Set(["plan", "full-access"]);
+
+export function keptMode(mode: string | null | undefined): string | null {
+  return mode && !NOT_KEPT_MODES.has(mode) ? mode : null;
 }
 
 /** A model, effort or mode name: OpenCode's models name their provider (`opencode/big-pickle`). */
@@ -182,7 +202,9 @@ export class ChatEngine {
       log: this.deps.log,
     });
     session.driver = driver;
-    if (session.chosen && Object.keys(session.chosen).length > 0) driver.configure(session.chosen);
+    const startMode = keptMode(this.deps.modes?.get(request.agent));
+    const chosen = { ...(startMode ? { mode: startMode } : {}), ...session.chosen };
+    if (Object.keys(chosen).length > 0) driver.configure(chosen);
   }
 
   private record(terminalId: string, event: ChatEvent): void {
@@ -239,6 +261,8 @@ export class ChatEngine {
     const session = this.sessions.get(terminalId);
     if (!session) return;
     session.chosen = { ...session.chosen, ...settings };
+    const kept = keptMode(settings.mode);
+    if (kept) this.deps.modes?.set(session.agent, kept);
     session.driver?.configure(settings);
   }
 

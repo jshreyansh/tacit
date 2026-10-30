@@ -8,6 +8,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { ChatEngine, limitStillHolds, type ChatLimitEvent } from "../electron/manager-chat/chat-engine";
 import { chatLimitStore } from "../electron/manager-chat/chat-limits";
+import { chatModeStore } from "../electron/manager-chat/chat-modes";
 import { codexRateLimit } from "../shared/chat-stream-codex";
 import { replayChat } from "../shared/chat-transcript";
 import type { ChatEvent } from "../shared/chat-events";
@@ -58,5 +59,18 @@ test("the kept reading is saved per agent, and one without a figure keeps the la
     { kind: "rate_limit", status: "warning" },
   ]);
   assert.deepEqual(t.limit, { status: "warning", usedPercent: 40, window: "five_hour" });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("the picked mode is saved per agent and read back after a restart", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-modes-"));
+  const file = path.join(dir, "chat-modes.json");
+  assert.equal(chatModeStore(file).get("claude"), null);
+  const store = chatModeStore(file);
+  store.set("claude", "auto");
+  store.set("codex", "read-only");
+  assert.equal(chatModeStore(file).get("claude"), "auto");
+  assert.equal(chatModeStore(file).get("codex"), "read-only");
+  assert.equal(chatModeStore(file).get("opencode"), null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
