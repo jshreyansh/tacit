@@ -6,13 +6,10 @@ import {
   DEFAULT_WORKTREE_COMPACT_COLUMNS,
   sanitizeWorktreeCompactColumns,
 } from "../canvas/worktreeCompactLayout";
+import { DEFAULT_WALLPAPER_LOOK, sanitizeWallpaperLook, type WallpaperLook } from "../canvas/wallpaper";
 
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_MIN_CONTRAST = 1;
-// Nearly solid. Half-transparent was a striking default and a bad one: the
-// desktop showing through a working canvas is noise behind every terminal you
-// read. It stays adjustable for people who want the effect.
-const DEFAULT_CANVAS_OPACITY = 95;
 
 export type TerminalRendererMode = "dom" | "webgl";
 
@@ -29,10 +26,10 @@ export interface StoredTerminalSize {
 }
 
 interface PreferencesStore {
-  /** Canvas background transparency, 0-100 (100 = fully opaque). macOS only — see setCanvasOpacity. */
-  canvasOpacity: number;
   /** tc-attachment:// URL of a user-picked local image shown behind the canvas, or null for none. */
   canvasBackgroundImage: string | null;
+  /** How that image is shown: dim, blur, bottom fade, grid dots (src/canvas/wallpaper.ts). */
+  wallpaperLook: WallpaperLook;
   terminalFontSize: number;
   terminalFontFamily: string;
   terminalRenderer: TerminalRendererMode;
@@ -79,7 +76,7 @@ interface PreferencesStore {
    * for every project the way a seen hint does.
    */
   instructionsDeclined: string[];
-  setCanvasOpacity: (value: number) => void;
+  setWallpaperLook: (change: Partial<WallpaperLook>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
   setTerminalFontSize: (value: number) => void;
@@ -112,8 +109,8 @@ const SECURE_API_KEY_STORAGE_KEY = "tacit-secure-apikey";
 const PLAINTEXT_FALLBACK_PREFIX = "plain:";
 
 interface SavedPrefs {
-  canvasOpacity: number;
   canvasBackgroundImage: string | null;
+  wallpaperLook: WallpaperLook;
   terminalFontSize: number;
   terminalFontFamily: string;
   terminalRenderer: TerminalRendererMode;
@@ -216,10 +213,6 @@ function loadPreferences(): SavedPrefs {
     if (raw) {
       const parsed = JSON.parse(raw);
 
-      let canvasOpacity = DEFAULT_CANVAS_OPACITY;
-      const co = parsed.canvasOpacity;
-      if (typeof co === "number" && co >= 0 && co <= 100) canvasOpacity = co;
-
       let canvasBackgroundImage: string | null = null;
       if (typeof parsed.canvasBackgroundImage === "string") {
         canvasBackgroundImage = parsed.canvasBackgroundImage;
@@ -306,8 +299,8 @@ function loadPreferences(): SavedPrefs {
       const instructionsDeclined = sanitizePathList(parsed.instructionsDeclined);
 
       return {
-        canvasOpacity,
         canvasBackgroundImage,
+        wallpaperLook: sanitizeWallpaperLook(parsed.wallpaperLook),
         terminalFontSize: fontSize,
         terminalFontFamily: fontFamily,
         terminalRenderer,
@@ -336,8 +329,8 @@ function loadPreferences(): SavedPrefs {
   } catch {
   }
   return {
-    canvasOpacity: DEFAULT_CANVAS_OPACITY,
     canvasBackgroundImage: null,
+    wallpaperLook: DEFAULT_WALLPAPER_LOOK,
     terminalFontSize: DEFAULT_FONT_SIZE,
     terminalFontFamily: "geist-mono",
     terminalRenderer: "webgl",
@@ -446,8 +439,8 @@ function readLegacyApiKey(): string {
 
 function getSaveState(state: PreferencesStore): SavedPrefs {
   return {
-    canvasOpacity: state.canvasOpacity,
     canvasBackgroundImage: state.canvasBackgroundImage,
+    wallpaperLook: state.wallpaperLook,
     terminalFontSize: state.terminalFontSize,
     terminalFontFamily: state.terminalFontFamily,
     terminalRenderer: state.terminalRenderer,
@@ -477,8 +470,8 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
 const initialPrefs = loadPreferences();
 
 export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
-  canvasOpacity: initialPrefs.canvasOpacity,
   canvasBackgroundImage: initialPrefs.canvasBackgroundImage,
+  wallpaperLook: initialPrefs.wallpaperLook,
   terminalFontSize: initialPrefs.terminalFontSize,
   terminalFontFamily: initialPrefs.terminalFontFamily,
   terminalRenderer: initialPrefs.terminalRenderer,
@@ -504,10 +497,10 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   seenHints: initialPrefs.seenHints,
   instructionsDeclined: initialPrefs.instructionsDeclined,
 
-  setCanvasOpacity: (value) => {
-    const clamped = Math.round(Math.max(0, Math.min(100, value)));
-    set({ canvasOpacity: clamped });
-    savePreferences(getSaveState({ ...get(), canvasOpacity: clamped }));
+  setWallpaperLook: (change) => {
+    const wallpaperLook = sanitizeWallpaperLook({ ...get().wallpaperLook, ...change });
+    set({ wallpaperLook });
+    savePreferences(getSaveState({ ...get(), wallpaperLook }));
   },
   setCanvasBackgroundImage: (url) => {
     set({ canvasBackgroundImage: url });
@@ -639,17 +632,4 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
 if (typeof window !== "undefined") {
   window.tacit?.app.setQuitOnLastWindowClosed?.(initialPrefs.quitOnLastWindowClosed);
 
-  // Mac windows are created transparent so the canvas opacity/blur
-  // preference can show the desktop through (see index.css
-  // .tc-mac-transparent-window). Marking this on body at startup, not just
-  // when the preference is active, keeps App.tsx/index.css simple — every
-  // other layer already paints its own opaque background, so an always-
-  // transparent body/root is safe and .canvas-bg's own background-color is
-  // what actually renders solid at 100% opacity.
-  if (
-    typeof document !== "undefined" &&
-    (window.tacit?.app.platform ?? "darwin") === "darwin"
-  ) {
-    document.body.classList.add("tc-mac-transparent-window");
-  }
 }

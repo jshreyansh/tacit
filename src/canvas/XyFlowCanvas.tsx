@@ -27,6 +27,7 @@ import { usePinStore } from "../stores/pinStore";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
+import { WallpaperLayers } from "./WallpaperLayers";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
 import {
   PANEL_TRANSITION_DURATION_MS,
@@ -96,11 +97,6 @@ const CONTEXT_MENU_TERMINAL_TYPES: { label: string; type: TerminalType }[] = [
   { label: "New Antigravity", type: "antigravity" },
   { label: "New Lazygit", type: "lazygit" },
 ];
-// Canvas opacity only does anything on mac, where the window is created
-// transparent (electron/main.ts createWindow). Elsewhere the window is
-// opaque, so applying alpha here would just fade to black.
-const IS_MAC = (window.tacit?.app.platform ?? "darwin") === "darwin";
-
 function normalizeWheelDelta(event: {
   deltaMode: number;
   deltaY: number;
@@ -335,7 +331,7 @@ function XyFlowCanvasInner() {
   const activityHeatmapEnabled = usePreferencesStore(
     (state) => state.activityHeatmapEnabled,
   );
-  const canvasOpacity = usePreferencesStore((state) => state.canvasOpacity);
+  const wallpaperLook = usePreferencesStore((state) => state.wallpaperLook);
   const canvasBackgroundImage = usePreferencesStore(
     (state) => state.canvasBackgroundImage,
   );
@@ -968,25 +964,6 @@ function XyFlowCanvasInner() {
   }, [isPanMode, isPanning]);
 
   const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
-  const canvasBgStyle: React.CSSProperties = {
-    ...(IS_MAC && canvasOpacity < 100
-      ? {
-          backgroundColor: `color-mix(in srgb, var(--bg) ${canvasOpacity}%, transparent)`,
-        }
-      : {}),
-    // A user-picked background image sits above the opacity tint (which
-    // exists to fade the canvas to the desktop behind a transparent
-    // window) — the two features aren't meant to combine, an image
-    // means there's no "desktop showing through" to fade to.
-    ...(canvasBackgroundImage
-      ? {
-          backgroundImage: `url("${canvasBackgroundImage}")`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }
-      : {}),
-  };
 
   return (
     <div
@@ -996,15 +973,16 @@ function XyFlowCanvasInner() {
       // Under the grid view only the dotted background shows: the tiles,
       // wires and handles would ghost through the grid's glass. The browser
       // layer stays, for a browser laid over its grid tab.
-      className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass} ${gridMode ? "[&>*:not(#canvas-card-layer)]:invisible" : ""}`}
+      // The wallpaper stays under the grid view too, as the image did.
+      className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass} ${gridMode ? "[&>*:not(#canvas-card-layer):not(#canvas-wallpaper)]:invisible" : ""}`}
       data-activity-heatmap={activityHeatmapEnabled ? "true" : undefined}
-      style={canvasBgStyle}
       onMouseDownCapture={handleContainerMouseDown}
       onDragEnter={dragOverHandlers.onDragEnter}
       onDragOver={dragOverHandlers.onDragOver}
       onDragLeave={dragOverHandlers.onDragLeave}
       onDrop={dragOverHandlers.onDrop}
     >
+      {canvasBackgroundImage && <WallpaperLayers id="canvas-wallpaper" image={canvasBackgroundImage} look={wallpaperLook} />}
       <TerminalRuntimeLayer
         projects={projects}
         viewport={viewport}
@@ -1051,7 +1029,7 @@ function XyFlowCanvasInner() {
         preventScrolling
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} size={2} color="var(--border)" />
+        {(!canvasBackgroundImage || wallpaperLook.showGrid) && <Background gap={20} size={2} color="var(--border)" />}
       </ReactFlow>
 
       {contextMenu && (

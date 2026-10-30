@@ -1168,11 +1168,10 @@ const TITLE_STRIP_HEIGHT = 28;
     width: 1400,
     height: 900,
     show: false,
-    // Transparent on mac lets the canvas background opacity preference
-    // (Settings > Appearance) show the desktop through, like a terminal's
-    // window opacity. Other platforms keep an opaque window — Electron's
-    // transparent-window support is inconsistent on Windows/Linux.
-    ...(isMac ? { transparent: true } : { backgroundColor: "#101010" }),
+    // Opaque everywhere. The Mac window was transparent for a canvas
+    // opacity setting that showed the desktop through; a wallpaper with its
+    // own dim replaced it (29 Oct).
+    backgroundColor: "#101010",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

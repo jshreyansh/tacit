@@ -10,6 +10,8 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useLocaleStore } from "../stores/localeStore";
 import { useThemeStore } from "../stores/themeStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
+import { WALLPAPER_LIMITS, type WallpaperLook } from "../canvas/wallpaper";
+import { WallpaperLayers } from "../canvas/WallpaperLayers";
 import { PROVIDER_PRESETS, getPreset } from "../agentProviders";
 import type { TerminalType } from "../types";
 import {
@@ -291,6 +293,82 @@ function SliderControl({
         {format(value)}
       </span>
     </div>
+  );
+}
+
+/**
+ * The wallpaper's dim, blur, bottom fade and grid dots, with a small
+ * preview of the canvas under them (the pill outlined where it sits).
+ */
+function WallpaperControls({
+  image,
+  look,
+  onChange,
+}: {
+  image: string;
+  look: WallpaperLook;
+  onChange: (change: Partial<WallpaperLook>) => void;
+}) {
+  const t = useT();
+  const previewWidth = 240;
+  const percent = (v: number) => `${Math.round(v)}%`;
+  return (
+    <>
+      <div
+        className="relative isolate overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]"
+        style={{ width: previewWidth, aspectRatio: "16 / 10" }}
+        aria-label={t.wallpaper_preview}
+        role="img"
+      >
+        <WallpaperLayers image={image} look={look} scale={previewWidth / Math.max(window.innerWidth, 1)} />
+        {look.showGrid && (
+          <div
+            className="absolute inset-0"
+            // Finer than the canvas's: the same dots shrunk to the preview's size.
+            style={{ backgroundImage: "radial-gradient(color-mix(in srgb, var(--border) 70%, transparent) 0.4px, transparent 0.5px)", backgroundSize: "4px 4px" }}
+          />
+        )}
+        <div className="absolute bottom-[7%] left-1/2 h-[10%] w-[52%] -translate-x-1/2 rounded-md border border-[var(--border-hover)] bg-[color-mix(in_srgb,var(--surface)_70%,transparent)]" />
+      </div>
+      <SettingsRow label={t.wallpaper_dim} description={t.wallpaper_dim_desc}>
+        <SliderControl min={WALLPAPER_LIMITS.dim.min} max={WALLPAPER_LIMITS.dim.max} step={1} value={look.dim} onChange={(dim) => onChange({ dim })} format={percent} />
+      </SettingsRow>
+      <SettingsRow label={t.wallpaper_blur}>
+        <SliderControl
+          min={WALLPAPER_LIMITS.blur.min}
+          max={WALLPAPER_LIMITS.blur.max}
+          step={1}
+          value={look.blur}
+          onChange={(blur) => onChange({ blur })}
+          format={(v) => (v <= 0 ? t.setting_off : `${Math.round(v)}px`)}
+        />
+      </SettingsRow>
+      <SettingsRow label={t.wallpaper_fade} description={t.wallpaper_fade_desc}>
+        <SliderControl
+          min={WALLPAPER_LIMITS.fadeStrength.min}
+          max={WALLPAPER_LIMITS.fadeStrength.max}
+          step={1}
+          value={look.fadeStrength}
+          onChange={(fadeStrength) => onChange({ fadeStrength })}
+          format={(v) => (v <= 0 ? t.setting_off : percent(v))}
+        />
+      </SettingsRow>
+      {look.fadeStrength > 0 && (
+        <SettingsRow label={t.wallpaper_fade_height} description={t.wallpaper_fade_height_desc}>
+          <SliderControl
+            min={WALLPAPER_LIMITS.fadeHeight.min}
+            max={WALLPAPER_LIMITS.fadeHeight.max}
+            step={1}
+            value={look.fadeHeight}
+            onChange={(fadeHeight) => onChange({ fadeHeight })}
+            format={percent}
+          />
+        </SettingsRow>
+      )}
+      <SettingsRow label={t.wallpaper_grid} description={t.wallpaper_grid_desc}>
+        <OnOffSegment value={look.showGrid} onChange={(showGrid) => onChange({ showGrid })} />
+      </SettingsRow>
+    </>
   );
 }
 
@@ -743,8 +821,8 @@ export function SettingsModal({ onClose }: Props) {
   useBodyScrollLock(true);
   const { locale, setLocale } = useLocaleStore();
   const {
-    canvasOpacity,
-    setCanvasOpacity,
+    wallpaperLook,
+    setWallpaperLook,
     canvasBackgroundImage,
     setCanvasBackgroundImage,
     terminalFontSize,
@@ -1340,23 +1418,6 @@ export function SettingsModal({ onClose }: Props) {
                     />
                   </SettingsRow>
 
-                  {isMac && (
-                    <SettingsRow
-                      label={t.canvas_opacity}
-                      description={t.canvas_opacity_desc}
-                      align="start"
-                    >
-                      <SliderControl
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={canvasOpacity}
-                        onChange={setCanvasOpacity}
-                        format={(v) => `${Math.round(v)}%`}
-                      />
-                    </SettingsRow>
-                  )}
-
                   <SettingsRow
                     label={t.canvas_background_image}
                     description={t.canvas_background_image_desc}
@@ -1394,6 +1455,14 @@ export function SettingsModal({ onClose }: Props) {
                       )}
                     </div>
                   </SettingsRow>
+
+                  {canvasBackgroundImage && (
+                    <WallpaperControls
+                      image={canvasBackgroundImage}
+                      look={wallpaperLook}
+                      onChange={setWallpaperLook}
+                    />
+                  )}
                 </div>
               </section>
             )}

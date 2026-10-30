@@ -39,9 +39,19 @@ test("preferences defaults", async () => {
 
   assert.equal(usePreferencesStore.getState().terminalRenderer, "webgl");
   assert.equal(usePreferencesStore.getState().completionGlowEnabled, false);
-  // Nearly solid, not half see-through: the desktop behind a working canvas is
-  // noise behind every terminal you read.
-  assert.equal(usePreferencesStore.getState().canvasOpacity, 95);
+  assert.equal(usePreferencesStore.getState().canvasBackgroundImage, null);
+  assert.deepEqual(usePreferencesStore.getState().wallpaperLook, { dim: 30, blur: 0, fadeStrength: 60, fadeHeight: 35, showGrid: true });
+});
+
+test("preferences drop the removed canvas opacity on load, and keep the wallpaper's look", async () => {
+  installLocalStorage(JSON.stringify({ canvasOpacity: 24, wallpaperLook: { dim: 55, blur: 6, fadeStrength: 0, fadeHeight: 40, showGrid: false } }));
+
+  const { usePreferencesStore } = await loadPreferencesStoreModule("wallpaper-look");
+
+  assert.equal("canvasOpacity" in usePreferencesStore.getState(), false);
+  assert.deepEqual(usePreferencesStore.getState().wallpaperLook, { dim: 55, blur: 6, fadeStrength: 0, fadeHeight: 40, showGrid: false });
+  usePreferencesStore.getState().setWallpaperLook({ dim: 500 });
+  assert.equal(usePreferencesStore.getState().wallpaperLook.dim, 90);
 });
 
 test("preferences drop the removed animation-blur setting on load", async () => {
