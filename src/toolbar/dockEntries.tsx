@@ -65,8 +65,6 @@ export const DOCK_ENTRIES: readonly DockEntry[] = [
   // Google's successor to the Gemini CLI, which stopped serving consumer
   // accounts on 18 June 2026.
   agent("antigravity", "Antigravity", { icon: AGENT_ICON.antigravity, inner: 22 }),
-  // opencode-mark.png is the mark lifted off OpenCode's cream field with its
-  // tones flipped, so it sits on the same shell as the rest.
   agent("opencode", "OpenCode", { icon: AGENT_ICON.opencode, inner: 24 }),
   {
     id: "shell",

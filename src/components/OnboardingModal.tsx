@@ -11,7 +11,7 @@ import folderIcon from "../assets/dock-icons/folder.png";
 import claudeIcon from "../assets/dock-icons/terminal-claude.png";
 import codexIcon from "../assets/dock-icons/codex.png";
 import antigravityIcon from "../assets/dock-icons/antigravity.png";
-import opencodeIcon from "../assets/dock-icons/opencode-logo.png";
+import opencodeIcon from "../assets/dock-icons/opencode.png";
 
 /**
  * First run, as a sequence you finish rather than a hint you ignore.

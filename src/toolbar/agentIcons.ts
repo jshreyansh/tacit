@@ -4,7 +4,7 @@ import claudeIcon from "../assets/dock-icons/terminal-claude.png";
 import codexIcon from "../assets/dock-icons/codex.png";
 import geminiIcon from "../assets/dock-icons/gemini.png";
 import antigravityIcon from "../assets/dock-icons/antigravity.png";
-import opencodeIcon from "../assets/dock-icons/opencode-mark.png";
+import opencodeIcon from "../assets/dock-icons/opencode.png";
 
 /**
  * One mark per terminal type, shared by the dock and the manager picker so the
