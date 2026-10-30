@@ -1606,6 +1606,8 @@ export const en = {
   "palette.section.canvas": "Canvases",
   "hub.section.canvases": "Canvases",
   "hub.canvases.activeBadge": "Active",
+  "hub.canvases.needsYou": (n: number) => `${n} ${n === 1 ? "task" : "tasks"} waiting on you`,
+  "hub.needsYouElsewhere": (n: number) => `${n} ${n === 1 ? "task" : "tasks"} waiting on you on other workdesks`,
   "hub.canvases.empty": "Only one canvas. Press the chord to make another.",
   "hub.canvases.projects": (n: number) =>
     `${n} project${n === 1 ? "" : "s"}`,

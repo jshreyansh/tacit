@@ -191,11 +191,15 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
   const browserGroups = [...groups.values()];
 
   // Every task and note on this workdesk's projects, on the canvas or not.
-  const notes: NoteCard[] = input.pins
+  // The pin store keeps every project it has loaded, other workdesks' too,
+  // so a new workdesk with one empty folder showed their tasks and notes.
+  const projectPaths = new Set(input.projects.map((p) => p.path));
+  const pins = input.pins.filter((p) => projectPaths.has(p.repo));
+  const notes: NoteCard[] = pins
     .filter((p) => pinKind(p) === "note")
     .map((p) => ({ kind: "note", id: p.id, projectPath: p.repo, title: p.title, body: p.body }));
   const TASK_ORDER: Record<PinStatus, number> = { needs_you: 0, in_progress: 1, open: 2, done: 3, dropped: 4 };
-  const taskPins = input.pins.filter((p) => pinKind(p) === "task" && p.status !== "dropped");
+  const taskPins = pins.filter((p) => pinKind(p) === "task" && p.status !== "dropped");
   const taskCard = (p: Pin): TaskCard => {
     const steps = p.steps ?? [];
     const done = steps.filter((st) => st.status === "done").length;

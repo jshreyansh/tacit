@@ -65,6 +65,21 @@ test("agents, terminals, tasks and notes go to their groups; minimized and stash
   assert.deepEqual(s.counts, { all: 8, agents: 3, terminals: 1, browsers: 0, tasks: 2, notes: 2 });
 });
 
+test("only this workdesk's folders' tasks and notes show, not those of folders another workdesk loaded", () => {
+  const s = buildWorkdeskSections(
+    inputs({
+      pins: [
+        { id: "mine", repo: "/repo", kind: "task", title: "Here", body: "", status: "open" },
+        { id: "theirs", repo: "/other-repo", kind: "task", title: "Another workdesk's", body: "", status: "open" },
+        { id: "their-note", repo: "/other-repo", kind: "note", title: "Theirs too", body: "", status: "open" },
+      ] as unknown as WorkdeskInputs["pins"],
+    }),
+  );
+  assert.deepEqual(s.tasks.map((c) => c.id), ["mine"]);
+  assert.deepEqual(s.notes, []);
+  assert.equal(s.counts.tasks + s.counts.notes, 1);
+});
+
 test("an agent that needs you comes first, then the working ones; the running turn's start is kept", () => {
   const snap = (over: Partial<TerminalTelemetrySnapshot>) => over as TerminalTelemetrySnapshot;
   const s = buildWorkdeskSections(

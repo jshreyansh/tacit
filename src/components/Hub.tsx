@@ -20,6 +20,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
+import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import {
@@ -445,6 +446,7 @@ export function Hub() {
   const isMac = detectIsMac();
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
+  const needsYouElsewhere = useNeedsYouOnOtherWorkdesks();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -896,6 +898,7 @@ export function Hub() {
             {canvases.map((canvas) => {
               const isActive = canvas.id === activeCanvasId;
               const projectsCount = canvas.scene.projects.length;
+              const waiting = needsYouElsewhere[canvas.id] ?? 0;
               return (
                 <li key={canvas.id}>
                   <button
@@ -944,6 +947,17 @@ export function Hub() {
                             style={{ color: "var(--text-faint)" }}
                           >
                             {t["hub.canvases.activeBadge"]}
+                          </span>
+                        )}
+                        {/* Tasks there waiting on you, in the amber the Needs you dots use. */}
+                        {waiting > 0 && (
+                          <span
+                            className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-medium tabular-nums"
+                            style={{ background: "color-mix(in srgb, var(--amber) 22%, transparent)", color: "var(--amber)" }}
+                            title={t["hub.canvases.needsYou"](waiting)}
+                            aria-label={t["hub.canvases.needsYou"](waiting)}
+                          >
+                            {waiting}
                           </span>
                         )}
                       </div>

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterLiveTerminals, treeTerminals } from "../src/toolbar/liveSessionsModel";
-import { answerMessage, countByFilter, cycleStep, filterTasks, managerTask, noteBodyFromTask, sortTasks } from "../src/tasks/taskModel";
+import { answerMessage, countByFilter, cycleStep, filterTasks, managerTask, needsYouOnOtherWorkdesks, noteBodyFromTask, sortTasks, tasksNeedingYou } from "../src/tasks/taskModel";
 import { pinHandoffText, type Pin } from "../shared/pin";
 import type { CanvasTerminalItem, ProjectGroup } from "../src/components/sessionPanelModel";
 
@@ -111,4 +111,21 @@ test("the chat reads task tools as what they did, and a sent answer as just the 
   const sent = answerMessage({ id: "pick-ab12", title: "Pick", ask: { reason: "A or B?", at: "x" } }, "A");
   assert.deepEqual(parseAnswerMessage(sent), { title: "Pick", question: "A or B?", answer: "A" });
   assert.equal(parseAnswerMessage("just a message"), null);
+});
+
+test("Needs you counts this workdesk's folders; other workdesks' waiting tasks are counted per workdesk", () => {
+  const task = (id: string, repo: string, status: string) =>
+    ({ id, repo, kind: "task", title: id, body: "", status, created: "2026-10-30T00:00:00Z", updated: "2026-10-30T00:00:00Z" }) as unknown as Pin;
+  const pinsByProject = {
+    "/here": [task("a", "/here", "needs_you"), task("b", "/here", "open")],
+    "/there": [task("c", "/there", "needs_you"), task("d", "/there", "needs_you")],
+    "/loaded-before": [task("e", "/loaded-before", "needs_you")],
+  };
+  assert.deepEqual(tasksNeedingYou(pinsByProject, ["/here", "/here"]).map((p) => p.id), ["a"]);
+  const workdesks = [
+    { id: "w1", scene: { projects: [{ path: "/here" }] } },
+    { id: "w2", scene: { projects: [{ path: "/there" }, { path: "/not-loaded" }] } },
+    { id: "w3", scene: { projects: [] } },
+  ];
+  assert.deepEqual(needsYouOnOtherWorkdesks(workdesks, "w1", pinsByProject), { w2: 2 });
 });

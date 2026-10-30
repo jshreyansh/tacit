@@ -9,6 +9,7 @@ import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
+import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
 import { IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
@@ -111,6 +112,7 @@ export function LeftRail() {
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
+  const waitingElsewhere = Object.values(useNeedsYouOnOtherWorkdesks()).reduce((sum, n) => sum + n, 0);
 
   const codeCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
   const setCodeCollapsed = useCanvasStore((s) => s.setRightPanelCollapsed);
@@ -145,10 +147,34 @@ export function LeftRail() {
         width: LEFT_RAIL_WIDTH,
       }}
     >
-      {/* What you open beside the rail: the manager's chat, the code panel
+      {/* What you open beside the rail: the Hub first, as the command
+          centre over all of it, then the manager's chat, the code panel
           (Files, Diff, Git) and Memory. Always in view, however short the
           window. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          // The Hub's outside-click handler exempts this attribute so a click
+          // on its own trigger toggles instead of closing-then-reopening.
+          data-hub-trigger="true"
+          data-on={hubOpen ? "" : undefined}
+          onClick={() => {
+            // The other half of the exclusivity canvasStore enforces: opening
+            // a panel closes the Hub, so opening the Hub closes the panels.
+            // Without this the Hub simply paints over whichever was open.
+            if (!hubOpen) setCodeCollapsed(true);
+            toggleHub();
+          }}
+          title={waitingElsewhere > 0 ? `${hubLabel} · ${t["hub.needsYouElsewhere"](waitingElsewhere)}` : hubLabel}
+          aria-label={waitingElsewhere > 0 ? `${hubLabel} · ${t["hub.needsYouElsewhere"](waitingElsewhere)}` : hubLabel}
+          aria-pressed={hubOpen}
+        >
+          <HubIcon />
+          {/* Another workdesk has a task waiting on you; the Hub says which. */}
+          {waitingElsewhere > 0 && !hubOpen && (
+            <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
+          )}
+        </button>
         {/* The workdesk manager's chat, with its Tasks. */}
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
@@ -257,32 +283,13 @@ export function LeftRail() {
       </div>
 
       {/* The foot, always in view: how you look at the canvas (zoom, Fit,
-          Focus, Canvas or Grid), then the Hub, then Settings in the corner. */}
+          Focus, Canvas or Grid), then Settings in the corner. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pt-2 before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
         <ViewControls />
         {/* Update, and only when there is one. */}
         {updateStatus !== "idle" && (
           <UpdateStatusButton status={updateStatus} t={t} onClick={() => setShowUpdate(true)} />
         )}
-        <button
-          className={`${buttonCls} text-[var(--text-muted)]`}
-          // The Hub's outside-click handler exempts this attribute so a click
-          // on its own trigger toggles instead of closing-then-reopening.
-          data-hub-trigger="true"
-          data-on={hubOpen ? "" : undefined}
-          onClick={() => {
-            // The other half of the exclusivity canvasStore enforces: opening
-            // a panel closes the Hub, so opening the Hub closes the panels.
-            // Without this the Hub simply paints over whichever was open.
-            if (!hubOpen) setCodeCollapsed(true);
-            toggleHub();
-          }}
-          title={hubLabel}
-          aria-label={hubLabel}
-          aria-pressed={hubOpen}
-        >
-          <HubIcon />
-        </button>
 
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}

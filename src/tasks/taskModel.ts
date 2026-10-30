@@ -98,11 +98,31 @@ export function answerMessage(task: Pick<Pin, "id" | "title" | "ask">, answer: s
   return `Answer from the user on the task "${task.title}" (${task.id}).${question} Their answer: ${answer}`;
 }
 
-/** Tasks across projects waiting on the person (an agent asked them something). */
-export function tasksNeedingYou(pinsByProject: Readonly<Record<string, readonly Pin[]>>): Pin[] {
-  return Object.values(pinsByProject)
-    .flat()
+/**
+ * Tasks in these folders waiting on the person (an agent asked them
+ * something). The pin store holds every folder it has loaded, other
+ * workdesks' too, so the caller names the folders: the badges count this
+ * workdesk's, and other workdesks show theirs in the Hub.
+ */
+export function tasksNeedingYou(pinsByProject: Readonly<Record<string, readonly Pin[]>>, projectPaths: Iterable<string>): Pin[] {
+  return [...new Set(projectPaths)]
+    .flatMap((path) => pinsByProject[path] ?? [])
     .filter((pin) => isTask(pin) && pin.status === "needs_you");
+}
+
+/** How many tasks wait on the person on each workdesk but this one, by its id; those with none are left out. */
+export function needsYouOnOtherWorkdesks(
+  workdesks: readonly { id: string; scene: { projects: readonly { path: string }[] } }[],
+  activeId: string,
+  pinsByProject: Readonly<Record<string, readonly Pin[]>>,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const workdesk of workdesks) {
+    if (workdesk.id === activeId) continue;
+    const n = tasksNeedingYou(pinsByProject, workdesk.scene.projects.map((p) => p.path)).length;
+    if (n > 0) counts[workdesk.id] = n;
+  }
+  return counts;
 }
 
 /** An answer the person sent from a task (answerMessage), read back for the chat. */

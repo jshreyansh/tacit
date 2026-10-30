@@ -340,9 +340,11 @@ function XyFlowCanvasInner() {
   const spaceHeld = useCanvasToolStore((state) => state.spaceHeld);
   const { handleMouseDown: handleBoxSelectMouseDown } = useBoxSelect();
   const layoutKey = useMemo(() => buildLayoutKey(projects), [projects]);
+  // This workdesk's folders' pins only. The pin store keeps every folder it
+  // has loaded, other workdesks' too, so a new workdesk showed their notes.
   const allPins = useMemo(
-    () => Object.values(pinsByProject).flat(),
-    [pinsByProject],
+    () => projects.flatMap((project) => pinsByProject[project.path] ?? []),
+    [pinsByProject, projects],
   );
   const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
   const isDrawing = drawingEnabled && drawingTool !== "select";

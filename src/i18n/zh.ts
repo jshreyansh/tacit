@@ -1557,6 +1557,8 @@ export const zh = {
   "palette.section.canvas": "画布",
   "hub.section.canvases": "画布",
   "hub.canvases.activeBadge": "当前",
+  "hub.canvases.needsYou": (n: number) => `${n} 个任务在等你`,
+  "hub.needsYouElsewhere": (n: number) => `其他工作台有 ${n} 个任务在等你`,
   "hub.canvases.empty": "只有一个画布。按快捷键再开一个。",
   "hub.canvases.projects": (n: number) => `${n} 个项目`,
   "hub.canvases.newCanvas": "新建画布",
