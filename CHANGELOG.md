@@ -4,6 +4,22 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-30
+
+### Added
+- **A wallpaper for the canvas, with its own look.** Settings › Appearance takes a picture from your computer and shows a preview with dim, blur, a fade from the bottom (behind the chat and the pill), and the grid's dots on or off. It replaces the canvas opacity setting, which made the Mac window see-through to the desktop; the window is opaque again.
+- **A chat starts in the mode you last picked.** The permission mode you choose for an agent's chats is kept for its next chat and after a restart. Plan, and Codex's Full access, are never carried over.
+- **Switch to Auto from an approval.** When an agent asks to use a tool and has an Auto mode, the card offers Switch to Auto: it allows this one and lets the agent decide what's safe from then on.
+- **Other workdesks' waiting tasks show in the Hub.** Each workdesk in the Hub shows how many tasks are waiting on you there, and the Hub button, now at the top of the rail, gets the amber dot.
+
+### Changed
+- **Always allow on a Tacit tool sticks.** It's written to the folder's settings, so later chats there don't ask again.
+- **Message boxes grow with what you type** before they scroll, and the model menu shows whose models it lists.
+- **Context recording's controls moved to the top of Activity.** The record button beside the pill and in the chat box was almost never used.
+
+### Fixed
+- **A workdesk shows only its own tasks and notes.** The grid, the canvas and the Needs you badges showed tasks and notes from every folder opened in other workdesks, so a new workdesk with an empty folder showed other work.
+
 ## [0.41.0] - 2026-10-29
 
 ### Fixed
