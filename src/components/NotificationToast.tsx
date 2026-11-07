@@ -8,6 +8,8 @@ const typeConfig = {
 };
 
 const DISMISS_MS = 5000;
+// A toast with something to do (Redo, Reveal) stays long enough to do it.
+const ACTION_DISMISS_MS = 12000;
 
 function ToastItem({
   n,
@@ -18,12 +20,13 @@ function ToastItem({
     type: "error" | "warn" | "info";
     message: string;
     action?: { label: string; run: () => void };
+    label?: string;
   };
   dismiss: (id: string) => void;
 }) {
   const config = typeConfig[n.type];
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const remainingRef = useRef(DISMISS_MS);
+  const remainingRef = useRef(n.action ? ACTION_DISMISS_MS : DISMISS_MS);
   const startRef = useRef(Date.now());
 
   const startTimer = useCallback(() => {
@@ -68,7 +71,7 @@ function ToastItem({
           className="tc-eyebrow tc-mono mb-0.5"
           style={{ color: config.color, opacity: 0.7 }}
         >
-          {config.label}
+          {n.label ?? config.label}
         </div>
         <span className="tc-body-sm break-words">
           {n.message}

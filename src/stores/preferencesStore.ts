@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { TerminalType } from "../types/index.ts";
 import type { AgentApprovalChoice } from "../terminal/agentApprovals";
+import { DEFAULT_ATTENTION_PREFS, sanitizeAttentionPrefs, type AttentionPrefs } from "../../shared/attention";
 import type { AgentProviderConfig } from "../agentProviders";
 import { defaultProviderConfig, getPreset, PROVIDER_PRESETS } from "../agentProviders";
 import {
@@ -83,7 +84,10 @@ interface PreferencesStore {
    * (T15.1). Absent means not asked yet.
    */
   agentApprovals: Record<string, AgentApprovalChoice>;
+  /** Which system notifications to show (T16). */
+  attentionPrefs: AttentionPrefs;
   setWallpaperLook: (change: Partial<WallpaperLook>) => void;
+  setAttentionPrefs: (change: Partial<AttentionPrefs>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
   setTerminalFontSize: (value: number) => void;
@@ -143,6 +147,8 @@ interface SavedPrefs {
   seenHints: Record<string, true>;
   instructionsDeclined: string[];
   agentApprovals: Record<string, AgentApprovalChoice>;
+  /** Which system notifications to show (T16). */
+  attentionPrefs: AttentionPrefs;
 }
 
 function sanitizeAgentApprovals(value: unknown): Record<string, AgentApprovalChoice> {
@@ -344,6 +350,7 @@ function loadPreferences(): SavedPrefs {
         seenHints,
         instructionsDeclined,
         agentApprovals,
+        attentionPrefs: sanitizeAttentionPrefs(parsed.attentionPrefs),
       };
     }
   } catch {
@@ -375,6 +382,7 @@ function loadPreferences(): SavedPrefs {
     seenHints: {},
     instructionsDeclined: [],
     agentApprovals: {},
+    attentionPrefs: DEFAULT_ATTENTION_PREFS,
   };
 }
 
@@ -486,6 +494,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     seenHints: state.seenHints,
     instructionsDeclined: state.instructionsDeclined,
     agentApprovals: state.agentApprovals,
+    attentionPrefs: state.attentionPrefs,
   };
 }
 
@@ -519,6 +528,12 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   seenHints: initialPrefs.seenHints,
   instructionsDeclined: initialPrefs.instructionsDeclined,
   agentApprovals: initialPrefs.agentApprovals,
+  attentionPrefs: initialPrefs.attentionPrefs,
+  setAttentionPrefs: (change) => {
+    const attentionPrefs = sanitizeAttentionPrefs({ ...get().attentionPrefs, ...change });
+    set({ attentionPrefs });
+    savePreferences(getSaveState({ ...get(), attentionPrefs }));
+  },
 
   setWallpaperLook: (change) => {
     const wallpaperLook = sanitizeWallpaperLook({ ...get().wallpaperLook, ...change });

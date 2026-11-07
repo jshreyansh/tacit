@@ -438,6 +438,7 @@ test("installSkillLinks trusts generated codex hooks", () => {
 
   for (const event of [
     "pre_tool_use",
+    "permission_request",
     "post_tool_use",
     "session_start",
     "stop",
@@ -453,7 +454,7 @@ test("installSkillLinks trusts generated codex hooks", () => {
 
   assert.equal(
     (content.match(/trusted_hash = "sha256:/g) ?? []).length,
-    5,
+    6,
     "expected one trusted hash per generated hook",
   );
 });
@@ -902,7 +903,7 @@ test("installSkillLinks creates codex hooks.json with all 5 events", () => {
 
 // ── Hooks left behind by the TermCanvas → Tacit rename ──────────────────
 
-const CODEX_EVENTS = ["PreToolUse", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"];
+const CODEX_EVENTS = ["PreToolUse", "PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"];
 const LEGACY_COMMAND = "node '/Users/me/termcanvas/skills/scripts/termcanvas-hook.mjs'";
 const USER_COMMAND = "node '/Users/me/my-own-hook.mjs'";
 
@@ -965,7 +966,7 @@ test("Codex trust records name the position Tacit's hook actually occupies", () 
   ensureSkillLinks({ home, sourceDir, appVersion: "0.18.0" });
 
   const config = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf-8");
-  for (const label of ["pre_tool_use", "post_tool_use", "session_start", "stop", "user_prompt_submit"]) {
+  for (const label of ["pre_tool_use", "permission_request", "post_tool_use", "session_start", "stop", "user_prompt_submit"]) {
     assert.match(config, new RegExp(`\\[hooks\\.state\\."${escapeRegExp(`${hooksFile}:${label}:1:0`)}"\\]`), `${label} trusted at the wrong position`);
     assert.doesNotMatch(config, new RegExp(escapeRegExp(`${hooksFile}:${label}:0:0`)), `${label} trusted the user's hook`);
   }

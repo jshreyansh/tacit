@@ -16,6 +16,7 @@ import type { ApprovalDecision, ChatAttachResult, ChatEvent } from "../shared/ch
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
 import type { TurnChangeResult, TurnListResult, TurnPreviewResult } from "../shared/turns";
+import type { AttentionNotice, AttentionState, AttentionTarget } from "../shared/attention";
 import type {
   ConnectedBrowserConnection,
   ConnectedTabBinding,
@@ -234,6 +235,25 @@ contextBridge.exposeInMainWorld("tacit", {
       const listener = (_event: Electron.IpcRendererEvent, payload: { terminalId: string }) => callback(payload);
       ipcRenderer.on("turns:changed", listener);
       return () => ipcRenderer.removeListener("turns:changed", listener);
+    },
+  },
+  /**
+   * System notifications (T16). Main decides when; the window gives the
+   * words for each notice and opens what a clicked one was about.
+   */
+  attention: {
+    configure: (state: AttentionState) => ipcRenderer.invoke("attention:configure", state) as Promise<void>,
+    answer: (id: string, text: { title: string; body: string }) =>
+      ipcRenderer.invoke("attention:answer", id, text) as Promise<boolean>,
+    onNotice: (callback: (notice: AttentionNotice) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, notice: AttentionNotice) => callback(notice);
+      ipcRenderer.on("attention:notice", listener);
+      return () => ipcRenderer.removeListener("attention:notice", listener);
+    },
+    onOpen: (callback: (target: AttentionTarget) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, target: AttentionTarget) => callback(target);
+      ipcRenderer.on("attention:open", listener);
+      return () => ipcRenderer.removeListener("attention:open", listener);
     },
   },
   capture: {

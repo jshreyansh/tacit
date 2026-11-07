@@ -6,6 +6,7 @@ import type {
   WorkflowTelemetrySnapshot,
 } from "../../shared/telemetry";
 import type { TurnChangeResult, TurnListResult, TurnPreviewResult } from "../../shared/turns";
+import type { AttentionNotice, AttentionState, AttentionTarget } from "../../shared/attention";
 import type {
   RenderDiagnosticEventInput,
   RenderDiagnosticsLogInfo,
@@ -708,6 +709,16 @@ export interface TacitAPI {
     undo: (terminalId: string, seq: number) => Promise<TurnChangeResult | null>;
     redo: (terminalId: string) => Promise<TurnChangeResult | null>;
     onChanged: (callback: (payload: { terminalId: string }) => void) => () => void;
+  };
+  /**
+   * System notifications (T16). Main decides when; the window gives the
+   * words for each notice and opens what a clicked one was about.
+   */
+  attention: {
+    configure: (state: AttentionState) => Promise<void>;
+    answer: (id: string, text: { title: string; body: string }) => Promise<boolean>;
+    onNotice: (callback: (notice: AttentionNotice) => void) => () => void;
+    onOpen: (callback: (target: AttentionTarget) => void) => () => void;
   };
   telemetry: {
     attachSession: (input: {

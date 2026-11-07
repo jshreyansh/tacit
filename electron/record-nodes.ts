@@ -32,6 +32,11 @@ export class RecordNodes {
     if (provider && provider !== "unknown") this.harness.set(terminalId, provider);
   }
 
+  /** A manager or Hydra started this terminal. */
+  startedByAgent(terminalId: string): boolean {
+    return this.agentStarted.has(terminalId);
+  }
+
   /** The agent a node ref runs, or null for a browser, a note, or unknown. */
   harnessOf(ref: string): string | null {
     return ref.startsWith("terminal:") ? this.harness.get(ref.slice("terminal:".length)) ?? null : null;

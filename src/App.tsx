@@ -11,6 +11,7 @@ import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
+import { useAttention } from "./attention/useAttention";
 import { AgentApprovalDialog } from "./terminal/AgentApprovalDialog";
 import { useNotificationStore } from "./stores/notificationStore";
 import { startAgentAvailability } from "./stores/agentAvailabilityStore";
@@ -359,6 +360,7 @@ export function App() {
   useAutoSave();
   useWorkspaceOpen();
   useKeyboardShortcuts();
+  useAttention();
   const t = useT();
   const composerEnabled = usePreferencesStore((s) => s.composerEnabled);
   const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");

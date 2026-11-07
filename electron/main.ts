@@ -14,6 +14,7 @@ import {
   net,
   session,
   powerMonitor,
+  Notification,
 } from "electron";
 import https from "https";
 import path from "path";
@@ -280,6 +281,8 @@ import { mergeAndDedupeSessions } from "./session-list.ts";
 import { buildPinRenderHtml } from "./pin-render-utils";
 import { CheckpointStore, reposInside } from "./checkpoints";
 import { lastUndoableTurn, resolveTurnRequest, TurnCheckpoints } from "./turn-checkpoints";
+import { AttentionNotifier } from "./attention-notifier";
+import type { AttentionTarget } from "../shared/attention";
 import type { RenderDiagnosticEventInput } from "../shared/render-diagnostics";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -392,6 +395,46 @@ const nodeEvents = new NodeEventLog();
 const recordNodes = new RecordNodes();
 // Which terminals read web content, and when, for journal writes (SHR-63).
 const webReads = new WebReadTracker();
+// System notifications when an agent or a task needs the person, and the
+// dock badge (T16); see attention-notifier.ts. Shown notifications are
+// held here so a click still reaches its handler.
+const shownNotifications = new Map<string, Notification>();
+const attention = new AttentionNotifier({
+  isFocused: () => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused(),
+  harnessOf: (terminalId) => recordNodes.harnessOf(`terminal:${terminalId}`),
+  startedByAgent: (terminalId) => recordNodes.startedByAgent(terminalId),
+  requestText: (notice) => sendToWindow(mainWindow, "attention:notice", notice),
+  show: ({ id, title, body, target }) => {
+    if (!Notification.isSupported()) return;
+    const notification = new Notification({ title, body });
+    const release = () => shownNotifications.delete(id);
+    notification.on("click", () => {
+      release();
+      openAttentionTarget(target);
+    });
+    notification.on("close", release);
+    shownNotifications.set(id, notification);
+    // Keep only the latest few; older ones still sit in Notification Center.
+    for (const key of shownNotifications.keys()) {
+      if (shownNotifications.size <= 20) break;
+      shownNotifications.delete(key);
+    }
+    notification.show();
+  },
+  setBadge: (count) => {
+    if (process.platform === "darwin") app.dock?.setBadge(count > 0 ? String(count) : "");
+    else app.setBadgeCount(count);
+  },
+});
+/** Brings Tacit forward on what a notification was about. */
+function openAttentionTarget(target: AttentionTarget): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  if (process.platform === "darwin") app.focus({ steal: true });
+  mainWindow.focus();
+  sendToWindow(mainWindow, "attention:open", target);
+}
 // Where text pasted into an agent terminal came from (SHR-62). Without a key
 // nothing could be fingerprinted, so handoffs go unrecorded, and say so.
 let handoffKey: Buffer | null = null;
@@ -448,6 +491,7 @@ const telemetryService = new TelemetryService({
   // OpenCode has no prompt hook; its prompts are read from its database.
   onUserPrompt: (terminalId, { text, sessionId }) => {
     const source = typedPromptSource(terminalId, text);
+    notePromptForAttention(terminalId, source, text);
     if (!source) return;
     const inputRefs = promptHandoffRefs(terminalId, text);
     captureService.record(
@@ -466,6 +510,7 @@ const telemetryService = new TelemetryService({
   onSnapshotChanged: (terminalId, snapshot) => {
     pokeWireMailbox?.(terminalId, snapshot);
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
+    attention.observeTerminal(terminalId, snapshot, changes);
     for (const change of changes) {
       if (change.kind === "turn_started") turnCheckpoints.turnStarted(terminalId, snapshot.worktree_path);
       else if (change.kind === "turn_completed" || change.kind === "errored") void turnCheckpoints.turnEnded(terminalId);
@@ -651,6 +696,11 @@ const injectedText = new InjectedTextTracker();
 // T3.1 hand test), and a late echo must still be recognised.
 const agentSentText = new InjectedTextTracker(10 * 60 * 1000);
 /**
+ * Prompts a terminal was launched with through the CLI (a Hydra worker's task),
+ * so the notifications don't take them for something the person typed there.
+ */
+const launchPromptText = new InjectedTextTracker(10 * 60 * 1000);
+/**
  * Reader over the decision record and the workspace journal. The journal
  * directory is resolved lazily because it is keyed on the active canvas, which
  * the renderer owns and which changes as canvases are switched.
@@ -686,6 +736,13 @@ function typedPromptSource(terminalId: string, text: string): CaptureTextSource 
   return "user";
 }
 
+/** A prompt reached a terminal: if the person typed it, that turn's end notifies them. */
+function notePromptForAttention(terminalId: string, source: CaptureTextSource | null, text: string | null): void {
+  if (source !== "user") return;
+  if (text !== null && launchPromptText.claim(terminalId, text)) return;
+  attention.promptTyped(terminalId);
+}
+
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
 
@@ -707,6 +764,7 @@ const hookReceiver = new HookReceiver((event) => {
     const prompt = (event as { prompt?: unknown }).prompt;
     const hasText = typeof prompt === "string";
     const source: CaptureTextSource | null = hasText ? typedPromptSource(event.terminal_id, prompt) : "user";
+    notePromptForAttention(event.terminal_id, source, hasText ? prompt : null);
     if (!source) return;
     const inputRefs = promptHandoffRefs(event.terminal_id, hasText ? prompt : null);
     captureService.record(
@@ -769,12 +827,15 @@ const taskStore = new PinStore(path.join(TACIT_DIR, "pins"));
 
 taskStore.on("pin:created", (payload: { pin: unknown; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:created", ...payload });
+  attention.observeTask(payload.repo, payload.pin);
 });
 taskStore.on("pin:updated", (payload: { pin: unknown; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:updated", ...payload });
+  attention.observeTask(payload.repo, payload.pin);
 });
 taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:removed", ...payload });
+  attention.taskRemoved(payload.repo, payload.id);
 });
 
 // Hydra's built-in roles ship with the CLI (vite.config.ts copies them to
@@ -799,6 +860,7 @@ const apiServer = new ApiServer({
   runs: runTracker,
   webReads,
   harnessOf: (ref) => recordNodes.harnessOf(ref),
+  noteLaunchPrompt: (terminalId, text) => launchPromptText.note(terminalId, text),
   recordAgentPrompt: ({ targetTerminalId, by, text }) => {
     agentSentText.note(targetTerminalId, text);
     captureService.record(
@@ -2373,6 +2435,16 @@ function setupIpc() {
       recordNodes.detected(input.terminalId, input.provider);
       return telemetryService.updateTerminal(input);
     },
+  );
+
+  // Notifications (T16): the window's settings and Needs-you count, and its
+  // words for a notice main raised. Main checks both; only its window asks.
+  ipcMain.handle("attention:configure", (event, state: unknown) => {
+    if (!isMainWindowSender(event)) return;
+    attention.configure(state);
+  });
+  ipcMain.handle("attention:answer", (event, id: unknown, text: unknown) =>
+    isMainWindowSender(event) ? attention.answer(id, text) : false,
   );
 
   // Undoing an agent's turn (T10). The renderer names a terminal and a

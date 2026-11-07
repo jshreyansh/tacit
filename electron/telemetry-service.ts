@@ -986,9 +986,17 @@ export class TelemetryService {
       if (event.tool_name && !state.priming) {
         this.onToolUse?.(terminalId, event.tool_name, timestamp);
       }
+      // A tool call from a turn that already ended (Codex's Stop hook comes
+      // before Tacit reads the session file) isn't work under way: counted,
+      // it would end the turn, start it and end it again.
+      const fromEndedTurn =
+        isTerminalTurnState(state.snapshot.turn_state) &&
+        state.lastTerminalTurnAtMs !== null &&
+        Number.isFinite(eventAtMs) &&
+        eventAtMs <= state.lastTerminalTurnAtMs;
       if (event.call_id && event.lifecycle) {
         state.snapshot.last_tool_event_at = timestamp;
-        if (event.lifecycle === "start") {
+        if (event.lifecycle === "start" && !fromEndedTurn) {
           state.activeToolCalls.set(event.call_id, {
             callId: event.call_id,
             toolName: event.tool_name,
@@ -1567,9 +1575,9 @@ export class TelemetryService {
         state.snapshot.foreground_tool = event.tool_name as string | undefined;
         state.lastHookToolAt = this.now();
         if (typeof event.tool_name === "string" && event.tool_name) this.onToolUse?.(terminalId, event.tool_name, at);
-        // Provider-specific fallback timer. For Claude Code the primary
-        // signal is the Notification hook (see below); for Codex there is
-        // no approval hook, so the timer is the heuristic we rely on.
+        // Provider-specific fallback timer. The primary signals are Claude's
+        // Notification hook and Codex's PermissionRequest hook (see below);
+        // the timer covers a Codex too old to send its hook.
         const fallbackMs =
           state.snapshot.provider === "codex"
             ? CODEX_PRE_TOOL_USE_AWAITING_INPUT_MS
@@ -1584,8 +1592,29 @@ export class TelemetryService {
         this.appendEvent(state, at, "session", "hook_pre_tool", {
           tool_name: event.tool_name ?? null,
         });
+        // Claude's question tool only ever waits for the person's answer.
+        if (event.tool_name === "AskUserQuestion") {
+          clearTimeout(state.awaitingInputTimer);
+          state.awaitingInputTimer = null;
+          state.snapshot.turn_state = "awaiting_input";
+          this.updateDerivedStatus(state, { force: true });
+        }
         break;
       }
+
+      // Codex is about to ask for an approval.
+      case "PermissionRequest":
+        if (state.awaitingInputTimer) {
+          clearTimeout(state.awaitingInputTimer);
+          state.awaitingInputTimer = null;
+        }
+        state.snapshot.turn_state = "awaiting_input";
+        state.snapshot.last_meaningful_progress_at = at;
+        this.appendEvent(state, at, "session", "hook_permission_request", {
+          tool_name: event.tool_name ?? null,
+        });
+        this.updateDerivedStatus(state, { force: true });
+        break;
 
       case "Notification": {
         // Claude Code multiplexes several notification flavors through

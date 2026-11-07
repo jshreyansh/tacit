@@ -689,6 +689,7 @@ function removeLifecycleHooks(settingsFile: string): void {
 
 const CODEX_HOOK_EVENTS = [
   "PreToolUse",
+  "PermissionRequest",
   "PostToolUse",
   "SessionStart",
   "Stop",
@@ -697,6 +698,7 @@ const CODEX_HOOK_EVENTS = [
 
 const CODEX_HOOK_EVENT_KEY_LABELS: Record<(typeof CODEX_HOOK_EVENTS)[number], string> = {
   PreToolUse: "pre_tool_use",
+  PermissionRequest: "permission_request",
   PostToolUse: "post_tool_use",
   SessionStart: "session_start",
   Stop: "stop",

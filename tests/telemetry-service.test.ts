@@ -1385,6 +1385,35 @@ test(
   },
 );
 
+test("Codex's PermissionRequest hook marks awaiting_input at once, and the tool finishing clears it", () => {
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  service.registerTerminal({ terminalId: "codex-1", worktreePath: "/repo", provider: "codex" });
+  service.recordHookEvent("codex-1", { hook_event_name: "SessionStart", session_id: "s" });
+  service.recordHookEvent("codex-1", { hook_event_name: "UserPromptSubmit", session_id: "s", prompt: "go" });
+  service.recordHookEvent("codex-1", { hook_event_name: "PreToolUse", session_id: "s", tool_name: "Bash" });
+  assert.equal(service.getTerminalSnapshot("codex-1")?.turn_state, "tool_running");
+  service.recordHookEvent("codex-1", { hook_event_name: "PermissionRequest", session_id: "s", tool_name: "Bash" });
+  assert.equal(service.getTerminalSnapshot("codex-1")?.turn_state, "awaiting_input");
+  service.recordHookEvent("codex-1", { hook_event_name: "PostToolUse", session_id: "s", tool_name: "Bash" });
+  assert.equal(service.getTerminalSnapshot("codex-1")?.turn_state, "in_turn");
+  service.dispose();
+});
+
+test("Claude's AskUserQuestion is awaiting_input at once; other tools aren't", () => {
+  const service = new TelemetryService({ processPollIntervalMs: 0 });
+  service.registerTerminal({ terminalId: "claude-1", worktreePath: "/repo", provider: "claude" });
+  service.recordHookEvent("claude-1", { hook_event_name: "SessionStart", session_id: "s" });
+  service.recordHookEvent("claude-1", { hook_event_name: "UserPromptSubmit", session_id: "s", prompt: "go" });
+  service.recordHookEvent("claude-1", { hook_event_name: "PreToolUse", session_id: "s", tool_name: "Read" });
+  assert.equal(service.getTerminalSnapshot("claude-1")?.turn_state, "tool_running");
+  service.recordHookEvent("claude-1", { hook_event_name: "PostToolUse", session_id: "s", tool_name: "Read" });
+  service.recordHookEvent("claude-1", { hook_event_name: "PreToolUse", session_id: "s", tool_name: "AskUserQuestion" });
+  assert.equal(service.getTerminalSnapshot("claude-1")?.turn_state, "awaiting_input");
+  service.recordHookEvent("claude-1", { hook_event_name: "PostToolUse", session_id: "s", tool_name: "AskUserQuestion" });
+  assert.equal(service.getTerminalSnapshot("claude-1")?.turn_state, "in_turn");
+  service.dispose();
+});
+
 test(
   "Codex PreToolUse uses the codex-specific silence window for awaiting_input",
   () => {
@@ -1938,6 +1967,38 @@ test("a tool hook arriving after the turn ended doesn't reopen it", async () => 
   const completed = log.since().events.filter((e) => e.kind === "turn_completed");
   assert.equal(completed.length, 1);
   assert.equal(service.getTerminalSnapshot("w")?.turn_state, "turn_complete");
+  service.dispose();
+});
+
+// 31 Oct: Codex's Stop hook ended the turn, then Tacit read the turn's
+// tool calls from its session file, start and end in separate reads. The
+// started call counted as work again, so the turn ended, started and ended
+// once more: a phantom turn for every call read that way.
+test("a tool call read from the session after Stop doesn't start a new turn", async () => {
+  const { NodeEventLog } = await import("../electron/node-events.ts");
+  const log = new NodeEventLog();
+  const service = new TelemetryService({
+    processPollIntervalMs: 0,
+    onSnapshotChanged: (terminalId, snapshot) => log.observeSnapshot(terminalId, snapshot),
+  });
+  service.registerTerminal({ terminalId: "w", worktreePath: "/repo", provider: "codex" });
+  service.recordPtyCreated({ terminalId: "w", ptyId: 1 });
+  service.recordHookEvent("w", { hook_event_name: "UserPromptSubmit", prompt: "edit b.txt" });
+  service.recordHookEvent("w", { hook_event_name: "PreToolUse", tool_name: "Bash" });
+  service.recordHookEvent("w", { hook_event_name: "PostToolUse", tool_name: "Bash" });
+  service.recordHookEvent("w", { hook_event_name: "Stop" });
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  service.recordSessionTelemetry("w", [
+    { at: ago(3000), event_type: "custom_tool_call", tool_name: "exec", call_id: "c1", lifecycle: "start", turn_state: "tool_running" },
+  ]);
+  assert.equal(service.getTerminalSnapshot("w")?.task_status, "idle");
+  service.recordSessionTelemetry("w", [
+    { at: ago(2800), event_type: "custom_tool_call_output", call_id: "c1", lifecycle: "end", turn_state: "in_turn" },
+    { at: new Date(Date.now() + 200).toISOString(), event_type: "task_complete", turn_state: "turn_complete" },
+  ]);
+
+  const kinds = log.since().events.map((e) => e.kind).filter((k) => k === "turn_started" || k === "turn_completed");
+  assert.deepEqual(kinds, ["turn_started", "turn_completed"]);
   service.dispose();
 });
 

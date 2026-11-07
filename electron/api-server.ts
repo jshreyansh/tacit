@@ -77,6 +77,8 @@ interface ApiServerDeps {
     by: CaptureNodeRef;
     text: string;
   }) => void;
+  /** A terminal was launched through the CLI with this prompt; the person didn't type it there. */
+  noteLaunchPrompt: (terminalId: string, text: string) => void;
   /** Appends an entry to the decision record, attributed to main. */
   recordDecision: (event: CaptureEvent) => void;
   /** How many workers a manager may have open; shared/worker-cap.ts. */
@@ -873,6 +875,7 @@ export class ApiServer {
     const terminal = await this.execRenderer(
       `window.__tcApi.addTerminal(${JSON.stringify(projectId)}, ${JSON.stringify(worktreeId)}, ${JSON.stringify(type)}, ${JSON.stringify(prompt)}, ${JSON.stringify(!!autoApprove)}, ${JSON.stringify(parentTerminalId ?? null)}, ${JSON.stringify(workflowId && assignmentId && repoPath ? { workflowId, assignmentId, repoPath } : null)})`,
     );
+    if (prompt) this.deps.noteLaunchPrompt(terminal.id, prompt);
     this.deps.telemetryService.registerTerminal({
       terminalId: terminal.id,
       worktreePath: worktree,

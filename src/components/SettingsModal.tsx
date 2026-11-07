@@ -845,6 +845,8 @@ export function SettingsModal({ onClose }: Props) {
     setPetEnabled,
     completionGlowEnabled,
     setCompletionGlowEnabled,
+    attentionPrefs,
+    setAttentionPrefs,
     trackpadSwipeFocusEnabled,
     setTrackpadSwipeFocusEnabled,
     worktreeCompactColumns,
@@ -1572,6 +1574,46 @@ export function SettingsModal({ onClose }: Props) {
                       <OnOffSegment
                         value={completionGlowEnabled}
                         onChange={setCompletionGlowEnabled}
+                      />
+                    </SettingsRow>
+                  </div>
+
+                  <div className="flex flex-col gap-5">
+                    <Eyebrow>{t["attention.settingsGroup"]}</Eyebrow>
+                    <p className="-mt-2 text-xs text-[var(--text-secondary)]">{t["attention.settingsHint"]}</p>
+                    <SettingsRow label={t["attention.waiting"]}>
+                      <OnOffSegment
+                        value={attentionPrefs.waiting}
+                        onChange={(waiting) => setAttentionPrefs({ waiting })}
+                      />
+                    </SettingsRow>
+                    <SettingsRow label={t["attention.finished"]}>
+                      <OnOffSegment
+                        value={attentionPrefs.finished}
+                        onChange={(finished) => setAttentionPrefs({ finished })}
+                      />
+                    </SettingsRow>
+                    {attentionPrefs.finished && (
+                      <SettingsRow
+                        label={t["attention.workersFinished"]}
+                        description={t["attention.workersFinishedHint"]}
+                      >
+                        <OnOffSegment
+                          value={attentionPrefs.workersFinished}
+                          onChange={(workersFinished) => setAttentionPrefs({ workersFinished })}
+                        />
+                      </SettingsRow>
+                    )}
+                    <SettingsRow label={t["attention.failed"]}>
+                      <OnOffSegment
+                        value={attentionPrefs.failed}
+                        onChange={(failed) => setAttentionPrefs({ failed })}
+                      />
+                    </SettingsRow>
+                    <SettingsRow label={t["attention.needsYou"]}>
+                      <OnOffSegment
+                        value={attentionPrefs.needsYou}
+                        onChange={(needsYou) => setAttentionPrefs({ needsYou })}
                       />
                     </SettingsRow>
                   </div>

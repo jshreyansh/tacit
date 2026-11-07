@@ -15,15 +15,19 @@ export interface Notification {
   timestamp: number;
   /** Optional follow-up, e.g. revealing a finished download in Finder. */
   action?: NotificationAction;
+  /** The line above the message, in place of the type's "Error", "Warning" or "Info". */
+  label?: string;
 }
 
 interface NotificationStore {
   notifications: Notification[];
+  /** Returns the toast's id, to dismiss it later. */
   notify: (
     type: NotificationType,
     message: string,
     action?: NotificationAction,
-  ) => void;
+    label?: string,
+  ) => string;
   dismiss: (id: string) => void;
 }
 
@@ -32,7 +36,7 @@ let notifyId = 0;
 export const useNotificationStore = create<NotificationStore>((set) => ({
   notifications: [],
 
-  notify: (type, message, action) => {
+  notify: (type, message, action, label) => {
     const id = `notif-${++notifyId}`;
     const notification: Notification = {
       id,
@@ -40,6 +44,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       message,
       timestamp: Date.now(),
       ...(action ? { action } : {}),
+      ...(label ? { label } : {}),
     };
 
     const logFn =
@@ -53,6 +58,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
     set((state) => ({
       notifications: [...state.notifications, notification],
     }));
+    return id;
   },
 
   dismiss: (id) =>
