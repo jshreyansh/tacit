@@ -50,6 +50,8 @@ import { usePinStore } from "../stores/pinStore";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useTurnUndo } from "./useTurnUndo";
+import { BypassBadge } from "./BypassBadge";
+import { hasBypassArgs } from "./cliConfig";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { TERMINAL_TYPE_CONFIG } from "./terminalTypeConfig";
 import { AgentRenderer } from "../components/agent/AgentRenderer";
@@ -214,6 +216,9 @@ export function TerminalTile({
   // Undoing this agent's turns (T10).
   const turnUndo = useTurnUndo(terminal.id, !!terminal.chatMode);
   const undoState = turnUndo.undoState;
+  // Whether agents started for you here may skip approvals (T15.1).
+  const projectPath = useProjectStore((s) => s.projects.find((p) => p.id === projectId)?.path ?? null);
+  const approvalChoice = usePreferencesStore((s) => (projectPath ? s.agentApprovals[projectPath] : undefined));
   const [isEditingCustomTitle, setIsEditingCustomTitle] = useState(false);
   const [customTitleDraft, setCustomTitleDraft] = useState(
     terminal.customTitle ?? "",
@@ -1009,6 +1014,7 @@ export function TerminalTile({
           {config.label}
         </span>
         <HierarchyBadges terminal={terminal} />
+        <BypassBadge terminal={terminal} />
         <span
           className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border)] rounded px-1 py-0.5 transition-colors duration-quick cursor-pointer"
           style={{ fontFamily: '"Geist Mono", monospace' }}
@@ -1393,6 +1399,20 @@ export function TerminalTile({
                   setTagManager({ x: contextMenu.x, y: contextMenu.y }),
               },
               ...turnUndo.menuItems,
+              ...(projectPath && approvalChoice && hasBypassArgs(terminal.type)
+                ? [
+                    {
+                      label: approvalChoice === "bypass" ? t["agentApproval.menuAsk"] : t["agentApproval.menuAllow"],
+                      onClick: () => {
+                        const next = approvalChoice === "bypass" ? "ask" : "bypass";
+                        usePreferencesStore.getState().setAgentApproval(projectPath, next);
+                        useNotificationStore
+                          .getState()
+                          .notify("info", next === "bypass" ? t["agentApproval.nowAllowed"] : t["agentApproval.nowAsk"]);
+                      },
+                    },
+                  ]
+                : []),
               ...(terminalRenderer === "webgl"
                 ? [
                     { type: "separator" as const },

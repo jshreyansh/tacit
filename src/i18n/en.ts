@@ -1702,6 +1702,23 @@ export const en = {
   shortcut_prev_canvas: "Prev canvas",
   shortcut_open_canvas_manager: "Open canvas manager",
   settings_shortcut_group_canvases: "Canvases",
+  "agentApproval.title": (project: string) => `Let agents in ${project} run without approvals?`,
+  "agentApproval.intro":
+    "An agent started for you here, by Hydra or the manager, asked to run without approvals. If you allow it:",
+  "agentApproval.claude": "Claude runs commands and edits files without asking you first.",
+  "agentApproval.codex": "Codex does the same, and also runs without its sandbox.",
+  "agentApproval.waiting": (n: number) =>
+    n === 1 ? "1 agent is waiting to start until you answer." : `${n} agents are waiting to start until you answer.`,
+  "agentApproval.kept":
+    "Your answer is kept for this project. Change it later from an agent tile's menu. With Ask each time, agents stop and ask before commands and edits.",
+  "agentApproval.allow": "Allow for this project",
+  "agentApproval.ask": "Ask each time",
+  "agentApproval.badge": "No approvals",
+  "agentApproval.badgeHint": (flags: string) => `Runs without asking before commands or edits (${flags}).`,
+  "agentApproval.menuAsk": "Make agents here ask for approval",
+  "agentApproval.menuAllow": "Let agents here skip approvals",
+  "agentApproval.nowAsk": "Agents started for you in this project will ask before commands and edits.",
+  "agentApproval.nowAllowed": "Agents started for you in this project may run without approvals.",
   "turnUndo.button": "Undo last turn",
   "turnUndo.buttonRunning": "Undo waits until this turn finishes",
   "turnUndo.noGit": "Undo needs git",

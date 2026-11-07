@@ -124,7 +124,7 @@ contextBridge.exposeInMainWorld("tacit", {
         type,
         sessionId,
         cwd,
-      ) as Promise<boolean>,
+      ) as Promise<boolean | null>,
     getClaudeByPid: (pid: number) =>
       ipcRenderer.invoke("session:get-claude-by-pid", pid) as Promise<
         string | null

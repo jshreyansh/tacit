@@ -44,7 +44,9 @@ import { useQuotaStore } from "../stores/quotaStore";
 import { useCodexQuotaStore } from "../stores/codexQuotaStore";
 import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import type { TerminalData, TerminalStatus, TerminalType } from "../types";
-import { getTerminalLaunchOptions, getTerminalPromptArgs } from "./cliConfig";
+import { getTerminalLaunchOptions, getTerminalPromptArgs, hasBypassArgs } from "./cliConfig";
+import { launchApproval, type AgentApprovalChoice } from "./agentApprovals";
+import { requestAgentApproval } from "../stores/agentApprovalStore";
 import { buildFontFamily } from "./fontRegistry";
 import { createPtyResizer, type PtyResizer } from "./ptyResizer";
 import { DEFAULT_PTY_SIZE, validPtySize, type PtySize } from "../../shared/pty-size";
@@ -698,7 +700,7 @@ async function syncPermissionMode(
 ) {
   try {
     const type = runtime.meta.terminal.type;
-    let shouldBypass = false;
+    let shouldBypass: boolean | null = false;
 
     if (type === "claude" || type === "codex") {
       shouldBypass = await window.tacit.session.getBypassState(
@@ -708,7 +710,8 @@ async function syncPermissionMode(
       );
     }
 
-    if (runtime.disposed) return;
+    // Not recorded yet: keep what the terminal was launched with.
+    if (runtime.disposed || shouldBypass === null) return;
     if (shouldBypass !== !!runtime.meta.terminal.autoApprove) {
       setAutoApprove(runtime, shouldBypass);
     }
@@ -2256,8 +2259,22 @@ function startTerminalRuntime(runtime: ManagedTerminalRuntime) {
 
   runtime.globalDisposers.push(exitUnsubscribe);
 
-  const doSpawn = () => {
+  const doSpawn = (answered?: AgentApprovalChoice) => {
     if (runtime.disposed) return;
+    // An agent asked to start without approvals waits until its project
+    // allows it (T15.1); with "ask", it starts with approvals on.
+    const project = useProjectStore.getState().projects.find((p) => p.id === runtime.meta.projectId);
+    const projectPath = project?.path ?? runtime.meta.worktreePath;
+    const approval = launchApproval(
+      !!runtime.meta.terminal.autoApprove,
+      hasBypassArgs(runtime.meta.terminal.type),
+      answered ?? usePreferencesStore.getState().agentApprovals[projectPath],
+    );
+    if (approval === "needs-answer") {
+      void requestAgentApproval(projectPath, project?.name ?? projectPath).then((choice) => doSpawn(choice));
+      return;
+    }
+    if (approval === "ask" && runtime.meta.terminal.autoApprove) setAutoApprove(runtime, false);
     runtime.ptyPromise = spawnPty(
       runtime,
       runtime.meta.terminal.sessionId,

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { TerminalType } from "../types/index.ts";
+import type { AgentApprovalChoice } from "../terminal/agentApprovals";
 import type { AgentProviderConfig } from "../agentProviders";
 import { defaultProviderConfig, getPreset, PROVIDER_PRESETS } from "../agentProviders";
 import {
@@ -76,6 +77,12 @@ interface PreferencesStore {
    * for every project the way a seen hint does.
    */
   instructionsDeclined: string[];
+  /**
+   * Per project folder: whether agents started for you (Hydra, the
+   * manager) may run without approvals, chosen once when one first asks
+   * (T15.1). Absent means not asked yet.
+   */
+  agentApprovals: Record<string, AgentApprovalChoice>;
   setWallpaperLook: (change: Partial<WallpaperLook>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
   setMinimumContrastRatio: (value: number) => void;
@@ -102,6 +109,7 @@ interface PreferencesStore {
   setDefaultTerminalSize: (size: StoredTerminalSize | null) => void;
   markHintSeen: (hintId: string) => void;
   declineInstructions: (projectPath: string) => void;
+  setAgentApproval: (projectPath: string, choice: AgentApprovalChoice) => void;
 }
 
 const STORAGE_KEY = "tacit-preferences";
@@ -134,6 +142,16 @@ interface SavedPrefs {
   agentConfig: AgentProviderConfig;
   seenHints: Record<string, true>;
   instructionsDeclined: string[];
+  agentApprovals: Record<string, AgentApprovalChoice>;
+}
+
+function sanitizeAgentApprovals(value: unknown): Record<string, AgentApprovalChoice> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, AgentApprovalChoice> = {};
+  for (const [path, choice] of Object.entries(value as Record<string, unknown>)) {
+    if (path && (choice === "bypass" || choice === "ask")) out[path] = choice;
+  }
+  return out;
 }
 
 function sanitizePathList(value: unknown): string[] {
@@ -297,6 +315,7 @@ function loadPreferences(): SavedPrefs {
       );
       const seenHints = sanitizeSeenHints(parsed.seenHints);
       const instructionsDeclined = sanitizePathList(parsed.instructionsDeclined);
+      const agentApprovals = sanitizeAgentApprovals(parsed.agentApprovals);
 
       return {
         canvasBackgroundImage,
@@ -324,6 +343,7 @@ function loadPreferences(): SavedPrefs {
         agentConfig,
         seenHints,
         instructionsDeclined,
+        agentApprovals,
       };
     }
   } catch {
@@ -354,6 +374,7 @@ function loadPreferences(): SavedPrefs {
     agentConfig: defaultProviderConfig(),
     seenHints: {},
     instructionsDeclined: [],
+    agentApprovals: {},
   };
 }
 
@@ -464,6 +485,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     agentConfig: state.agentConfig,
     seenHints: state.seenHints,
     instructionsDeclined: state.instructionsDeclined,
+    agentApprovals: state.agentApprovals,
   };
 }
 
@@ -496,6 +518,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   apiKeyReady: false,
   seenHints: initialPrefs.seenHints,
   instructionsDeclined: initialPrefs.instructionsDeclined,
+  agentApprovals: initialPrefs.agentApprovals,
 
   setWallpaperLook: (change) => {
     const wallpaperLook = sanitizeWallpaperLook({ ...get().wallpaperLook, ...change });
@@ -622,6 +645,11 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
     const next = [...current, projectPath];
     set({ instructionsDeclined: next });
     savePreferences(getSaveState({ ...get(), instructionsDeclined: next }));
+  },
+  setAgentApproval: (projectPath, choice) => {
+    const next = { ...get().agentApprovals, [projectPath]: choice };
+    set({ agentApprovals: next });
+    savePreferences(getSaveState({ ...get(), agentApprovals: next }));
   },
 }));
 

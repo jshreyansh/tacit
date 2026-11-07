@@ -11,8 +11,11 @@ import {
   findBestKimiSession,
   findBestOpenCodeSession,
   findBestWuuSession,
+  readClaudeSessionPermissionMode,
+  readCodexSessionBypassState,
   readLatestCodexSessionId,
 } from "../electron/session-discovery.ts";
+import { toClaudeProjectKey } from "../electron/session-watcher.ts";
 
 function withTempHome(fn: (homeDir: string) => void): void {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tacit-session-discovery-"));
@@ -681,4 +684,35 @@ test("findBestKimiSession resolves from metadata and filters by startedAt", () =
   } finally {
     fs.rmSync(homeDir, { recursive: true, force: true });
   }
+});
+
+test("a session's approval mode is read from Claude's permission-mode entries, and is unknown until written", () => {
+  withTempHome((homeDir) => {
+    const previousHome = process.env.HOME;
+    process.env.HOME = homeDir;
+    try {
+      const cwd = "/tmp/project";
+      const file = path.join(homeDir, ".claude", "projects", toClaudeProjectKey(cwd), "s1.jsonl");
+      writeJsonl(file, [{ type: "system", sessionId: "s1" }]);
+      assert.equal(readClaudeSessionPermissionMode("s1", cwd), null, "nothing recorded yet is unknown, not 'approvals on'");
+      assert.equal(readClaudeSessionPermissionMode("missing", cwd), null);
+
+      writeJsonl(file, [
+        { type: "permission-mode", permissionMode: "bypassPermissions", sessionId: "s1" },
+        { type: "user", sessionId: "s1", message: { role: "user", content: "hi" } },
+      ]);
+      assert.equal(readClaudeSessionPermissionMode("s1", cwd), "bypassPermissions");
+
+      writeJsonl(file, [
+        { type: "permission-mode", permissionMode: "bypassPermissions", sessionId: "s1" },
+        { type: "permission-mode", permissionMode: "default", sessionId: "s1" },
+      ]);
+      assert.equal(readClaudeSessionPermissionMode("s1", cwd), "default", "the latest entry wins");
+
+      assert.equal(readCodexSessionBypassState("no-such-thread", cwd), null);
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+    }
+  });
 });

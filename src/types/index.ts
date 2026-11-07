@@ -643,11 +643,12 @@ export interface TacitAPI {
       sessionId: string,
       cwd: string,
     ) => Promise<string | null>;
+    /** null when the session doesn't record its mode yet. */
     getBypassState: (
       type: string,
       sessionId: string,
       cwd: string,
-    ) => Promise<boolean>;
+    ) => Promise<boolean | null>;
     getClaudeByPid: (pid: number) => Promise<string | null>;
     findKimi: (
       cwd: string,

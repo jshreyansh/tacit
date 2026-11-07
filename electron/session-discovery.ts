@@ -894,8 +894,10 @@ function scanTailForLine(filePath: string, needle: string): string | null {
 }
 
 /**
- * Read the permissionMode from a Claude session JSONL (last user entry).
- * Returns "bypassPermissions" for --dangerously-skip-permissions, or null.
+ * Read the permissionMode from a Claude session JSONL: the last user entry,
+ * or the "permission-mode" entry newer Claude versions write instead.
+ * Returns "bypassPermissions" for --dangerously-skip-permissions, or null
+ * when the session doesn't record a mode yet.
  */
 export function readClaudeSessionPermissionMode(
   sessionId: string,
@@ -912,7 +914,10 @@ export function readClaudeSessionPermissionMode(
       type?: string;
       permissionMode?: string;
     };
-    if (entry.type === "user" && typeof entry.permissionMode === "string") {
+    if (
+      (entry.type === "user" || entry.type === "permission-mode") &&
+      typeof entry.permissionMode === "string"
+    ) {
       return entry.permissionMode;
     }
   } catch {
@@ -923,17 +928,18 @@ export function readClaudeSessionPermissionMode(
 
 /**
  * Read approval/sandbox policy from a Codex session JSONL (last turn_context).
- * Returns true when running with --dangerously-bypass-approvals-and-sandbox.
+ * Returns true when running with --dangerously-bypass-approvals-and-sandbox,
+ * and null when the session doesn't record a turn yet (unknown, not "off").
  */
 export function readCodexSessionBypassState(
   sessionId: string,
   cwd: string,
-): boolean {
+): boolean | null {
   const filePath = resolveSessionFile(sessionId, "codex", cwd);
-  if (!filePath) return false;
+  if (!filePath) return null;
 
   const line = scanTailForLine(filePath, '"approval_policy"');
-  if (!line) return false;
+  if (!line) return null;
 
   try {
     const entry = JSON.parse(line) as {

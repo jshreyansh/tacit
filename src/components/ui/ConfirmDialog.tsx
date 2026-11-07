@@ -88,6 +88,8 @@ interface Props {
    * string.
    */
   cancelLabel?: string;
+  /** Focus the cancel button first, when cancel is the safe answer. */
+  focusCancel?: boolean;
 }
 
 /**
@@ -115,11 +117,13 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
   cancelLabel,
+  focusCancel = false,
 }: Props) {
   useBodyScrollLock(open);
   const t = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -140,10 +144,10 @@ export function ConfirmDialog({
     const id = window.setTimeout(() => {
       const dialog = dialogRef.current;
       if (!dialog) return;
-      focusInitialDialogTarget(dialog, confirmRef.current);
+      focusInitialDialogTarget(dialog, focusCancel ? cancelRef.current : confirmRef.current);
     }, 0);
     return () => window.clearTimeout(id);
-  }, [open]);
+  }, [open, focusCancel]);
 
   useEffect(() => {
     if (!open) return;
@@ -207,6 +211,7 @@ export function ConfirmDialog({
         </div>
         <div className="flex justify-end gap-2">
           <button
+            ref={cancelRef}
             type="button"
             disabled={busy}
             onClick={onCancel}

@@ -11,6 +11,7 @@ import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
+import { AgentApprovalDialog } from "./terminal/AgentApprovalDialog";
 import { useNotificationStore } from "./stores/notificationStore";
 import { startAgentAvailability } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
@@ -1261,6 +1262,7 @@ export function App() {
       {!gridMode && composerEnabled && <ComposerBar />}
       <HandoffDragChip />
       <NotificationToast />
+      <AgentApprovalDialog />
       {globalSearchEnabled && <SearchModal />}
       <CommandPalette />
       <SnapshotHistoryModal />

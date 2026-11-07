@@ -277,6 +277,11 @@ export function getTerminalLaunchOptions(
   };
 }
 
+/** Whether this agent has flags that run it without approvals. */
+export function hasBypassArgs(type: TerminalType): boolean {
+  return !!TERMINAL_CONFIG[type].launch?.autoApproveArgs;
+}
+
 export function getTerminalPromptArgs(
   type: TerminalType,
   prompt: string,

@@ -18,6 +18,7 @@ import type { Pin } from "../types";
 import { TaskSections } from "../tasks/TaskParts";
 import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
 import { useTurnUndo } from "../terminal/useTurnUndo";
+import { BypassBadge } from "../terminal/BypassBadge";
 
 /**
  * One node full size in the workdesk view's tabs (T7, G2). A terminal's
@@ -88,6 +89,7 @@ function ViewSwitch({ card, busy, t, extra }: { card: TerminalCard; busy: boolea
           </button>
         </>
       )}
+      <BypassBadge terminal={card.launch} />
       {extra}
       <div role="tablist" aria-label={t.workdesk_view_as} className="flex gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
         {segment("terminal", t.workdesk_view_terminal)}

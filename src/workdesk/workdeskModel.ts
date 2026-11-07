@@ -2,7 +2,7 @@ import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
 import type { Pin, PinStatus } from "../../shared/pin";
 import { pinKind } from "../../shared/pin";
 import { findAgentAdapter } from "../../shared/agent-adapters";
-import type { ProjectData } from "../types/index.ts";
+import type { ProjectData, TerminalData } from "../types/index.ts";
 import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from "../components/sessionPanelModel";
 
 /**
@@ -34,6 +34,8 @@ export interface TerminalCard {
   chatMode: boolean;
   projectId: string;
   worktreeId: string;
+  /** What its launch is built from, to show when it runs without approvals. */
+  launch: Pick<TerminalData, "type" | "sessionId" | "autoApprove">;
 }
 
 export interface BrowserCard {
@@ -164,6 +166,7 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
           chatMode: !!terminal.chatMode,
           projectId: project.id,
           worktreeId: worktree.id,
+          launch: { type: terminal.type, sessionId: terminal.sessionId, autoApprove: terminal.autoApprove },
         };
         (isAgent ? agents : otherTerminals).push(card);
       }

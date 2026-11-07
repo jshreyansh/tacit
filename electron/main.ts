@@ -1668,11 +1668,12 @@ function setupIpc() {
   ipcMain.handle(
     "session:get-bypass-state",
     (_event, type: string, sessionId: string, cwd: string) => {
+      // null: the session doesn't record its mode yet. A new session's file
+      // has no prompt line at SessionStart, and reading that as "approvals
+      // on" cleared a worker's launch setting (T15.1).
       if (type === "claude") {
-        return (
-          readClaudeSessionPermissionMode(sessionId, cwd) ===
-          "bypassPermissions"
-        );
+        const mode = readClaudeSessionPermissionMode(sessionId, cwd);
+        return mode === null ? null : mode === "bypassPermissions";
       }
       if (type === "codex") {
         return readCodexSessionBypassState(sessionId, cwd);
