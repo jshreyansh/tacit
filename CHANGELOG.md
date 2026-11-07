@@ -4,6 +4,20 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-08
+
+### Added
+- **Undo an agent's turn.** Tacit saves a checkpoint of the folder as each turn starts and ends, without touching your branches, staging area or stash. Undo last turn, on the tile and in the workdesk, puts the files back to how they were before it, after a sheet that lists what will change and warns when another agent works in the same folder; Redo puts them forward again. Turn history goes back to before any earlier turn. The agent's message box gets a note saying what you undid. Undo needs the folder to be a git repo; one that isn't says so.
+- **Notifications when an agent needs you.** A system notification when an agent waits for your approval or an answer, when a turn you gave it finishes, when it stops with an error, and when a task needs you. With Tacit in front you get a toast instead, unless you're already looking at that agent or task, and clicking either one opens it. The dock icon counts what's waiting on you. Agents a manager started stay quiet when they finish, unless you typed to them yourself; Settings › Features has the switches.
+- **Open in your editor.** Right-click a file in the diff (it opens at the first changed line), an agent tile (its folder), a worktree or project in Sessions, or anything in the Files panel, and choose Open in VS Code, Cursor, Zed, Windsurf, Antigravity IDE, a JetBrains IDE or Xcode, whichever you have. Pick the default in Settings › General. Only files and folders in your open projects can be opened.
+- **Agents started for you ask before skipping approvals.** The first time the manager or Hydra starts an agent without approvals in a project, Tacit asks whether agents started for you there may do that, and remembers the answer; the tile's menu changes it later. A tile running without approvals says "No approvals".
+
+### Fixed
+- **An agent waiting on you shows as waiting at once.** Codex asking to run a command, and Claude asking you a question, now mark the agent as waiting straight away. Codex used to show it only after five minutes.
+- **A finished turn is reported once.** A tool call Tacit read from the session after the turn had ended started the turn again, so it finished twice.
+- **The manager pill shows this workdesk's task.** It could show the task another workdesk's manager was working on.
+- **A worker's approval setting survives its first moments.** A new Claude session's file doesn't record its approval mode yet, and Tacit read that as "approvals on", clearing the setting the worker was launched with. Newer Claude versions' way of recording the mode is read too.
+
 ## [0.42.0] - 2026-10-30
 
 ### Added
