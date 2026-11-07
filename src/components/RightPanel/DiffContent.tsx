@@ -1,6 +1,10 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
+import { useEditorItems } from "../../editors/useEditorItems";
 import { useWorktreeDiff } from "../../hooks/useWorktreeDiff";
 import { useT } from "../../i18n/useT";
+import { firstChangedLine, isDeletedInDiff } from "../../utils/diffParser";
+import { ContextMenu } from "../ContextMenu";
 import { toggleExpandedFiles } from "../diffCardExpansion";
 
 interface Props {
@@ -46,6 +50,12 @@ export function DiffContent({ worktreePath, isGitRepo }: Props) {
   // failure used to read as "No changes".
   const { fileDiffs, loading, refreshing } = useWorktreeDiff(isGitRepo ? worktreePath : null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const editorItems = useEditorItems();
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    target: { path: string; line?: number };
+  } | null>(null);
 
   if (!worktreePath) {
     return (
@@ -121,6 +131,15 @@ export function DiffContent({ worktreePath, isGitRepo }: Props) {
                   toggleExpandedFiles(current, fd.file.name),
                 )
               }
+              onContextMenu={(e) => {
+                const target = {
+                  path: `${worktreePath}/${fd.file.name}`,
+                  line: firstChangedLine(fd.hunks),
+                };
+                if (isDeletedInDiff(fd.hunks) || editorItems(target).length === 0) return;
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, target });
+              }}
             >
               <svg
                 width="8"
@@ -282,6 +301,16 @@ export function DiffContent({ worktreePath, isGitRepo }: Props) {
           </div>
         ))}
       </div>
+      {menu &&
+        createPortal(
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            items={editorItems(menu.target)}
+            onClose={() => setMenu(null)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

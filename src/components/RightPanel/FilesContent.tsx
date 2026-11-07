@@ -18,6 +18,7 @@ import { useT } from "../../i18n/useT";
 import { useCanvasStore } from "../../stores/canvasStore";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
+import { useEditorItems } from "../../editors/useEditorItems";
 import type { GitFileStatus, GitStatusEntry } from "../../types";
 
 interface Props {
@@ -222,6 +223,7 @@ interface FilesTreeProps {
 
 function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreeProps) {
   const t = useT();
+  const editorItems = useEditorItems();
   const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, watchProblem, refresh, openFolder } = files;
   const { changedFiles, stagedFiles } = useGitStatus(worktreePath);
   const fileEditorPath = useCanvasStore((s) => s.fileEditorPath);
@@ -755,11 +757,18 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
             );
           },
         },
+        ...editorItems({ path: itemRelPath ? `${wtp}/${itemRelPath}` : wtp }).map((item) => ({
+          ...item,
+          onClick: () => {
+            context.close();
+            item.onClick();
+          },
+        })),
       );
 
       return items;
     },
-    [t, model, notify],
+    [t, model, notify, editorItems],
   );
 
   const renderContextMenu = useCallback(
@@ -960,8 +969,15 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
           window.tacit.fs.reveal(wtp);
         },
       },
+      ...editorItems({ path: wtp }).map((item) => ({
+        ...item,
+        onClick: () => {
+          setRootCtxMenu(null);
+          item.onClick();
+        },
+      })),
     ];
-  }, [model, t]);
+  }, [model, t, editorItems]);
 
   if (!worktreePath) {
     return (

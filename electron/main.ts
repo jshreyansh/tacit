@@ -283,6 +283,8 @@ import { CheckpointStore, reposInside } from "./checkpoints";
 import { lastUndoableTurn, resolveTurnRequest, TurnCheckpoints } from "./turn-checkpoints";
 import { AttentionNotifier } from "./attention-notifier";
 import type { AttentionTarget } from "../shared/attention";
+import { detectInstalledEditors, openInEditor, runDetached } from "./editor-launcher";
+import type { EditorInfo, EditorOpenResult } from "../shared/editors";
 import type { RenderDiagnosticEventInput } from "../shared/render-diagnostics";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3413,6 +3415,38 @@ function setupIpc() {
 
   ipcMain.handle("fs:reveal", (_event, targetPath: string) => {
     shell.showItemInFolder(targetPath);
+  });
+
+  // Open in your editor (T20). The open projects are known only to the window,
+  // so their folders come from it, as they do for the API server; git supplies
+  // their worktrees. That keeps a stray path out, though not a window that lies
+  // about its projects.
+  const openProjectFolders = async (): Promise<string[]> => {
+    if (!mainWindow || mainWindow.isDestroyed()) return [];
+    const projects: Array<{ path: string }> = await mainWindow.webContents.executeJavaScript(
+      "window.__tcApi.getProjects()",
+    );
+    const worktrees = await Promise.all(
+      projects.map((project) =>
+        projectScanner.listWorktreesAsync(project.path).catch(() => [] as Array<{ path: string }>),
+      ),
+    );
+    return [...projects.map((project) => project.path), ...worktrees.flat().map((worktree) => worktree.path)];
+  };
+  ipcMain.handle("editor:list", async (event): Promise<EditorInfo[]> => {
+    if (!isMainWindowSender(event)) return [];
+    const { PATH } = await getLoginShellEnv();
+    return detectInstalledEditors(os.homedir(), PATH).map(({ id, name }) => ({ id, name }));
+  });
+  ipcMain.handle("editor:open", async (event, editorId: unknown, target: unknown): Promise<EditorOpenResult> => {
+    if (!isMainWindowSender(event)) return { ok: false, reason: "invalid" };
+    const env = await getLoginShellEnv();
+    return openInEditor(editorId, target, {
+      detect: () => detectInstalledEditors(os.homedir(), env.PATH),
+      openFolders: openProjectFolders,
+      realpath: (file) => fs.realpathSync(file),
+      run: (command) => runDetached(command, env),
+    });
   });
 
   // A git project's tree is watched whole; a project loaded a folder at a

@@ -31,6 +31,8 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { useUpdaterStore } from "../stores/updaterStore";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import { useChatInputOverrideStore } from "../stores/chatInputOverrideStore";
+import { useEditorStore, watchEditors } from "../stores/editorStore";
+import { orderEditors } from "../../shared/editors";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
 
@@ -200,6 +202,26 @@ function OnOffSegment({
         {t.setting_off}
       </button>
     </div>
+  );
+}
+
+/** Which editor "Open in" offers first (T20). Nothing to choose from, nothing shown. */
+function DefaultEditorRow() {
+  const t = useT();
+  const editors = useEditorStore((s) => s.editors);
+  const defaultEditor = usePreferencesStore((s) => s.defaultEditor);
+  const setDefaultEditor = usePreferencesStore((s) => s.setDefaultEditor);
+  useEffect(() => watchEditors(), []);
+  const current = orderEditors(editors, defaultEditor)[0];
+  if (!current) return null;
+  return (
+    <SettingsRow label={t["editor.defaultLabel"]} description={t["editor.defaultHint"]}>
+      <ChoiceSegment
+        value={current.id}
+        options={editors.map((editor) => ({ value: editor.id, label: editor.name }))}
+        onChange={setDefaultEditor}
+      />
+    </SettingsRow>
   );
 }
 
@@ -1179,6 +1201,8 @@ export function SettingsModal({ onClose }: Props) {
                       onChange={(v) => setLocale(v)}
                     />
                   </SettingsRow>
+
+                  <DefaultEditorRow />
 
                   {cliRegistered !== null && (
                     <SettingsRow

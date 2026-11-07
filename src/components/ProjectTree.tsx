@@ -7,6 +7,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { usePinStore } from "../stores/pinStore";
 import { ContextMenu } from "./ContextMenu";
+import { useEditorItems } from "../editors/useEditorItems";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { IconButton } from "./ui/IconButton";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
@@ -158,6 +159,8 @@ function WorktreeRow({
   renderTerminal: (item: CanvasTerminalItem) => React.ReactNode;
 }) {
   const t = useT();
+  const editorItems = useEditorItems();
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const toggle = useSessionPanelCollapseStore((s) => s.toggle);
   const collapsed = useSessionPanelCollapseStore((s) =>
     s.isCollapsed(group.worktreeId),
@@ -300,14 +303,18 @@ function WorktreeRow({
             handleActivate();
           }
         }}
-        onContextMenu={() => {
-          // Right-click should still focus the row even though the worktree
-          // context menu was removed in favor of the hover X button — so a
-          // subsequent cmd+t targets the row the user just right-clicked.
+        onContextMenu={(e) => {
+          // Right-click also focuses the row, so a subsequent cmd+t targets
+          // the row the user just right-clicked. Removing the worktree stays
+          // on the hover X button; this menu only opens it in an editor.
           // Intentionally does NOT toggle collapse: right-click is a focus
           // gesture, not an expand gesture. React's onClick does not fire on
           // right-click, so the onClick above stays out of the way here.
           handleActivate();
+          if (editorItems({ path: group.worktreePath }).length === 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setMenu({ x: e.clientX, y: e.clientY });
         }}
       >
         <button
@@ -373,6 +380,16 @@ function WorktreeRow({
           ))}
         </div>
       )}
+      {menu &&
+        createPortal(
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            items={editorItems({ path: group.worktreePath })}
+            onClose={() => setMenu(null)}
+          />,
+          document.body,
+        )}
       <ConfirmDialog
         open={removeStage !== null}
         title={removeDialogTitle}
@@ -431,6 +448,7 @@ function ProjectRow({
   renderTerminal: (item: CanvasTerminalItem) => React.ReactNode;
 }) {
   const t = useT();
+  const editorItems = useEditorItems();
   const toggle = useSessionPanelCollapseStore((s) => s.toggle);
   const collapsed = useSessionPanelCollapseStore((s) =>
     s.isCollapsed(project.projectId),
@@ -679,6 +697,7 @@ function ProjectRow({
                       },
                     },
                   ]),
+              ...editorItems({ path: project.projectPath }),
               { type: "separator" as const },
               {
                 label: t.panel_remove_project,

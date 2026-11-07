@@ -86,6 +86,9 @@ interface PreferencesStore {
   agentApprovals: Record<string, AgentApprovalChoice>;
   /** Which system notifications to show (T16). */
   attentionPrefs: AttentionPrefs;
+  /** The editor "Open in" offers first (T20); null means the first one found. */
+  defaultEditor: string | null;
+  setDefaultEditor: (editorId: string) => void;
   setWallpaperLook: (change: Partial<WallpaperLook>) => void;
   setAttentionPrefs: (change: Partial<AttentionPrefs>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
@@ -149,6 +152,7 @@ interface SavedPrefs {
   agentApprovals: Record<string, AgentApprovalChoice>;
   /** Which system notifications to show (T16). */
   attentionPrefs: AttentionPrefs;
+  defaultEditor: string | null;
 }
 
 function sanitizeAgentApprovals(value: unknown): Record<string, AgentApprovalChoice> {
@@ -351,6 +355,7 @@ function loadPreferences(): SavedPrefs {
         instructionsDeclined,
         agentApprovals,
         attentionPrefs: sanitizeAttentionPrefs(parsed.attentionPrefs),
+        defaultEditor: typeof parsed.defaultEditor === "string" ? parsed.defaultEditor : null,
       };
     }
   } catch {
@@ -383,6 +388,7 @@ function loadPreferences(): SavedPrefs {
     instructionsDeclined: [],
     agentApprovals: {},
     attentionPrefs: DEFAULT_ATTENTION_PREFS,
+    defaultEditor: null,
   };
 }
 
@@ -495,6 +501,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     instructionsDeclined: state.instructionsDeclined,
     agentApprovals: state.agentApprovals,
     attentionPrefs: state.attentionPrefs,
+    defaultEditor: state.defaultEditor,
   };
 }
 
@@ -529,6 +536,11 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   instructionsDeclined: initialPrefs.instructionsDeclined,
   agentApprovals: initialPrefs.agentApprovals,
   attentionPrefs: initialPrefs.attentionPrefs,
+  defaultEditor: initialPrefs.defaultEditor,
+  setDefaultEditor: (defaultEditor) => {
+    set({ defaultEditor });
+    savePreferences(getSaveState({ ...get(), defaultEditor }));
+  },
   setAttentionPrefs: (change) => {
     const attentionPrefs = sanitizeAttentionPrefs({ ...get().attentionPrefs, ...change });
     set({ attentionPrefs });

@@ -16,6 +16,7 @@ import {
   getChildTerminals,
 } from "../stores/projectStore";
 import { ContextMenu } from "../components/ContextMenu";
+import { useEditorItems } from "../editors/useEditorItems";
 import { TagManager } from "./TagManager";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasStore } from "../stores/canvasStore";
@@ -216,6 +217,7 @@ export function TerminalTile({
   // Undoing this agent's turns (T10).
   const turnUndo = useTurnUndo(terminal.id, !!terminal.chatMode);
   const undoState = turnUndo.undoState;
+  const editorItems = useEditorItems();
   // Whether agents started for you here may skip approvals (T15.1).
   const projectPath = useProjectStore((s) => s.projects.find((p) => p.id === projectId)?.path ?? null);
   const approvalChoice = usePreferencesStore((s) => (projectPath ? s.agentApprovals[projectPath] : undefined));
@@ -1413,6 +1415,10 @@ export function TerminalTile({
                     },
                   ]
                 : []),
+              ...(() => {
+                const items = editorItems({ path: worktreePath });
+                return items.length ? [{ type: "separator" as const }, ...items] : [];
+              })(),
               ...(terminalRenderer === "webgl"
                 ? [
                     { type: "separator" as const },

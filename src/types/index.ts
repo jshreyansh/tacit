@@ -7,6 +7,7 @@ import type {
 } from "../../shared/telemetry";
 import type { TurnChangeResult, TurnListResult, TurnPreviewResult } from "../../shared/turns";
 import type { AttentionNotice, AttentionState, AttentionTarget } from "../../shared/attention";
+import type { EditorInfo, EditorOpenResult, EditorTarget } from "../../shared/editors";
 import type {
   RenderDiagnosticEventInput,
   RenderDiagnosticsLogInfo,
@@ -709,6 +710,14 @@ export interface TacitAPI {
     undo: (terminalId: string, seq: number) => Promise<TurnChangeResult | null>;
     redo: (terminalId: string) => Promise<TurnChangeResult | null>;
     onChanged: (callback: (payload: { terminalId: string }) => void) => () => void;
+  };
+  /**
+   * Open in your editor (T20). Main finds the editors and refuses a path
+   * outside the open projects.
+   */
+  editor: {
+    list: () => Promise<EditorInfo[]>;
+    open: (editorId: string, target: EditorTarget) => Promise<EditorOpenResult>;
   };
   /**
    * System notifications (T16). Main decides when; the window gives the

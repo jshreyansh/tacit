@@ -1732,6 +1732,12 @@ export const en = {
   "attention.toastFinished": "Finished",
   "attention.toastFailed": "Failed",
   "attention.open": "Open",
+  "editor.openIn": (name: string) => `Open in ${name}`,
+  "editor.defaultLabel": "Default editor",
+  "editor.defaultHint": "Listed first under Open in. Tacit looks for the editors installed on this Mac.",
+  "editor.notFound": "That file or folder is no longer there.",
+  "editor.outsideProjects": "Only files and folders in your open projects can be opened in an editor.",
+  "editor.failed": (name: string) => `${name} didn't open.`,
   "attention.settingsGroup": "Notifications",
   "attention.settingsHint":
     "A system notification while Tacit isn't the app in front, and a toast while it is, unless you're already on that agent or task. The dock icon counts the agents and tasks waiting on you.",

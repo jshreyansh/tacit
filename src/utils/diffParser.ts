@@ -44,3 +44,23 @@ export function parseDiff(raw: string, files: FileInfo[]): FileDiff[] {
 
   return result;
 }
+
+/** The first changed line in the new version of a file, to open it there. */
+export function firstChangedLine(hunks: string[]): number | undefined {
+  for (const hunk of hunks) {
+    let line: number | null = null;
+    for (const text of hunk.split("\n")) {
+      const header = text.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (header) line = Number(header[1]);
+      else if (line === null || text.startsWith("\\")) continue;
+      else if (text.startsWith("+") || text.startsWith("-")) return Math.max(line, 1);
+      else line += 1;
+    }
+  }
+  return undefined;
+}
+
+/** A file this diff deletes isn't there to open. */
+export function isDeletedInDiff(hunks: string[]): boolean {
+  return hunks.some((hunk) => /^deleted file mode /m.test(hunk));
+}
