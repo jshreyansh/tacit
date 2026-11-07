@@ -1323,6 +1323,17 @@ export class TelemetryService {
     return out;
   }
 
+  /** Other live agent terminals working in `worktreePath`, and whether each is mid-turn. */
+  agentsIn(worktreePath: string, exceptTerminalId: string): Array<{ terminalId: string; provider: string; running: boolean }> {
+    const out: Array<{ terminalId: string; provider: string; running: boolean }> = [];
+    for (const [id, state] of this.terminals) {
+      const { pty_alive, provider, worktree_path, task_status } = state.snapshot;
+      if (id === exceptTerminalId || !pty_alive || provider === "unknown" || worktree_path !== worktreePath) continue;
+      out.push({ terminalId: id, provider, running: task_status === "running" });
+    }
+    return out;
+  }
+
   getTerminalSnapshot(terminalId: string): TerminalTelemetrySnapshot | null {
     const state = this.terminals.get(terminalId);
     if (!state) return null;

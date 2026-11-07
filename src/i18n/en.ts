@@ -1702,6 +1702,53 @@ export const en = {
   shortcut_prev_canvas: "Prev canvas",
   shortcut_open_canvas_manager: "Open canvas manager",
   settings_shortcut_group_canvases: "Canvases",
+  "turnUndo.button": "Undo last turn",
+  "turnUndo.buttonRunning": "Undo waits until this turn finishes",
+  "turnUndo.noGit": "Undo needs git",
+  "turnUndo.noGitHint": "Undo works in git repos. This agent's folder isn't one, so its turns can't be undone.",
+  "turnUndo.noGitReposHint": (repos: string[]) =>
+    repos.length === 1
+      ? `Undo works in git repos. This agent's folder isn't one, but ${repos[0]} inside it is. Open ${repos[0]} as its own project to get undo there.`
+      : `Undo works in git repos. This agent's folder isn't one, but it holds ${repos.length >= 20 ? "20 or more" : repos.length} repos (${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", …" : ""}). Open one of them as its own project to get undo there.`,
+  "turnUndo.noGitLine": "No undo: not a git repo",
+  "turnUndo.history": "Turn history…",
+  "turnUndo.title": "Undo this turn?",
+  "turnUndo.historyTitle": "Go back to before a turn",
+  "turnUndo.intro": (time: string) => `Files go back to how they were at ${time}.`,
+  "turnUndo.loading": "Checking what will change…",
+  "turnUndo.changed": "Changed back",
+  "turnUndo.broughtBack": "Brought back (the agent deleted them)",
+  "turnUndo.removed": "Removed (the agent created them)",
+  "turnUndo.nothing": "No files differ, so nothing will change.",
+  "turnUndo.note.otherAgents": (names: string) =>
+    `${names} also works in this folder. Only this agent's changes are undone; files changed since by others are kept.`,
+  "turnUndo.note.headMoved":
+    "The agent made commits during this turn. Files go back; the commits and your branch stay as they are.",
+  "turnUndo.note.late": "This turn's start was saved a moment late, so its first change may remain.",
+  "turnUndo.note.laterTurns": (n: number) =>
+    `This also takes back the ${n} later turn${n === 1 ? "" : "s"}.`,
+  "turnUndo.note.kept": "Files changed again since this turn, by you or another agent, are kept as they are.",
+  "turnUndo.kept": "Kept (changed again since)",
+  "turnUndo.note.ignored": (folder: string) =>
+    `Only changes inside ${folder} are undone. Changes the agent made in other folders, ignored files, .env files, dependency and build folders (like node_modules) and files over 10 MB aren't saved or touched.`,
+  "turnUndo.off": "Undo is off for this folder",
+  "turnUndo.offSparse": "Undo is off: this folder is a sparse checkout, which Tacit can't yet save safely.",
+  "turnUndo.offTooManyFiles": "Undo is off: this folder has more than 50,000 files, too many to save at every turn.",
+  "turnUndo.confirm": "Undo",
+  "turnUndo.busy": "Undoing…",
+  "turnUndo.done": (n: number) => `Turn undone: ${n} file${n === 1 ? "" : "s"} put back.`,
+  "turnUndo.redo": "Redo",
+  "turnUndo.redoMenu": "Redo last undo",
+  "turnUndo.redone": "Redone: the turn's changes are back.",
+  "turnUndo.failed": (message: string) => `Couldn't undo: ${message}`,
+  "turnUndo.redoFailed": (message: string) => `Couldn't redo: ${message}`,
+  "turnUndo.refused.running": "Wait for the turn to finish, or stop it first.",
+  "turnUndo.refused.gone": "That turn's checkpoint is gone.",
+  "turnUndo.agentNote": (n: number) =>
+    `I undid your last turn's file changes (${n} file${n === 1 ? "" : "s"}); they're back to how they were before it.`,
+  "turnUndo.historyEmpty": "No turns with file changes yet.",
+  "turnUndo.historyRow": (time: string, n: number) => `${time} · ${n} file${n === 1 ? "" : "s"}`,
+  "turnUndo.historyLate": "saved late",
 } as const;
 
 export type TranslationKey = keyof typeof en;

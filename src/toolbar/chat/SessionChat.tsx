@@ -20,7 +20,7 @@ import { ComposerBox, useAttachments } from "./Composer";
 import type { ChatAttachmentInfo } from "../../../shared/chat-events";
 
 const notifyFailure = (error: unknown) => useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error));
-import { useManagerChatStore } from "../../stores/managerChatStore";
+import { useManagerChatStore, useTakeChatNote } from "../../stores/managerChatStore";
 
 /**
  * A chat with one session that isn't the manager: a past session continued
@@ -52,6 +52,7 @@ export function ChatComposer({
 }) {
   const t = useT();
   const [draft, setDraft] = useState("");
+  useTakeChatNote(terminalId, setDraft);
   const [sending, setSending] = useState(false);
   const attachments = useAttachments(terminalId);
   const ready = (draft.trim() || attachments.items.length > 0) && !attachments.busy;

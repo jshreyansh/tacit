@@ -5,6 +5,7 @@ import type {
   TerminalTelemetrySnapshot,
   WorkflowTelemetrySnapshot,
 } from "../../shared/telemetry";
+import type { TurnChangeResult, TurnListResult, TurnPreviewResult } from "../../shared/turns";
 import type {
   RenderDiagnosticEventInput,
   RenderDiagnosticsLogInfo,
@@ -698,6 +699,14 @@ export interface TacitAPI {
       | { status: "no-reply" }
       | { status: "unavailable"; reason: string }
     >;
+  };
+  /** Undoing an agent's turn (T10): by terminal and turn, never by path. */
+  turns: {
+    list: (terminalId: string) => Promise<TurnListResult | null>;
+    preview: (terminalId: string, seq: number) => Promise<TurnPreviewResult | null>;
+    undo: (terminalId: string, seq: number) => Promise<TurnChangeResult | null>;
+    redo: (terminalId: string) => Promise<TurnChangeResult | null>;
+    onChanged: (callback: (payload: { terminalId: string }) => void) => () => void;
   };
   telemetry: {
     attachSession: (input: {

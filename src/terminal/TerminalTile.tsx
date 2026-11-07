@@ -1,6 +1,6 @@
 ﻿import { lazy, Suspense, useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search } from "lucide-react";
+import { Search, Undo2 } from "lucide-react";
 import type { TerminalData } from "../types";
 import { activateTerminalInScene } from "../actions/sceneSelectionActions";
 import {
@@ -49,6 +49,7 @@ import { usePinDragStore } from "../stores/pinDragStore";
 import { usePinStore } from "../stores/pinStore";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
+import { useTurnUndo } from "./useTurnUndo";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { TERMINAL_TYPE_CONFIG } from "./terminalTypeConfig";
 import { AgentRenderer } from "../components/agent/AgentRenderer";
@@ -210,6 +211,9 @@ export function TerminalTile({
     y: number;
   } | null>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
+  // Undoing this agent's turns (T10).
+  const turnUndo = useTurnUndo(terminal.id, !!terminal.chatMode);
+  const undoState = turnUndo.undoState;
   const [isEditingCustomTitle, setIsEditingCustomTitle] = useState(false);
   const [customTitleDraft, setCustomTitleDraft] = useState(
     terminal.customTitle ?? "",
@@ -1140,6 +1144,23 @@ export function TerminalTile({
           <ActivitySparkline terminalId={terminal.id} />
         )}
         <div className="flex items-center gap-0.5">
+          {(undoState.kind === "ready" || undoState.kind === "running") && !terminal.minimized && (
+            <button
+              type="button"
+              className="tc-tile-action text-[var(--text-faint)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)] disabled:opacity-40 disabled:hover:bg-transparent"
+              title={undoState.kind === "running" ? t["turnUndo.buttonRunning"] : t["turnUndo.button"]}
+              aria-label={t["turnUndo.button"]}
+              disabled={undoState.kind === "running"}
+              data-visible={undoState.kind === "ready" ? "always" : undefined}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                turnUndo.undoLast();
+              }}
+            >
+              <Undo2 size={10} strokeWidth={1.6} aria-hidden="true" />
+            </button>
+          )}
           {!useAgentRenderer && lodMode === "live" && !terminal.minimized && (
             <button
               type="button"
@@ -1371,6 +1392,7 @@ export function TerminalTile({
                 onClick: () =>
                   setTagManager({ x: contextMenu.x, y: contextMenu.y }),
               },
+              ...turnUndo.menuItems,
               ...(terminalRenderer === "webgl"
                 ? [
                     { type: "separator" as const },
@@ -1407,6 +1429,8 @@ export function TerminalTile({
           />,
           document.body,
         )}
+
+      {turnUndo.dialog}
 
       {tagManager &&
         createPortal(

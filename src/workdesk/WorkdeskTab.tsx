@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Undo2 } from "lucide-react";
 import { useT } from "../i18n/useT";
 import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { usePinStore } from "../stores/pinStore";
@@ -16,6 +17,7 @@ import { cancelManagerMove, moveManagerNow } from "../actions/managerChatMode";
 import type { Pin } from "../types";
 import { TaskSections } from "../tasks/TaskParts";
 import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
+import { useTurnUndo } from "../terminal/useTurnUndo";
 
 /**
  * One node full size in the workdesk view's tabs (T7, G2). A terminal's
@@ -47,7 +49,7 @@ const footButton =
  * moving stops the process the turn runs in, so mid-turn it waits for the
  * turn to end, with Switch now and Cancel.
  */
-function ViewSwitch({ card, busy, t }: { card: TerminalCard; busy: boolean; t: Dict }) {
+function ViewSwitch({ card, busy, t, extra }: { card: TerminalCard; busy: boolean; t: Dict; extra?: React.ReactNode }) {
   const pending = usePendingManagerMove(card.id);
   const openChat = useChatDockStore((s) => s.setOpen);
   const pick = (to: "terminal" | "chat") => {
@@ -86,6 +88,7 @@ function ViewSwitch({ card, busy, t }: { card: TerminalCard; busy: boolean; t: D
           </button>
         </>
       )}
+      {extra}
       <div role="tablist" aria-label={t.workdesk_view_as} className="flex gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
         {segment("terminal", t.workdesk_view_terminal)}
         {segment("chat", t.workdesk_view_chat)}
@@ -101,6 +104,26 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   const transcript = useManagerTranscript(card.chatMode ? card.id : null);
   const switchable = hasChatMode(card.type);
   const busy = card.chatMode ? transcript.running : card.state === "active";
+  // Undo, as on the tile (T10).
+  const turnUndo = useTurnUndo(card.id, card.chatMode);
+  const { undoState, unavailable } = turnUndo;
+  const undoButton = unavailable ? (
+    // Why there's no undo, where the button would be.
+    <span className="min-w-0 shrink truncate text-[11.5px] text-[var(--text-muted)]" title={unavailable.hint}>
+      {unavailable.line}
+    </span>
+  ) : (undoState.kind === "ready" || undoState.kind === "running") && (
+    <button
+      type="button"
+      className={`${footButton} flex items-center gap-1.5 disabled:opacity-40`}
+      title={undoState.kind === "running" ? t["turnUndo.buttonRunning"] : undefined}
+      disabled={undoState.kind === "running"}
+      onClick={turnUndo.undoLast}
+    >
+      <Undo2 size={12} strokeWidth={1.8} aria-hidden="true" />
+      {t["turnUndo.button"]}
+    </button>
+  );
   // A move asked for mid-turn happens when the turn ends (the pill does
   // this for the manager); one that no longer applies is dropped.
   const pending = usePendingManagerMove(card.id);
@@ -130,7 +153,17 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
 
   return (
     <>
-      {switchable && <ViewSwitch card={card} busy={busy} t={t} />}
+      {switchable ? (
+        <ViewSwitch card={card} busy={busy} t={t} extra={undoButton} />
+      ) : (
+        undoButton && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--text-muted)]">{card.subtitle}</span>
+            {undoButton}
+          </div>
+        )
+      )}
+      {turnUndo.dialog}
       {card.chatMode ? (
         card.isManager ? (
           // The manager's chat is the docked one.

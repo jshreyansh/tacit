@@ -15,6 +15,7 @@ import type { AgentDetection } from "../shared/agent-adapters";
 import type { ApprovalDecision, ChatAttachResult, ChatEvent } from "../shared/chat-events";
 import type { SessionHistoryChangedEvent } from "../shared/sessions";
 import type { TelemetryProvider } from "../shared/telemetry";
+import type { TurnChangeResult, TurnListResult, TurnPreviewResult } from "../shared/turns";
 import type {
   ConnectedBrowserConnection,
   ConnectedTabBinding,
@@ -219,6 +220,20 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.on("telemetry:snapshot-changed", listener);
       return () =>
         ipcRenderer.removeListener("telemetry:snapshot-changed", listener);
+    },
+  },
+  /** Undoing an agent's turn (T10): by terminal and turn, never by path. */
+  turns: {
+    list: (terminalId: string) => ipcRenderer.invoke("turns:list", terminalId) as Promise<TurnListResult | null>,
+    preview: (terminalId: string, seq: number) =>
+      ipcRenderer.invoke("turns:preview", terminalId, seq) as Promise<TurnPreviewResult | null>,
+    undo: (terminalId: string, seq: number) =>
+      ipcRenderer.invoke("turns:undo", terminalId, seq) as Promise<TurnChangeResult | null>,
+    redo: (terminalId: string) => ipcRenderer.invoke("turns:redo", terminalId) as Promise<TurnChangeResult | null>,
+    onChanged: (callback: (payload: { terminalId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { terminalId: string }) => callback(payload);
+      ipcRenderer.on("turns:changed", listener);
+      return () => ipcRenderer.removeListener("turns:changed", listener);
     },
   },
   capture: {

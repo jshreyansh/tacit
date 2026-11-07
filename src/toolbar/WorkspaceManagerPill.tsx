@@ -40,7 +40,7 @@ import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { canSwitchToAuto } from "./chat/composerSettingsModel";
 import { QuestionForm } from "./chat/QuestionForm";
 import { ComposerSettings } from "./chat/ComposerSettings";
-import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
+import { useManagerTranscript, usePendingManagerMove, useTakeChatNote } from "../stores/managerChatStore";
 import { isWorkspaceManagerBriefing } from "../../shared/manager-role";
 import {
   answerManagerApproval,
@@ -194,6 +194,8 @@ export function WorkspaceManagerPill() {
   const dockWidth = useChatDockStore((s) => s.width);
   const setDockOpen = useChatDockStore((s) => s.setOpen);
   const [draft, setDraft] = useState("");
+  // The note left after undoing the manager's turn in chat mode.
+  useTakeChatNote(managerTerminal?.chatMode ? managerTerminal.id : null, setDraft);
   const attachments = useAttachments(managerTerminal?.id ?? null);
   // Text sent here from elsewhere (a past session to ask about) joins the draft.
   const draftInsert = useChatDockStore((s) => s.draftInsert);

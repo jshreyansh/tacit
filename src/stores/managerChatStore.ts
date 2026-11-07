@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { create } from "zustand";
 import type { ChatAttachmentInfo, ChatEvent } from "../../shared/chat-events";
 import { EMPTY_TRANSCRIPT, reduceChat, replayChat, type ChatTranscript } from "../../shared/chat-transcript";
@@ -30,6 +31,10 @@ interface ManagerChatStore {
   /** Out of usage: the queue holds until the limit resets (ISO time). */
   waitUntil: Record<string, string>;
   setWaitUntil: (terminalId: string, at: string | null) => void;
+  /** Text left for the chat's message box (the note after an undo), taken by the box that shows it. */
+  notes: Record<string, string>;
+  leaveNote: (terminalId: string, text: string) => void;
+  takeNote: (terminalId: string) => string | null;
 }
 
 export interface QueuedMessage {
@@ -40,11 +45,27 @@ export interface QueuedMessage {
 
 let queueSeq = 0;
 
-export const useManagerChatStore = create<ManagerChatStore>((set) => ({
+export const useManagerChatStore = create<ManagerChatStore>((set, get) => ({
   transcripts: {},
   pendingMoves: {},
   queues: {},
   waitUntil: {},
+  notes: {},
+  leaveNote: (terminalId, text) =>
+    set((state) => {
+      const was = state.notes[terminalId];
+      return { notes: { ...state.notes, [terminalId]: was ? `${was}\n${text}` : text } };
+    }),
+  takeNote: (terminalId) => {
+    const note = get().notes[terminalId] ?? null;
+    if (note !== null) {
+      set((state) => {
+        const { [terminalId]: _taken, ...rest } = state.notes;
+        return { notes: rest };
+      });
+    }
+    return note;
+  },
   enqueue: (terminalId, text, attachments) =>
     set((state) => ({
       queues: {
@@ -104,4 +125,14 @@ export function usePendingManagerMove(terminalId: string | null): "terminal" | "
 
 export function useManagerTranscript(terminalId: string | null): ChatTranscript {
   return useManagerChatStore((s) => (terminalId ? s.transcripts[terminalId] : undefined) ?? EMPTY_TRANSCRIPT);
+}
+
+/** Adds a note left for this chat's message box to its draft, once. */
+export function useTakeChatNote(terminalId: string | null, setDraft: (update: (draft: string) => string) => void): void {
+  const note = useManagerChatStore((s) => (terminalId ? s.notes[terminalId] : undefined));
+  useEffect(() => {
+    if (!terminalId || !note) return;
+    const taken = useManagerChatStore.getState().takeNote(terminalId);
+    if (taken) setDraft((draft) => (draft ? `${draft}\n${taken}` : taken));
+  }, [terminalId, note, setDraft]);
 }

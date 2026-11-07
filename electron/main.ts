@@ -278,6 +278,8 @@ import { getOpenCodeDbPath } from "./opencode-session";
 import { SessionScanner } from "./session-scanner.ts";
 import { mergeAndDedupeSessions } from "./session-list.ts";
 import { buildPinRenderHtml } from "./pin-render-utils";
+import { CheckpointStore, reposInside } from "./checkpoints";
+import { lastUndoableTurn, resolveTurnRequest, TurnCheckpoints } from "./turn-checkpoints";
 import type { RenderDiagnosticEventInput } from "../shared/render-diagnostics";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -419,9 +421,19 @@ function promptHandoffRefs(terminalId: string, text: string | null): CaptureRefe
  * message waiting for it may go now (electron/wire-mailbox.ts). */
 let pokeWireMailbox: ((terminalId: string, snapshot: { turn_state?: string; derived_status?: string }) => void) | null = null;
 
+// A checkpoint of the folder at each agent turn's start and end, so the
+// turn can be undone (T10).
+const checkpointStore = new CheckpointStore();
+const turnCheckpoints = new TurnCheckpoints(checkpointStore, {
+  onChanged: (terminalId) => sendToWindow(mainWindow, "turns:changed", { terminalId }),
+});
+
 const telemetryService = new TelemetryService({
   // An agent's own web tools (WebFetch, web_search, a browser MCP server).
-  onToolUse: (terminalId, tool, at) => webReads.noteToolUse(terminalId, tool, at),
+  onToolUse: (terminalId, tool, at) => {
+    webReads.noteToolUse(terminalId, tool, at);
+    turnCheckpoints.toolUsed(terminalId);
+  },
   // Claude's title for its session can name the task its first prompt opened.
   onSessionTitle: (terminalId, title) => runTracker.agentTitle(`terminal:${terminalId}`, title),
   // Which agent session each terminal runs: the join to its transcript.
@@ -454,6 +466,10 @@ const telemetryService = new TelemetryService({
   onSnapshotChanged: (terminalId, snapshot) => {
     pokeWireMailbox?.(terminalId, snapshot);
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
+    for (const change of changes) {
+      if (change.kind === "turn_started") turnCheckpoints.turnStarted(terminalId, snapshot.worktree_path);
+      else if (change.kind === "turn_completed" || change.kind === "errored") void turnCheckpoints.turnEnded(terminalId);
+    }
     for (const entry of recordNodes.workerStateEntries(terminalId, changes)) {
       captureService.record(entry, captureCanvasId, new Date(), { method: "main" });
     }
@@ -2357,6 +2373,62 @@ function setupIpc() {
       return telemetryService.updateTerminal(input);
     },
   );
+
+  // Undoing an agent's turn (T10). The renderer names a terminal and a
+  // turn; the folder comes from telemetry, and only the app's window may ask.
+  const turnSnapshot = (terminalId: string) => telemetryService.getTerminalSnapshot(terminalId);
+  ipcMain.handle("turns:list", async (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event)) return null;
+    const request = resolveTurnRequest({ terminalId }, { needsSeq: false, changesFiles: false }, turnSnapshot);
+    if (!request.ok) return { ok: false, reason: request.reason };
+    const scope = await checkpointStore.scopeOf(request.dir);
+    const isGit = !("reason" in scope && scope.reason === "not-git");
+    const skipped = "reason" in scope && scope.reason !== "not-git" ? scope.reason : turnCheckpoints.skippedFor(request.terminalId);
+    const turns = isGit ? await turnCheckpoints.list(request.terminalId, request.dir) : [];
+    return {
+      ok: true,
+      git: isGit,
+      skipped,
+      turns,
+      lastUndoable: lastUndoableTurn(turns)?.seq ?? null,
+      reposInside: isGit ? [] : reposInside(request.dir),
+    };
+  });
+  ipcMain.handle("turns:preview", async (event, terminalId: unknown, seq: unknown) => {
+    if (!isMainWindowSender(event)) return null;
+    const request = resolveTurnRequest({ terminalId, seq }, { needsSeq: true, changesFiles: false }, turnSnapshot);
+    if (!request.ok) return { ok: false, reason: request.reason };
+    const preview = await turnCheckpoints.preview(request.terminalId, request.dir, request.seq as number);
+    if (!preview) return { ok: false, reason: "unknown-turn" };
+    return {
+      ok: true,
+      preview,
+      otherAgents: telemetryService.agentsIn(request.dir, request.terminalId),
+      folder: path.basename(request.dir),
+    };
+  });
+  ipcMain.handle("turns:undo", async (event, terminalId: unknown, seq: unknown) => {
+    if (!isMainWindowSender(event)) return null;
+    const request = resolveTurnRequest({ terminalId, seq }, { needsSeq: true, changesFiles: true }, turnSnapshot);
+    if (!request.ok) return { ok: false, reason: request.reason };
+    try {
+      const files = await turnCheckpoints.undo(request.terminalId, request.dir, request.seq as number);
+      return files ? { ok: true, files } : { ok: false, reason: "unknown-turn" };
+    } catch (error) {
+      return { ok: false, reason: "failed", message: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("turns:redo", async (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event)) return null;
+    const request = resolveTurnRequest({ terminalId }, { needsSeq: false, changesFiles: true }, turnSnapshot);
+    if (!request.ok) return { ok: false, reason: request.reason };
+    try {
+      const files = await turnCheckpoints.redo(request.terminalId, request.dir);
+      return files ? { ok: true, files } : { ok: false, reason: "nothing-to-redo" };
+    } catch (error) {
+      return { ok: false, reason: "failed", message: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
   ipcMain.handle("telemetry:get-terminal", (_event, terminalId: string) => {
     return telemetryService.getTerminalSnapshot(terminalId);
