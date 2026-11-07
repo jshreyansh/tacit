@@ -802,8 +802,8 @@ export function WorkspaceManagerPill() {
   // The manager's own task, kept with the project, sits above the message box.
   const pinsByProject = usePinStore((s) => s.pinsByProject);
   const activeTask = useMemo(
-    () => managerTask(Object.values(pinsByProject).flat(), managerTerminal?.id ?? null),
-    [pinsByProject, managerTerminal?.id],
+    () => managerTask(pinsByProject, projects.map((p) => p.path), managerTerminal?.id ?? null),
+    [pinsByProject, projects, managerTerminal?.id],
   );
   const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
   // A move asked for mid-turn happens when the turn ends. One that no longer

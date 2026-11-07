@@ -78,8 +78,10 @@ test("the manager's task is its own one under way; an answer names the task and 
     pin("mine, done", "done", "2026-10-06T00:00:00Z", { owners: ["manager"] }),
     pin("mine", "in_progress", "2026-10-04T00:00:00Z", { owners: ["manager"] }),
   ];
-  assert.equal(managerTask(tasks, "1792010924415-1")?.id, "mine");
-  assert.equal(managerTask(tasks, "1792273461776-3")?.id, "worker's");
+  const byProject = { "/repo": tasks, "/other-workdesk": [pin("theirs", "in_progress", "2026-10-07T00:00:00Z", { owners: ["manager"] })] };
+  assert.equal(managerTask(byProject, ["/repo"], "1792010924415-1")?.id, "mine");
+  assert.equal(managerTask(byProject, ["/repo"], "1792273461776-3")?.id, "worker's");
+  assert.equal(managerTask(byProject, ["/new-folder"], "1792010924415-1"), null, "another workdesk's manager task doesn't show");
   const message = answerMessage({ id: "bump-ab12", title: "Bump the version", ask: { reason: "0.9.0 or 1.0.0?", at: "x" } }, "1.0.0");
   assert.equal(message, 'Answer from the user on the task "Bump the version" (bump-ab12). You asked: "0.9.0 or 1.0.0?" Their answer: 1.0.0');
 });

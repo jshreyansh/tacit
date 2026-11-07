@@ -84,8 +84,14 @@ export function noteBodyFromTask(task: Pick<Pin, "body" | "steps">): string {
   return [task.body.trim(), lines.join("\n")].filter(Boolean).join("\n\n");
 }
 
-/** The tasks a manager is working on: its own, newest first among those under way. */
-export function managerTask(tasks: readonly Pin[], managerTerminalId: string | null): Pin | null {
+/** The task a manager is working on in these folders: its own, newest first among those under way. */
+export function managerTask(
+  pinsByProject: Readonly<Record<string, readonly Pin[]>>,
+  projectPaths: Iterable<string>,
+  managerTerminalId: string | null,
+): Pin | null {
+  // Only this workdesk's folders: every workdesk's manager owns its tasks as "manager".
+  const tasks = [...new Set(projectPaths)].flatMap((path) => pinsByProject[path] ?? []);
   const mine = tasks.filter(
     (t) => isTask(t) && (t.status === "in_progress" || t.status === "needs_you") && (t.owners ?? []).some((o) => o === "manager" || o === managerTerminalId),
   );
