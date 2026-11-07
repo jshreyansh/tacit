@@ -297,6 +297,13 @@ if (isDev && /^\d{4,5}$/.test(process.env.TACIT_DEV_UI_CDP_PORT ?? "")) {
   app.commandLine.appendSwitch("remote-debugging-port", process.env.TACIT_DEV_UI_CDP_PORT!);
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 }
+// Development only: keep rendering at full rate while the window is hidden,
+// so a recording or test can run behind other windows.
+if (isDev && process.env.TACIT_DEV_RECORDING === "1") {
+  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+  app.commandLine.appendSwitch("disable-renderer-backgrounding");
+  app.commandLine.appendSwitch("disable-background-timer-throttling");
+}
 if (isDev) {
   app.setPath("userData", path.join(app.getPath("appData"), "tacit-dev"));
 }
