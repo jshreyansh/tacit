@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.3] - 2026-11-10
+
+### Fixed
+- **In the grid, what you add opens.** Adding an agent, terminal, browser, task or note from the left rail or All nodes put its tab in the strip but left you on the tab you were on. The new tab now opens in front, as it already did from the grid's own +.
+
 ## [0.43.2] - 2026-11-09
 
 ### Fixed
