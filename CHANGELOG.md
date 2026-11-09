@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-11-09
+
+### Fixed
+- **A check that can't reach GitHub no longer shows "Update error".** The check Tacit runs every half hour put an error on the rail whenever GitHub couldn't be reached, such as during GitHub's own outages, and the dialog showed the raw "HTTP 504 from …" message. Now it's only logged. A check you start yourself says it couldn't reach the update server, with Retry. A failed download of a real update still shows as an error.
+
 ## [0.43.1] - 2026-11-09
 
 ### Added
