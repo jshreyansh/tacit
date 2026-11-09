@@ -10,6 +10,7 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useLocaleStore } from "../stores/localeStore";
 import { useThemeStore } from "../stores/themeStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
+import { checkForUpdates } from "../stores/updaterStore";
 import { WALLPAPER_LIMITS, type WallpaperLook } from "../canvas/wallpaper";
 import { WallpaperLayers } from "../canvas/WallpaperLayers";
 import { PROVIDER_PRESETS, getPreset } from "../agentProviders";
@@ -430,26 +431,13 @@ function ShortcutChip({
 
 function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
   const t = useT();
-  const { status, downloadPercent, errorMessage } = useUpdaterStore();
-  const [upToDate, setUpToDate] = useState(false);
+  const { status, downloadPercent, errorMessage, checked } = useUpdaterStore();
+  const upToDate = status === "idle" && checked === "up-to-date";
 
-  const handleCheck = useCallback(async () => {
-    setUpToDate(false);
-    useUpdaterStore.setState({ status: "checking", errorMessage: null });
-    const outcome = await window.tacit.updater.check();
-    // Reset the spinner whatever the outcome — events handle the
-    // "newer" path (downloading/ready/error). "up-to-date" is the only
-    // case that warrants the ephemeral "Up to date" feedback; "skipped"
-    // means the check itself didn't confirm anything (e.g. app running
-    // from a translocated read-only location) and the companion
-    // location-warning / error toast carries the real reason.
-    if (useUpdaterStore.getState().status === "checking") {
-      useUpdaterStore.setState({ status: "idle" });
-    }
-    if (outcome === "up-to-date") {
-      setUpToDate(true);
-      setTimeout(() => setUpToDate(false), 3000);
-    }
+  // A newer version shows as downloading, then ready; anything else as
+  // "Up to date" or "Couldn't check", the same as the update dialog.
+  const handleCheck = useCallback(() => {
+    void checkForUpdates();
   }, []);
 
   const handleInstall = useCallback(() => {
@@ -470,6 +458,17 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
       <span className="text-[11px] text-[var(--text-muted)]" aria-live="polite">
         {t.update_up_to_date}
       </span>
+    );
+  } else if (status === "idle" && checked === "failed") {
+    statusEl = (
+      <button
+        type="button"
+        className="text-[11px] text-[var(--amber)] hover:text-[var(--text-primary)] transition-colors"
+        onClick={handleCheck}
+        title={t.update_modal_check_failed_hint}
+      >
+        {t.update_check_failed_short}
+      </button>
     );
   } else if (status === "checking") {
     statusEl = (

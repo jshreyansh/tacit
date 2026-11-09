@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { UpdateEventInfo } from "../types";
+import type { UpdateCheckOutcome } from "../../shared/updater-types";
 import { useNotificationStore } from "./notificationStore";
 import { useLocaleStore } from "./localeStore";
 import { en } from "../i18n/en";
@@ -7,11 +8,15 @@ import { zh } from "../i18n/zh";
 
 export type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "error";
 
+/** What the last check you asked for found, when it found nothing to download. */
+export type CheckResult = "up-to-date" | "failed" | null;
+
 interface UpdaterStore {
   status: UpdateStatus;
   info: UpdateEventInfo | null;
   downloadPercent: number;
   errorMessage: string | null;
+  checked: CheckResult;
 }
 
 export const useUpdaterStore = create<UpdaterStore>((set) => ({
@@ -19,7 +24,28 @@ export const useUpdaterStore = create<UpdaterStore>((set) => ({
   info: null,
   downloadPercent: 0,
   errorMessage: null,
+  checked: null,
 }));
+
+/**
+ * Checks now, for Settings and the update dialog alike. A newer version
+ * arrives as events (downloading, ready, error); otherwise the result is kept
+ * in `checked`, so whichever of the two is open can say what happened.
+ */
+export async function checkForUpdates(): Promise<void> {
+  useUpdaterStore.setState({ status: "checking", errorMessage: null, checked: null });
+  let outcome: UpdateCheckOutcome;
+  try {
+    outcome = await window.tacit.updater.check();
+  } catch {
+    outcome = "skipped";
+  }
+  if (useUpdaterStore.getState().status !== "checking") return;
+  useUpdaterStore.setState({
+    status: "idle",
+    checked: outcome === "up-to-date" ? "up-to-date" : outcome === "skipped" ? "failed" : null,
+  });
+}
 
 export function initUpdaterListeners(): () => void {
   if (!window.tacit?.updater) {
@@ -30,7 +56,7 @@ export function initUpdaterListeners(): () => void {
 
   cleanups.push(
     window.tacit.updater.onUpdateAvailable((info) => {
-      useUpdaterStore.setState({ status: "downloading", info, downloadPercent: 0 });
+      useUpdaterStore.setState({ status: "downloading", info, downloadPercent: 0, checked: null });
     }),
   );
 

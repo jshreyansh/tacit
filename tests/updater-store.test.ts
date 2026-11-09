@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { useLocaleStore } from "../src/stores/localeStore.ts";
 import { useNotificationStore } from "../src/stores/notificationStore.ts";
-import { initUpdaterListeners, useUpdaterStore } from "../src/stores/updaterStore.ts";
+import { checkForUpdates, initUpdaterListeners, useUpdaterStore } from "../src/stores/updaterStore.ts";
 
 type UpdateEventInfo = {
   version: string;
@@ -25,6 +25,7 @@ function resetStores() {
     info: null,
     downloadPercent: 0,
     errorMessage: null,
+    checked: null,
   });
   useLocaleStore.setState({ locale: "en" });
   useNotificationStore.setState({ notifications: [] });
@@ -104,6 +105,7 @@ test("initUpdaterListeners drives the download state through ready", () => {
       info,
       downloadPercent: 0,
       errorMessage: null,
+      checked: null,
     });
 
     bridge.listeners.progress?.({ percent: 42 });
@@ -115,6 +117,7 @@ test("initUpdaterListeners drives the download state through ready", () => {
       info,
       downloadPercent: 100,
       errorMessage: null,
+      checked: null,
     });
   } finally {
     cleanup();
@@ -151,6 +154,58 @@ test("location warnings notify in the active locale and cleanup unsubscribes lis
     bridge.restore();
     useLocaleStore.setState({ locale: "en" });
     useNotificationStore.setState({ notifications: [] });
+  }
+});
+
+function withCheck(check: () => Promise<string>) {
+  const bridge = installUpdaterBridge();
+  (globalThis.window as unknown as { tacit: { updater: { check: unknown } } }).tacit.updater.check = check;
+  return bridge;
+}
+
+test("a check that finds nothing newer says so, and ends Checking", async () => {
+  resetStores();
+  const bridge = withCheck(async () => "up-to-date");
+  try {
+    const pending = checkForUpdates();
+    assert.equal(useUpdaterStore.getState().status, "checking");
+    await pending;
+    assert.equal(useUpdaterStore.getState().status, "idle");
+    assert.equal(useUpdaterStore.getState().checked, "up-to-date");
+  } finally {
+    bridge.restore();
+  }
+});
+
+test("a check that couldn't finish, or threw, says it couldn't check", async () => {
+  for (const check of [async () => "skipped", async () => Promise.reject(new Error("offline"))]) {
+    resetStores();
+    const bridge = withCheck(check);
+    try {
+      await checkForUpdates();
+      assert.equal(useUpdaterStore.getState().status, "idle");
+      assert.equal(useUpdaterStore.getState().checked, "failed");
+    } finally {
+      bridge.restore();
+    }
+  }
+});
+
+test("a newer version found during the check is left to its events, and clears an old result", async () => {
+  resetStores();
+  useUpdaterStore.setState({ checked: "up-to-date" });
+  const bridge = withCheck(async () => {
+    bridge.listeners.available?.({ version: "9.9.9", releaseNotes: "", releaseDate: "" });
+    return "newer";
+  });
+  const cleanup = initUpdaterListeners();
+  try {
+    await checkForUpdates();
+    assert.equal(useUpdaterStore.getState().status, "downloading");
+    assert.equal(useUpdaterStore.getState().checked, null);
+  } finally {
+    cleanup();
+    bridge.restore();
   }
 });
 

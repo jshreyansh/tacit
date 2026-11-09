@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { useUpdaterStore } from "../stores/updaterStore";
+import { checkForUpdates, useUpdaterStore } from "../stores/updaterStore";
 import { useT } from "../i18n/useT";
 import { useLocaleStore } from "../stores/localeStore";
 import { renderMarkdown } from "../utils/markdownClass";
@@ -19,17 +19,28 @@ export function UpdateModal({ onClose }: Props) {
   useBodyScrollLock(true);
   const t = useT();
   const locale = useLocaleStore((s) => s.locale);
-  const { status, info, downloadPercent, errorMessage } = useUpdaterStore();
+  const { status, info, downloadPercent, errorMessage, checked } = useUpdaterStore();
   const titleId = useId();
   const primaryRef = useRef<HTMLButtonElement>(null);
+  const [installed, setInstalled] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    window.tacit.updater
+      .getVersion()
+      .then((version) => live && setInstalled(version))
+      .catch((error: unknown) => console.warn("[Tacit] Couldn't read the app version", error));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const handleInstall = useCallback(() => {
     window.tacit.updater.install();
   }, []);
 
   const handleRetry = useCallback(() => {
-    useUpdaterStore.setState({ status: "checking", errorMessage: null });
-    window.tacit.updater.check();
+    void checkForUpdates();
   }, []);
 
   useEffect(() => {
@@ -44,7 +55,7 @@ export function UpdateModal({ onClose }: Props) {
   }, [onClose]);
 
   useEffect(() => {
-    if (status === "ready" || status === "error") {
+    if (status === "ready" || status === "error" || status === "idle") {
       const id = window.setTimeout(() => primaryRef.current?.focus(), 0);
       return () => window.clearTimeout(id);
     }
@@ -86,7 +97,31 @@ export function UpdateModal({ onClose }: Props) {
             }
           : status === "checking"
             ? { label: t.update_checking_short, disabled: true, onClick: () => {} }
-            : null;
+            : checked === "up-to-date"
+              ? { label: t.update_modal_done, disabled: false, onClick: onClose }
+              : checked === "failed"
+                ? { label: t.update_modal_retry, disabled: false, onClick: handleRetry }
+                : { label: t.update_check, disabled: false, onClick: handleRetry };
+
+  // With no release to show, the dialog says where the check is: under way,
+  // nothing newer, couldn't connect, or not checked yet. It used to go blank.
+  const statusText: { line: string; hint: string | null } | null =
+    status === "checking"
+      ? { line: t.update_modal_checking_body, hint: t.update_modal_checking_hint }
+      : status !== "idle"
+        ? null
+        : checked === "up-to-date"
+          ? { line: t.update_modal_latest, hint: installed ? t.update_modal_installed(installed) : null }
+          : checked === "failed"
+            ? { line: t.update_modal_check_failed, hint: t.update_modal_check_failed_hint }
+            : { line: t.update_modal_idle, hint: installed ? t.update_modal_installed(installed) : null };
+  // "Later" is for an update on its way; otherwise there's nothing to postpone.
+  const secondaryLabel =
+    status === "downloading" || status === "ready" || status === "error"
+      ? t.update_modal_later
+      : checked === "up-to-date" && status === "idle"
+        ? null
+        : t.update_modal_close;
 
   const cancelButtonClass =
     "tc-ui px-3 py-1.5 rounded-md transition-colors duration-150 border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]";
@@ -151,6 +186,13 @@ export function UpdateModal({ onClose }: Props) {
           </div>
         )}
 
+        {statusText && !changelogHtml && (
+          <div className="px-5 py-4" aria-live="polite">
+            <p className="tc-body-sm text-[var(--text-primary)]">{statusText.line}</p>
+            {statusText.hint && <p className="tc-meta mt-1 text-[var(--text-muted)]">{statusText.hint}</p>}
+          </div>
+        )}
+
         {status === "downloading" && (
           <div className="px-5 pt-2 pb-1">
             <div
@@ -177,13 +219,15 @@ export function UpdateModal({ onClose }: Props) {
         )}
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
-          <button
-            type="button"
-            onClick={onClose}
-            className={cancelButtonClass}
-          >
-            {t.update_modal_later}
-          </button>
+          {secondaryLabel && (
+            <button
+              type="button"
+              onClick={onClose}
+              className={cancelButtonClass}
+            >
+              {secondaryLabel}
+            </button>
+          )}
           {primary && (
             <button
               ref={primaryRef}

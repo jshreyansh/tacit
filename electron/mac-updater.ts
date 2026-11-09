@@ -110,24 +110,44 @@ function isNewerVersion(a: string, b: string): boolean {
   return false;
 }
 
-function fetchText(url: string, userAgent?: string): Promise<string> {
+/**
+ * How long a check may wait on the network. Without a limit a slow or
+ * half-dead connection left "Checking…" up for minutes before Chromium
+ * itself gave up.
+ */
+const FETCH_TIMEOUT_MS = 20_000;
+
+function fetchText(url: string, userAgent?: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<string> {
   return new Promise((resolve, reject) => {
     const request = net.request(url);
     if (userAgent) request.setHeader("User-Agent", userAgent);
 
+    let settled = false;
+    const finish = (error: Error | null, text = ""): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(text);
+    };
+    const timer = setTimeout(() => {
+      request.abort();
+      finish(new Error(`timed out after ${timeoutMs / 1000}s fetching ${url}`));
+    }, timeoutMs);
+
     let data = "";
     request.on("response", (response) => {
       if (response.statusCode !== 200) {
-        reject(new Error(`HTTP ${response.statusCode} from ${url}`));
+        finish(new Error(`HTTP ${response.statusCode} from ${url}`));
         return;
       }
       response.on("data", (chunk) => {
         data += chunk.toString();
       });
-      response.on("end", () => resolve(data));
-      response.on("error", reject);
+      response.on("end", () => finish(null, data));
+      response.on("error", (error) => finish(error));
     });
-    request.on("error", reject);
+    request.on("error", (error) => finish(error));
     request.end();
   });
 }
