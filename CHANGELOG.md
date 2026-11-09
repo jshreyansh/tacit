@@ -4,6 +4,16 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-11-09
+
+### Added
+- **Name a canvas as you make it.** New canvas asks for a name, with the next "Canvas N" already filled in and selected: type a name, or press Enter to keep it. Esc makes nothing. The suggested name skips a number that's taken instead of making "Canvas 6 2".
+- **Rename a canvas from the Hub.** Each canvas in the Hub's list has a pencil to rename it, and Manage canvases shows even when you have only one.
+
+### Fixed
+- **Check for Updates says what it found.** On a slow connection the check could sit at "Checking…" for minutes, and when there was nothing newer the dialog went blank. A check now gives up after 20 seconds, and the dialog says it's looking, that you're on the latest version (and which one is installed), or that it couldn't reach the update server, with Retry. Settings shows the same.
+- **⌘⇧N is labelled where it works.** It opens the list of canvases, but the Hub showed it next to New canvas; it's now next to Manage canvases.
+
 ## [0.43.0] - 2026-11-08
 
 ### Added
