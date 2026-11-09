@@ -58,12 +58,13 @@ export function addBrowser(identityId?: string): string {
   return addBrowserCardToScene(visibleCanvasCenter(), undefined, "user", identityId);
 }
 
-export function addTask() {
+/** Adds a task to the canvas; resolves to its id, or null with no project open. */
+export function addTask(): Promise<string | null> {
   const { focusedProjectId, projects } = useProjectStore.getState();
   const project =
     projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-  if (!project) return;
-  void createTaskInScene(project.path, visibleCanvasCenter());
+  if (!project) return Promise.resolve(null);
+  return createTaskInScene(project.path, visibleCanvasCenter()).then((pin) => pin.id);
 }
 
 /** Adds a note to the canvas; resolves to its id, or null with no project open. */

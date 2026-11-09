@@ -2,6 +2,7 @@ import { addTerminal, addBrowser, addNote, addTask } from "../actions/dockAction
 import { useAgentDetection } from "../stores/agentAvailabilityStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import type { DockId } from "../stores/dockStore";
+import { useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import type { TerminalType } from "../types";
 import { AGENT_ICON } from "./agentIcons";
 import browserIcon from "../assets/dock-icons/browser.png";
@@ -47,8 +48,15 @@ export interface DockEntry {
   label: (t: Dict) => string;
   /** Set for agents: its CLI may be missing on this Mac. */
   terminalType?: TerminalType;
-  create: () => void;
+  /** Adds it; what was added, or null when there was nowhere to add it. */
+  create: () => Added;
 }
+
+type Added = OpenNode | null | Promise<OpenNode | null>;
+
+const terminalNode = (id: string | null): OpenNode | null => (id ? { kind: "terminal", id } : null);
+const pinNode = (kind: "task" | "note", made: Promise<string | null>) =>
+  made.then((id): OpenNode | null => (id ? { kind, id } : null));
 
 const agent = (id: DockId & TerminalType, name: string, art: DockArt): DockEntry => ({
   id,
@@ -56,7 +64,7 @@ const agent = (id: DockId & TerminalType, name: string, art: DockArt): DockEntry
   art,
   label: () => name,
   terminalType: id,
-  create: () => addTerminal(id),
+  create: () => terminalNode(addTerminal(id)),
 });
 
 export const DOCK_ENTRIES: readonly DockEntry[] = [
@@ -72,12 +80,30 @@ export const DOCK_ENTRIES: readonly DockEntry[] = [
     art: { icon: AGENT_ICON.shell, tiled: true },
     label: (t) => t.dock_terminal,
     terminalType: "shell",
-    create: () => addTerminal("shell"),
+    create: () => terminalNode(addTerminal("shell")),
   },
-  { id: "browser", group: "tools", art: { icon: browserIcon, inner: 23 }, label: (t) => t.dock_browser, create: addBrowser },
-  { id: "task", group: "tools", art: { icon: taskIcon, tiled: true }, label: (t) => t.dock_task, create: addTask },
-  { id: "note", group: "tools", art: { icon: noteIcon, tiled: true }, label: (t) => t.dock_note, create: addNote },
+  {
+    id: "browser",
+    group: "tools",
+    art: { icon: browserIcon, inner: 23 },
+    label: (t) => t.dock_browser,
+    create: () => ({ kind: "browser", id: addBrowser() }),
+  },
+  { id: "task", group: "tools", art: { icon: taskIcon, tiled: true }, label: (t) => t.dock_task, create: () => pinNode("task", addTask()) },
+  { id: "note", group: "tools", art: { icon: noteIcon, tiled: true }, label: (t) => t.dock_note, create: () => pinNode("note", addNote()) },
 ];
+
+/**
+ * Adds an entry's node, and in the grid opens its tab. The grid is for
+ * looking at one thing, so what you just added is that thing; the canvas
+ * already places it in view.
+ */
+export function addFromDock(entry: DockEntry): void {
+  void Promise.resolve(entry.create()).then((node) => {
+    const view = useWorkdeskViewStore.getState();
+    if (node && view.mode === "grid") view.setOpenNode(node);
+  });
+}
 
 export function dockEntry(id: DockId): DockEntry {
   const entry = DOCK_ENTRIES.find((e) => e.id === id);
@@ -125,6 +151,6 @@ export function createFromDock(entry: DockEntry, missingReason: string | null, m
     useNotificationStore.getState().notify("warn", missingReason ?? "This agent isn't installed");
     return false;
   }
-  entry.create();
+  addFromDock(entry);
   return true;
 }

@@ -4,6 +4,7 @@ import { useT } from "../i18n/useT";
 import {
   DOCK_ENTRIES,
   DockIcon,
+  addFromDock,
   createFromDock,
   filterDockEntries,
   useDockAvailability,
@@ -146,7 +147,7 @@ export function NodeTray() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && shown[0]) {
                 e.preventDefault();
-                shown[0].create();
+                addFromDock(shown[0]);
                 close();
               }
             }}
