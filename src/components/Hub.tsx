@@ -900,7 +900,7 @@ export function Hub() {
               const projectsCount = canvas.scene.projects.length;
               const waiting = needsYouElsewhere[canvas.id] ?? 0;
               return (
-                <li key={canvas.id}>
+                <li key={canvas.id} className="group relative">
                   <button
                     type="button"
                     onClick={() => {
@@ -911,7 +911,7 @@ export function Hub() {
                       }
                       closeHub();
                     }}
-                    className="tc-row-hover flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+                    className="tc-row-hover flex w-full items-center gap-2.5 rounded-md py-1.5 pl-2 pr-9 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
                   >
                     <span
                       className="flex h-5 w-5 shrink-0 items-center justify-center"
@@ -969,6 +969,31 @@ export function Hub() {
                       </div>
                     </div>
                   </button>
+                  {/* Renaming is here, on the name, not only in Manage. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      useCanvasManagerStore.getState().openRename(canvas.id);
+                      closeHub();
+                    }}
+                    title={t["hub.canvases.rename"](canvas.name)}
+                    aria-label={t["hub.canvases.rename"](canvas.name)}
+                    className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-faint)] opacity-0 transition-opacity duration-quick hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] group-hover:opacity-100"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M11 2.5l2.5 2.5L6 12.5H3.5V10L11 2.5z" />
+                    </svg>
+                  </button>
                 </li>
               );
             })}
@@ -976,7 +1001,7 @@ export function Hub() {
               <button
                 type="button"
                 onClick={() => {
-                  useCanvasRegistryStore.getState().createCanvas();
+                  useCanvasManagerStore.getState().openNewCanvas();
                   closeHub();
                 }}
                 className="tc-row-hover flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
@@ -1003,19 +1028,10 @@ export function Hub() {
                 >
                   {t["hub.canvases.newCanvas"]}
                 </span>
-                <kbd
-                  className="tc-kbd shrink-0"
-                  style={{
-                    fontSize: "10px",
-                    padding: "1px 6px",
-                    letterSpacing: 0,
-                  }}
-                >
-                  {formatShortcut(shortcuts.openCanvasManager, isMac)}
-                </kbd>
               </button>
             </li>
-            {canvases.length > 1 && (
+            {/* Shown with a single workdesk too: Manage is also where it's renamed. */}
+            {canvases.length > 0 && (
               <li>
                 <button
                   type="button"
@@ -1049,6 +1065,17 @@ export function Hub() {
                   >
                     {t["hub.canvases.manage"]}
                   </span>
+                  {/* The chord opens this list; there is none for a new canvas. */}
+                  <kbd
+                    className="tc-kbd shrink-0"
+                    style={{
+                      fontSize: "10px",
+                      padding: "1px 6px",
+                      letterSpacing: 0,
+                    }}
+                  >
+                    {formatShortcut(shortcuts.openCanvasManager, isMac)}
+                  </kbd>
                 </button>
               </li>
             )}

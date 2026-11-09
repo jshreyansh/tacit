@@ -1623,6 +1623,7 @@ export const en = {
     `${n} project${n === 1 ? "" : "s"}`,
   "hub.canvases.newCanvas": "New canvas",
   "hub.canvases.manage": "Manage canvases",
+  "hub.canvases.rename": (name: string) => `Rename “${name}”`,
   "canvas.manager.title": "Canvases",
   "canvas.manager.subtitle": (n: number) =>
     `${n} canvas${n === 1 ? "" : "es"}`,
@@ -1633,6 +1634,9 @@ export const en = {
     "At least one canvas must remain",
   "canvas.manager.newCanvas": "New canvas",
   "canvas.manager.newCanvasHint": "blank workdesk",
+  "canvas.new.title": "New canvas",
+  "canvas.new.nameLabel": "Name",
+  "canvas.new.create": "Create",
   "canvas.manager.cycleHint": "⌘⇧[  ⌘⇧]  to cycle",
   "canvas.delete.title": "Delete canvas?",
   "canvas.delete.body": (name: string) =>

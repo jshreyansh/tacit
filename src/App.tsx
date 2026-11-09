@@ -112,6 +112,7 @@ import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { NewCanvasDialog } from "./components/NewCanvasDialog";
 import { IdentityManagerModal } from "./components/IdentityManagerModal";
 import { AgentProfilePromptModal } from "./components/AgentProfilePromptModal";
 import { updateWindowTitle } from "./titleHelper";
@@ -1275,6 +1276,7 @@ export function App() {
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />
+      <NewCanvasDialog />
       <IdentityManagerModal />
       <AgentProfilePromptModal />
     </div>

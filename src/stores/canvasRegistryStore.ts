@@ -20,6 +20,7 @@ import type { SceneDocument } from "../types/scene";
 import type { WorkspaceCanvas } from "../types/workspace";
 import { DEFAULT_CANVAS_NAME } from "../types/workspace";
 import { useWorkspaceStore } from "./workspaceStore";
+import { nextCanvasName } from "../canvas/canvasNames";
 
 let canvasIdCounter = 0;
 
@@ -138,7 +139,7 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
       );
       const id = generateCanvasId();
       const finalName = uniqueCanvasName(
-        name?.trim() || `Canvas ${canvases.length + 1}`,
+        name?.trim() || nextCanvasName(canvases.map((c) => c.name)),
         updatedExisting,
       );
       const fresh: WorkspaceCanvas = {

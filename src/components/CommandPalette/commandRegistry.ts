@@ -489,9 +489,9 @@ function canvasCommands(ctx: CommandContext): PaletteCommand[] {
     section: "canvas",
     title: ctx.t["canvas.command.new"],
     keywords: ["canvas", "workdesk", "workspace", "create", "add", "new"],
-    hint: shortcutHint("openCanvasManager", isMac),
+    // No hint: the chord shown here opened the canvas list, not a new canvas.
     perform: () => {
-      useCanvasRegistryStore.getState().createCanvas();
+      useCanvasManagerStore.getState().openNewCanvas();
     },
   });
 

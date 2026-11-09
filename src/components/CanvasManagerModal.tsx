@@ -90,7 +90,6 @@ export function CanvasManagerModal() {
 
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
-  const createCanvas = useCanvasRegistryStore((s) => s.createCanvas);
   const renameCanvas = useCanvasRegistryStore((s) => s.renameCanvas);
   const deleteCanvas = useCanvasRegistryStore((s) => s.deleteCanvas);
   const switchCanvas = useCanvasRegistryStore((s) => s.switchCanvas);
@@ -151,9 +150,9 @@ export function CanvasManagerModal() {
   }, [editingId, draftName, renameCanvas]);
 
   const handleCreate = useCallback(() => {
-    createCanvas();
     closeManager();
-  }, [createCanvas, closeManager]);
+    useCanvasManagerStore.getState().openNewCanvas();
+  }, [closeManager]);
 
   const handleSwitch = useCallback(
     (canvasId: string) => {

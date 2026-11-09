@@ -1573,6 +1573,7 @@ export const zh = {
   "hub.canvases.projects": (n: number) => `${n} 个项目`,
   "hub.canvases.newCanvas": "新建画布",
   "hub.canvases.manage": "管理画布",
+  "hub.canvases.rename": (name: string) => `重命名“${name}”`,
   "canvas.manager.title": "画布",
   "canvas.manager.subtitle": (n: number) => `${n} 个画布`,
   "canvas.manager.switchTooltip": "切换到这个画布",
@@ -1581,6 +1582,9 @@ export const zh = {
   "canvas.manager.deleteLastDisabled": "至少保留一个画布",
   "canvas.manager.newCanvas": "新建画布",
   "canvas.manager.newCanvasHint": "空白工作台",
+  "canvas.new.title": "新建画布",
+  "canvas.new.nameLabel": "名称",
+  "canvas.new.create": "创建",
   "canvas.manager.cycleHint": "⌘⇧[  ⌘⇧]  切换",
   "canvas.delete.title": "删除画布?",
   "canvas.delete.body": (name: string) =>
