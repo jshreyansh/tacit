@@ -575,6 +575,11 @@ export class MacCustomUpdater {
       return "skipped";
     }
 
+    // Only a download that fails is an error worth showing. Not reaching
+    // GitHub to ask (offline, a timeout, GitHub's own 504s) is logged and
+    // returned as "skipped": a check you started says it couldn't connect,
+    // and the half-hourly one stays quiet instead of raising "Update error".
+    let downloadStarted = false;
     try {
       const ymlUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/latest-mac.yml`;
       const yml = await fetchText(ymlUrl);
@@ -624,6 +629,7 @@ export class MacCustomUpdater {
         // Non-critical — proceed without release notes
       }
 
+      downloadStarted = true;
       emitUpdaterEvent(this.window, "updater:update-available", {
         version: release.version,
         releaseNotes,
@@ -655,12 +661,14 @@ export class MacCustomUpdater {
         });
         return "newer";
       }
-      emitUpdaterEvent(this.window, "updater:error", {
-        message: error instanceof Error ? error.message : String(error),
-      });
+      if (downloadStarted) {
+        emitUpdaterEvent(this.window, "updater:error", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
       this.log.record({
         outcome: "skipped",
-        reason: "check-failed",
+        reason: downloadStarted ? "download-failed" : "check-failed",
         currentVersion,
         detail: error instanceof Error ? error.message : String(error),
       });
