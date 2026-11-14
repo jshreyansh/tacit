@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.4] - 2026-11-14
+
+### Fixed
+- **Opening a past session no longer freezes Tacit.** Opening a session from Sessions in its own tab could leave the window stuck at "Opening the session…" with the app unresponsive, whatever the session's size. Sessions now open normally.
+
 ## [0.43.3] - 2026-11-10
 
 ### Fixed
