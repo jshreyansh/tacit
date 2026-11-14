@@ -53,3 +53,23 @@ test("a tab that's gone stops showing; forgetting another leaves the open one", 
   view.closeSession("/tmp/session.jsonl");
   assert.equal(useWorkdeskViewStore.getState().openNode, null, "a past session's tab closed");
 });
+
+test("naming a session tab with the name it already has changes nothing", () => {
+  reset();
+  const view = useWorkdeskViewStore.getState();
+  view.openSession("/tmp/session.jsonl");
+  view.nameSession("/tmp/session.jsonl", "Manager session", "claude");
+  const named = useWorkdeskViewStore.getState().sessionTabs;
+  let updates = 0;
+  const stop = useWorkdeskViewStore.subscribe(() => updates++);
+  // The reader names its tab on every render it gets; a new tabs array each
+  // time re-rendered the view, which rendered the reader, without end.
+  view.nameSession("/tmp/session.jsonl", "Manager session", "claude");
+  view.nameSession("/tmp/missing.jsonl", "Other", "codex");
+  stop();
+  assert.equal(updates, 0);
+  assert.equal(useWorkdeskViewStore.getState().sessionTabs, named);
+
+  view.nameSession("/tmp/session.jsonl", "Renamed", "claude");
+  assert.equal(useWorkdeskViewStore.getState().sessionTabs[0].title, "Renamed");
+});

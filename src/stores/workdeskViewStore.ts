@@ -122,8 +122,14 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
     get().forgetTab({ kind: "session", id: filePath });
     set((s) => ({ sessionTabs: s.sessionTabs.filter((tab) => tab.id !== filePath) }));
   },
+  // Unchanged, it leaves the store alone: a new tabs array re-renders the
+  // view, the view renders the reader, and the reader names its tab again.
   nameSession: (filePath, title, agent) =>
-    set((s) => ({ sessionTabs: s.sessionTabs.map((tab) => (tab.id === filePath ? { ...tab, title, agent } : tab)) })),
+    set((s) => {
+      const tab = s.sessionTabs.find((t) => t.id === filePath);
+      if (!tab || (tab.title === title && tab.agent === agent)) return s;
+      return { sessionTabs: s.sessionTabs.map((t) => (t.id === filePath ? { ...t, title, agent } : t)) };
+    }),
   fileTabs: [],
   openFile: (filePath) => {
     const tabs = get().fileTabs;

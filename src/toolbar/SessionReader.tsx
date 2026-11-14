@@ -331,9 +331,12 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
     .join(" · ");
 
   // In a tab, the tab takes the session's name.
+  // Keyed on whether it's in a tab, not on `onLive` itself: the tab passes a
+  // new function each render, and naming the tab renders it again.
+  const inTab = onLive !== undefined;
   useEffect(() => {
-    if (onLive) useWorkdeskViewStore.getState().nameSession(timeline.filePath, titleText, agent);
-  }, [onLive, timeline.filePath, titleText, agent]);
+    if (inTab) useWorkdeskViewStore.getState().nameSession(timeline.filePath, titleText, agent);
+  }, [inTab, timeline.filePath, titleText, agent]);
 
   const jumpTo = (messageId: string) => {
     setActiveTurn(messageId);
