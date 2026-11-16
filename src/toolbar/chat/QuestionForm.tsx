@@ -134,7 +134,12 @@ export function QuestionForm({
         {question.question}
         {question.multiSelect && <span className="ml-1.5 text-[12px] font-normal text-[var(--text-muted)]">{t.chat_question_pick_any}</span>}
       </div>
-      <QuestionStep key={question.id} question={question} draft={drafts[index]} onChange={(d) => setDrafts((prev) => prev.map((x, i) => (i === index ? d : x)))} />
+      {/* The answers scroll on their own past a third of the window, so a
+          long question never pushes the conversation out of reach; the
+          question and Skip / Submit stay in view. */}
+      <div className="tc-question-answers -mr-1.5 max-h-[34vh] min-h-0 overflow-y-auto pr-1.5">
+        <QuestionStep key={question.id} question={question} draft={drafts[index]} onChange={(d) => setDrafts((prev) => prev.map((x, i) => (i === index ? d : x)))} />
+      </div>
       <div className="flex items-center gap-1.5">
         {/* Skips this question only: what was answered before it still goes back. */}
         <button

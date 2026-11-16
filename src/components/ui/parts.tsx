@@ -5,7 +5,8 @@
  * `tc-chip`, `tc-switch`, `tc-seg`, `tc-kbd`, `tc-empty`); these wrappers
  * keep the markup and accessibility the same everywhere.
  */
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function PanelHeader({
   title,
@@ -205,5 +206,149 @@ export function ChoiceRow({
         {description && <span className="tc-choice-desc">{description}</span>}
       </span>
     </button>
+  );
+}
+
+/**
+ * Tacit's own dropdown, in place of the system's <select> menu: a chip that
+ * opens a menu in the overlay glass, the chosen option ticked. Arrow keys
+ * move, Enter picks, Esc closes. The menu opens upward when there's no room
+ * below.
+ */
+export function Dropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  size = "sm",
+  width,
+}: {
+  value: T;
+  options: readonly { value: T; label: string; detail?: string }[];
+  onChange: (next: T) => void;
+  /** Read by screen readers; the chip shows the chosen option. */
+  label: string;
+  size?: "sm" | "md";
+  /** A fixed width for the chip; it fits its label otherwise. */
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<{ left: number; top?: number; bottom?: number; minWidth: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.value === value);
+
+  const show = () => {
+    const r = buttonRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const roomBelow = window.innerHeight - r.bottom;
+    const estimate = Math.min(320, options.length * 34 + 12);
+    setPlace(
+      roomBelow < estimate + 12
+        ? { left: r.left, bottom: window.innerHeight - r.top + 6, minWidth: r.width }
+        : { left: r.left, top: r.bottom + 6, minWidth: r.width },
+    );
+    setOpen(true);
+  };
+  const close = (refocus = true) => {
+    setOpen(false);
+    if (refocus) buttonRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!menuRef.current?.contains(target) && !buttonRef.current?.contains(target)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    // Start on the chosen option, so Enter keeps it.
+    requestAnimationFrame(() => {
+      const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+      const chosen = [...(items ?? [])].find((el) => el.getAttribute("aria-checked") === "true");
+      (chosen ?? items?.[0])?.focus();
+    });
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]") ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(at + 1) % items.length]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(at - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === "Tab") {
+      close(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${label}: ${current?.label ?? ""}`}
+        title={current?.label}
+        data-size={size}
+        className="tc-dropdown"
+        style={width ? { width } : undefined}
+        onClick={() => (open ? close(false) : show())}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            if (!open) show();
+          }
+        }}
+      >
+        <span className="min-w-0 flex-1 truncate text-left">{current?.label ?? ""}</span>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" className="shrink-0 opacity-70">
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open &&
+        place &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={label}
+            className="tc-menu-pop"
+            style={{ left: place.left, top: place.top, bottom: place.bottom, minWidth: place.minWidth }}
+            onKeyDown={onMenuKey}
+          >
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={o.value === value}
+                className="tc-menu-option"
+                onClick={() => {
+                  onChange(o.value);
+                  close();
+                }}
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{o.label}</span>
+                  {o.detail && <span className="tc-menu-option-detail">{o.detail}</span>}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="tc-menu-check">
+                  <path d="M3.5 8.5l3 3 6-7" />
+                </svg>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

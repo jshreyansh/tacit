@@ -552,14 +552,14 @@ export function WorkspaceManagerPill() {
   );
 
   const spawnAndAssignManager = useCallback(
-    (type: TerminalType) => {
+    (type: TerminalType, start?: { projectId: string; worktreeId: string; firstMessage: string }) => {
       const {
         focusedProjectId,
         focusedWorktreeId,
         projects: currentProjects,
       } = useProjectStore.getState();
-      let projectId = focusedProjectId;
-      let worktreeId = focusedWorktreeId;
+      let projectId = start?.projectId ?? focusedProjectId;
+      let worktreeId = start?.worktreeId ?? focusedWorktreeId;
       if (!projectId || !worktreeId) {
         // No terminal has been focused this session (common right after
         // launch, before you've clicked into anything) — currentProjects[0]
@@ -592,14 +592,20 @@ export function WorkspaceManagerPill() {
         const terminal = createTerminalInScene({ projectId, worktreeId, type });
         useProjectStore.getState().setTerminalChatMode(projectId, worktreeId, terminal.id, true);
         assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
-        void ensureManagerChat(terminal.id).then(() => sendToManagerChat(terminal.id, WORKSPACE_MANAGER_BRIEFING));
+        // Your first message goes right after the briefing; the chat queues
+        // it until the briefing's turn ends.
+        void ensureManagerChat(terminal.id)
+          .then(() => sendToManagerChat(terminal.id, WORKSPACE_MANAGER_BRIEFING))
+          .then(() => (start?.firstMessage ? sendToManagerChat(terminal.id, start.firstMessage) : undefined));
         return;
       }
       const terminal = createTerminalInScene({
         projectId,
         worktreeId,
         type,
-        initialPrompt: WORKSPACE_MANAGER_BRIEFING,
+        initialPrompt: start?.firstMessage
+          ? `${WORKSPACE_MANAGER_BRIEFING}\n\nThe user's first request:\n${start.firstMessage}`
+          : WORKSPACE_MANAGER_BRIEFING,
       });
       assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
     },
@@ -1378,7 +1384,11 @@ export function WorkspaceManagerPill() {
         </div>
       )}
       {/* No manager: a message can still start an agent directly. */}
-      {view === "roster" && !managerTerminal && <DirectStart />}
+      {view === "roster" && !managerTerminal && (
+        <DirectStart
+          onSend={(type, projectId, worktreeId, text) => spawnAndAssignManager(type, { projectId, worktreeId, firstMessage: text })}
+        />
+      )}
 
       {/* A past holder cannot be messaged, so the composer is replaced rather
           than disabled: typing here used to send to whoever holds the seat

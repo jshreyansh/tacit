@@ -59,7 +59,7 @@ function Chip({
     <span ref={ref} className="relative inline-flex min-w-0">
       <button
         type="button"
-        className="tc-rail-btn flex h-7 min-w-0 items-center gap-1.5 px-1.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        className="tc-rail-btn flex h-7 min-w-0 items-center gap-1.5 px-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${title}: ${label}`}
@@ -78,8 +78,8 @@ function Chip({
         <div
           role="menu"
           aria-label={title}
-          className="tc-float absolute bottom-9 z-30 max-h-[min(360px,60vh)] overflow-y-auto p-1.5"
-          style={{ borderRadius: 11, left: place.left, width: place.width }}
+          className="tc-menu-pop !absolute bottom-9 !max-h-[min(360px,60vh)]"
+          style={{ left: place.left, width: place.width, maxWidth: "none" }}
         >
           <div className="tc-eyebrow px-2.5 pb-1 pt-0.5">{title}</div>
           {items.map((item) => (
@@ -88,8 +88,7 @@ function Chip({
               type="button"
               role="menuitemradio"
               aria-checked={item.id === selected}
-              className="tc-rail-btn flex w-full items-start gap-2 px-2.5 py-1.5 text-left"
-              data-on={item.id === selected ? "" : undefined}
+              className="tc-menu-option !items-start"
               onClick={() => {
                 setOpen(false);
                 onPick(item.id);
@@ -97,10 +96,13 @@ function Chip({
             >
               {/* Level with the name's line. */}
               {itemIcon && <span className="mt-[3px] flex shrink-0 items-center">{itemIcon}</span>}
-              <span className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                 <span className="text-[13px] text-[var(--text-primary)]">{item.label}</span>
-                {item.description && <span className="text-[11px] leading-snug text-[var(--text-muted)]">{item.description}</span>}
+                {item.description && <span className="tc-menu-option-detail">{item.description}</span>}
               </span>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="tc-menu-check mt-1">
+                <path d="M3.5 8.5l3 3 6-7" />
+              </svg>
             </button>
           ))}
         </div>

@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
 import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
-import { useNotificationStore } from "../stores/notificationStore";
-import { createTerminalInScene } from "../actions/terminalSceneActions";
 import type { TerminalType } from "../types";
+import { Dropdown } from "../components/ui/parts";
 
 const AGENTS: { type: TerminalType; name: string }[] = [
   { type: "claude", name: "Claude Code" },
@@ -14,11 +13,15 @@ const AGENTS: { type: TerminalType; name: string }[] = [
 ];
 
 /**
- * With no manager, a message starts an agent directly: pick the folder and
- * which agent, type the task, Enter. The agent opens in that folder with the
- * task as its first prompt; its conversation is in its own tab or tile.
+ * With nobody in the seat, the panel's input still works: your first message
+ * makes the chosen agent this workdesk's manager, in the chosen folder, and
+ * the conversation carries on right here.
  */
-export function DirectStart() {
+export function DirectStart({
+  onSend,
+}: {
+  onSend: (type: TerminalType, projectId: string, worktreeId: string, text: string) => void;
+}) {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const availability = useAgentAvailabilityStore((s) => s.byId);
@@ -34,16 +37,13 @@ export function DirectStart() {
     const prompt = text.trim();
     const worktree = project?.worktrees[0];
     if (!prompt || !project || !worktree || !chosen) return;
-    createTerminalInScene({ projectId: project.id, worktreeId: worktree.id, type: chosen.type, initialPrompt: prompt });
+    onSend(chosen.type, project.id, worktree.id, prompt);
     setText("");
-    useNotificationStore.getState().notify("info", t.direct_started(chosen.name, project.name));
   };
 
-  const select =
-    "h-7 max-w-[45%] truncate rounded-full border border-[var(--border)] bg-transparent px-2.5 text-[11px] text-[var(--text-primary)] outline-none hover:border-[var(--border-hover)]";
   return (
     <div className="mx-3 mb-3 mt-auto flex shrink-0 flex-col gap-2 rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] p-2.5 focus-within:border-[var(--border-hover)]">
-      <div className="text-[11px] text-[var(--text-secondary)]">{t.direct_hint}</div>
+      <div className="text-[11px] text-[var(--text-secondary)]">{t.direct_hint(chosen?.name ?? "")}</div>
       <label className="flex">
         <span className="sr-only">{t.direct_placeholder}</span>
         <textarea
@@ -62,21 +62,19 @@ export function DirectStart() {
         />
       </label>
       <div className="flex items-center gap-1.5">
-        <select aria-label={t.direct_folder} className={select} value={project?.id ?? ""} onChange={(e) => setProjectId(e.target.value)}>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          label={t.direct_folder}
+          value={project?.id ?? ""}
+          options={projects.map((p) => ({ value: p.id, label: p.name, detail: p.path }))}
+          onChange={setProjectId}
+        />
         {installed.length > 0 ? (
-          <select aria-label={t.direct_agent} className={select} value={chosen?.type ?? ""} onChange={(e) => setAgent(e.target.value as TerminalType)}>
-            {installed.map((a) => (
-              <option key={a.type} value={a.type}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            label={t.direct_agent}
+            value={(chosen?.type ?? "") as TerminalType}
+            options={installed.map((a) => ({ value: a.type, label: t.direct_as_manager(a.name) }))}
+            onChange={(next) => setAgent(next)}
+          />
         ) : (
           <span className="text-[11px] text-[var(--text-secondary)]">{t.direct_no_agents}</span>
         )}

@@ -181,7 +181,7 @@ function Ring({ percent, color }: { percent: number; color: string }) {
   const length = 2 * Math.PI * r;
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="-rotate-90">
-      <circle cx="8" cy="8" r={r} fill="none" stroke="var(--surface-hover)" strokeWidth="2.2" />
+      <circle cx="8" cy="8" r={r} fill="none" stroke="var(--border-hover)" strokeWidth="2.2" />
       <circle
         cx="8"
         cy="8"
@@ -231,6 +231,8 @@ export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; 
         onClick={() => setOpen((v) => !v)}
       >
         <Ring percent={used ?? percent ?? 0} color={used !== undefined ? usedTone : tone} />
+        {/* The number says it's a meter, not a spinner. */}
+        <span className="ml-1 text-[11px] tabular-nums text-[var(--text-secondary)]">{Math.round(used ?? percent ?? 0)}%</span>
       </button>
       {open && (
         <div

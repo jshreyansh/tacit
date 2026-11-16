@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Dropdown } from "../components/ui/parts";
 import {
   defaultConnectionType,
   isTwoWay,
@@ -289,21 +290,12 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
         <div className="px-3 pb-2 flex flex-col gap-1.5">
           <label className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
             <span>{t.connection_role_label.replace("{other}", toName)}</span>
-            <select
+            <Dropdown
+              label={t.connection_role_label.replace("{other}", toName)}
               value={connection.role ?? ""}
-              aria-label={t.connection_role_label.replace("{other}", toName)}
-              className="bg-transparent border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
-              onChange={(event) =>
-                setConnectionRoleInScene(connection.id, isWireRole(event.target.value) ? event.target.value : null)
-              }
-            >
-              <option value="">{t.connection_role_none}</option>
-              {WIRE_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
+              options={[{ value: "", label: t.connection_role_none }, ...WIRE_ROLES.map((role) => ({ value: role as string, label: role }))]}
+              onChange={(next) => setConnectionRoleInScene(connection.id, isWireRole(next) ? next : null)}
+            />
           </label>
           <span className="tc-eyebrow">{t.connection_track_label}</span>
         </div>

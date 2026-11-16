@@ -2243,3 +2243,62 @@ a.tc-kbd[data-dragover="true"] {
 .tc-seg-quiet .tc-seg { border-color: transparent; background: color-mix(in srgb, var(--surface-hover) 55%, transparent); }
 .tc-seg-quiet .tc-seg > button { height: 28px; }
 .tc-seg-quiet .tc-seg > button[aria-selected="true"] { background: var(--border-hover); }
+
+/* In a question, an answer's description shows two lines until it's chosen. */
+.tc-question-answers .tc-choice:not([data-selected="true"]) .tc-choice-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Dropdown chip and menu (Dropdown in parts.tsx): Tacit's own, not the
+   system's <select> menu. Menus share the overlay glass. */
+.tc-dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  transition: border-color var(--duration-instant) var(--ease-out-soft), background-color var(--duration-instant) var(--ease-out-soft);
+}
+.tc-dropdown[data-size="md"] { height: 32px; border-radius: 9px; }
+.tc-dropdown:hover, .tc-dropdown[aria-expanded="true"] { border-color: var(--border-hover); background: var(--surface-hover); }
+.tc-menu-pop {
+  position: fixed;
+  z-index: 400;
+  max-width: 320px;
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  corner-shape: squircle;
+  background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 55%, transparent);
+}
+.tc-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 7px;
+  text-align: left;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+.tc-menu-option:hover, .tc-menu-option:focus-visible { background: var(--surface-hover); outline: none; }
+.tc-menu-option-detail { font-size: var(--text-xs); color: var(--text-secondary); line-height: var(--leading-snug); }
+.tc-menu-check { flex: none; opacity: 0; color: var(--text-primary); }
+.tc-menu-option[aria-checked="true"] .tc-menu-check { opacity: 1; }

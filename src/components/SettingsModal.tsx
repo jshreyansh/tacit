@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { Switch } from "./ui/parts";
+import { Dropdown, Switch } from "./ui/parts";
 import { useLocaleStore } from "../stores/localeStore";
 import { useThemeStore } from "../stores/themeStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -196,18 +196,14 @@ function DefaultEditorRow() {
   if (!current) return null;
   return (
     <SettingsRow label={t["editor.defaultLabel"]} description={t["editor.defaultHint"]}>
-      <select
+      <Dropdown
+        size="md"
+        width={180}
+        label={t["editor.defaultLabel"]}
         value={current.id}
-        onChange={(e) => setDefaultEditor(e.target.value)}
-        aria-label={t["editor.defaultLabel"]}
-        className="h-8 min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 text-[12px] font-medium text-[var(--text-primary)] outline-none hover:border-[var(--border-hover)]"
-      >
-        {editors.map((editor) => (
-          <option key={editor.id} value={editor.id}>
-            {editor.name}
-          </option>
-        ))}
-      </select>
+        options={editors.map((editor) => ({ value: editor.id, label: editor.name }))}
+        onChange={setDefaultEditor}
+      />
     </SettingsRow>
   );
 }
