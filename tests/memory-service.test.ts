@@ -36,6 +36,36 @@ This is the body content.
   fs.rmSync(tmpDir, { recursive: true });
 });
 
+test("parseMemoryFile reads a type nested under metadata, and unquotes values", async () => {
+  const { parseMemoryFile } = await import(
+    `../electron/memory-service.ts?nested-${Date.now()}`
+  );
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mem-test-"));
+  const filePath = path.join(tmpDir, "release-flow.md");
+  fs.writeFileSync(
+    filePath,
+    `---
+name: release-flow
+description: "Each change ships as a version"
+metadata:
+  node_type: memory
+  type: project
+  modified: 2026-10-30T12:01:55.035Z
+---
+
+Body.
+`,
+  );
+
+  const result = parseMemoryFile(filePath);
+  assert.equal(result.type, "project");
+  assert.equal(result.description, "Each change ships as a version");
+  assert.equal(result.name, "release-flow");
+
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
 test("parseMemoryFile returns null for non-existent file", async () => {
   const { parseMemoryFile } = await import(
     `../electron/memory-service.ts?nofile-${Date.now()}`

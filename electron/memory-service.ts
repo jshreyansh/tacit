@@ -60,9 +60,15 @@ export function parseMemoryFile(filePath: string): MemoryFile | null {
     const frontmatter = fmMatch[1];
     const body = fmMatch[2].trim();
 
+    const unquote = (value: string): string => value.trim().replace(/^(["'])(.*)\1$/, "$2");
     const get = (key: string): string => {
       const m = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
-      return m ? m[1].trim() : "";
+      if (m) return unquote(m[1]);
+      // Newer Claude Code memory files keep the type (and other fields) in
+      // an indented `metadata:` block instead of at the top level.
+      const block = frontmatter.match(/^metadata:[ \t]*\n((?:[ \t]+.*(?:\n|$))*)/m);
+      const nested = block?.[1].match(new RegExp(`^[ \\t]+${key}:\\s*(.+)$`, "m"));
+      return nested ? unquote(nested[1]) : "";
     };
 
     return {
