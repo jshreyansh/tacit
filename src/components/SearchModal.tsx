@@ -441,7 +441,7 @@ export function SearchModal() {
           )}
           {renderScopeChip(
             "all",
-            (t.search_scope_chip_all as string) ?? "All canvas",
+            (t.search_scope_chip_all as string) ?? "Whole workdesk",
           )}
           {scopeContextLabel && (
             <span

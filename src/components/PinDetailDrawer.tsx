@@ -407,7 +407,7 @@ export function PinDetailDrawer() {
         aria-hidden={!isOpen}
         role="dialog"
         aria-modal="false"
-        aria-label={pin?.title ?? "Pin detail"}
+        aria-label={pin?.title ?? "Task detail"}
       >
         {/* Header strip — also a drag source for the current pin.
             py-2.5 keeps this header's bottom border on the same Y as the
@@ -572,7 +572,7 @@ export function PinDetailDrawer() {
                 ) : bodyIsHtmlDocument ? (
                   <iframe
                     className="h-[calc(100vh-220px)] min-h-[520px] w-full rounded-md border border-[var(--border)] bg-white"
-                    title={pin?.title ?? "Pin HTML"}
+                    title={pin?.title ?? "Task HTML"}
                     sandbox="allow-scripts"
                     srcDoc={htmlDocumentSrc}
                   />
