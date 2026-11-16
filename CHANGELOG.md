@@ -4,6 +4,17 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.4] - 2026-11-16
+
+### Changed
+- **No manager yet? Just type.** With nobody in the seat, your first message makes the chosen agent the manager (in the folder you pick) and the chat continues in the panel.
+- **Dropdowns are Tacit's own** instead of the system menu, everywhere: ticked choice, arrow keys, Esc.
+- **Composer menus** (model, effort, mode) are solid, tick the chosen option, and no longer show two highlighted rows.
+- The usage ring beside send shows its percentage.
+
+### Fixed
+- **A long question from an agent no longer hides the chat.** Its answers scroll inside it, and the question, Skip and Submit stay in view.
+
 ## [0.44.3] - 2026-11-16
 
 ### Changed
