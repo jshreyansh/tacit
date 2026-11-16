@@ -4,6 +4,20 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.7] - 2026-11-16
+
+### Changed
+- **One look across panels.** Section labels, rows, chips, switches, tabs and keyboard hints now come from one set of shared parts, sized on one type scale. Text that was too faint to read (dates, counts, empty states, labels) is readable now.
+- **Manager panel tabs.** Chat, Sessions and Tasks are labelled tabs, with a dot when one is waiting on you.
+- **Sessions.** One row style, one time per row, and a Live chip for the running manager. Message counts are gone: they were guesses from file size and could be off by a hundred times.
+- **Memory.** Opens as a list grouped by type, newest first, with search; the graph is one click away. "Worktree" is now "Project".
+- **Hub.** One name, agent icons, a Current chip on the workdesk you're in, empty sections as one line, and tips folded away.
+- **Settings.** Switches for on/off settings, a menu for the default editor, one title per page, and the version on one line.
+- New workdesks are named "Workdesk 2", "Workdesk 3"… instead of "Canvas 2".
+
+### Fixed
+- Unsaved-changes and delete confirmations use Tacit's own dialog instead of the system's plain box; deleting a file now says it's permanent.
+
 ## [0.43.6] - 2026-11-16
 
 ### Fixed
