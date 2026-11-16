@@ -4,6 +4,16 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.8] - 2026-11-16
+
+### Added
+- **A new workdesk shows how to start.** Its name, a card to add a folder (button, drop or shortcut) with the next step spelled out, and one-click chips for folders from your other workdesks. The grid view shows the same. Adding the first folder takes you to choosing who runs the workdesk.
+- **Folder bar.** The workdesk view lists every folder as a chip with + to add another; each chip's menu opens a terminal there, opens it in your editor, or removes it from the workdesk.
+
+### Changed
+- Removing the manager asks first and says what keeps running (its terminal, its workers, its chat in Sessions).
+- Right-click menus match the rest of the app: readable type, a fitted width, hover fills.
+
 ## [0.43.7] - 2026-11-16
 
 ### Changed
