@@ -4,6 +4,13 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.9] - 2026-11-16
+
+### Fixed
+- **Answering an agent's question.** In a task that needs you and in the chat, the answers are full-width rows that fit their text; long answers no longer spill out of their buttons. The question reads first, with who's asking above it.
+- **Manager panel header.** The tabs sit with the header as one block instead of a second box under a line.
+- **Task filters** fit on one row and hide the empty ones; a task's owners are one plain line.
+
 ## [0.43.8] - 2026-11-16
 
 ### Added
