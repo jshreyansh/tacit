@@ -4,6 +4,12 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.3] - 2026-11-16
+
+### Changed
+- **Workdesk overview** cards name agents properly and use the same status chips as Sessions.
+- **Sessions a manager started** are titled by their job ("Worker · Lantern launch page") instead of the start of their briefing.
+
 ## [0.44.2] - 2026-11-16
 
 ### Changed
