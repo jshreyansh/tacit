@@ -213,7 +213,7 @@ export function CanvasManagerModal() {
               type="button"
               onClick={closeManager}
               aria-label={t.cancel}
-              className="tc-row-icon inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+              className="tc-row-icon inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
             >
               <CloseGlyph />
             </button>
@@ -286,7 +286,7 @@ export function CanvasManagerModal() {
                       }}
                       aria-label={t["canvas.manager.rename"]}
                       title={t["canvas.manager.rename"]}
-                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
                     >
                       <PencilGlyph />
                     </button>
@@ -300,7 +300,7 @@ export function CanvasManagerModal() {
                           ? t["canvas.manager.deleteLastDisabled"]
                           : t["canvas.manager.delete"]
                       }
-                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--red)] disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--red)] disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       <TrashGlyph />
                     </button>
@@ -328,7 +328,7 @@ export function CanvasManagerModal() {
               >
                 {t["canvas.manager.newCanvas"]}
               </span>
-              <span className="tc-meta" style={{ color: "var(--text-faint)" }}>
+              <span className="tc-meta" style={{ color: "var(--text-muted)" }}>
                 {t["canvas.manager.newCanvasHint"]}
               </span>
             </button>
@@ -336,17 +336,17 @@ export function CanvasManagerModal() {
 
           <footer
             className="flex items-center gap-3 px-4 py-2 border-t border-[var(--border)]"
-            style={{ color: "var(--text-faint)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             <span
               className="tc-timestamp"
-              style={{ color: "var(--text-faint)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {t["canvas.manager.cycleHint"]}
             </span>
             <span
               className="tc-timestamp ml-auto"
-              style={{ color: "var(--text-faint)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {t["hub.escCloses"]}
             </span>

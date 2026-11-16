@@ -76,7 +76,7 @@ export function TaskControl({
     return (
       <div ref={rootRef} className="relative shrink-0 border-b border-[var(--border)]">
         <button
-          className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[11.5px] text-[var(--text-muted)] transition-colors duration-quick hover:bg-[color-mix(in_srgb,var(--text-primary)_5%,transparent)]"
+          className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[12px] text-[var(--text-muted)] transition-colors duration-quick hover:bg-[color-mix(in_srgb,var(--text-primary)_5%,transparent)]"
           style={open ? { background: "color-mix(in srgb, var(--text-primary) 6%, transparent)" } : undefined}
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
@@ -120,7 +120,7 @@ export function TaskControl({
         {run ? (
           <>
             <span className="flex min-w-0 flex-col leading-tight">
-              <span className="text-[9.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.task_recording_short}</span>
+              <span className="tc-eyebrow">{t.task_recording_short}</span>
               <span className="max-w-[11rem] truncate text-[12px] text-[var(--text-primary)]">{name}</span>
             </span>
             <span className="tc-mono tabular-nums text-[11px] text-[var(--text-muted)]">
@@ -180,7 +180,7 @@ function TaskPanel({
   const input = (
     <input
       ref={inputRef}
-      className="w-full rounded-md border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--accent)]"
+      className="w-full rounded-md border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
       placeholder={t.task_goal_placeholder}
       value={text}
       maxLength={RUN_GOAL_MAX_LENGTH}
@@ -240,11 +240,11 @@ function TaskPanel({
           <div className="mt-2.5 grid grid-cols-2 gap-1.5">
             <div className="rounded-lg border border-[var(--border)] px-2.5 py-1.5">
               <div className="text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{run.entries}</div>
-              <div className="text-[10.5px] text-[var(--text-muted)]">{t.task_count_entries}</div>
+              <div className="text-[11px] text-[var(--text-muted)]">{t.task_count_entries}</div>
             </div>
             <div className="rounded-lg border border-[var(--border)] px-2.5 py-1.5">
               <div className="tc-mono text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{elapsed(run.started_at)}</div>
-              <div className="text-[10.5px] text-[var(--text-muted)]">{startedLine(run, t)}</div>
+              <div className="text-[11px] text-[var(--text-muted)]">{startedLine(run, t)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-1">
@@ -267,7 +267,7 @@ function TaskPanel({
             {editing === "new" ? (
               <>
                 {input}
-                <div className="mt-1 text-[var(--text-faint)]">{t.task_new_hint}</div>
+                <div className="mt-1 text-[var(--text-muted)]">{t.task_new_hint}</div>
               </>
             ) : (
               <button className={button} title={t.task_new_hint} onClick={() => setEditing("new")}>
@@ -286,8 +286,8 @@ function TaskPanel({
           </div>
         </>
       )}
-      <p className="mt-2.5 leading-snug text-[var(--text-faint)]">{t.task_panel_what}</p>
-      <p className="mt-1.5 leading-snug text-[var(--text-faint)]">{t.task_panel_how}</p>
+      <p className="mt-2.5 leading-snug text-[var(--text-muted)]">{t.task_panel_what}</p>
+      <p className="mt-1.5 leading-snug text-[var(--text-muted)]">{t.task_panel_how}</p>
     </div>
   );
 }

@@ -24,14 +24,14 @@ function Row({ onClick, children, disabled, title, more }: { onClick: () => void
     <button
       type="button"
       role="menuitem"
-      className="tc-rail-btn flex h-9 w-full items-center gap-2.5 px-2.5 text-left text-[12.5px] text-[var(--text-primary)] disabled:opacity-45"
+      className="tc-rail-btn flex h-9 w-full items-center gap-2.5 px-2.5 text-left text-[13px] text-[var(--text-primary)] disabled:opacity-45"
       onClick={onClick}
       disabled={disabled}
       title={title}
     >
       {children}
       {more && (
-        <svg className="ml-auto text-[var(--text-faint)]" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg className="ml-auto text-[var(--text-muted)]" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M6 3l5 5-5 5" />
         </svg>
       )}
@@ -67,7 +67,7 @@ function AgentRow({ entry, onPick }: { entry: DockEntry; onPick: (type: Terminal
         <DockIcon art={entry.art} scale={0.75} />
       </span>
       <span className="truncate">{entry.label(t)}</span>
-      {missing && <span className="ml-auto text-[11px] text-[var(--text-faint)]">{t.workdesk_add_not_installed}</span>}
+      {missing && <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.workdesk_add_not_installed}</span>}
     </Row>
   );
 }
@@ -137,7 +137,7 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
           {step !== "root" && (
             <button
               type="button"
-              className="tc-rail-btn mb-1 flex h-7 w-full items-center gap-1.5 px-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-faint)] hover:text-[var(--text-primary)]"
+              className="tc-eyebrow tc-rail-btn mb-1 flex h-7 w-full items-center gap-1.5 px-2 hover:text-[var(--text-primary)]"
               onClick={() => setStep("root")}
             >
               <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

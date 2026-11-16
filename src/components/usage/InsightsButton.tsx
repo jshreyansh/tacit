@@ -162,7 +162,7 @@ export function InsightsButton({
                 {error.message}
               </div>
               {error.detail && (
-                <pre className="text-[9px] text-[var(--red)]/60 mt-1 whitespace-pre-wrap break-all">
+                <pre className="text-[10px] text-[var(--red)]/60 mt-1 whitespace-pre-wrap break-all">
                   {error.detail}
                 </pre>
               )}

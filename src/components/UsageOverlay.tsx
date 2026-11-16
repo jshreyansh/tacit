@@ -737,13 +737,13 @@ export function UsageOverlay() {
                   <span>
                     {fmtTokens(activeTotalTokens)} {t.usage_tokens}
                   </span>
-                  <span className="text-[var(--text-faint)]">·</span>
+                  <span className="text-[var(--text-muted)]">·</span>
                   <span>
                     {activeSummary.sessions} {t.usage_sessions}
                   </span>
                   {monthStats.mtd > 0 && (
                     <>
-                      <span className="text-[var(--text-faint)]">·</span>
+                      <span className="text-[var(--text-muted)]">·</span>
                       <span>
                         {fmtCost(monthStats.mtd)} {labelMtd.toLowerCase()}
                       </span>

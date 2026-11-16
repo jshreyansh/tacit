@@ -81,11 +81,11 @@ export function TerminalFindOverlay({ terminalId }: Props) {
     `shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none transition-colors duration-100 ${
       active
         ? "bg-[color-mix(in_srgb,var(--amber)_28%,transparent)] text-[var(--amber)]"
-        : "text-[var(--text-faint)] hover:bg-[var(--border)] hover:text-[var(--text-secondary)]"
+        : "text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text-secondary)]"
     }`;
 
   const navIconClass =
-    "shrink-0 rounded p-1 text-[var(--text-faint)] hover:bg-[var(--border)] hover:text-[var(--text-primary)] transition-colors duration-100";
+    "shrink-0 rounded p-1 text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text-primary)] transition-colors duration-100";
 
   return (
     <div
@@ -104,7 +104,7 @@ export function TerminalFindOverlay({ terminalId }: Props) {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        className="min-w-0 flex-1 bg-transparent py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+        className="min-w-0 flex-1 bg-transparent py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         style={{ fontFamily: '"Geist Mono", monospace' }}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -121,7 +121,7 @@ export function TerminalFindOverlay({ terminalId }: Props) {
       />
       {counterText && (
         <span
-          className="shrink-0 text-[10px] text-[var(--text-faint)] tabular-nums"
+          className="shrink-0 text-[10px] text-[var(--text-muted)] tabular-nums"
           style={{ fontFamily: '"Geist Mono", monospace' }}
         >
           {counterText}
@@ -199,7 +199,7 @@ export function TerminalFindOverlay({ terminalId }: Props) {
       <button
         type="button"
         title={t.terminal_find_close}
-        className="shrink-0 rounded p-1 text-[var(--text-faint)] transition-colors duration-100 hover:bg-[var(--border)] hover:text-[var(--red)]"
+        className="shrink-0 rounded p-1 text-[var(--text-muted)] transition-colors duration-100 hover:bg-[var(--border)] hover:text-[var(--red)]"
         onClick={close}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>

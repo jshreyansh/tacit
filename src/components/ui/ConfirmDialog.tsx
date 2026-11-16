@@ -193,7 +193,7 @@ export function ConfirmDialog({
             type="button"
             disabled={busy}
             onClick={onCancel}
-            className="shrink-0 p-0.5 rounded text-[var(--text-faint)] hover:text-[var(--text-primary)] transition-colors duration-quick disabled:opacity-50"
+            className="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-quick disabled:opacity-50"
             aria-label={t.close}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

@@ -75,7 +75,7 @@ function StashCard({
           {t.stash_restore}
         </button>
         <button
-          className="tc-meta tc-mono px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-faint)] hover:text-[var(--red)] hover:bg-[var(--surface-hover)] transition-colors"
+          className="tc-meta tc-mono px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--red)] hover:bg-[var(--surface-hover)] transition-colors"
           style={{
             transitionDuration: "var(--duration-quick)",
             transitionTimingFunction: "var(--ease-out-soft)",
@@ -193,7 +193,7 @@ export function StashBox() {
                 </button>
               )}
               <button
-                className="text-[var(--text-faint)] hover:text-[var(--text-primary)] transition-colors p-0.5"
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-0.5"
                 style={{
                   transitionDuration: "var(--duration-quick)",
                   transitionTimingFunction: "var(--ease-out-soft)",

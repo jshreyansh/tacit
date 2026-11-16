@@ -368,7 +368,7 @@ function TerminalTypeBadge({ type }: TerminalTypeBadgeProps) {
   return (
     <span
       aria-hidden
-      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-semibold tc-mono"
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold tc-mono"
       style={{
         color: "var(--text-muted)",
         backgroundColor:
@@ -402,14 +402,14 @@ function SectionShell({
         {trailing != null && trailing !== "" && (
           <span
             className="tc-meta tc-mono"
-            style={{ color: "var(--text-faint)", letterSpacing: 0 }}
+            style={{ color: "var(--text-muted)", letterSpacing: 0 }}
           >
             {trailing}
           </span>
         )}
       </div>
       {showEmpty ? (
-        <div className="tc-label" style={{ color: "var(--text-faint)" }}>
+        <div className="tc-label" style={{ color: "var(--text-muted)" }}>
           {empty}
         </div>
       ) : (
@@ -751,7 +751,7 @@ export function Hub() {
                     <span
                       className="tc-timestamp shrink-0 tabular-nums"
                       style={{
-                        color: "var(--text-faint)",
+                        color: "var(--text-muted)",
                         minWidth: 38,
                         textAlign: "right",
                       }}
@@ -808,13 +808,7 @@ export function Hub() {
                         )}
                       </div>
                     </div>
-                    <kbd
-                      className="tc-kbd shrink-0"
-                      style={{
-                        fontSize: "10px",
-                        padding: "1px 6px",
-                        letterSpacing: 0,
-                      }}
+                    <kbd className="tc-kbd"
                     >
                       ⌥{slot}
                     </kbd>
@@ -944,7 +938,7 @@ export function Hub() {
                         {isActive && (
                           <span
                             className="tc-eyebrow shrink-0"
-                            style={{ color: "var(--text-faint)" }}
+                            style={{ color: "var(--text-muted)" }}
                           >
                             {t["hub.canvases.activeBadge"]}
                           </span>
@@ -952,7 +946,7 @@ export function Hub() {
                         {/* Tasks there waiting on you, in the amber the Needs you dots use. */}
                         {waiting > 0 && (
                           <span
-                            className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-medium tabular-nums"
+                            className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums"
                             style={{ background: "color-mix(in srgb, var(--amber) 22%, transparent)", color: "var(--amber)" }}
                             title={t["hub.canvases.needsYou"](waiting)}
                             aria-label={t["hub.canvases.needsYou"](waiting)}
@@ -978,7 +972,7 @@ export function Hub() {
                     }}
                     title={t["hub.canvases.rename"](canvas.name)}
                     aria-label={t["hub.canvases.rename"](canvas.name)}
-                    className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-faint)] opacity-0 transition-opacity duration-quick hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] group-hover:opacity-100"
+                    className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-muted)] opacity-0 transition-opacity duration-quick hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] group-hover:opacity-100"
                   >
                     <svg
                       width="12"
@@ -1042,7 +1036,7 @@ export function Hub() {
                   className="tc-row-hover flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
                 >
                   <span
-                    className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-faint)]"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-muted)]"
                     aria-hidden
                   >
                     <svg
@@ -1061,18 +1055,12 @@ export function Hub() {
                   </span>
                   <span
                     className="tc-meta flex-1"
-                    style={{ color: "var(--text-faint)" }}
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {t["hub.canvases.manage"]}
                   </span>
                   {/* The chord opens this list; there is none for a new canvas. */}
-                  <kbd
-                    className="tc-kbd shrink-0"
-                    style={{
-                      fontSize: "10px",
-                      padding: "1px 6px",
-                      letterSpacing: 0,
-                    }}
+                  <kbd className="tc-kbd"
                   >
                     {formatShortcut(shortcuts.openCanvasManager, isMac)}
                   </kbd>
@@ -1089,7 +1077,7 @@ export function Hub() {
                 className="tc-row-hover flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
               >
                 <span
-                  className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-faint)]"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-muted)]"
                   aria-hidden
                 >
                   <svg
@@ -1108,7 +1096,7 @@ export function Hub() {
                 </span>
                 <span
                   className="tc-meta flex-1"
-                  style={{ color: "var(--text-faint)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   {t["hub.identities.manage"]}
                 </span>
@@ -1160,13 +1148,7 @@ export function Hub() {
                           {hint.label}
                         </span>
                         {chord && (
-                          <kbd
-                            className="tc-kbd shrink-0"
-                            style={{
-                              fontSize: "10px",
-                              padding: "1px 6px",
-                              letterSpacing: 0,
-                            }}
+                          <kbd className="tc-kbd"
                           >
                             {chord}
                           </kbd>
@@ -1187,18 +1169,18 @@ export function Hub() {
         className="flex items-center gap-3 px-4 py-2"
         style={{
           borderTop: "1px solid var(--border)",
-          color: "var(--text-faint)",
+          color: "var(--text-muted)",
         }}
       >
-        <span className="tc-timestamp" style={{ color: "var(--text-faint)" }}>
+        <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
           {formatShortcut(shortcuts.toggleHub, isMac)}
         </span>
-        <span className="tc-timestamp" style={{ color: "var(--text-faint)" }}>
+        <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
           {t["hub.toggle"]}
         </span>
         <span
           className="tc-timestamp ml-auto"
-          style={{ color: "var(--text-faint)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {t["hub.escCloses"]}
         </span>

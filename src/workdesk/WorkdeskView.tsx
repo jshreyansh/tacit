@@ -116,7 +116,7 @@ function StatusLabel({ card, now, t }: { card: TerminalCard; now: number; t: Dic
     return <span style={{ color: error ? "var(--red)" : "var(--amber)" }}>{error ? t.workdesk_state_error : t.workdesk_state_needs_you}</span>;
   }
   if (card.state === "done") return <span style={{ color: "var(--green)" }}>{t.workdesk_state_done}</span>;
-  return <span className="text-[var(--text-faint)]">{t.workdesk_state_idle}</span>;
+  return <span className="text-[var(--text-muted)]">{t.workdesk_state_idle}</span>;
 }
 
 const cardCls =
@@ -171,7 +171,7 @@ function TerminalCardView({
             {t.workdesk_manager_badge}
           </span>
         )}
-        <span className="min-w-0 truncate text-[11.5px] text-[var(--text-muted)]">{card.title !== card.type ? card.title : card.subtitle}</span>
+        <span className="min-w-0 truncate text-[12px] text-[var(--text-muted)]">{card.title !== card.type ? card.title : card.subtitle}</span>
         <span className="ml-auto shrink-0 pl-1 text-[11px]"><StatusLabel card={card} now={now} t={t} /></span>
       </div>
       <div className="tc-mono min-h-0 flex-1 overflow-hidden px-3 py-2.5 text-[11px] leading-[1.65] text-[var(--text-muted)]">
@@ -179,7 +179,7 @@ function TerminalCardView({
           <div className="truncate text-[var(--text-secondary)]">› {card.subtitle}</div>
         )}
         {card.chatMode && lines.length === 0 && <div className="truncate italic">{t.workdesk_in_chat}</div>}
-        {lines.length === 0 && !card.chatMode && <div className="truncate italic text-[var(--text-faint)]">{t.workdesk_no_output}</div>}
+        {lines.length === 0 && !card.chatMode && <div className="truncate italic text-[var(--text-muted)]">{t.workdesk_no_output}</div>}
         {lines.map((line, i) => (
           <div key={i} className={`truncate ${i === lines.length - 1 ? "text-[var(--text-secondary)]" : ""}`}>
             {line}
@@ -200,7 +200,7 @@ function BrowserCardView({ card, picture }: { card: BrowserCard; picture: string
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><GlobeIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
-        <span className="tc-mono ml-auto max-w-[45%] shrink-0 truncate pl-1 text-[11px] text-[var(--text-faint)]">{card.host}</span>
+        <span className="tc-mono ml-auto max-w-[45%] shrink-0 truncate pl-1 text-[11px] text-[var(--text-muted)]">{card.host}</span>
       </div>
       {picture ? (
         <div className="m-2 min-h-0 flex-1 overflow-hidden rounded-md border border-[var(--border)]">
@@ -208,7 +208,7 @@ function BrowserCardView({ card, picture }: { card: BrowserCard; picture: string
         </div>
       ) : (
         <div className="m-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-md border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 py-2.5">
-          <div className="line-clamp-2 text-[12.5px] font-medium text-[var(--text-primary)]">{card.title}</div>
+          <div className="line-clamp-2 text-[13px] font-medium text-[var(--text-primary)]">{card.title}</div>
           <div className="tc-mono truncate text-[11px] text-[var(--text-muted)]">{card.url}</div>
         </div>
       )}
@@ -237,7 +237,7 @@ function TaskCardView({ card, t }: { card: TaskCard; t: Dict }) {
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><TaskIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
-        <span className="ml-auto shrink-0 rounded-full border px-1.5 text-[10.5px]" style={{ color, borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}>
+        <span className="ml-auto shrink-0 rounded-full border px-1.5 text-[11px]" style={{ color, borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}>
           {statusLabel(card.status, t)}
         </span>
       </div>
@@ -276,7 +276,7 @@ function OwnerDot({ owner }: { owner: string }) {
   return view.icon ? (
     <img src={view.icon} alt={view.label} title={view.label} className="h-3.5 w-3.5 object-contain" draggable={false} />
   ) : (
-    <span className="text-[10.5px] text-[var(--text-faint)]">{view.label}</span>
+    <span className="text-[11px] text-[var(--text-muted)]">{view.label}</span>
   );
 }
 
@@ -290,7 +290,7 @@ function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><NoteIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
-        <span className="ml-auto shrink-0 pl-1 text-[11px] text-[var(--text-faint)]">{t.workdesk_note}</span>
+        <span className="ml-auto shrink-0 pl-1 text-[11px] text-[var(--text-muted)]">{t.workdesk_note}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap px-3 py-2.5 text-[12px] leading-[1.7] text-[var(--text-secondary)]">
         {card.body}
@@ -302,8 +302,8 @@ function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
 function SectionHead({ title, summary }: { title: string; summary: string }) {
   return (
     <div className="mt-1 flex items-baseline gap-2">
-      <span className="text-[11px] uppercase tracking-[0.05em] text-[var(--text-muted)]">{title}</span>
-      <span className="text-[11px] text-[var(--text-faint)]">{summary}</span>
+      <span className="tc-eyebrow">{title}</span>
+      <span className="text-[11px] text-[var(--text-muted)]">{summary}</span>
     </div>
   );
 }
@@ -547,7 +547,7 @@ export function WorkdeskView() {
                 </button>
                 <button
                   type="button"
-                  className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 ${active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"}`}
+                  className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 ${active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"}`}
                   onClick={() => closeTab(card)}
                   aria-label={closeLabel}
                   title={closeLabel}
@@ -600,9 +600,9 @@ export function WorkdeskView() {
               />
               {sections.browserGroups.map((group) => (
                 <div key={group.identityId} className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
                     <span
-                      className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold"
+                      className="flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold"
                       style={{ background: "var(--surface-hover)", color: "var(--text-primary)" }}
                       aria-hidden="true"
                     >

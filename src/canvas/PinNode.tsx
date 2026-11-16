@@ -131,7 +131,7 @@ function MoreMenu({ pin }: { pin: Pin }) {
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
-  const item = "tc-rail-btn flex w-full items-center px-2.5 py-1.5 text-left text-[12.5px] text-[var(--text-primary)]";
+  const item = "tc-rail-btn flex w-full items-center px-2.5 py-1.5 text-left text-[13px] text-[var(--text-primary)]";
   return (
     <div ref={ref} className="nodrag relative">
       <button
@@ -200,7 +200,7 @@ function TaskBody({ pin }: { pin: Pin }) {
         <label>
           <span className="sr-only">{t.task_title_placeholder}</span>
           <input
-            className="w-full rounded-md bg-transparent px-1 py-0.5 text-[13.5px] font-semibold text-[var(--text-primary)] outline-none focus:bg-[var(--surface-hover)]"
+            className="w-full rounded-md bg-transparent px-1 py-0.5 text-[14px] font-semibold text-[var(--text-primary)] outline-none focus:bg-[var(--surface-hover)]"
             value={title}
             placeholder={t.task_title_placeholder}
             onChange={(e) => setTitle(e.target.value)}

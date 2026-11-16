@@ -205,7 +205,7 @@ function ImportResultSummary({ result }: { result?: BrowserProfileImportResult }
             allowed={isAgentAllowed(registered)}
             onToggle={(allowed) => setAgentAllowed(registered.id, allowed)}
           />
-          <span className="tc-timestamp" style={{ color: "var(--text-faint)" }}>
+          <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
             {isAgentAllowed(registered)
               ? "Agents may work as this profile"
               : "Yours alone — you can still open it"}
@@ -532,7 +532,7 @@ export function IdentityManagerModal() {
               type="button"
               onClick={closeManager}
               aria-label={t.cancel}
-              className="tc-row-icon inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+              className="tc-row-icon inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
             >
               <CloseGlyph />
             </button>
@@ -613,7 +613,7 @@ export function IdentityManagerModal() {
                       }}
                       aria-label={t["identity.manager.rename"]}
                       title={t["identity.manager.rename"]}
-                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
                     >
                       <PencilGlyph />
                     </button>
@@ -627,7 +627,7 @@ export function IdentityManagerModal() {
                           ? t["identity.manager.deleteLastDisabled"]
                           : t["identity.manager.delete"]
                       }
-                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--red)] disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="tc-row-icon h-6 w-6 inline-flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--red)] disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       <TrashGlyph />
                     </button>
@@ -655,7 +655,7 @@ export function IdentityManagerModal() {
               >
                 {t["identity.manager.newIdentity"]}
               </span>
-              <span className="tc-meta" style={{ color: "var(--text-faint)" }}>
+              <span className="tc-meta" style={{ color: "var(--text-muted)" }}>
                 {t["identity.manager.newIdentityHint"]}
               </span>
             </button>
@@ -690,7 +690,7 @@ export function IdentityManagerModal() {
                       <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
                         {orphan.label || t["identity.orphans.restoredName"]}
                       </div>
-                      <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                      <div className="tc-timestamp truncate" style={{ color: "var(--text-muted)" }}>
                         {t["identity.orphans.entry"](
                           formatPartitionDate(orphan.createdAt),
                           formatPartitionSize(orphan.sizeBytes),
@@ -732,7 +732,7 @@ export function IdentityManagerModal() {
                 <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
                   Each selected Chrome profile becomes its own persistent Tacit profile. Guest and your existing profiles stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
                 </p>
-                <p className="tc-timestamp mt-1" style={{ color: "var(--text-faint)" }}>
+                <p className="tc-timestamp mt-1" style={{ color: "var(--text-muted)" }}>
                   Portable cookies and site storage are imported, so signed-in sessions and per-site app state carry over. A profile that is signed out in Chrome stays signed out here. History, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.
                 </p>
 
@@ -781,7 +781,7 @@ export function IdentityManagerModal() {
                         <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
                           {profile.name}
                         </div>
-                        <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                        <div className="tc-timestamp truncate" style={{ color: "var(--text-muted)" }}>
                           Chrome · {profile.profileId}{profile.accountHint ? ` · ${profile.accountHint}` : ""}
                         </div>
                         <ImportResultSummary result={importResults[profile.profileId]} />
@@ -846,7 +846,7 @@ export function IdentityManagerModal() {
                           <div className="tc-ui truncate" style={{ color: "var(--text-primary)" }}>
                             {entry.binding.tab.title || "Untitled tab"}
                           </div>
-                          <div className="tc-timestamp truncate" style={{ color: "var(--text-faint)" }}>
+                          <div className="tc-timestamp truncate" style={{ color: "var(--text-muted)" }}>
                             {entry.connection.identity.browser} · {entry.connection.identity.profileLabel} · {entry.binding.tab.url}
                           </div>
                         </div>
@@ -919,17 +919,17 @@ export function IdentityManagerModal() {
 
           <footer
             className="flex items-center gap-3 px-4 py-2 border-t border-[var(--border)]"
-            style={{ color: "var(--text-faint)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             <span
               className="tc-timestamp"
-              style={{ color: "var(--text-faint)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {t["identity.manager.setDefaultHint"]}
             </span>
             <span
               className="tc-timestamp ml-auto"
-              style={{ color: "var(--text-faint)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {t["hub.escCloses"]}
             </span>

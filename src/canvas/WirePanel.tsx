@@ -233,7 +233,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
       </div>
 
       <label className="block px-3 pb-2">
-        <span className="block text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1">
+        <span className="tc-eyebrow block mb-1">
           {t.connection_purpose_label}
         </span>
         <input
@@ -278,7 +278,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
             ]}
           />
           {reread && (
-            <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-faint)]">
+            <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-muted)]">
               {t.connection_note_reread_hint}
             </div>
           )}
@@ -305,7 +305,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
               ))}
             </select>
           </label>
-          <span className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">{t.connection_track_label}</span>
+          <span className="tc-eyebrow">{t.connection_track_label}</span>
         </div>
       )}
       {!plain && agentToAgent && (
@@ -318,7 +318,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
               onPick: () => setConnectionTrackingInScene(connection.id, mode),
             }))}
           />
-          <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-faint)]">
+          <div className="px-3 pb-2 -mt-1 text-[10px] leading-snug text-[var(--text-muted)]">
             {(tracking === "auto"
               ? t.connection_track_hint_auto
               : tracking === "always"
@@ -346,7 +346,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
         >
           <span className="flex items-center justify-between gap-3">
             <span>{replyRule === "sends-replies-to" ? t.connection_reply_rule_browser : t.connection_reply_rule_note}</span>
-            <span className={type === replyRule ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}>
+            <span className={type === replyRule ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}>
               {type === replyRule ? "●" : "○"}
             </span>
           </span>
@@ -355,14 +355,14 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
 
       {(rules.length > 0 || offered.length > 0) && (
         <div className="mt-1 pt-1 border-t border-[var(--border)]" data-testid="wire-rules">
-          <div className="px-3 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+          <div className="tc-eyebrow px-3 pt-1">
             {t.connection_rules_heading}
           </div>
           {rules.map((rule) => (
             <div key={rule.id} className="px-3 py-1.5 flex items-start justify-between gap-2 text-[12px]">
               <span className="text-[var(--text-secondary)] leading-snug">
                 {ruleSentence(rule.when, rule.at)}
-                <span className="block text-[10px] text-[var(--text-faint)]">
+                <span className="block text-[10px] text-[var(--text-muted)]">
                   {rule.consent === "always" ? t.connection_rule_always : t.connection_rule_asks}
                 </span>
               </span>
@@ -370,7 +370,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
                 type="button"
                 aria-label={t.connection_rule_remove}
                 title={t.connection_rule_remove}
-                className="text-[var(--text-faint)] hover:text-[var(--red)] px-1"
+                className="text-[var(--text-muted)] hover:text-[var(--red)] px-1"
                 onClick={() => removeRuleInScene(connection.id, rule.id)}
               >
                 ×
@@ -392,7 +392,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
 
       {sends.length > 0 && (
         <div className="mt-1 pt-1 border-t border-[var(--border)]">
-          <div className="px-3 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+          <div className="tc-eyebrow px-3 pt-1">
             {t.connection_send_heading}
           </div>
           {sends.map(({ from, other, payload }) => {
@@ -444,7 +444,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
           >
             <span className="flex items-center justify-between gap-3">
               <span>⇄ {t.connection_two_way}</span>
-              <span className={twoWay ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}>
+              <span className={twoWay ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}>
                 {twoWay ? "●" : "○"}
               </span>
             </span>
@@ -454,7 +454,7 @@ export function WirePanel({ x, y, connection, fromName, toName, recent, nameOf, 
 
       {recent.length > 0 && (
         <div className="mt-1 pt-1 border-t border-[var(--border)] px-3 py-1">
-          <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1">
+          <div className="tc-eyebrow mb-1">
             {t.connection_recent_heading}
           </div>
           {recent.map((message) => (

@@ -33,8 +33,8 @@ function Option({
     >
       <input type={multi ? "checkbox" : "radio"} checked={checked} onChange={onPick} className="mt-0.5 accent-[var(--cyan)]" />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[12.5px] text-[var(--text-primary)]">{label}</span>
-        {description && <span className="text-[11.5px] leading-snug text-[var(--text-muted)]">{description}</span>}
+        <span className="text-[13px] text-[var(--text-primary)]">{label}</span>
+        {description && <span className="text-[12px] leading-snug text-[var(--text-muted)]">{description}</span>}
       </span>
     </label>
   );
@@ -61,7 +61,7 @@ function QuestionStep({ question, draft, onChange }: { question: ChatQuestion; d
           placeholder={t.chat_question_type_answer}
           onChange={(e) => onChange({ ...draft, other: e.target.value, otherOn: true })}
           onKeyDown={(e) => e.stopPropagation()}
-          className="w-full rounded-[9px] border border-[var(--border)] bg-transparent px-2.5 py-2 text-[12.5px] text-[var(--text-primary)] outline-none focus:border-[var(--border-hover)]"
+          className="w-full rounded-[9px] border border-[var(--border)] bg-transparent px-2.5 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-hover)]"
         />
       </label>
     );
@@ -99,7 +99,7 @@ function QuestionStep({ question, draft, onChange }: { question: ChatQuestion; d
               onFocus={() => onChange({ ...draft, otherOn: true, picked: question.multiSelect ? draft.picked : [] })}
               onChange={(e) => onChange({ ...draft, other: e.target.value, otherOn: true, picked: question.multiSelect ? draft.picked : [] })}
               onKeyDown={(e) => e.stopPropagation()}
-              className="w-full bg-transparent py-0.5 text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+              className="w-full bg-transparent py-0.5 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             />
           </label>
         </div>
@@ -127,7 +127,7 @@ export function QuestionForm({
   const last = index === questions.length - 1;
   const ready = useMemo(() => canGoOn(question, drafts[index]), [question, drafts, index]);
   if (!question) return null;
-  const button = "tc-rail-btn h-8 px-3 text-[12.5px]";
+  const button = "tc-rail-btn h-8 px-3 text-[13px]";
   return (
     <div
       className="mx-3 mb-2 flex flex-col gap-2.5 rounded-[12px] border px-3 py-3"
@@ -140,9 +140,9 @@ export function QuestionForm({
         {question.header && <span className="rounded-full border border-[var(--border)] px-1.5 normal-case">{question.header}</span>}
         {questions.length > 1 && <span className="ml-auto tabular-nums">{t.chat_question_count(index + 1, questions.length)}</span>}
       </div>
-      <div className="text-[13.5px] font-medium leading-snug text-[var(--text-primary)]">
+      <div className="text-[14px] font-medium leading-snug text-[var(--text-primary)]">
         {question.question}
-        {question.multiSelect && <span className="ml-1.5 text-[11.5px] font-normal text-[var(--text-muted)]">{t.chat_question_pick_any}</span>}
+        {question.multiSelect && <span className="ml-1.5 text-[12px] font-normal text-[var(--text-muted)]">{t.chat_question_pick_any}</span>}
       </div>
       <QuestionStep key={question.id} question={question} draft={drafts[index]} onChange={(d) => setDrafts((prev) => prev.map((x, i) => (i === index ? d : x)))} />
       <div className="flex items-center gap-1.5">

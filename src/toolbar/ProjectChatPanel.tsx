@@ -187,7 +187,7 @@ export function PeekLine({
         {elapsed && (
           <span
             className="tc-mono tabular-nums shrink-0"
-            style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}
+            style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}
           >
             {elapsed}
           </span>
@@ -228,7 +228,7 @@ function ToolTags({ node }: { node: AssistantNode }) {
       >
         <span
           className="shrink-0"
-          style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}
+          style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}
         >
           {open ? "▾" : "▸"}
         </span>

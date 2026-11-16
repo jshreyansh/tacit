@@ -70,7 +70,7 @@ export function ChatPlacementMenu({ buttonClass, extras }: { buttonClass: string
     { id: "full", label: t.chat_place_full },
   ];
   const rect = open ? buttonRef.current?.getBoundingClientRect() : undefined;
-  const item = "tc-rail-btn flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-[12.5px] text-[var(--text-primary)] disabled:opacity-45";
+  const item = "tc-rail-btn flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-[13px] text-[var(--text-primary)] disabled:opacity-45";
 
   return (
     <>
@@ -101,7 +101,7 @@ export function ChatPlacementMenu({ buttonClass, extras }: { buttonClass: string
             className="tc-float tc-enter-fade-down fixed z-[1000] w-[230px] p-1.5"
             style={{ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - 230, window.innerWidth - 238)), borderRadius: 12 }}
           >
-            <div className="px-2.5 pb-1 pt-0.5 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-faint)]">{t.chat_place_title}</div>
+            <div className="tc-eyebrow px-2.5 pb-1 pt-0.5">{t.chat_place_title}</div>
             {places.map((p) => (
               <button
                 key={p.id}

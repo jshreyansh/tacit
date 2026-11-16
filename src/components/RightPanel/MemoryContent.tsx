@@ -571,7 +571,7 @@ function MemoryGraph({
         </div>
       )}
       {graph.nodes.length > 0 && (
-        <div className="absolute bottom-2 left-2 flex gap-2.5 text-[9px] text-[var(--text-faint)]">
+        <div className="absolute bottom-2 left-2 flex gap-2.5 text-[10px] text-[var(--text-muted)]">
           {(["user", "feedback", "project", "reference"] as const).map((t) => (
             <span key={t} className="flex items-center gap-1">
               <span
@@ -681,7 +681,7 @@ function TaskHeading({ group, openTaskId }: { group: TaskGroup; openTaskId: stri
   const t = useT();
   if (!group.taskId) {
     return (
-      <div className="px-1 pt-3 pb-1 text-[10px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+      <div className="tc-eyebrow px-1 pt-3 pb-1" style={{ color: "var(--text-muted)" }}>
         {t.task_group_none}
       </div>
     );
@@ -763,8 +763,8 @@ function ActivityList({
           <div key={entry.id}>
             {newDay && (
               <div
-                className="tc-label px-1 pt-2 pb-1 text-[10px] uppercase tracking-wide"
-                style={{ color: "var(--text-faint)" }}
+                className="tc-eyebrow px-1 pt-2 pb-1"
+                style={{ color: "var(--text-muted)" }}
               >
                 {day}
               </div>
@@ -782,7 +782,7 @@ function ActivityList({
             >
               <span
                 className="shrink-0 tabular-nums"
-                style={{ color: "var(--text-faint)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {timeLabel(entry.at)}
               </span>

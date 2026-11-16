@@ -37,7 +37,7 @@ export function CanvasEmptyState({ isDragOver = false }: CanvasEmptyStateProps) 
       >
         <div
           className="tc-enter-fade-up tc-eyebrow"
-          style={{ color: "var(--text-faint)", marginBottom: 20 }}
+          style={{ color: "var(--text-muted)", marginBottom: 20 }}
         >
           {t.canvas_empty_eyebrow}
         </div>
@@ -66,7 +66,7 @@ export function CanvasEmptyState({ isDragOver = false }: CanvasEmptyStateProps) 
           >
             {t.canvas_empty_drag_hint}
           </span>
-          <span aria-hidden style={{ color: "var(--text-faint)" }}>
+          <span aria-hidden style={{ color: "var(--text-muted)" }}>
             ·
           </span>
           <span>{t.canvas_empty_or}</span>

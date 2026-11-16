@@ -59,7 +59,7 @@ export function AgentStatusBar({
           Generating
         </span>
       ) : (
-        <span className="tc-label" style={{ color: "var(--text-faint)" }}>Idle</span>
+        <span className="tc-label" style={{ color: "var(--text-muted)" }}>Idle</span>
       )}
       {model && (
         <>
@@ -87,7 +87,7 @@ export function AgentStatusBar({
         {durationMs != null && (
           <>
             <Sep />
-            <span className="tc-caption tc-num tc-mono" style={{ color: "var(--text-faint)" }}>
+            <span className="tc-caption tc-num tc-mono" style={{ color: "var(--text-muted)" }}>
               {formatDuration(durationMs)}
             </span>
           </>

@@ -140,19 +140,19 @@ function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent:
         {icon && <img src={icon} alt="" className="h-[18px] w-[18px] object-contain" draggable={false} />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[12.5px] text-[var(--text-primary)]">
+        <span className="block text-[13px] text-[var(--text-primary)]">
           {t.chat_started_worker} · <span className="tc-mono text-[var(--text-secondary)]">{agentName}</span>
         </span>
-        {spawn.title && <span className="mt-0.5 block truncate text-[11.5px] text-[var(--text-muted)]">“{spawn.title}”</span>}
+        {spawn.title && <span className="mt-0.5 block truncate text-[12px] text-[var(--text-muted)]">“{spawn.title}”</span>}
         {status === "error" && typeof props.result === "string" && (
-          <span className="mt-0.5 block truncate text-[11.5px]" style={{ color: "var(--red)" }}>{props.result}</span>
+          <span className="mt-0.5 block truncate text-[12px]" style={{ color: "var(--red)" }}>{props.result}</span>
         )}
       </span>
       <StatusMark status={status} />
       {id && (
         <button
           type="button"
-          className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-1 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-1 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           onClick={() => panToTerminal(id)}
         >
           {t.chat_show_on_canvas}
@@ -181,9 +181,9 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
   const hasOptions = view.questions.some((q) => q.options.length > 0);
   return (
     <div className="my-1 flex flex-col gap-2 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
-      <span className="flex items-center gap-2 text-[12.5px] text-[var(--text-primary)]">
+      <span className="flex items-center gap-2 text-[13px] text-[var(--text-primary)]">
         {t.chat_question_asked}
-        <span className="text-[11.5px] text-[var(--text-muted)]">· {state}</span>
+        <span className="text-[12px] text-[var(--text-muted)]">· {state}</span>
         {view.settled && view.answered > 0 && (
           <span className="ml-auto">
             <StatusMark status="done" />
@@ -196,7 +196,7 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
           {q.answer.length > 0 ? (
             <span className="text-[var(--text-primary)]">→ {q.secret ? "••••••" : q.answer.join(", ")}</span>
           ) : (
-            view.settled && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_question_skipped}</span>
+            view.settled && <span className="text-[12px] text-[var(--text-muted)]">{t.chat_question_skipped}</span>
           )}
           {showOptions && q.options.length > 0 && (
             <span className="ml-1 flex flex-col gap-0.5 border-l border-[var(--border)] pl-2.5">
@@ -206,7 +206,7 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
                   <span key={o.label} className={picked ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
                     {picked ? "✓ " : ""}
                     {o.label}
-                    {o.description && <span className="text-[var(--text-faint)]"> — {o.description}</span>}
+                    {o.description && <span className="text-[var(--text-muted)]"> — {o.description}</span>}
                   </span>
                 );
               })}
@@ -217,7 +217,7 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
       {hasOptions && (
         <button
           type="button"
-          className="self-start text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          className="self-start text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           onClick={() => setShowOptions((v) => !v)}
           aria-expanded={showOptions}
         >
@@ -255,25 +255,25 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
         className="my-1 flex flex-col gap-1.5 rounded-[10px] border px-3 py-2.5"
         style={{ borderColor: ask ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
       >
-        <span className="flex items-center gap-2 text-[12.5px]">
+        <span className="flex items-center gap-2 text-[13px]">
           <span className="text-[var(--text-muted)]">{taskIcon}</span>
           <span className="min-w-0 flex-1 text-[var(--text-primary)]">
             {ask ? t.chat_task_asked : t.chat_task_made}
             {view.kind === "create" && view.title && <span className="text-[var(--text-secondary)]"> · {view.title}</span>}
           </span>
-          {view.kind === "create" && view.steps > 0 && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_task_steps(view.steps)}</span>}
+          {view.kind === "create" && view.steps > 0 && <span className="text-[12px] text-[var(--text-muted)]">{t.chat_task_steps(view.steps)}</span>}
           <StatusMark status={status} />
           {id && (
             <button
               type="button"
-              className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-0.5 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              className="tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               onClick={() => openTaskById(id)}
             >
               {t.chat_task_open}
             </button>
           )}
         </span>
-        {ask && view.question && <span className="pl-[22px] text-[12.5px] leading-snug" style={{ color: "var(--amber)" }}>{view.question}</span>}
+        {ask && view.question && <span className="pl-[22px] text-[13px] leading-snug" style={{ color: "var(--amber)" }}>{view.question}</span>}
         {ask && view.choices.length > 0 && (
           <span className="flex flex-wrap gap-1 pl-[22px]">
             {view.choices.map((c) => (
@@ -298,7 +298,7 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
           .join(" · ");
   return (
     <div className="my-0.5 flex items-center gap-1.5 py-0.5 text-[12px]">
-      <span className="text-[var(--text-faint)]">{taskIcon}</span>
+      <span className="text-[var(--text-muted)]">{taskIcon}</span>
       <span className="text-[var(--text-secondary)]">{view.kind === "list" ? t.chat_task_read : t.chat_task_updated}</span>
       {detail && <span className="min-w-0 truncate text-[var(--text-muted)]">{detail}</span>}
       <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
@@ -320,7 +320,7 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   if (plan) {
     return (
       <div className="my-1 rounded-[10px] border border-[var(--border)] px-3 py-2">
-        <div className="mb-1.5 text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_plan}</div>
+        <div className="tc-eyebrow mb-1.5">{t.chat_plan}</div>
         <PlanSteps steps={plan} />
       </div>
     );
@@ -335,12 +335,12 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   return (
     <div className="my-0.5">
       <button type="button" className="flex w-full items-center gap-1.5 py-0.5 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={expanded}>
-        <span className="text-[var(--text-faint)]"><Chevron open={expanded} /></span>
+        <span className="text-[var(--text-muted)]"><Chevron open={expanded} /></span>
         <span className="tc-mono shrink-0 text-[12px]" style={{ color: status === "error" ? "var(--red)" : "var(--text-secondary)" }}>
           {toolVerb(props.toolName)}
         </span>
         {subject && <span className="tc-mono min-w-0 truncate text-[12px] text-[var(--text-muted)]">{subject}</span>}
-        {steps > 0 && <span className="tc-mono shrink-0 text-[11px] text-[var(--text-faint)]">· {t.chat_subagent_steps(steps)}</span>}
+        {steps > 0 && <span className="tc-mono shrink-0 text-[11px] text-[var(--text-muted)]">· {t.chat_subagent_steps(steps)}</span>}
         <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
       </button>
       {expanded && (
@@ -408,7 +408,7 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
   return (
     <div className="my-0.5">
       <button type="button" className="flex w-full items-center gap-1.5 py-0.5 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="text-[var(--text-faint)]"><Chevron open={open} /></span>
+        <span className="text-[var(--text-muted)]"><Chevron open={open} /></span>
         <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{running ? t.chat_tool_run_live(plain.length) : t.chat_tool_run(plain.length)}</span>
         <span className="tc-mono min-w-0 truncate text-[12px] text-[var(--text-muted)]">
           {toolRunSummary(plain.map((p) => toolVerb(p.toolName)))}
@@ -500,7 +500,7 @@ function TypingDots({ label }: { label: string }) {
 function ReplyHeader({ agent, label, live }: { agent: string; label: string; live?: boolean }) {
   const icon = agentIcon(agent);
   return (
-    <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-muted)]">
+    <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
       {icon && <img src={icon} alt="" className={`h-[14px] w-[14px] object-contain ${live ? "tc-live-pip" : ""}`} draggable={false} />}
       <span>{label}</span>
     </div>
@@ -543,14 +543,14 @@ function NoteMessage() {
 function BriefingLine({ text }: { text: string }) {
   const t = useT();
   return (
-    <details className="group mb-4 text-[11.5px] text-[var(--text-muted)]">
+    <details className="group mb-4 text-[12px] text-[var(--text-muted)]">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-[var(--text-secondary)]">
         <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" className="transition-transform group-open:rotate-90" aria-hidden="true">
           <path d="M6 4l4 4-4 4" />
         </svg>
         {t.chat_briefing_sent}
       </summary>
-      <div className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap rounded-[9px] border border-[var(--border)] px-2.5 py-2 text-[11.5px] leading-relaxed text-[var(--text-secondary)]">
+      <div className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap rounded-[9px] border border-[var(--border)] px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
         {text}
       </div>
     </details>
@@ -586,7 +586,7 @@ const TurnNote: FC<{ data: unknown }> = ({ data }) => {
   const t = useT();
   const note = (data ?? {}) as { kind?: string; error?: string };
   if (note.kind === "interrupted") {
-    return <div className="mt-0.5 text-[11.5px] text-[var(--text-muted)]">{t.chat_interrupted}</div>;
+    return <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">{t.chat_interrupted}</div>;
   }
   return (
     <div className="mt-1 rounded-lg border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
@@ -638,7 +638,7 @@ function PlanCard({
       className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
       style={{ borderColor: "color-mix(in srgb, var(--cyan) 45%, transparent)", ...(floating ? { borderRadius: 16 } : { background: "color-mix(in srgb, var(--cyan) 5%, transparent)" }) }}
     >
-      <div className="text-[12.5px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
+      <div className="text-[13px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
       {plan && (
         <div
           className={`${markdownClassName} mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2`}
@@ -666,7 +666,7 @@ function PlanCard({
                 setKeeping(false);
               }
             }}
-            className="block max-h-32 w-full resize-none rounded-lg border border-[var(--border-hover)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-1.5 text-[12.5px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--accent)]"
+            className="block max-h-32 w-full resize-none rounded-lg border border-[var(--border-hover)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
           />
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={send}>
@@ -772,7 +772,7 @@ export function ApprovalCards({
                 <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.chat_approval_more(approvals.length - 1)}</span>
               )}
             </div>
-            <pre className="tc-mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[11.5px] text-[var(--text-primary)]">
+            <pre className="tc-mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[12px] text-[var(--text-primary)]">
               {what}
             </pre>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -898,7 +898,7 @@ export function ChatThread({
             </div>
           )}
           <ThreadPrimitive.Empty>
-            <div className="py-8 text-center text-[12.5px] text-[var(--text-muted)]">{emptyText ?? t.chat_empty}</div>
+            <div className="py-8 text-center text-[13px] text-[var(--text-muted)]">{emptyText ?? t.chat_empty}</div>
           </ThreadPrimitive.Empty>
           <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
           {awaitingReply && <PendingReply agent={agent} label={replyLabel} />}

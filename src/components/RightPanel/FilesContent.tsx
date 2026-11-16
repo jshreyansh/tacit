@@ -20,6 +20,7 @@ import { useNotificationStore } from "../../stores/notificationStore";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { useEditorItems } from "../../editors/useEditorItems";
 import type { GitFileStatus, GitStatusEntry } from "../../types";
+import { confirmAsync } from "../ui/confirmAsync";
 
 interface Props {
   worktreePath: string | null;
@@ -729,11 +730,19 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
             danger: true,
             onClick: () => {
               context.close();
-              if (!window.confirm(t.ctx_confirm_delete(name))) return;
-              window.tacit.fs
-                .delete(`${wtp}/${itemRelPath}`)
-                .then(() => refreshRef.current())
-                .catch((err) => notify("error", `Delete failed: ${err}`));
+              void confirmAsync({
+                title: t.ctx_confirm_delete(name),
+                body: t.ctx_confirm_delete_body,
+                confirmLabel: t.ctx_delete,
+                confirmTone: "danger",
+                focusCancel: true,
+              }).then((ok) => {
+                if (!ok) return;
+                window.tacit.fs
+                  .delete(`${wtp}/${itemRelPath}`)
+                  .then(() => refreshRef.current())
+                  .catch((err) => notify("error", `Delete failed: ${err}`));
+              });
             },
           },
         );

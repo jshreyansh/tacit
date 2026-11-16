@@ -91,7 +91,7 @@ export function TagManager({
 
       {autoTags.length > 0 && (
         <div className="mb-2">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">
+          <div className="tc-eyebrow mb-1">
             Auto
           </div>
           <div className="flex flex-wrap gap-1">
@@ -108,7 +108,7 @@ export function TagManager({
       )}
 
       <div className="mb-2">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">
+        <div className="tc-eyebrow mb-1">
           Custom
         </div>
         {customTags.length === 0 ? (

@@ -202,7 +202,7 @@ export function WtermTile({ terminal }: Props) {
 
   if (!core) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-[11px] text-[var(--text-faint)]">
+      <div className="flex h-full w-full items-center justify-center text-[11px] text-[var(--text-muted)]">
         Loading wterm…
       </div>
     );

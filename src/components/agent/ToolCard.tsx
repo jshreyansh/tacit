@@ -44,7 +44,7 @@ function Chevron({ open }: { open: boolean }) {
       aria-hidden
       className="shrink-0"
       style={{
-        color: "var(--text-faint)",
+        color: "var(--text-muted)",
         transform: open ? "rotate(90deg)" : "rotate(0deg)",
         transition: "transform var(--duration-quick) var(--ease-out-soft)",
       }}

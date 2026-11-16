@@ -19,7 +19,7 @@ export function NewCanvasDialog() {
 
   useEffect(() => {
     if (!open) return;
-    setName(nextCanvasName(useCanvasRegistryStore.getState().canvases.map((c) => c.name)));
+    setName(nextCanvasName(useCanvasRegistryStore.getState().canvases.map((c) => c.name), t["canvas.new.defaultName"]));
     // Selected once the name is in, so typing replaces it.
     const frame = requestAnimationFrame(() => inputRef.current?.select());
     return () => cancelAnimationFrame(frame);

@@ -582,7 +582,7 @@ export function PinDetailDrawer() {
                     dangerouslySetInnerHTML={{ __html: bodyHtml }}
                   />
                 ) : (
-                  <p className="tc-body-sm italic text-[var(--text-faint)]">
+                  <p className="tc-body-sm italic text-[var(--text-muted)]">
                     {t["pin.emptyBody"]}
                   </p>
                 )}

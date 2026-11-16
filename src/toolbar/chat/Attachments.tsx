@@ -182,7 +182,7 @@ export function AttachmentTile({ attachment, onRemove }: { attachment: Shown; on
           </span>
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-[12px] text-[var(--text-primary)]">{attachment.name}</span>
-            <span className="text-[10.5px] text-[var(--text-faint)]">{extensionOf(attachment.name) || t.chat_attachment_file}</span>
+            <span className="text-[11px] text-[var(--text-muted)]">{extensionOf(attachment.name) || t.chat_attachment_file}</span>
           </span>
         </button>
       )}

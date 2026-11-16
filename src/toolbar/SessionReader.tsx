@@ -155,14 +155,14 @@ function CloseSessionDialog({ running, onTerminal, onEnd, onCancel, t }: { runni
         {running && <div className="text-[12px] text-[var(--amber)]">{t.reader_close_running}</div>}
         <button type="button" className={choice} onClick={onTerminal} autoFocus>
           <span className="text-[13px] text-[var(--text-primary)]">{t.reader_continue_terminal}</span>
-          <span className="text-[11.5px] text-[var(--text-muted)]">{t.reader_continue_terminal_hint}</span>
+          <span className="text-[12px] text-[var(--text-muted)]">{t.reader_continue_terminal_hint}</span>
         </button>
         <button type="button" className={`${choice} hover:border-[color-mix(in_srgb,var(--red)_45%,transparent)]`} onClick={onEnd}>
           <span className="text-[13px] text-[var(--red)]">{t.reader_close_fully}</span>
-          <span className="text-[11.5px] text-[var(--text-muted)]">{t.reader_close_fully_hint}</span>
+          <span className="text-[12px] text-[var(--text-muted)]">{t.reader_close_fully_hint}</span>
         </button>
         <div className="flex justify-end">
-          <button type="button" className="tc-rail-btn h-8 px-3 text-[12.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]" onClick={onCancel}>
+          <button type="button" className="tc-rail-btn h-8 px-3 text-[13px] text-[var(--text-muted)] hover:text-[var(--text-primary)]" onClick={onCancel}>
             {t.cancel}
           </button>
         </div>
@@ -187,7 +187,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
     void navigator.clipboard.writeText(text).then(() => useNotificationStore.getState().notify("info", t.reader_copied));
     setOpen(false);
   };
-  const item = "flex w-full items-start gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--surface-hover)]";
+  const item = "flex w-full items-start gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--surface-hover)]";
   return (
     <div ref={ref} className="relative">
       <button type="button" className={iconButton} data-on={open ? "" : undefined} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} title={t.reader_more} aria-label={t.reader_more}>
@@ -203,7 +203,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
             <button type="button" role="menuitem" className={item} onClick={() => copy(resumeCommand(agent, timeline.sessionId))}>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{t.reader_copy_resume}</span>
-                <span className="tc-mono truncate text-[10.5px] text-[var(--text-muted)]">{resumeCommand(agent, timeline.sessionId)}</span>
+                <span className="tc-mono truncate text-[11px] text-[var(--text-muted)]">{resumeCommand(agent, timeline.sessionId)}</span>
               </span>
             </button>
           )}
@@ -237,7 +237,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
           >
             <span className="flex flex-col gap-0.5">
               <span>{t.reader_hide}</span>
-              <span className="text-[10.5px] text-[var(--text-muted)]">{t.reader_hide_hint}</span>
+              <span className="text-[11px] text-[var(--text-muted)]">{t.reader_hide_hint}</span>
             </span>
           </button>
         </div>
@@ -343,8 +343,8 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
     setReveal((r) => ({ id: messageId, seq: (r?.seq ?? 0) + 1 }));
   };
 
-  const primary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 bg-[var(--text-secondary)] text-[12.5px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
-  const secondary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center border border-[var(--border-hover)] text-[12.5px] text-[var(--text-primary)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
+  const primary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 bg-[var(--text-secondary)] text-[13px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
+  const secondary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center border border-[var(--border-hover)] text-[13px] text-[var(--text-primary)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
   const noTargetHint = target ? undefined : t.reader_no_worktree;
 
   let actions: React.ReactNode;
@@ -433,11 +433,11 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
           placeholder={t.reader_find}
           aria-label={t.reader_find}
           autoFocus={turnsOpen}
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
       </label>
       <div className="flex shrink-0 items-center justify-between px-3 pb-1.5">
-        <span className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.reader_turns(turns.length)}</span>
+        <span className="tc-eyebrow">{t.reader_turns(turns.length)}</span>
         {layout.turnsBeside && (
           <button
             type="button"
@@ -465,7 +465,7 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
               }}
               title={turn.text || t.reader_briefing}
             >
-              <span className="tc-mono shrink-0 pt-px text-[10.5px] tabular-nums text-[var(--text-muted)]">{stamp(turn.at)}</span>
+              <span className="tc-mono shrink-0 pt-px text-[11px] tabular-nums text-[var(--text-muted)]">{stamp(turn.at)}</span>
               <span className={`line-clamp-2 text-[12px] leading-snug ${turn.briefing ? "italic text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
                 {turn.briefing ? t.reader_briefing : turn.text}
               </span>
@@ -502,10 +502,10 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
               {titleText}
             </span>
             {manager && (
-              <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[10.5px] text-[var(--text-muted)]">{t.chat_history_badge_manager}</span>
+              <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[11px] text-[var(--text-muted)]">{t.chat_history_badge_manager}</span>
             )}
           </span>
-          <span className="truncate text-[11.5px] text-[var(--text-muted)]">{meta}</span>
+          <span className="truncate text-[12px] text-[var(--text-muted)]">{meta}</span>
         </div>
         {actions}
         {!layout.turnsBeside && (
@@ -592,7 +592,7 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
   const { compact } = readerLayout(width, true);
   const found = findTerminal(terminalId);
   if (!found) {
-    return <div className="flex h-full items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">{t.reader_live_gone}</div>;
+    return <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-[var(--text-muted)]">{t.reader_live_gone}</div>;
   }
   const { terminal } = found;
   const agentName = findAgentAdapter(terminal.type)?.displayName ?? terminal.type;
@@ -602,14 +602,14 @@ function LiveSession({ terminalId, onClose }: { terminalId: string; onClose: () 
         {!compact && <AgentTile agent={terminal.type} />}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{terminal.customTitle?.trim() || terminal.title}</span>
-          <span className="flex items-center gap-1.5 text-[11.5px] text-[var(--green)]">
+          <span className="flex items-center gap-1.5 text-[12px] text-[var(--green)]">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
             {t.reader_live(agentName)}
           </span>
         </div>
         <button
           type="button"
-          className={`tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 border border-[var(--border-hover)] text-[12.5px] text-[var(--text-primary)] ${compact ? "w-8" : "px-3"}`}
+          className={`tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 border border-[var(--border-hover)] text-[13px] text-[var(--text-primary)] ${compact ? "w-8" : "px-3"}`}
           onClick={() => void continueChatSessionInTerminal(terminalId)}
           title={compact ? `${t.reader_continue_terminal}: ${t.reader_continue_terminal_hint}` : t.reader_continue_terminal_hint}
           aria-label={t.reader_continue_terminal}
@@ -671,7 +671,7 @@ export function PastSessionTab({ filePath }: { filePath: string }) {
   }, [filePath]);
   const view = useWorkdeskViewStore.getState();
   if (!timeline) {
-    return <div className="flex flex-1 items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">{error ?? t.reader_loading}</div>;
+    return <div className="flex flex-1 items-center justify-center px-8 text-center text-[13px] text-[var(--text-muted)]">{error ?? t.reader_loading}</div>;
   }
   return (
     <PastSession
@@ -708,7 +708,7 @@ export function SessionReader() {
       <div className="flex shrink-0 justify-end border-b border-[var(--border)] px-3 py-3">
         <CloseButton onClose={close} t={t} />
       </div>
-      <div className="flex flex-1 items-center justify-center px-8 text-center text-[12.5px] text-[var(--text-muted)]">
+      <div className="flex flex-1 items-center justify-center px-8 text-center text-[13px] text-[var(--text-muted)]">
         {replayError ?? (loading ? t.reader_loading : t.reader_pick)}
       </div>
     </div>

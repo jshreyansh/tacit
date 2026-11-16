@@ -371,7 +371,7 @@ export function SnapshotHistoryModal() {
         >
           <span
             aria-hidden
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-semibold"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
             style={{
               ...MONO_STYLE,
               color: isSelected
@@ -413,7 +413,7 @@ export function SnapshotHistoryModal() {
           {isSelected ? (
             <span
               className="shrink-0 text-[10px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {diffMode
                 ? t["snapshot.modal.row_to"]
@@ -422,7 +422,7 @@ export function SnapshotHistoryModal() {
           ) : isFromAnchor ? (
             <span
               className="shrink-0 text-[10px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {t["snapshot.modal.row_from"]}
             </span>
@@ -509,13 +509,7 @@ export function SnapshotHistoryModal() {
             >
               {t["snapshot.modal.diff_button"]}
             </button>
-            <kbd
-              className="shrink-0 rounded border px-1.5 py-0.5 text-[10px]"
-              style={{
-                ...MONO_STYLE,
-                borderColor: "var(--border)",
-                color: "var(--text-faint)",
-              }}
+            <kbd className="tc-kbd"
             >
               ESC
             </kbd>
@@ -565,7 +559,7 @@ export function SnapshotHistoryModal() {
             {loading && entries.length === 0 ? (
               <div
                 className="px-4 py-10 text-center text-[12px]"
-                style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+                style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
                 role="status"
                 aria-live="polite"
               >
@@ -574,7 +568,7 @@ export function SnapshotHistoryModal() {
             ) : entries.length === 0 ? (
               <div
                 className="px-4 py-10 text-center text-[12px]"
-                style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+                style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
               >
                 {t["snapshot.modal.list_empty"]}
               </div>
@@ -592,14 +586,14 @@ export function SnapshotHistoryModal() {
                 {diffLoading ? (
                   <div
                     className="py-4 text-center text-[11px]"
-                    style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+                    style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
                   >
                     {t["snapshot.modal.diff_loading"]}
                   </div>
                 ) : !diffEntries || diffEntries.length === 0 ? (
                   <div
                     className="py-4 text-center text-[11px]"
-                    style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+                    style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
                   >
                     {t["snapshot.modal.diff_identical"]}
                   </div>
@@ -627,7 +621,7 @@ export function SnapshotHistoryModal() {
                         {entry.context && (
                           <span
                             className="truncate"
-                            style={{ color: "var(--text-faint)" }}
+                            style={{ color: "var(--text-muted)" }}
                           >
                             ({entry.context})
                           </span>
@@ -662,14 +656,12 @@ export function SnapshotHistoryModal() {
             style={{
               ...MONO_STYLE,
               borderColor: "var(--border)",
-              color: "var(--text-faint)",
+              color: "var(--text-muted)",
             }}
           >
             <div className="flex flex-wrap items-center gap-3">
               <span>
-                <kbd
-                  className="rounded border px-1 py-0.5"
-                  style={{ borderColor: "var(--border)" }}
+                <kbd className="tc-kbd"
                 >
                   ↵
                 </kbd>
@@ -678,18 +670,14 @@ export function SnapshotHistoryModal() {
                 </span>
               </span>
               <span>
-                <kbd
-                  className="rounded border px-1 py-0.5"
-                  style={{ borderColor: "var(--border)" }}
+                <kbd className="tc-kbd"
                 >
                   ↑↓
                 </kbd>
                 <span className="ml-1">{t["snapshot.modal.footer_to"]}</span>
               </span>
               <span>
-                <kbd
-                  className="rounded border px-1 py-0.5"
-                  style={{ borderColor: "var(--border)" }}
+                <kbd className="tc-kbd"
                 >
                   D
                 </kbd>
@@ -701,9 +689,7 @@ export function SnapshotHistoryModal() {
               </span>
               {diffMode && (
                 <span>
-                  <kbd
-                    className="rounded border px-1 py-0.5"
-                    style={{ borderColor: "var(--border)" }}
+                  <kbd className="tc-kbd"
                   >
                     ⇧↑↓
                   </kbd>

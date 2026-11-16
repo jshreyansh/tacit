@@ -362,15 +362,15 @@ body {
 }
 .tc-eyebrow {
   font-size: var(--text-tiny);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .tc-caption {
   font-size: var(--text-tiny);
   line-height: var(--leading-snug);
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 /* Scannable metadata — a tier brighter than .tc-label, used for the
    bits of secondary info we actually want the user to read (project
@@ -383,11 +383,10 @@ body {
   color: var(--text-metadata);
 }
 .tc-timestamp {
-  font-size: 10px;
-  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-feature-settings: "ss03", "zero";
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  white-space: nowrap;
+  color: var(--text-secondary);
 }
 /* .tc-role / .tc-role-user / .tc-role-assistant retired alongside the
    --role-* tokens. The replay view now leans on a gutter glyph + prose
@@ -404,7 +403,7 @@ body {
   color: var(--text-muted);
 }
 .tc-color-faint {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .tc-color-accent {
   color: var(--accent);
@@ -455,12 +454,16 @@ body {
   display: inline-flex;
   align-items: center;
   font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--text-sm);
+  justify-content: center;
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.02em;
-  padding: 2px 8px;
+  padding: 0 4px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-secondary);
   transition:
@@ -1256,7 +1259,7 @@ html.tc-scrolling ::-webkit-scrollbar-thumb {
     0 8px 22px -10px color-mix(in srgb, var(--shadow-color) 50%, transparent),
     0 0 0 1px color-mix(in srgb, var(--cyan) 14%, transparent);
   font-family: "Geist Mono", monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1;
   color: var(--text-primary);
   /* Sit slightly down-and-right of the cursor; matches OS drag-image idiom. */
@@ -1275,14 +1278,14 @@ html.tc-scrolling ::-webkit-scrollbar-thumb {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 9px;
+  font-size: 10px;
   flex-shrink: 0;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tc-handoff-chip-divider {
-  color: var(--text-faint);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 .tc-handoff-chip-preview {
@@ -1630,8 +1633,8 @@ a.tc-kbd[data-dragover="true"] {
 /* Section headings inside a face. */
 .tc-seat-group {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
-  color: var(--text-faint); padding: 10px 12px 4px;
+  font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--text-muted); padding: 10px 12px 4px;
 }
 
 /* A row in the roster: who could hold the seat. */
@@ -1640,7 +1643,7 @@ a.tc-kbd[data-dragover="true"] {
   width: 100%; padding: 8px 10px; text-align: left;
   border: 0; background: none; cursor: pointer; color: var(--text-secondary);
   border-radius: 11px; corner-shape: squircle;
-  font-size: 12.5px;
+  font-size: 13px;
   transition: background .13s ease, color .13s ease;
 }
 .tc-seat-option:hover { background: color-mix(in srgb, var(--text-primary) 7%, transparent); color: var(--text-primary); }
@@ -1696,13 +1699,13 @@ a.tc-kbd[data-dragover="true"] {
   padding: 7px 12px;
   background: color-mix(in srgb, var(--seat-hue, var(--accent)) 11%, transparent);
   border-bottom: 1px solid var(--border);
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
 }
 .tc-seat-archive img { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; }
 .tc-seat-archive b { color: var(--text-secondary); font-weight: 500; }
 .tc-seat-archive button {
   flex-shrink: 0; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 11.5px; padding: 0;
+  font: inherit; font-size: 12px; padding: 0;
   color: color-mix(in srgb, var(--seat-hue, var(--accent)) 70%, var(--text-primary));
 }
 .tc-seat-archive button:hover { text-decoration: underline; }
@@ -1718,19 +1721,19 @@ a.tc-kbd[data-dragover="true"] {
 }
 .tc-handover-row {
   display: flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
 }
 .tc-handover-row img { width: 15px; height: 15px; object-fit: contain; }
 .tc-handover-row .tc-mono { color: var(--text-secondary); }
-.tc-handover-time { color: var(--text-faint); }
+.tc-handover-time { color: var(--text-muted); }
 .tc-handover-toggle {
   border: 0; background: none; padding: 0; cursor: pointer;
-  font: inherit; font-size: 10.5px; color: var(--text-faint);
+  font: inherit; font-size: 11px; color: var(--text-muted);
 }
 .tc-handover-toggle:hover { color: var(--text-secondary); text-decoration: underline; }
 .tc-handover-briefing {
   margin: 4px 0 0; text-align: left;
-  font-size: 11.5px; line-height: 1.55; color: var(--text-muted);
+  font-size: 12px; line-height: 1.55; color: var(--text-muted);
   border-left: 2px solid var(--border);
   padding: 2px 0 2px 10px;
 }
@@ -1822,7 +1825,7 @@ a.tc-kbd[data-dragover="true"] {
   color: var(--text-primary);
 }
 .tc-onboarding-body {
-  margin: 9px auto 0; font-size: 13.5px; color: var(--text-secondary);
+  margin: 9px auto 0; font-size: 14px; color: var(--text-secondary);
   max-width: 46ch; text-wrap: pretty;
 }
 
@@ -1867,8 +1870,8 @@ a.tc-kbd[data-dragover="true"] {
 }
 .tc-onboarding-choice:hover .mark img { transform: scale(1.07); }
 .tc-onboarding-choice .txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.tc-onboarding-choice .t { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
-.tc-onboarding-choice .d { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+.tc-onboarding-choice .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.tc-onboarding-choice .d { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
 .tc-onboarding-choice .plus {
   position: absolute; right: -3px; bottom: -3px;
   width: 16px; height: 16px; border-radius: 50%;
@@ -1957,9 +1960,9 @@ a.tc-kbd[data-dragover="true"] {
 .tc-onboarding-agent .info {
   display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%;
 }
-.tc-onboarding-agent .t { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.tc-onboarding-agent .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
 .tc-onboarding-agent .d {
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* Drawn, not typed — a tick glyph at this size lands wherever the font's
@@ -1999,7 +2002,7 @@ a.tc-kbd[data-dragover="true"] {
 }
 .tc-onboarding-step { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .tc-onboarding-foot button {
-  font: inherit; font-size: 12.5px; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 13px; background: none; border: 0; cursor: pointer;
   color: var(--text-muted); padding: 4px 6px; border-radius: 5px;
 }
 .tc-onboarding-foot button:hover { color: var(--text-primary); }
@@ -2027,4 +2030,163 @@ a.tc-kbd[data-dragover="true"] {
   .tc-wire-preview {
     animation: none;
   }
+}
+
+
+/* ── Foundation parts ─────────────────────────────────────────────
+   The shared pieces every panel uses (the Foundation board). Sizes come
+   from the type scale; readable text never uses --text-faint. */
+
+/* One keyboard focus ring for every control. */
+:where(button, a, [role="tab"], [role="switch"], [role="option"], [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* A section's label inside a panel: eyebrow, count, optional action. */
+.tc-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 16px 6px;
+}
+.tc-count {
+  font-size: var(--text-tiny);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* A list row: icon, title, one meta line, one trailing time or chip. */
+.tc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 10px;
+  margin: 0 6px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background-color var(--duration-instant) var(--ease-out-soft);
+}
+.tc-row:hover { background: color-mix(in srgb, var(--surface-hover) 70%, transparent); }
+.tc-row[aria-selected="true"], .tc-row[data-selected="true"] { background: var(--surface-hover); }
+.tc-row:disabled, .tc-row[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.tc-row-title {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tc-row-meta {
+  font-size: var(--text-xs);
+  color: var(--text-metadata);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* Status chip: one shape for Live, Needs you, Current, role tags. */
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: var(--text-tiny);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex: none;
+  background: var(--surface-hover);
+  color: var(--text-metadata);
+}
+.tc-chip-live { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+.tc-chip-ask { background: var(--pin-soft); color: var(--pin); }
+.tc-chip-error { background: var(--red-soft); color: var(--red); }
+.tc-chip-dot { width: 6px; height: 6px; border-radius: 3px; background: currentColor; }
+
+/* On/off switch. */
+.tc-switch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border-hover);
+  transition: background-color var(--duration-quick) var(--ease-out-soft);
+}
+.tc-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--text-secondary);
+  transition: transform var(--duration-quick) var(--ease-out-soft), background-color var(--duration-quick) var(--ease-out-soft);
+}
+.tc-switch[aria-checked="true"] { background: var(--accent); }
+.tc-switch[aria-checked="true"]::after { transform: translateX(12px); background: var(--accent-foreground); }
+.tc-switch:disabled { opacity: 0.45; }
+
+/* Segmented control: two to four short views. */
+.tc-seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  corner-shape: squircle;
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+.tc-seg > button {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  transition: color var(--duration-instant) var(--ease-out-soft), background-color var(--duration-instant) var(--ease-out-soft);
+}
+.tc-seg > button:hover { color: var(--text-primary); }
+.tc-seg > button[aria-selected="true"], .tc-seg > button[aria-pressed="true"] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.tc-seg-fill { display: flex; }
+.tc-seg-fill > button { flex: 1; }
+
+/* Empty state: one readable line that says how to fill it. */
+.tc-empty {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--text-secondary);
+  padding: 2px 16px 4px;
+}
+
+/* Panel header: 14px title, optional 12px subtitle, icon buttons. */
+.tc-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 10px 0 16px;
+  flex: none;
+}
+.tc-panel-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  color: var(--text-primary);
+}
+.tc-panel-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

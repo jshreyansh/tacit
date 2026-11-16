@@ -153,7 +153,7 @@ export function InstructionsPrompt({ projectPath, projectName }: { projectPath: 
     <div className="shrink-0 px-2 pb-2" data-testid="instructions-prompt">
       <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-2.5">
         <span className="text-[12px] font-semibold leading-snug text-[var(--text-primary)]">{title}</span>
-        {note && <span className="text-[11.5px] leading-snug text-[var(--text-secondary)]">{note}</span>}
+        {note && <span className="text-[12px] leading-snug text-[var(--text-secondary)]">{note}</span>}
         <div className="flex flex-col gap-1">
           {value.files.map((file) => (
             <div key={file.name} className="flex min-w-0 items-center gap-1.5 text-[11px]">
@@ -175,7 +175,7 @@ export function InstructionsPrompt({ projectPath, projectName }: { projectPath: 
             type="button"
             disabled={busy}
             onClick={setUp}
-            className="rounded-md px-2.5 py-1 text-[11.5px] font-medium disabled:opacity-50"
+            className="rounded-md px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
             style={{ background: "var(--accent)", color: "var(--bg)" }}
           >
             {outdated ? t.instructions_update : t.instructions_enable}
@@ -184,7 +184,7 @@ export function InstructionsPrompt({ projectPath, projectName }: { projectPath: 
             type="button"
             disabled={busy}
             onClick={() => useInstructionsPromptStore.getState().answerLater(projectPath)}
-            className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11.5px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+            className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
           >
             {t.instructions_later}
           </button>
@@ -195,7 +195,7 @@ export function InstructionsPrompt({ projectPath, projectName }: { projectPath: 
               declineInstructions(projectPath);
               useInstructionsPromptStore.getState().settle(projectPath);
             }}
-            className="rounded-md px-2 py-1 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            className="rounded-md px-2 py-1 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
           >
             {t.instructions_never}
           </button>

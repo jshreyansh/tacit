@@ -119,7 +119,7 @@ function HistoryItem({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span
-            className="min-w-0 truncate text-[12.5px]"
+            className="min-w-0 truncate text-[13px]"
             style={{ color: manager ? "var(--text-secondary)" : "var(--text-primary)", fontStyle: manager ? "italic" : undefined }}
           >
             {text}
@@ -134,9 +134,9 @@ function HistoryItem({
             </span>
           ) : null}
         </span>
-        <span className="tc-mono mt-0.5 block truncate text-[10.5px] text-[var(--text-muted)]">{meta}</span>
+        <span className="tc-mono mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{meta}</span>
       </span>
-      <span className="tc-mono mt-0.5 shrink-0 text-[10.5px] tabular-nums text-[var(--text-faint)] group-hover:hidden">
+      <span className="tc-mono mt-0.5 shrink-0 text-[11px] tabular-nums text-[var(--text-muted)] group-hover:hidden">
         {stamp(entry.lastActivityAt)}
       </span>
       {/* Star and hide on hover, in the stamp's place. Hiding takes two
@@ -329,16 +329,16 @@ export function ChatHistory({
             }}
             placeholder={live ? t.chat_sessions_search : t.chat_history_search}
             aria-label={live ? t.chat_sessions_search : t.chat_history_search}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
-          <span className="tc-mono shrink-0 text-[10.5px] tabular-nums">{loading && entries.length === 0 ? "…" : visible.length}</span>
+          <span className="tc-mono shrink-0 text-[11px] tabular-nums">{loading && entries.length === 0 ? "…" : visible.length}</span>
         </label>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {live?.(query)}
         {live && (
-          <div className="px-3.5 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_sessions_earlier}</div>
+          <div className="tc-eyebrow px-3.5 pb-1 pt-3">{t.chat_sessions_earlier}</div>
         )}
         {loading && entries.length === 0 && (
           <div className="px-4 py-6 text-center text-[12px] text-[var(--text-muted)]">{t.chat_history_loading}</div>
@@ -352,7 +352,7 @@ export function ChatHistory({
 
         {pinnedEntries.length > 0 && (
           <section className="mb-1" aria-label={t.chat_history_pinned}>
-            <div className="px-4 pb-1 pt-1.5 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_history_pinned}</div>
+            <div className="tc-eyebrow px-4 pb-1 pt-1.5">{t.chat_history_pinned}</div>
             {pinnedEntries.map(item)}
           </section>
         )}
@@ -382,7 +382,7 @@ export function ChatHistory({
                   <path d="M3 2l4 3-4 3z" fill="currentColor" />
                 </svg>
                 <span className="truncate text-[12px] font-medium text-[var(--text-secondary)]">{projectName(group.projectDir)}</span>
-                <span className="tc-mono text-[10.5px] text-[var(--text-faint)]">{group.entries.length}</span>
+                <span className="tc-mono text-[11px] text-[var(--text-muted)]">{group.entries.length}</span>
               </button>
               {!isCollapsed && shown.map(item)}
               {!isCollapsed && more > 0 && (

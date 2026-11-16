@@ -92,7 +92,7 @@ import type { HydraIdentity, TerminalType } from "./types";
 import { addScannedProjectAndFocus } from "./projects/projectCreation";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePinPreloader } from "./hooks/usePinPreloader";
-import { useT } from "./i18n/useT";
+import { getTranslations, useT } from "./i18n/useT";
 import { loadAllDownloadedFonts } from "./terminal/fontLoader";
 import { startAutoSummaryWatcher } from "./terminal/summaryScheduler";
 import { useWorkspaceStore } from "./stores/workspaceStore";
@@ -123,6 +123,7 @@ import { performContextualSelectAll } from "./utils/contextualSelectAll";
 import { terminalStartedBy } from "../shared/worker-cap";
 import { startChromeAutoSync } from "./stores/chromeSyncStore";
 import { setWindowFullScreen } from "./toolbar/titleStripHeight";
+import { confirmAsync } from "./components/ui/confirmAsync";
 
 // The canvas opacity/blur preference (Settings > Appearance) needs the real
 // window to show through, which means every opaque layer stacked above it
@@ -312,10 +313,18 @@ function useAutoSave() {
 
 function useWorkspaceOpen() {
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const { dirty } = useWorkspaceStore.getState();
-      if (dirty && !window.confirm("Unsaved changes will be lost. Continue?")) {
-        return;
+      if (dirty) {
+        const t = getTranslations();
+        const ok = await confirmAsync({
+          title: t.workdesk_open_unsaved_title,
+          body: t.workdesk_open_unsaved_body,
+          confirmLabel: t.workdesk_open_unsaved_action,
+          confirmTone: "danger",
+          focusCancel: true,
+        });
+        if (!ok) return;
       }
 
       const raw = (e as CustomEvent<string>).detail;

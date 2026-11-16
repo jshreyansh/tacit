@@ -548,8 +548,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
                 is the one state a user must never read as their own account. */}
             {onGuestProfile && (
               <span
-                className="shrink-0 text-[9px] uppercase tracking-wide"
-                style={{ color: "var(--text-faint)" }}
+                className="shrink-0 text-[10px] uppercase tracking-wide"
+                style={{ color: "var(--text-muted)" }}
               >
                 {t.browser_identity_signed_out}
               </span>
@@ -588,8 +588,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
                       so this is a note on the row, not a disabled state. */}
                   {!isAgentAllowed(identity) && (
                     <span
-                      className="shrink-0 text-[9px] uppercase tracking-wide"
-                      style={{ color: "var(--text-faint)" }}
+                      className="shrink-0 text-[10px] uppercase tracking-wide"
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {t.browser_identity_agent_withheld_short}
                     </span>
@@ -675,7 +675,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
         onMouseDown={projectedLayout ? undefined : handleResizeStart}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-[var(--text-faint)]">
+        <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-[var(--text-muted)]">
           <path d="M9 1L1 9M9 5L5 9M9 8L8 9" stroke="currentColor" strokeWidth="1" />
         </svg>
       </div>

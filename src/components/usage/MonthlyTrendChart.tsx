@@ -124,7 +124,7 @@ export function MonthlyTrendChart({
         })}
       </div>
 
-      <div className="mt-1.5 flex justify-between text-[9px] text-[var(--text-secondary)] font-medium tc-mono tc-num">
+      <div className="mt-1.5 flex justify-between text-[10px] text-[var(--text-secondary)] font-medium tc-mono tc-num">
         {bars.map((b, i) =>
           labelIndices.has(i) ? (
             <span key={b.date}>
@@ -139,7 +139,7 @@ export function MonthlyTrendChart({
           <span className="text-[var(--text-secondary)]">
             {bars[hovered].date}
           </span>
-          <span className="text-[var(--text-faint)] mx-1">·</span>
+          <span className="text-[var(--text-muted)] mx-1">·</span>
           <span className="text-[var(--text-primary)]">
             {fmtCost(bars[hovered].cost)}
           </span>

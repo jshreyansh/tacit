@@ -21,6 +21,7 @@ import type { WorkspaceCanvas } from "../types/workspace";
 import { DEFAULT_CANVAS_NAME } from "../types/workspace";
 import { useWorkspaceStore } from "./workspaceStore";
 import { nextCanvasName } from "../canvas/canvasNames";
+import { getTranslations } from "../i18n/useT";
 
 let canvasIdCounter = 0;
 
@@ -139,7 +140,7 @@ export const useCanvasRegistryStore = create<CanvasRegistryStore>(
       );
       const id = generateCanvasId();
       const finalName = uniqueCanvasName(
-        name?.trim() || nextCanvasName(canvases.map((c) => c.name)),
+        name?.trim() || nextCanvasName(canvases.map((c) => c.name), getTranslations()["canvas.new.defaultName"]),
         updatedExisting,
       );
       const fresh: WorkspaceCanvas = {

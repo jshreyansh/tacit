@@ -24,7 +24,7 @@ export function RulePrompts() {
         fontFamily: '"Geist Mono", monospace',
       }}
     >
-      <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+      <div className="tc-eyebrow">
         {t.rule_prompt_title}
         {waiting > 1 ? ` · ${t.rule_prompt_more.replace("{n}", String(waiting - 1))}` : ""}
       </div>

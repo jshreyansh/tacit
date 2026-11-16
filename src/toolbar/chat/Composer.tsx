@@ -151,7 +151,7 @@ export function ComposerBox({
               onSubmit();
             }
           }}
-          className={`block ${compact ? "max-h-32" : "max-h-[min(40vh,22rem)]"} min-h-[1.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]`}
+          className={`block ${compact ? "max-h-32" : "max-h-[min(40vh,22rem)]"} min-h-[1.5rem] w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]`}
         />
       </label>
       <div className="flex min-w-0 items-center gap-0.5">

@@ -185,7 +185,7 @@ function HeatmapTooltip({ cell, triggerRect }: TooltipProps) {
           <span className="text-[var(--text-primary)]">
             {fmtTokens(cell.entry?.tokens ?? 0)} {t.usage_tokens_label}
           </span>
-          <span className="text-[var(--text-faint)]">·</span>
+          <span className="text-[var(--text-muted)]">·</span>
           <span className="text-[var(--text-secondary)]">
             {fmtCost(cell.entry?.cost ?? 0)}
           </span>

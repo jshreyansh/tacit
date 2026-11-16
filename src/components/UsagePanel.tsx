@@ -232,7 +232,7 @@ function CollapsibleSection({
           height="8"
           viewBox="0 0 8 8"
           fill="none"
-          className="text-[var(--text-faint)] shrink-0 transition-transform duration-quick"
+          className="text-[var(--text-muted)] shrink-0 transition-transform duration-quick"
           style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
         >
           <path
@@ -276,7 +276,7 @@ export function SummarySection({
         <span>
           {fmtTokens(totalTokens)} {t.usage_tokens}
         </span>
-        <span className="text-[var(--text-faint)]">·</span>
+        <span className="text-[var(--text-muted)]">·</span>
         <span>
           {summary.sessions} {t.usage_sessions}
         </span>
@@ -307,7 +307,7 @@ export function SummarySection({
             </span>
             {monthlyData.dailyAvg !== undefined && monthlyData.dailyAvg > 0 && (
               <>
-                <span className="text-[var(--text-faint)]">·</span>
+                <span className="text-[var(--text-muted)]">·</span>
                 <span className="text-[var(--text-secondary)] font-medium">
                   ∅ {fmtCost(monthlyData.dailyAvg)}
                 </span>
@@ -546,15 +546,15 @@ export function ProjectsContent({
               <span className="text-[var(--text-secondary)]">
                 {fmtCost(p.cost)}
               </span>
-              <span className="text-[var(--text-faint)] mx-1">·</span>
+              <span className="text-[var(--text-muted)] mx-1">·</span>
               <span className="text-[var(--text-secondary)]">
                 {fmtTokens(totalUsageTokens(p))} {t.usage_tokens_label}
               </span>
-              <span className="text-[var(--text-faint)] mx-1">·</span>
+              <span className="text-[var(--text-muted)] mx-1">·</span>
               <span className="text-[var(--text-secondary)]">
                 {p.calls} {t.usage_calls}
               </span>
-              <span className="text-[var(--text-faint)] mx-1">·</span>
+              <span className="text-[var(--text-muted)] mx-1">·</span>
               <span className="text-[var(--text-secondary)]">
                 {pct(p.cost, totalCost)}
               </span>
@@ -626,9 +626,9 @@ export function ModelsContent({
                 <div className="text-[var(--text-secondary)]">{m.model}</div>
                 <div className="text-[var(--text-secondary)] mt-0.5">
                   {fmtCost(m.cost)}
-                  <span className="text-[var(--text-faint)] mx-1">·</span>
+                  <span className="text-[var(--text-muted)] mx-1">·</span>
                   {fmtTokens(totalUsageTokens(m))} {t.usage_tokens_label}
-                  <span className="text-[var(--text-faint)] mx-1">·</span>
+                  <span className="text-[var(--text-muted)] mx-1">·</span>
                   {m.calls} {t.usage_calls}
                 </div>
               </div>

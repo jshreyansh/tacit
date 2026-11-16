@@ -369,7 +369,7 @@ function CollapsibleGroup({
       >
         <IconChevron expanded={expanded} />
         <span
-          className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wider"
+          className="tc-eyebrow flex-1 truncate"
           style={{ ...MONO_STYLE, color: "var(--text-secondary)" }}
         >
           {title}
@@ -433,7 +433,7 @@ function FileDiffInline({
 
   if (loading) {
     return (
-      <div className="px-4 py-1 text-[10px] text-[var(--text-faint)]" style={MONO_STYLE}>
+      <div className="px-4 py-1 text-[10px] text-[var(--text-muted)]" style={MONO_STYLE}>
         Loading diff...
       </div>
     );
@@ -441,7 +441,7 @@ function FileDiffInline({
   if (!diff || (diff.hunks.length === 0 && !diff.isBinary)) return null;
   if (diff.isBinary) {
     return (
-      <div className="px-4 py-1 text-[10px] text-[var(--text-faint)]" style={MONO_STYLE}>
+      <div className="px-4 py-1 text-[10px] text-[var(--text-muted)]" style={MONO_STYLE}>
         Binary file
       </div>
     );
@@ -455,13 +455,13 @@ function FileDiffInline({
         return (
           <div key={hunkIdx}>
             <div className="flex items-center gap-1 px-2 py-0.5" style={{ backgroundColor: "color-mix(in srgb, var(--accent) 6%, transparent)" }}>
-              <span className="flex-1 truncate text-[9px]" style={{ ...MONO_STYLE, color: "var(--accent)" }}>
+              <span className="flex-1 truncate text-[10px]" style={{ ...MONO_STYLE, color: "var(--accent)" }}>
                 {hunkHeaderLine}
               </span>
               {!staged && onStageHunk && (
                 <button
                   onClick={() => onStageHunk(hunkHeaderMatch)}
-                  className="shrink-0 rounded px-1 text-[9px] hover:bg-[var(--surface-hover)]"
+                  className="shrink-0 rounded px-1 text-[10px] hover:bg-[var(--surface-hover)]"
                   style={{ ...MONO_STYLE, color: "var(--cyan)" }}
                   title="Stage Hunk"
                 >
@@ -471,7 +471,7 @@ function FileDiffInline({
               {staged && onUnstageHunk && (
                 <button
                   onClick={() => onUnstageHunk(hunkHeaderMatch)}
-                  className="shrink-0 rounded px-1 text-[9px] hover:bg-[var(--surface-hover)]"
+                  className="shrink-0 rounded px-1 text-[10px] hover:bg-[var(--surface-hover)]"
                   style={{ ...MONO_STYLE, color: "var(--amber)" }}
                   title="Unstage Hunk"
                 >
@@ -597,7 +597,7 @@ function StashSection({
       }
     >
       {stashes.length === 0 ? (
-        <div className="px-4 py-2 text-[10px] text-[var(--text-faint)]" style={MONO_STYLE}>{t.git_stash_empty}</div>
+        <div className="px-4 py-2 text-[10px] text-[var(--text-muted)]" style={MONO_STYLE}>{t.git_stash_empty}</div>
       ) : stashes.map((s) => (
         <div key={s.index} className="group flex items-center gap-1.5 mx-1 px-3 py-1 rounded-md hover:bg-[var(--surface-hover)]" style={{ minHeight: 26 }}>
           {/*
@@ -624,9 +624,9 @@ function StashSection({
             {s.message || `stash@{${s.index}}`}
           </span>
           <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button title={t.git_stash_pop} onClick={async () => { try { await onStashPop(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[9px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--cyan)" }}>Pop</button>
-            <button title={t.git_stash_apply} onClick={async () => { try { await onStashApply(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[9px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--text-secondary)" }}>Apply</button>
-            <button title={t.git_stash_drop} onClick={async () => { try { await onStashDrop(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[9px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--red)" }}>Drop</button>
+            <button title={t.git_stash_pop} onClick={async () => { try { await onStashPop(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[10px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--cyan)" }}>Pop</button>
+            <button title={t.git_stash_apply} onClick={async () => { try { await onStashApply(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[10px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--text-secondary)" }}>Apply</button>
+            <button title={t.git_stash_drop} onClick={async () => { try { await onStashDrop(s.index); } catch (err) { notify("error", t.git_stash_failed(String(err))); } }} className="rounded px-1 text-[10px] hover:bg-[var(--surface-hover)]" style={{ ...MONO_STYLE, color: "var(--red)" }}>Drop</button>
           </span>
         </div>
       ))}
@@ -670,7 +670,7 @@ function FileListItem({
             {directory && (
               <span
                 className="shrink-0 truncate text-[10px]"
-                style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+                style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
               >
                 {directory}
               </span>
@@ -760,7 +760,7 @@ function BranchPopover({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={searchPlaceholder}
-            className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
             style={MONO_STYLE}
           />
           {onToggleNewBranch && (
@@ -781,7 +781,7 @@ function BranchPopover({
               value={newBranchName ?? ""}
               onChange={(e) => onNewBranchNameChange(e.target.value)}
               placeholder="Branch name..."
-              className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
               style={MONO_STYLE}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onCreateBranch(); } }}
             />
@@ -823,7 +823,7 @@ function BranchPopover({
             </div>
           ))}
           {filtered.length === 0 && (
-            <div className="px-3 py-2 text-[11px] text-[var(--text-faint)]" style={MONO_STYLE}>
+            <div className="px-3 py-2 text-[11px] text-[var(--text-muted)]" style={MONO_STYLE}>
               No matching branches
             </div>
           )}
@@ -873,7 +873,7 @@ function CommitDetailInline({
   if (loading) {
     return (
       <div
-        className="px-4 py-2 text-[10px] text-[var(--text-faint)]"
+        className="px-4 py-2 text-[10px] text-[var(--text-muted)]"
         style={MONO_STYLE}
       >
         Loading...
@@ -1726,7 +1726,7 @@ export function GitContent({
               onChange={(e) => setCommitMessage(e.target.value)}
               placeholder={amendMode ? "Amend message..." : t.git_commit_message_placeholder}
               aria-label={t.git_commit_message_placeholder}
-              className="h-7 min-w-0 w-full rounded-md border bg-transparent px-2 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
+              className="h-7 min-w-0 w-full rounded-md border bg-transparent px-2 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
               style={{
                 ...MONO_STYLE,
                 borderColor: amendMode ? "var(--amber)" : "var(--border)",
@@ -1946,7 +1946,7 @@ export function GitContent({
       ) : !statusLoading ? (
         <div
           className="shrink-0 px-4 py-6 text-center text-[11px]"
-          style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+          style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
         >
           {t.git_nothing_to_commit}
         </div>
@@ -1982,7 +1982,7 @@ export function GitContent({
         {commits.length === 0 ? (
           <div
             className="px-4 py-3 text-[11px]"
-            style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+            style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
           >
             {t.git_no_commits}
           </div>
@@ -2072,7 +2072,7 @@ export function GitContent({
                           </span>
                           {isMergeCommit && (
                             <span
-                              className="shrink-0 rounded px-1 text-[9px]"
+                              className="shrink-0 rounded px-1 text-[10px]"
                               style={{
                                 ...MONO_STYLE,
                                 color: "var(--text-secondary)",
@@ -2086,7 +2086,7 @@ export function GitContent({
                           {visibleRefs.map((ref) => (
                             <span
                               key={ref}
-                              className="shrink-0 rounded border px-1 text-[9px]"
+                              className="shrink-0 rounded border px-1 text-[10px]"
                               style={{
                                 ...MONO_STYLE,
                                 ...getCommitRefColors(ref),
@@ -2097,10 +2097,10 @@ export function GitContent({
                           ))}
                           {hiddenCount > 0 && (
                             <span
-                              className="shrink-0 text-[9px]"
+                              className="shrink-0 text-[10px]"
                               style={{
                                 ...MONO_STYLE,
-                                color: "var(--text-faint)",
+                                color: "var(--text-muted)",
                               }}
                             >
                               +{hiddenCount}
@@ -2111,13 +2111,13 @@ export function GitContent({
                           className="mt-0.5 flex items-center gap-2 text-[10px]"
                           style={MONO_STYLE}
                         >
-                          <span style={{ color: "var(--text-faint)" }}>
+                          <span style={{ color: "var(--text-muted)" }}>
                             {c.hash.slice(0, 7)}
                           </span>
                           <span style={{ color: "var(--text-muted)" }}>
                             {c.author}
                           </span>
-                          <span style={{ color: "var(--text-faint)" }}>
+                          <span style={{ color: "var(--text-muted)" }}>
                             {formatRelativeTime(c.date)}
                           </span>
                         </div>

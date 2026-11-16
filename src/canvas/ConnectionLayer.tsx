@@ -1197,7 +1197,7 @@ export function ConnectionLayer() {
             <>
               <div>{removalBody.sentence}</div>
               {removalBody.effect && (
-                <div className="mt-2 text-[var(--text-faint)]">
+                <div className="mt-2 text-[var(--text-muted)]">
                   {removalBody.effect}
                 </div>
               )}

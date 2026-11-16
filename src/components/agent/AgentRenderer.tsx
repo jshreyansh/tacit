@@ -477,7 +477,7 @@ export function AgentRenderer({
           {segments.length === 0 && !running && (
             <div
               className="tc-label flex items-center justify-center h-32"
-              style={{ color: "var(--text-faint)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Send a message to start
             </div>

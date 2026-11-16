@@ -93,7 +93,7 @@ function ToastItem({
         </span>
       </div>
       <button
-        className="shrink-0 text-[var(--text-faint)] hover:text-[var(--text-primary)] transition-colors p-0.5"
+        className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-0.5"
         style={{
           transitionDuration: "var(--duration-quick)",
           transitionTimingFunction: "var(--ease-out-soft)",

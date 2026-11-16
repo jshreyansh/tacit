@@ -375,7 +375,7 @@ export function RightPanel() {
                     role="tab"
                     aria-selected={on}
                     onClick={() => setActiveTab(id)}
-                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-[11.5px] transition-colors duration-quick"
+                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors duration-quick"
                     style={{
                       background: on ? "var(--surface-hover)" : "transparent",
                       color: on ? "var(--text-primary)" : "var(--text-muted)",
@@ -476,7 +476,7 @@ export function RightPanel() {
                       height="10"
                       viewBox="0 0 10 10"
                       fill="none"
-                      className={`shrink-0 text-[var(--text-faint)] ${
+                      className={`shrink-0 text-[var(--text-muted)] ${
                         repoMenuOpen ? "rotate-180" : ""
                       }`}
                       style={{

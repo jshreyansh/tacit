@@ -140,7 +140,7 @@ function MiniCalendar({
         {t.usage_cal_weekdays.map((day) => (
           <div
             key={day}
-            className="text-center text-[9px] text-[var(--text-secondary)] py-0.5 font-medium"
+            className="text-center text-[10px] text-[var(--text-secondary)] py-0.5 font-medium"
           >
             {day}
           </div>
@@ -167,7 +167,7 @@ function MiniCalendar({
               }}
               className={`
                 relative flex flex-col items-center justify-center h-6 rounded text-[10px] transition-all duration-quick
-                ${isFuture ? "text-[var(--text-faint)] cursor-default opacity-40" : "cursor-pointer hover:bg-[var(--surface-hover)]"}
+                ${isFuture ? "text-[var(--text-muted)] cursor-default opacity-40" : "cursor-pointer hover:bg-[var(--surface-hover)]"}
                 ${isSelected ? "bg-[var(--usage-primary)] text-[var(--bg)] hover:bg-[var(--usage-primary)]" : ""}
                 ${isToday && !isSelected ? "text-[var(--usage-primary)] font-bold" : ""}
                 ${!isSelected && !isToday && !isFuture ? "text-[var(--text-secondary)]" : ""}
@@ -296,7 +296,7 @@ export function DateNavigator({
           disabled={isTomorrow}
           className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
             isTomorrow
-              ? "text-[var(--text-faint)] cursor-default"
+              ? "text-[var(--text-muted)] cursor-default"
               : "hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
         >

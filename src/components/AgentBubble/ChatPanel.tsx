@@ -303,7 +303,7 @@ export function ChatPanel({ messages, onSendMessage, onCollapse }: ChatPanelProp
           <button
             className="p-1 rounded"
             style={{
-              color: "var(--text-faint)",
+              color: "var(--text-muted)",
               transition:
                 "background-color var(--duration-quick) var(--ease-out-soft), color var(--duration-quick) var(--ease-out-soft)",
             }}
@@ -327,7 +327,7 @@ export function ChatPanel({ messages, onSendMessage, onCollapse }: ChatPanelProp
           <button
             className="p-1 rounded"
             style={{
-              color: "var(--text-faint)",
+              color: "var(--text-muted)",
               transition:
                 "background-color var(--duration-quick) var(--ease-out-soft), color var(--duration-quick) var(--ease-out-soft)",
             }}

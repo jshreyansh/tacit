@@ -194,9 +194,9 @@ export function TasksView() {
     <div className="flex min-h-0 flex-1 flex-col">
       {projects.length > 1 && (
         <div className="flex shrink-0 items-center px-3 pt-2.5">
-          <label className="flex h-[28px] min-w-0 items-center rounded-[8px] border border-[var(--border)] px-2 text-[12.5px] text-[var(--text-primary)]">
+          <label className="flex h-[28px] min-w-0 items-center rounded-[8px] border border-[var(--border)] px-2 text-[13px] text-[var(--text-primary)]">
             <span className="sr-only">{t.task_project}</span>
-            <select value={openProjectPath ?? ""} onChange={(e) => openDrawer(e.target.value)} className="min-w-0 max-w-[200px] bg-transparent text-[12.5px] outline-none">
+            <select value={openProjectPath ?? ""} onChange={(e) => openDrawer(e.target.value)} className="min-w-0 max-w-[200px] bg-transparent text-[13px] outline-none">
               {projects.map((project) => (
                 <option key={project.id} value={project.path}>
                   {project.name}
@@ -232,7 +232,7 @@ export function TasksView() {
               onClick={() => setFilter(f)}
             >
               {f === "all" ? t.tasks_filter_all : statusLabel(f, t)}
-              <span className="tc-mono text-[10.5px] tabular-nums" style={{ color: f === "needs_you" && count > 0 ? "var(--amber)" : undefined }}>
+              <span className="tc-mono text-[11px] tabular-nums" style={{ color: f === "needs_you" && count > 0 ? "var(--amber)" : undefined }}>
                 {count}
               </span>
             </button>

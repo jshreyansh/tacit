@@ -80,7 +80,7 @@ function FamilyTreeNodeRow({
       }}
     >
       {!node.isRoot && (
-        <span className="text-[var(--text-faint)] text-[10px] ml-1">└</span>
+        <span className="text-[var(--text-muted)] text-[10px] ml-1">└</span>
       )}
       <span
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -293,7 +293,7 @@ export function FamilyTreeOverlay() {
     >
       <div className="px-3 py-2 border-b border-[var(--border)]">
         <span
-          className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+          className="tc-eyebrow"
           style={{ fontFamily: '"Geist Mono", monospace' }}
         >
           {t.hierarchy_agent_tree}

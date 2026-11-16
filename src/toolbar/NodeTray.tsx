@@ -66,7 +66,7 @@ function TrayTile({ entry, onCreated }: { entry: DockEntry; onCreated: () => voi
         }}
       >
         <DockIcon art={entry.art} scale={2} />
-        <span className="max-w-full truncate text-[12.5px]">{label}</span>
+        <span className="max-w-full truncate text-[13px]">{label}</span>
       </button>
       <button
         type="button"
@@ -155,7 +155,7 @@ export function NodeTray() {
             aria-label={t.dock_tray_search}
             className="min-w-0 flex-1 bg-transparent text-[24px] font-medium text-[var(--text-primary)] outline-none placeholder:text-[var(--text-secondary)]"
           />
-          <kbd className="rounded-md border border-[var(--border)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">esc</kbd>
+          <kbd className="tc-kbd">esc</kbd>
         </div>
 
         <div className="flex gap-1.5">
@@ -163,7 +163,7 @@ export function NodeTray() {
             <button
               key={id}
               type="button"
-              className="rounded-full px-3 py-1 text-[12.5px] transition-colors duration-quick"
+              className="rounded-full px-3 py-1 text-[13px] transition-colors duration-quick"
               style={
                 filter === id
                   ? { background: "color-mix(in srgb, var(--accent) 18%, transparent)", color: "var(--text-primary)" }
@@ -184,7 +184,7 @@ export function NodeTray() {
         )}
         {agents.length > 0 && (
           <section className="flex flex-col gap-1.5" aria-label={t.dock_tray_agents}>
-            <h3 className="text-[11px] uppercase tracking-[0.05em] text-[var(--text-muted)]">{t.dock_tray_agents}</h3>
+            <h3 className="tc-eyebrow">{t.dock_tray_agents}</h3>
             <div className="grid grid-cols-6 gap-1">
               {agents.map((entry) => (
                 <TrayTile key={entry.id} entry={entry} onCreated={close} />
@@ -194,7 +194,7 @@ export function NodeTray() {
         )}
         {tools.length > 0 && (
           <section className="flex flex-col gap-1.5" aria-label={t.dock_tray_tools}>
-            <h3 className="text-[11px] uppercase tracking-[0.05em] text-[var(--text-muted)]">{t.dock_tray_tools}</h3>
+            <h3 className="tc-eyebrow">{t.dock_tray_tools}</h3>
             <div className="grid grid-cols-6 gap-1">
               {tools.map((entry) => (
                 <TrayTile key={entry.id} entry={entry} onCreated={close} />
@@ -202,7 +202,7 @@ export function NodeTray() {
             </div>
           </section>
         )}
-        <div className="text-[11.5px] text-[var(--text-muted)]">{t.dock_tray_hint}</div>
+        <div className="text-[12px] text-[var(--text-muted)]">{t.dock_tray_hint}</div>
       </div>
     </div>
   );

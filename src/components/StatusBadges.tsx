@@ -5,7 +5,7 @@ const BADGE_COLORS: { key: keyof StatusSummary; color: string }[] = [
   { key: "running", color: "var(--amber)" },
   { key: "freshDone", color: "var(--accent)" },
   { key: "done", color: "var(--text-muted)" },
-  { key: "idle", color: "var(--text-faint)" },
+  { key: "idle", color: "var(--text-muted)" },
 ];
 
 export function StatusBadges({ summary }: { summary: StatusSummary }) {

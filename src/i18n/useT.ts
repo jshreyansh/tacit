@@ -26,3 +26,8 @@ export function useT(): Dict {
   const locale = useLocaleStore((s) => s.locale);
   return useMemo(() => getMerged(locale), [locale]);
 }
+
+/** The current language's strings, for code outside React components. */
+export function getTranslations(): Dict {
+  return getMerged(useLocaleStore.getState().locale);
+}

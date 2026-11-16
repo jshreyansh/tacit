@@ -15,7 +15,7 @@ function MessageRow({ message }: { message: BubbleMessage }) {
   if (isStatus) {
     return (
       <div className="flex justify-center py-1">
-        <span className="tc-caption" style={{ color: "var(--text-faint)" }}>
+        <span className="tc-caption" style={{ color: "var(--text-muted)" }}>
           {message.content}
         </span>
       </div>
@@ -97,12 +97,12 @@ export function MessageList({ messages }: MessageListProps) {
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full px-6">
           {!apiKeyReady ? null : agentApiKey ? (
-            <p className="tc-label text-center" style={{ color: "var(--text-faint)" }}>
+            <p className="tc-label text-center" style={{ color: "var(--text-muted)" }}>
               Send a message to start an agent task
             </p>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <p className="tc-label text-center" style={{ color: "var(--text-faint)" }}>
+              <p className="tc-label text-center" style={{ color: "var(--text-muted)" }}>
                 Configure an API key to get started
               </p>
               <button

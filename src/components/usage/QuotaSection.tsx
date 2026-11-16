@@ -61,7 +61,7 @@ function QuotaWindowRow({
       <span className="text-[10px] text-[var(--text-secondary)] font-medium shrink-0 w-9 text-right tc-mono tc-num">
         {Math.round(utilization * 100)}%
       </span>
-      <span className="text-[9px] text-[var(--text-secondary)] font-medium tc-mono tc-num truncate">
+      <span className="text-[10px] text-[var(--text-secondary)] font-medium tc-mono tc-num truncate">
         {t.usage_quota_resets} {formatCountdown(resetsAt)}
       </span>
     </div>
@@ -90,7 +90,7 @@ function ProviderQuotaSection({
       <div className="flex items-center gap-1.5">
         <span className="tc-eyebrow tc-color-secondary">{title}</span>
         {error === "rate_limited" && quota && (
-          <span className="text-[10px] text-[var(--text-faint)]" title="Rate limited, showing cached data">
+          <span className="text-[10px] text-[var(--text-muted)]" title="Rate limited, showing cached data">
             &#9203;
           </span>
         )}
@@ -188,7 +188,7 @@ export function QuotaStatus(): React.ReactElement | null {
           />
           {(claudeQuota || claudeLoading || claudeError) &&
             (codexQuota || codexLoading || codexError) && (
-              <span className="text-[var(--text-faint)] shrink-0">·</span>
+              <span className="text-[var(--text-muted)] shrink-0">·</span>
             )}
           <ProviderQuotaStatus
             title={t.usage_quota_codex}

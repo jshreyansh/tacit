@@ -66,7 +66,7 @@ function ViewSwitch({ card, busy, t, extra }: { card: TerminalCard; busy: boolea
         type="button"
         role="tab"
         aria-selected={on}
-        className="h-6 rounded-[6px] px-2.5 text-[11.5px] transition-colors duration-quick"
+        className="h-6 rounded-[6px] px-2.5 text-[12px] transition-colors duration-quick"
         style={{ background: on ? "var(--surface-hover)" : "transparent", color: on ? "var(--text-primary)" : "var(--text-muted)", fontWeight: on ? 600 : 500 }}
         onClick={() => pick(to)}
       >
@@ -76,7 +76,7 @@ function ViewSwitch({ card, busy, t, extra }: { card: TerminalCard; busy: boolea
   };
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
-      <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--text-muted)]">
+      <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-muted)]">
         {pending ? (pending === "terminal" ? t.chat_move_pending_terminal : t.chat_move_pending_chat) : card.subtitle}
       </span>
       {pending && (
@@ -111,7 +111,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   const { undoState, unavailable } = turnUndo;
   const undoButton = unavailable ? (
     // Why there's no undo, where the button would be.
-    <span className="min-w-0 shrink truncate text-[11.5px] text-[var(--text-muted)]" title={unavailable.hint}>
+    <span className="min-w-0 shrink truncate text-[12px] text-[var(--text-muted)]" title={unavailable.hint}>
       {unavailable.line}
     </span>
   ) : (undoState.kind === "ready" || undoState.kind === "running") && (
@@ -160,7 +160,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
       ) : (
         undoButton && (
           <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--text-muted)]">{card.subtitle}</span>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-muted)]">{card.subtitle}</span>
             {undoButton}
           </div>
         )
@@ -184,7 +184,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
         <div className="relative min-h-0 flex-1 bg-[var(--bg)]">
           <div ref={setContainer} className="absolute inset-0 m-2" />
           {!borrowed && (
-            <div className="absolute inset-0 flex items-center justify-center text-[12.5px] text-[var(--text-muted)]">
+            <div className="absolute inset-0 flex items-center justify-center text-[13px] text-[var(--text-muted)]">
               {t.workdesk_terminal_canvas_only}
             </div>
           )}
@@ -294,7 +294,7 @@ function BodyField({ pin, placeholder, minHeight }: { pin: Pin; placeholder: str
         onBlur={flush}
         onKeyDown={(e) => e.stopPropagation()}
         style={{ minHeight }}
-        className="w-full resize-y rounded-[9px] border border-[var(--border)] bg-transparent px-3 py-2 text-[13.5px] leading-[1.7] text-[var(--text-secondary)] outline-none focus:border-[var(--border-hover)]"
+        className="w-full resize-y rounded-[9px] border border-[var(--border)] bg-transparent px-3 py-2 text-[14px] leading-[1.7] text-[var(--text-secondary)] outline-none focus:border-[var(--border-hover)]"
       />
     </label>
   );
@@ -311,7 +311,7 @@ function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
           <EditableTitle pin={pin} placeholder={t.task_title_placeholder} />
           <TaskSections task={pin} />
           <section className="flex flex-col gap-2" aria-label={t.task_notes}>
-            <span className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.task_notes}</span>
+            <span className="tc-eyebrow">{t.task_notes}</span>
             <BodyField pin={pin} placeholder={t.note_body_placeholder} minHeight={90} />
           </section>
         </div>

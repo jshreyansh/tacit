@@ -21,6 +21,7 @@ import {
 } from "../utils/panelAnimation";
 import { useThemeStore } from "../stores/themeStore";
 import { useT } from "../i18n/useT";
+import { confirmAsync } from "./ui/confirmAsync";
 import type * as MonacoNs from "monaco-editor";
 
 /*
@@ -334,14 +335,16 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
     }
   }, [path, content, dirty, saving]);
 
-  const handleClose = useCallback(() => {
-    if (
-      dirty &&
-      !window.confirm(
-        t.file_editor_discard_confirm ?? "Discard unsaved changes?",
-      )
-    ) {
-      return;
+  const handleClose = useCallback(async () => {
+    if (dirty) {
+      const ok = await confirmAsync({
+        title: t.file_editor_discard_confirm,
+        body: t.file_editor_discard_body,
+        confirmLabel: t.file_editor_discard_action,
+        confirmTone: "danger",
+        focusCancel: true,
+      });
+      if (!ok) return;
     }
     close();
   }, [dirty, close, t]);

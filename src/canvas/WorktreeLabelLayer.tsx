@@ -696,7 +696,7 @@ export function WorktreeLabelLayer() {
                 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
                   {entry.prefix}
                 </span>
-                <span style={{ color: "var(--text-faint)", margin: "0 4px" }}>
+                <span style={{ color: "var(--text-muted)", margin: "0 4px" }}>
                   /
                 </span>
               </>
@@ -742,7 +742,7 @@ export function WorktreeLabelLayer() {
           <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
             {focus.projectName}
           </span>
-          <span style={{ color: "var(--text-faint)" }}>/</span>
+          <span style={{ color: "var(--text-muted)" }}>/</span>
           <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
             {focus.worktreeName}
           </span>

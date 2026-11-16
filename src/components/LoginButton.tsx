@@ -31,7 +31,7 @@ export function LoginButton() {
   if (loading) {
     return (
       <span
-        className="text-[10px] text-[var(--text-faint)]"
+        className="text-[10px] text-[var(--text-muted)]"
         style={{ fontFamily: '"Geist Mono", monospace' }}
       >
         {t.auth_logging_in}
@@ -43,7 +43,7 @@ export function LoginButton() {
     if (loginPending) {
       return (
         <span
-          className="text-[10px] text-[var(--text-faint)]"
+          className="text-[10px] text-[var(--text-muted)]"
           style={{ fontFamily: '"Geist Mono", monospace' }}
         >
           {t.auth_logging_in}

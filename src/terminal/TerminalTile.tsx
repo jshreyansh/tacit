@@ -103,7 +103,7 @@ function HierarchyBadges({ terminal }: { terminal: TerminalData }) {
     <>
       {parentInfo && (
         <button
-          className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] text-[var(--text-faint)] hover:text-[var(--text-secondary)] hover:bg-[var(--border)] transition-colors duration-quick shrink-0"
+          className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border)] transition-colors duration-quick shrink-0"
           title={`Parent: ${parentInfo.terminal.title} (${parentInfo.terminal.type})`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -126,7 +126,7 @@ function HierarchyBadges({ terminal }: { terminal: TerminalData }) {
       )}
       {children.length > 0 && (
         <button
-          className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] text-[var(--text-faint)] hover:text-[var(--text-secondary)] hover:bg-[var(--border)] transition-colors duration-quick shrink-0"
+          className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--border)] transition-colors duration-quick shrink-0"
           title={`${children.length} agent${children.length > 1 ? "s" : ""}`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -171,7 +171,7 @@ function PreviewPane({
       style={{ pointerEvents: "none" }}
     >
       <div className="flex h-full min-h-0 flex-col rounded-sm border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_78%,transparent)] px-3 py-2">
-        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] text-[var(--text-faint)]">
+        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] text-[var(--text-muted)]">
           <span
             className="rounded-full border border-[var(--border)] px-1.5 py-0.5 uppercase tracking-[0.18em]"
             style={{ fontFamily: '"Geist Mono", monospace' }}
@@ -1037,7 +1037,7 @@ export function TerminalTile({
           className={`tc-tile-title-editable nodrag h-6 min-w-0 flex-1 rounded-md border px-1.5 text-[11px] ${
             terminal.customTitle
               ? "border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)]"
-              : "border-dashed border-[var(--border)] bg-[var(--bg)] text-[var(--text-faint)]"
+              : "border-dashed border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)]"
           }`}
           style={{ fontFamily: '"Geist Mono", monospace' }}
           title={terminal.customTitle || t.terminal_custom_title_placeholder}
@@ -1056,7 +1056,7 @@ export function TerminalTile({
               className={`tc-tile-action shrink-0 rounded p-0.5 ${
                 terminal.starred
                   ? "text-[var(--amber)] hover:brightness-110"
-                  : "text-[var(--text-faint)] hover:text-[var(--amber)]"
+                  : "text-[var(--text-muted)] hover:text-[var(--amber)]"
               }`}
               data-pinned={terminal.starred ? "true" : undefined}
               title={terminal.starred ? t.terminal_unstar : t.terminal_star}
@@ -1106,7 +1106,7 @@ export function TerminalTile({
                 }}
               />
             ) : isSummarizing ? (
-              <span className="min-w-0 flex-1 truncate leading-[22px] animate-pulse text-[var(--text-faint)]">
+              <span className="min-w-0 flex-1 truncate leading-[22px] animate-pulse text-[var(--text-muted)]">
                 {t.summary_in_progress}
               </span>
             ) : (
@@ -1116,7 +1116,7 @@ export function TerminalTile({
                 </span>
                 <button
                   type="button"
-                  className="tc-tile-action shrink-0 rounded p-0.5 text-[var(--text-faint)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]"
+                  className="tc-tile-action shrink-0 rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]"
                   title={t.terminal_custom_title_placeholder}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
@@ -1155,7 +1155,7 @@ export function TerminalTile({
           {(undoState.kind === "ready" || undoState.kind === "running") && !terminal.minimized && (
             <button
               type="button"
-              className="tc-tile-action text-[var(--text-faint)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)] disabled:opacity-40 disabled:hover:bg-transparent"
+              className="tc-tile-action text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)] disabled:opacity-40 disabled:hover:bg-transparent"
               title={undoState.kind === "running" ? t["turnUndo.buttonRunning"] : t["turnUndo.button"]}
               aria-label={t["turnUndo.button"]}
               disabled={undoState.kind === "running"}
@@ -1172,7 +1172,7 @@ export function TerminalTile({
           {!useAgentRenderer && lodMode === "live" && !terminal.minimized && (
             <button
               type="button"
-              className="tc-tile-action text-[var(--text-faint)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)]"
+              className="tc-tile-action text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)]"
               title={t.shortcut_open_terminal_find}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -1184,7 +1184,7 @@ export function TerminalTile({
             </button>
           )}
           <button
-            className="tc-tile-action text-[var(--text-faint)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)]"
+            className="tc-tile-action text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)]"
             data-visible="always"
             data-pinned={terminal.minimized ? "true" : undefined}
             onMouseDown={(e) => e.stopPropagation()}
@@ -1215,7 +1215,7 @@ export function TerminalTile({
             </svg>
           </button>
           <button
-            className="tc-tile-action text-[var(--text-faint)] hover:text-[var(--red)] p-1 rounded-md hover:bg-[var(--border)]"
+            className="tc-tile-action text-[var(--text-muted)] hover:text-[var(--red)] p-1 rounded-md hover:bg-[var(--border)]"
             data-visible="always"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {

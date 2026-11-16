@@ -296,7 +296,7 @@ export function SearchModal() {
       >
         <span
           aria-hidden
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-semibold"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
           style={{
             ...MONO_STYLE,
             color: isSelected ? "var(--accent)" : "var(--text-muted)",
@@ -322,7 +322,7 @@ export function SearchModal() {
           {result.subtitle && (
             <div
               className="truncate text-[11px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {result.subtitle}
             </div>
@@ -331,7 +331,7 @@ export function SearchModal() {
         {isSelected && (
           <span
             className="shrink-0 text-[10px]"
-            style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+            style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
           >
             Enter
           </span>
@@ -396,7 +396,7 @@ export function SearchModal() {
               (t.search_placeholder_browse as string) ??
               "Type to filter, or browse recent sessions below"
             }
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
             style={MONO_STYLE}
             autoComplete="off"
             spellCheck={false}
@@ -410,13 +410,7 @@ export function SearchModal() {
               }}
             />
           )}
-          <kbd
-            className="shrink-0 rounded border px-1.5 py-0.5 text-[10px]"
-            style={{
-              ...MONO_STYLE,
-              borderColor: "var(--border)",
-              color: "var(--text-faint)",
-            }}
+          <kbd className="tc-kbd"
           >
             ESC
           </kbd>
@@ -458,21 +452,21 @@ export function SearchModal() {
           {showSearching ? (
             <div
               className="px-4 py-10 text-center text-[12px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {(t.search_searching_ellipsis as string) ?? "Searching…"}
             </div>
           ) : showNoResults ? (
             <div
               className="px-4 py-10 text-center text-[12px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {(t.search_no_results as string) ?? "No results found"}
             </div>
           ) : showEmptyHint ? (
             <div
               className="px-4 py-10 text-center text-[12px]"
-              style={{ ...MONO_STYLE, color: "var(--text-faint)" }}
+              style={{ ...MONO_STYLE, color: "var(--text-muted)" }}
             >
               {(t.search_empty_hint as string) ??
                 "Type to find a past session, a terminal, a branch, or an action."}
@@ -481,7 +475,7 @@ export function SearchModal() {
             grouped.map(({ category, items }) => (
               <div key={category}>
                 <div
-                  className="sticky top-0 px-4 py-1.5 text-[10px] font-medium uppercase"
+                  className="tc-eyebrow sticky top-0 px-4 py-1.5"
                   style={{
                     ...MONO_STYLE,
                     color: "var(--text-muted)",
@@ -509,14 +503,12 @@ export function SearchModal() {
           style={{
             ...MONO_STYLE,
             borderColor: "var(--border)",
-            color: "var(--text-faint)",
+            color: "var(--text-muted)",
           }}
         >
           <div className="flex items-center gap-3">
             <span>
-              <kbd
-                className="rounded border px-1 py-0.5"
-                style={{ borderColor: "var(--border)" }}
+              <kbd className="tc-kbd"
               >
                 ↵
               </kbd>
@@ -525,9 +517,7 @@ export function SearchModal() {
               </span>
             </span>
             <span>
-              <kbd
-                className="rounded border px-1 py-0.5"
-                style={{ borderColor: "var(--border)" }}
+              <kbd className="tc-kbd"
               >
                 ↑↓
               </kbd>
@@ -536,9 +526,7 @@ export function SearchModal() {
               </span>
             </span>
             <span className="hidden sm:inline">
-              <kbd
-                className="rounded border px-1 py-0.5"
-                style={{ borderColor: "var(--border)" }}
+              <kbd className="tc-kbd"
               >
                 Tab
               </kbd>

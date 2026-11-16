@@ -824,7 +824,7 @@ export function WorkspaceManagerPill() {
       </span>
       <button
         type="button"
-        className="tc-rail-btn ml-auto h-6 shrink-0 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        className="tc-rail-btn ml-auto h-6 shrink-0 border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
         onClick={() => moveManagerNow(managerTerminal.id)}
         title={t.chat_move_now_hint}
       >
@@ -832,7 +832,7 @@ export function WorkspaceManagerPill() {
       </button>
       <button
         type="button"
-        className="tc-rail-btn h-6 shrink-0 px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        className="tc-rail-btn h-6 shrink-0 px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
         onClick={() => cancelManagerMove(managerTerminal.id)}
       >
         {t.cancel}
@@ -972,7 +972,7 @@ export function WorkspaceManagerPill() {
                 title={`${t.chat_pill_open} (${shortcutLabel})`}
                 aria-label={t.chat_pill_open}
               >
-                <kbd className="tc-mono rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[10.5px]">{shortcutLabel}</kbd>
+                <kbd className="tc-kbd">{shortcutLabel}</kbd>
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M6 3.5h6.5V10M12.5 3.5L4 12" />
                 </svg>
@@ -989,7 +989,7 @@ export function WorkspaceManagerPill() {
                 <path d="M8 3v10M3 8h10" />
               </svg>
               {t.project_chat_choose}
-              <span className="ml-auto text-[11.5px] text-[var(--text-muted)]">{t.project_chat_choose_hint}</span>
+              <span className="ml-auto text-[12px] text-[var(--text-muted)]">{t.project_chat_choose_hint}</span>
             </button>
           )}
         </div>
@@ -1186,7 +1186,7 @@ export function WorkspaceManagerPill() {
             </svg>
             {t.back}
           </button>
-          <span className="text-[12px] text-[var(--text-faint)]">
+          <span className="text-[12px] text-[var(--text-muted)]">
             {t.project_chat_assign}
           </span>
         </div>
@@ -1222,8 +1222,8 @@ export function WorkspaceManagerPill() {
 
       {view === "chat" && chatMode && managerTerminal && transcript.failure && (
         <div className="mx-3 mb-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", background: "color-mix(in srgb, var(--red) 6%, transparent)" }}>
-          <div className="text-[12.5px]" style={{ color: "var(--red)" }}>{t.chat_failure_title}</div>
-          <div className="mt-1 line-clamp-3 text-[11.5px] text-[var(--text-secondary)]">{transcript.failure}</div>
+          <div className="text-[13px]" style={{ color: "var(--red)" }}>{t.chat_failure_title}</div>
+          <div className="mt-1 line-clamp-3 text-[12px] text-[var(--text-secondary)]">{transcript.failure}</div>
           <div className="mt-2 flex gap-1.5">
             <button type="button" className="tc-rail-btn h-7 border border-[var(--border-hover)] px-2.5 text-[12px] text-[var(--text-primary)]" onClick={() => void ensureManagerChat(managerTerminal.id)}>
               {t.chat_restart}
@@ -1238,8 +1238,8 @@ export function WorkspaceManagerPill() {
       {view === "chat" && !chatMode && !viewing && managerTerminal && hasChatMode(managerTerminal.type) && (
         <div className="mx-3 mt-2.5 flex items-center gap-2.5 rounded-xl border border-[var(--border)] px-3 py-2.5">
           <span className="min-w-0 flex-1">
-            <span className="block text-[12.5px] text-[var(--text-primary)]">{t.chat_mode_move_title}</span>
-            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-[var(--text-muted)]">{t.chat_mode_move_body}</span>
+            <span className="block text-[13px] text-[var(--text-primary)]">{t.chat_mode_move_title}</span>
+            <span className="mt-0.5 block text-[12px] leading-relaxed text-[var(--text-muted)]">{t.chat_mode_move_body}</span>
           </span>
           <button
             type="button"
@@ -1289,7 +1289,7 @@ export function WorkspaceManagerPill() {
           {!managerTerminal && (
             <div className="px-2 pb-2 pt-3">
               <div className="text-[16px] font-semibold text-[var(--text-primary)]">{t.project_chat_choose_title}</div>
-              <div className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-muted)]">{t.project_chat_choose_body}</div>
+              <div className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">{t.project_chat_choose_body}</div>
             </div>
           )}
           {(managerTerminal || eligibleManagerTerminals.length > 0) && (
@@ -1367,7 +1367,7 @@ export function WorkspaceManagerPill() {
           now, an agent that has never seen the conversation on screen. */}
       {view === "chat" && viewing && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border)] px-3 py-2.5">
-          <span className="tc-mono truncate text-[var(--text-faint)]" style={{ fontSize: "var(--text-xs)" }}>
+          <span className="tc-mono truncate text-[var(--text-muted)]" style={{ fontSize: "var(--text-xs)" }}>
             {t.project_chat_archive_readonly}
           </span>
           <button
@@ -1441,7 +1441,7 @@ export function WorkspaceManagerPill() {
               <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>
               <button
                 type="button"
-                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 onClick={() => void interruptManagerChat(managerTerminal.id)}
                 title={t.project_chat_stop}
               >
@@ -1457,7 +1457,7 @@ export function WorkspaceManagerPill() {
               <PeekLine conversation={conversation} bare />
               <button
                 type="button"
-                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[11.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 onClick={stopTurn}
                 title={t.project_chat_stop_hint}
               >

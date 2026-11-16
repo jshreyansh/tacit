@@ -466,7 +466,7 @@ function StashedTerminalPreview({
           </div>
         </div>
         <span
-          className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] tc-mono"
+          className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] tc-mono"
           style={{
             color:
               ptyId === null ? "var(--text-faint)" : "var(--text-secondary)",
@@ -535,7 +535,7 @@ export function StashedSection({
         <span className="tc-eyebrow tc-mono">{t.stash_box}</span>
         <span
           className="tc-eyebrow tc-mono ml-auto tabular-nums"
-          style={{ color: "var(--text-faint)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {items.length}
         </span>

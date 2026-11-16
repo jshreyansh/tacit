@@ -428,7 +428,7 @@ export function DiscoveryCue() {
           type="button"
           onClick={() => markSeen(cue.id)}
           aria-label={t["discovery.dismiss"]}
-          className="text-[var(--text-faint)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-0.5 -mr-1"
+          className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-0.5 -mr-1"
           style={{ transitionDuration: "var(--duration-quick)" }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

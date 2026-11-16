@@ -60,7 +60,7 @@ function OwnerChip({ owner }: { owner: string }) {
 
 export function OwnerChips({ task, emptyHint }: { task: Pin; emptyHint?: string }) {
   const owners = task.owners ?? [];
-  if (owners.length === 0) return emptyHint ? <span className="text-[11px] text-[var(--text-faint)]">{emptyHint}</span> : null;
+  if (owners.length === 0) return emptyHint ? <span className="text-[11px] text-[var(--text-muted)]">{emptyHint}</span> : null;
   return (
     <span className="flex flex-wrap items-center gap-1">
       {owners.map((o) => (
@@ -119,7 +119,7 @@ export function StatusChip({ task }: { task: Pin }) {
               type="button"
               role="menuitemradio"
               aria-checked={task.status === status}
-              className="tc-rail-btn flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12.5px] text-[var(--text-primary)]"
+              className="tc-rail-btn flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-[var(--text-primary)]"
               data-on={task.status === status ? "" : undefined}
               onClick={(e) => {
                 e.stopPropagation();
@@ -131,7 +131,7 @@ export function StatusChip({ task }: { task: Pin }) {
               {statusLabel(status, t)}
             </button>
           ))}
-          <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] leading-snug text-[var(--text-faint)]">{t.task_needs_you_by_agent}</div>
+          <div className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-[var(--text-muted)]">{t.task_needs_you_by_agent}</div>
         </div>
       )}
     </span>
@@ -141,7 +141,7 @@ export function StatusChip({ task }: { task: Pin }) {
 const MARK: Record<TaskStep["status"], { mark: string; color: string; text: string }> = {
   done: { mark: "✓", color: "var(--green)", text: "text-[var(--text-muted)] line-through" },
   active: { mark: "▸", color: "var(--cyan)", text: "text-[var(--text-primary)]" },
-  pending: { mark: "○", color: "var(--text-faint)", text: "text-[var(--text-secondary)]" },
+  pending: { mark: "○", color: "var(--text-muted)", text: "text-[var(--text-secondary)]" },
 };
 
 function stepAria(step: TaskStep, t: Dict): string {
@@ -161,7 +161,7 @@ export function StepList({ task, allowAdd = true }: { task: Pin; allowAdd?: bool
         <button
           key={`${i}-${step.text}`}
           type="button"
-          className="tc-rail-btn flex w-full items-start gap-2 px-1.5 py-1 text-left text-[12.5px] leading-snug"
+          className="tc-rail-btn flex w-full items-start gap-2 px-1.5 py-1 text-left text-[13px] leading-snug"
           aria-label={stepAria(step, t)}
           onClick={(e) => {
             e.stopPropagation();
@@ -177,7 +177,7 @@ export function StepList({ task, allowAdd = true }: { task: Pin; allowAdd?: bool
       ))}
       {allowAdd && adding && (
         <label className="flex items-center gap-2 px-1.5 py-1">
-          <span aria-hidden="true" className="w-3.5 text-center text-[var(--text-faint)]">
+          <span aria-hidden="true" className="w-3.5 text-center text-[var(--text-muted)]">
             ○
           </span>
           <span className="sr-only">{t.task_step_placeholder}</span>
@@ -200,7 +200,7 @@ export function StepList({ task, allowAdd = true }: { task: Pin; allowAdd?: bool
             onBlur={() => {
               if (!draft.trim()) setAdding(false);
             }}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
         </label>
       )}
@@ -272,10 +272,10 @@ export function NeedsYouBlock({ task }: { task: Pin }) {
               setDraft("");
             }
           }}
-          className="min-w-0 flex-1 rounded-md bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:ring-1 focus:ring-[var(--border-hover)]"
+          className="min-w-0 flex-1 rounded-md bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--border-hover)]"
         />
       </label>
-      {task.ask.by && <span className="text-[10.5px] text-[var(--text-muted)]">{t.task_answer_hint}</span>}
+      {task.ask.by && <span className="text-[11px] text-[var(--text-muted)]">{t.task_answer_hint}</span>}
     </div>
   );
 }
@@ -334,7 +334,7 @@ function OwnerToggle({ task, owner }: { task: Pin; owner: string }) {
 function Section({ label, extra, children }: { label: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2" aria-label={label}>
-      <span className="flex items-center gap-2 text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-muted)]">
+      <span className="tc-eyebrow flex items-center gap-2">
         {label}
         {extra}
       </span>
@@ -392,7 +392,7 @@ function StepEditor({ task }: { task: Pin }) {
         </div>
       ))}
       <label className="flex items-center gap-1.5 px-1 py-0.5">
-        <span aria-hidden="true" className="w-7 text-center text-[var(--text-faint)]">
+        <span aria-hidden="true" className="w-7 text-center text-[var(--text-muted)]">
           +
         </span>
         <span className="sr-only">{t.task_step_placeholder}</span>
@@ -407,7 +407,7 @@ function StepEditor({ task }: { task: Pin }) {
               setDraft("");
             }
           }}
-          className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:bg-[var(--surface-hover)]"
+          className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:bg-[var(--surface-hover)]"
         />
       </label>
     </div>
@@ -437,7 +437,7 @@ export function TaskSections({ task }: { task: Pin }) {
                 key={status}
                 type="button"
                 aria-pressed={on}
-                className="tc-rail-btn h-[30px] border px-3 text-[12.5px]"
+                className="tc-rail-btn h-[30px] border px-3 text-[13px]"
                 style={{ borderColor: on ? color : "var(--border)", color: on ? color : "var(--text-muted)", background: on ? `color-mix(in srgb, ${color} 10%, transparent)` : undefined }}
                 onClick={() => void updateTask(task, { status })}
               >
@@ -486,7 +486,7 @@ export function TaskBar({ task, onOpen }: { task: Pin; onOpen: () => void }) {
   const current = steps.find((s) => s.status === "active") ?? steps.find((s) => s.status === "pending");
   return (
     <div className="mx-3 mb-2 rounded-[10px] border px-3 py-2" style={{ borderColor: task.status === "needs_you" ? "color-mix(in srgb, var(--amber) 45%, transparent)" : "var(--border)" }}>
-      <div className="flex items-center gap-2 text-[11.5px] text-[var(--text-muted)]">
+      <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
           <span className="uppercase tracking-[0.06em]">{t.task_kind}</span>
           {p.label && <span className="tc-mono tabular-nums">{p.label}</span>}

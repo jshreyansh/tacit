@@ -70,7 +70,7 @@ export function PanelProjectHeader({
           title={worktree.path}
         >
           {label}
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0 text-[var(--text-faint)]">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0 text-[var(--text-muted)]">
             <path d="M2.2 3.5L5 6.3L7.8 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
@@ -102,7 +102,7 @@ export function PanelProjectHeader({
                 <span className={`shrink-0 truncate text-[12px] ${current ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>
                   {candidate.name}
                 </span>
-                <span className="tc-mono min-w-0 flex-1 truncate text-[11px] text-[var(--text-faint)]">
+                <span className="tc-mono min-w-0 flex-1 truncate text-[11px] text-[var(--text-muted)]">
                   {displayFolderPath(main.path, homePath())}
                 </span>
               </button>
@@ -138,7 +138,7 @@ export function PanelProjectChooser({
               onClick={() => onPick(main.id)}
             >
               <span className="shrink-0 truncate text-[12px] font-medium text-[var(--text-primary)]">{project.name}</span>
-              <span className="tc-mono min-w-0 flex-1 truncate text-[11px] text-[var(--text-faint)]">
+              <span className="tc-mono min-w-0 flex-1 truncate text-[11px] text-[var(--text-muted)]">
                 {displayFolderPath(main.path, homePath())}
               </span>
             </button>

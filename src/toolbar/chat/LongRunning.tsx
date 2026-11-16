@@ -100,7 +100,7 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
     <div className="flex flex-col gap-1.5 px-3 pb-2">
       {queue.map((q, i) => (
         <div key={q.id} className="flex items-center gap-2 rounded-[9px] border border-dashed border-[var(--border-hover)] py-1.5 pl-2.5 pr-1.5 text-[12px] text-[var(--text-secondary)]">
-          <span className="shrink-0 rounded-full border px-1.5 text-[10.5px]" style={{ color: "var(--amber)", borderColor: "color-mix(in srgb, var(--amber) 40%, transparent)" }}>
+          <span className="shrink-0 rounded-full border px-1.5 text-[11px]" style={{ color: "var(--amber)", borderColor: "color-mix(in srgb, var(--amber) 40%, transparent)" }}>
             {t.chat_queued(i + 1)}
           </span>
           {editing === q.id ? (
@@ -249,12 +249,12 @@ export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; 
               <span className="text-[13px] text-[var(--text-primary)]">
                 {limitTitle}: <span className="tabular-nums" style={{ color: limitTone(used) === "muted" ? undefined : usedTone }}>{used}%</span>
               </span>
-              {resets && <span className="text-[11.5px] text-[var(--text-muted)]">{t.chat_limit_resets(resets)}</span>}
+              {resets && <span className="text-[12px] text-[var(--text-muted)]">{t.chat_limit_resets(resets)}</span>}
             </div>
           )}
           {summary && percent !== null && (
             <div className={`flex flex-col gap-1 ${used !== undefined ? "border-t border-[var(--border)] pt-2" : ""}`}>
-              <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{t.chat_context}</span>
+              <span className="tc-eyebrow">{t.chat_context}</span>
               <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
                 <span className="block h-1.5 rounded-full" style={{ width: `${percent}%`, background: tone }} />
               </span>
@@ -271,13 +271,13 @@ export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; 
 const STEP_MARK: Record<PlanStep["status"], { mark: string; color: string }> = {
   done: { mark: "✓", color: "var(--green)" },
   active: { mark: "▸", color: "var(--accent)" },
-  pending: { mark: "○", color: "var(--text-faint)" },
+  pending: { mark: "○", color: "var(--text-muted)" },
 };
 
 /** The agent's plan, as a checklist. */
 export function PlanSteps({ steps }: { steps: readonly PlanStep[] }) {
   return (
-    <div className="flex flex-col gap-1 text-[12.5px]">
+    <div className="flex flex-col gap-1 text-[13px]">
       {steps.map((step, i) => (
         <div key={i} className="flex gap-2">
           <span className="shrink-0" style={{ color: STEP_MARK[step.status].color }} aria-hidden="true">
@@ -304,7 +304,7 @@ export function PlanCard({ transcript }: { transcript: ChatTranscript }) {
   const current = steps.find((s) => s.status === "active") ?? steps.find((s) => s.status === "pending");
   return (
     <div className="mx-3 mb-2 rounded-[10px] border border-[var(--border)] px-3 py-2">
-      <button type="button" className="flex w-full items-center gap-2 text-left text-[11.5px] text-[var(--text-muted)]" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button type="button" className="flex w-full items-center gap-2 text-left text-[12px] text-[var(--text-muted)]" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="uppercase tracking-[0.06em]">{t.chat_plan}</span>
         <span className="tabular-nums">
           {done}/{steps.length}

@@ -278,7 +278,7 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       style={{ ...MONO_STYLE, width }}
-      className="rounded-md border border-[var(--border)] bg-[var(--surface)]/60 px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] outline-none transition-colors duration-quick focus:border-[var(--accent)] focus:bg-[var(--surface)]"
+      className="rounded-md border border-[var(--border)] bg-[var(--surface)]/60 px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors duration-quick focus:border-[var(--accent)] focus:bg-[var(--surface)]"
     />
   );
 }
@@ -601,7 +601,7 @@ function CliToolsList() {
 
               <input
                 type="text"
-                className="flex-1 min-w-0 px-2 py-1 rounded-md text-[12px] bg-[var(--surface)]/60 border border-transparent text-[var(--text-primary)] placeholder:text-[var(--text-faint)] focus:outline-none focus:border-[var(--accent)] transition-colors duration-quick"
+                className="flex-1 min-w-0 px-2 py-1 rounded-md text-[12px] bg-[var(--surface)]/60 border border-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors duration-quick"
                 style={MONO_STYLE}
                 placeholder={
                   status?.ok

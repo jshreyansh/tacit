@@ -114,7 +114,7 @@ export function AgentProfilePromptModal() {
                   {isGuestProfile(identity.id) && (
                     <span
                       className="tc-timestamp shrink-0"
-                      style={{ color: "var(--text-faint)" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {t.browser_identity_guest_hint}
                     </span>
@@ -134,7 +134,7 @@ export function AgentProfilePromptModal() {
         )}
 
         <footer className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2">
-          <span className="tc-timestamp" style={{ color: "var(--text-faint)" }}>
+          <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
             {t["agentProfile.prompt.dismissHint"]}
           </span>
           <button
