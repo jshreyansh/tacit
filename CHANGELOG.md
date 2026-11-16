@@ -4,6 +4,17 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-11-16
+
+### Added
+- **Start an agent without a manager.** With the seat empty, the Manager panel offers "Start an agent…": type the task, pick the folder and agent, and it starts with that task.
+- **Track as task.** One switch turns a note into a task (status, steps, who's on it) and back; turning a task with steps or a status into a note asks first.
+
+### Fixed
+- Continuing a past session that changed in the last few minutes asks first, since it may still be running elsewhere.
+- First-run setup greys out agents that aren't installed.
+- Git History no longer lists Tacit's undo checkpoints as commits with raw JSON messages.
+
 ## [0.43.9] - 2026-11-16
 
 ### Fixed
