@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
+import { CanvasEmptyState } from "../components/CanvasEmptyState";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useIdentityStore } from "../stores/identityStore";
@@ -570,7 +571,16 @@ export function WorkdeskView() {
 
       {!openCard && (
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-24 pt-3">
-        {empty && <div className="py-16 text-center text-[13px] text-[var(--text-muted)]">{t.workdesk_empty}</div>}
+        {/* No folder yet: the same setup as the empty canvas. A workdesk
+            with folders but nothing open says how to add something. */}
+        {empty && projects.length === 0 && (
+          <div className="relative min-h-[420px]">
+            <CanvasEmptyState />
+          </div>
+        )}
+        {empty && projects.length > 0 && (
+          <div className="py-16 text-center text-[13px] text-[var(--text-secondary)]">{t.workdesk_empty}</div>
+        )}
         <div className="flex flex-col gap-2.5">
           {sections.agents.length > 0 && (
             <>

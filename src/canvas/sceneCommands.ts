@@ -112,12 +112,11 @@ export async function addProjectFromDirectoryPath(
   const project = buildProjectFromScan(info);
   addProject(project);
 
-  // When the canvas is empty, dropping a project only registers it in
-  // state — there is no visible change on the canvas itself. Open the
-  // docked chat's Sessions view, where the new project's tree is, so the
-  // user can see it and pick where to launch a terminal.
+  // The first folder on a workdesk: the next step is choosing who runs it,
+  // so open the Manager panel's Chat tab (the roster while the seat is
+  // empty). The folder itself shows in Sessions and on the canvas.
   if (wasEmpty) {
-    useChatDockStore.getState().showFace("sessions");
+    useChatDockStore.getState().showFace("chat");
   }
 
   if (options.notifyAdded) {
