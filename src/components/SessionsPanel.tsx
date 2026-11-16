@@ -28,6 +28,9 @@ import {
   getTerminalRuntime,
 } from "../terminal/terminalRuntimeStore";
 import { IconButton } from "./ui/IconButton";
+import { StatusChip } from "./ui/parts";
+import { agentIcon } from "../toolbar/agentIcons";
+import { findTerminal } from "../actions/terminalLookup";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import {
   Collapsible,
@@ -130,23 +133,32 @@ export function TerminalCard({
   onOpen?: () => void;
 }) {
   const open = onOpen ?? (() => panToTerminal(item.terminalId));
-  const subtitleParts = [
-    !hideLocation && item.locationLabel && item.locationLabel !== item.title
-      ? item.locationLabel
-      : null,
-    formatTerminalActivity(item, t),
+  const type = findTerminal(item.terminalId)?.terminal.type;
+  const icon = agentIcon(type);
+  // One meta line: where it runs (unless the section already says), then
+  // what it's doing and when.
+  const meta = [
+    !hideLocation && item.locationLabel && item.locationLabel !== item.title ? item.locationLabel : null,
+    item.state === "idle" ? formatTerminalActivity(item, t) : null,
     formatItemTime(item),
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const chip =
+    item.state === "attention" ? (
+      <StatusChip tone="ask">{t.workdesk_state_needs_you}</StatusChip>
+    ) : item.state === "active" ? (
+      <StatusChip tone="live">{formatTerminalActivity(item, t) || t.workdesk_state_running(null)}</StatusChip>
+    ) : item.state === "done" ? (
+      <StatusChip dot={unseenDone}>{t.workdesk_state_done}</StatusChip>
+    ) : null;
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`tc-row-icon group w-full rounded-md flex items-center gap-2 text-left cursor-pointer min-h-[44px] px-2 py-1.5 ${
-        item.focused
-          ? "bg-[var(--surface-hover)] ring-1 ring-[var(--accent)]/35"
-          : "bg-[var(--surface)] hover:bg-[var(--sidebar-hover)]"
-      }`}
+      data-selected={item.focused ? "true" : undefined}
+      className="tc-row group cursor-pointer"
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -155,88 +167,34 @@ export function TerminalCard({
         }
       }}
     >
-      <div
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{
-          backgroundColor: unseenDone
-            ? "var(--accent)"
-            : STATUS_COLORS[item.state],
-        }}
-      />
-      <div className="flex-1 min-w-0">
-        <div
-          className="truncate"
-          style={{
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--weight-regular)",
-            color: "var(--text-primary)",
-            lineHeight: "var(--leading-snug)",
+      <span className="tc-icon-shell shrink-0" style={{ width: 22, height: 22 }}>
+        {icon ? (
+          <img src={icon} alt="" className="h-[15px] w-[15px] object-contain" draggable={false} />
+        ) : (
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLORS[item.state] }} />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="tc-row-title">{item.title}</span>
+        {meta && <span className="tc-row-meta">{meta}</span>}
+      </span>
+      <span className="flex shrink-0 items-center gap-1 group-hover:hidden">{chip}</span>
+      {/* Stash appears on hover, in the chip's place. */}
+      <span className="hidden shrink-0 group-hover:inline-flex group-focus-within:inline-flex">
+        <IconButton
+          size="sm"
+          tone="neutral"
+          label={t.stash_terminal}
+          onClick={(e) => {
+            e.stopPropagation();
+            stashTerminalInScene(item.projectId, item.worktreeId, item.terminalId);
           }}
         >
-          {item.title}
-        </div>
-        <div
-          className="tc-caption truncate"
-          style={{ color: "var(--text-muted)" }}
-        >
-          {subtitleParts.join(" · ")}
-        </div>
-      </div>
-      <IconButton
-        size="sm"
-        tone="neutral"
-        label={t.stash_terminal}
-        className="opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={(e) => {
-          e.stopPropagation();
-          stashTerminalInScene(
-            item.projectId,
-            item.worktreeId,
-            item.terminalId,
-          );
-        }}
-      >
-        {/* archive: arrow down into tray */}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path
-            d="M5 1v5M5 6L3 4M5 6l2-2"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M1 6h2v2a1 1 0 001 1h2a1 1 0 001-1V6h2"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </IconButton>
-      <IconButton
-        size="sm"
-        tone="danger"
-        label={t.panel_close_terminal}
-        className="opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={(e) => {
-          e.stopPropagation();
-          closeTerminalInScene(
-            item.projectId,
-            item.worktreeId,
-            item.terminalId,
-          );
-        }}
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path
-            d="M2 2L8 8M8 2L2 8"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </IconButton>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+            <path d="M2 3.5h6M3 3.5v4h4v-4M4.2 5.3 5 6.1l.8-.8M5 4.4v1.7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </IconButton>
+      </span>
     </div>
   );
 }

@@ -38,6 +38,8 @@ export const en = {
   chat_sessions_needs_you: (n: number) => `Sessions: ${n} ${n === 1 ? "needs" : "need"} you`,
   chat_sessions_needs_you_heading: "Needs you",
   chat_sessions_on_workdesk: "On this workdesk",
+  chat_sessions_running: "Running",
+  chat_sessions_none_running: "Nothing running. Start an agent from the Manager panel or the left bar.",
   chat_sessions_earlier: "Earlier",
   chat_sessions_search: "Search sessions on this workdesk",
   chat_pins: "Tasks",

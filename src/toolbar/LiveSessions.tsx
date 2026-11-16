@@ -9,6 +9,7 @@ import { promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { ProjectTree } from "../components/ProjectTree";
 import { StashedSection, TerminalCard } from "../components/SessionsPanel";
 import { IconButton } from "../components/ui/IconButton";
+import { EmptyState, SectionHeader } from "../components/ui/parts";
 import {
   buildCanvasTerminalSections,
   buildProjectTree,
@@ -108,6 +109,8 @@ export function LiveSessions({ query }: { query: string }) {
     (s) => (s.canvases.find((c) => c.id === s.activeCanvasId) ?? s.canvases[0])?.workspaceManagerTerminalId ?? null,
   );
   const [addingProject, setAddingProject] = useState(false);
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const running = treeTerminals(tree);
 
   const addProject = useCallback(async () => {
     if (addingProject) return;
@@ -158,21 +161,42 @@ export function LiveSessions({ query }: { query: string }) {
           </div>
         </section>
       )}
-      <section aria-label={t.chat_sessions_on_workdesk}>
+      {/* Everything running on this workdesk, flat: one row per agent or
+          terminal, with where it runs in its meta line. */}
+      <section aria-label={t.chat_sessions_running}>
+        <SectionHeader label={t.chat_sessions_running} count={running.length} />
+        {running.map((item) => card(item, false))}
+        {running.length === 0 && <EmptyState>{t.chat_sessions_none_running}</EmptyState>}
+      </section>
+      {/* The folders and their branches, with their actions (new worktree,
+          remove, delete from disk). Folded away: you reach for it rarely. */}
+      <section aria-label={t.folder_bar_label}>
         <div className="flex items-center pr-2">
-          <Heading>{t.chat_sessions_on_workdesk}</Heading>
-          <div className="flex-1" />
+          <button
+            type="button"
+            aria-expanded={foldersOpen}
+            onClick={() => setFoldersOpen((open) => !open)}
+            className="flex flex-1 items-center gap-1.5 px-4 pb-1.5 pt-4 text-left"
+          >
+            <svg width="9" height="9" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-secondary)] transition-transform duration-quick ${foldersOpen ? "rotate-90" : ""}`} aria-hidden="true">
+              <path d="M3 2l4 3-4 3z" fill="currentColor" />
+            </svg>
+            <span className="tc-eyebrow">{t.folder_bar_label}</span>
+            <span className="tc-count">{tree.length}</span>
+          </button>
           <IconButton size="md" tone="neutral" label={t.shortcut_add_project} busy={addingProject} onClick={addProject}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0" aria-hidden="true">
               <path d="M6 2V10M2 6H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </IconButton>
         </div>
-        <div className="tc-sidebar-tree-font">
-          <ProjectTree projects={tree} renderTerminal={(item) => card(item, true)} />
-          {tree.length === 0 && <div className="tc-label px-4 py-4 text-center">{t.sessions_no_canvas_items}</div>}
-          <StashedSection items={stashed} t={t} />
-        </div>
+        {foldersOpen && (
+          <div className="tc-sidebar-tree-font">
+            <ProjectTree projects={tree} renderTerminal={(item) => card(item, true)} />
+            {tree.length === 0 && <EmptyState>{t.sessions_no_canvas_items}</EmptyState>}
+          </div>
+        )}
+        <StashedSection items={stashed} t={t} />
       </section>
     </>
   );

@@ -38,6 +38,8 @@ export const zh = {
   chat_sessions_needs_you: (n: number) => `会话：${n} 个在等你`,
   chat_sessions_needs_you_heading: "等你处理",
   chat_sessions_on_workdesk: "这个工作台上",
+  chat_sessions_running: "运行中",
+  chat_sessions_none_running: "没有在运行的。可以从经理面板或左侧栏启动一个 agent。",
   chat_sessions_earlier: "更早",
   chat_sessions_search: "搜索这个工作台的会话",
   chat_pins: "任务",
