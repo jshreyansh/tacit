@@ -4,6 +4,14 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.6] - 2026-11-16
+
+### Fixed
+- **Memory shows each memory's type again.** Memories saved in Claude Code's newer format all showed as grey "unknown"; they're now coloured by type (feedback, project, user, reference), and descriptions no longer show stray quotes.
+
+### Changed
+- **Panels stay readable over any wallpaper.** The Hub, Manager, Memory and the other floating panels, the rail and the pill share one glass that darkens the picture behind it, so text keeps its contrast even over the brightest part of a photo. The picture still shows through as colour and blur.
+
 ## [0.43.5] - 2026-11-16
 
 ### Changed
