@@ -165,3 +165,23 @@ export function readerLeft(room: { viewport: number; afterPanels: number; afterC
   if (fits(room.afterChat)) return room.afterChat;
   return Math.max(0, room.viewport - room.right - READER_MIN_WIDTH);
 }
+
+
+/** Minutes since a session last changed under which it may still be running elsewhere. */
+export const RECENT_ELSEWHERE_MIN = 5;
+
+/** Whole minutes since the session's last event (0 for the future or bad dates). */
+export function minutesSinceChange(endedAt: string, now = Date.now()): number {
+  const ms = now - Date.parse(endedAt);
+  return Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 60_000)) : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * A past session written to in the last few minutes that no terminal in
+ * Tacit holds may still be running in another terminal; continuing it here
+ * too would have two agents writing to one session.
+ */
+export function mayBeRunningElsewhere(endedAt: string, holdingTerminalId: string | null, now = Date.now()): boolean {
+  if (holdingTerminalId) return false;
+  return minutesSinceChange(endedAt, now) < RECENT_ELSEWHERE_MIN;
+}

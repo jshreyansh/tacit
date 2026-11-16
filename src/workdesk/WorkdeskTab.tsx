@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { TrackAsTask } from "../tasks/TrackAsTask";
 import { Undo2 } from "lucide-react";
 import { useT } from "../i18n/useT";
 import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
@@ -322,9 +323,7 @@ function TaskTab({ card, t }: { card: TaskCard; t: Dict }) {
             {t.task_hand}
           </button>
         )}
-        <button type="button" className={footButton} onClick={() => void makeNote(pin)}>
-          {t.task_make_note}
-        </button>
+        <TrackAsTask pin={pin} />
         <button
           type="button"
           className={`${footButton} !text-[var(--red)]`}
@@ -353,9 +352,7 @@ function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
         </div>
       </div>
       <Footer hint={t.workdesk_note}>
-        <button type="button" className={footButton} onClick={() => void makeTask(pin)}>
-          {t.note_make_task}
-        </button>
+        <TrackAsTask pin={pin} />
       </Footer>
     </>
   );

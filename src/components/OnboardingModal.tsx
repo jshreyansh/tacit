@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { addProjectFromDirectoryPath } from "../canvas/sceneCommands";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -82,6 +83,9 @@ export function OnboardingModal() {
   const closed = useRef(false);
 
   useBodyScrollLock(open);
+  // Agents whose CLI isn't on this Mac can't be picked: opening one would
+  // start a terminal that fails with "command not found".
+  const availability = useAgentAvailabilityStore((s) => s.byId);
 
   const agents: readonly AgentEntry[] = [
     { id: "claude", name: "Claude", vendor: "Anthropic", icon: claudeIcon },
@@ -241,12 +245,15 @@ export function OnboardingModal() {
             <div className="tc-onboarding-agents">
               {agents.map((agent) => {
                 const on = picked.includes(agent.id);
+                const missing = availability[agent.id]?.installed === false;
                 return (
                   <button
                     key={agent.id}
                     type="button"
                     className="tc-onboarding-agent"
                     aria-pressed={on}
+                    disabled={missing}
+                    title={missing ? availability[agent.id]?.reason ?? t.workdesk_add_not_installed : undefined}
                     onClick={() =>
                       setPicked((current) =>
                         on
@@ -262,7 +269,7 @@ export function OnboardingModal() {
                     />
                     <span className="info">
                       <span className="t">{agent.name}</span>
-                      <span className="d">{agent.vendor}</span>
+                      <span className="d">{missing ? t.workdesk_add_not_installed : agent.vendor}</span>
                     </span>
                     <span className="check">
                       {/* Drawn, not typed: a tick glyph at this size lands

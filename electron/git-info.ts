@@ -221,6 +221,9 @@ export async function getGitLog(
 ): Promise<GitLogEntry[]> {
   const raw = await execGitText(worktreePath, [
     "log",
+    // Tacit's undo checkpoints live under refs/tacit; they aren't your
+    // history, and their JSON messages would fill the list.
+    "--exclude=refs/tacit/*",
     "--all",
     "--format=%H%x09%P%x09%D%x09%an%x09%aI%x09%s",
     "--topo-order",

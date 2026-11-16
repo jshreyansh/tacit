@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TrackAsTask } from "../tasks/TrackAsTask";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import type { ClipboardEvent, DragEvent } from "react";
 import { ExternalLink } from "lucide-react";
@@ -477,13 +478,7 @@ export function PinDetailDrawer() {
                   {t["pin.action.edit"]}
                 </button>
               )}
-              <button
-                className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
-                disabled={busy}
-                onClick={() => void (pinKind(pin) === "task" ? makeNote(pin) : makeTask(pin))}
-              >
-                {pinKind(pin) === "task" ? t.task_make_note : t.note_make_task}
-              </button>
+              <TrackAsTask pin={pin} />
               <div className="w-px h-3 bg-[var(--border)] mx-0.5" />
               <button
                 className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--red)] hover:bg-[var(--red-soft)] transition-colors disabled:opacity-50"

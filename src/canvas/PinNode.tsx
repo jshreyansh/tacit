@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TrackAsTask } from "../tasks/TrackAsTask";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { usePinStore } from "../stores/pinStore";
 import { useSelectionStore } from "../stores/selectionStore";
@@ -250,15 +251,7 @@ function NoteBody({ pin }: { pin: Pin }) {
             onMouseDown={(e) => e.stopPropagation()}
           />
         </label>
-        <button
-          type="button"
-          className="nodrag tc-rail-btn h-6 shrink-0 border px-2 text-[11px] text-[var(--text-secondary)]"
-          style={{ borderColor: "color-mix(in srgb, var(--amber) 35%, var(--border))" }}
-          onClick={() => void makeTask(pin)}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {t.note_make_task}
-        </button>
+        <TrackAsTask pin={pin} compact />
         <MoreMenu pin={pin} />
       </div>
       <textarea

@@ -140,3 +140,18 @@ test("getGitCommitDetail returns null for a missing commit hash", async () => {
     assert.equal(detail, null);
   });
 });
+
+
+test("History leaves out Tacit's undo checkpoints", async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "git-log-cp-"));
+  const run = (cmd: string) => execSync(cmd, { cwd: repo, stdio: "pipe" }).toString().trim();
+  run("git init -q -b main && git config user.email t@t && git config user.name t");
+  fs.writeFileSync(path.join(repo, "a.txt"), "a");
+  run("git add a.txt && git commit -q -m 'real commit'");
+  const tree = run("git write-tree");
+  const cp = run(`git commit-tree ${tree} -m '{"v":1,"phase":"end"}'`);
+  run(`git update-ref refs/tacit/checkpoints/t1/1-end ${cp}`);
+  const log = await getGitLog(repo, 10);
+  assert.deepEqual(log.map((e) => e.message), ["real commit"]);
+  fs.rmSync(repo, { recursive: true, force: true });
+});

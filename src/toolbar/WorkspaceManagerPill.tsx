@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../components/ui/parts";
+import { DirectStart } from "./DirectStart";
 import { confirmAsync } from "../components/ui/confirmAsync";
 import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -1376,6 +1377,8 @@ export function WorkspaceManagerPill() {
           )}
         </div>
       )}
+      {/* No manager: a message can still start an agent directly. */}
+      {view === "roster" && !managerTerminal && <DirectStart />}
 
       {/* A past holder cannot be messaged, so the composer is replaced rather
           than disabled: typing here used to send to whoever holds the seat

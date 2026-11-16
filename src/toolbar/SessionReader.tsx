@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { focusInitialDialogTarget, trapDialogTabKey } from "../components/ui/ConfirmDialog";
+import { confirmAsync } from "../components/ui/confirmAsync";
 import { useManagerTranscript } from "../stores/managerChatStore";
 import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
@@ -25,7 +26,9 @@ import {
   READER_TWO_COLUMN_MIN,
   agentOfSessionFile,
   filterTurns,
+  mayBeRunningElsewhere,
   messageCount,
+  minutesSinceChange,
   readerLayout,
   readerTitle,
   resumeCommand,
@@ -251,6 +254,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
  * forking it hands the tab to the live agent, and a session already held by
  * a terminal opens that terminal's tab; the tab's own × closes it.
  */
+
 function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; onClose: () => void; onLive?: (terminalId: string) => void }) {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
@@ -346,6 +350,20 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
   const primary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 bg-[var(--text-secondary)] text-[13px] text-[var(--bg)] hover:bg-[var(--text-primary)] hover:text-[var(--bg)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
   const secondary = `tc-rail-btn inline-flex h-8 shrink-0 items-center justify-center border border-[var(--border-hover)] text-[13px] text-[var(--text-primary)] disabled:opacity-40 ${layout.compact ? "w-8" : "px-3"}`;
   const noTargetHint = target ? undefined : t.reader_no_worktree;
+  // Written to in the last few minutes and not open in Tacit: it may still be
+  // running in another terminal, where continuing here would make two agents
+  // write to one session. Continuing asks first.
+  const minutesSince = minutesSinceChange(timeline.endedAt);
+  const maybeElsewhere = mayBeRunningElsewhere(timeline.endedAt, holding);
+  const okToContinue = () =>
+    maybeElsewhere
+      ? confirmAsync({
+          title: t.reader_elsewhere_title,
+          body: t.reader_elsewhere_body(Math.max(minutesSince, 0)),
+          confirmLabel: t.reader_elsewhere_action,
+          focusCancel: true,
+        })
+      : Promise.resolve(true);
 
   let actions: React.ReactNode;
   if (holding && holding === managerTerminalId) {
@@ -390,7 +408,12 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
           disabled={!target}
           title={noTargetHint ?? (layout.compact ? t.reader_continue_chat : undefined)}
           aria-label={t.reader_continue_chat}
-          onClick={() => target && void continueSessionInChat(target, onLive)}
+          onClick={() => {
+            if (!target) return;
+            void okToContinue().then((ok) => {
+              if (ok) void continueSessionInChat(target, onLive);
+            });
+          }}
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M7 5l12 7-12 7z" />
@@ -403,7 +426,12 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
           disabled={!target}
           title={noTargetHint ?? (layout.compact ? t.reader_resume_terminal : undefined)}
           aria-label={t.reader_resume_terminal}
-          onClick={() => target && resumeSessionInTerminal(target, t.reader_resumed_toast(agentName), onLive)}
+          onClick={() => {
+            if (!target) return;
+            void okToContinue().then((ok) => {
+              if (ok) resumeSessionInTerminal(target, t.reader_resumed_toast(agentName), onLive);
+            });
+          }}
         >
           {layout.compact ? (
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

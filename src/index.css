@@ -1950,6 +1950,7 @@ a.tc-kbd[data-dragover="true"] {
 .tc-onboarding-agent:active { transform: translateY(0); }
 .tc-onboarding-agent:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tc-onboarding-agent[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.tc-onboarding-agent:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Not every mark is square — OpenCode's is 4:5 — so contain rather than
    stretch. Kimi and OpenCode carry their own opaque ground where the rest are
    transparent, and need a radius so the edge does not read as a raw rectangle. */

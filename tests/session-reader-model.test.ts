@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   agentOfSessionFile,
   filterTurns,
+  mayBeRunningElsewhere,
+  minutesSinceChange,
   linkNodeIds,
   messageCount,
   readerLayout,
@@ -95,4 +97,20 @@ test("the reader opens after the side panel when it fits, over the panel when no
   assert.equal(readerLeft({ ...room, viewport: 1600 }), 1008, "room enough after the panel");
   assert.equal(readerLeft({ ...room, viewport: 960 }), 580, "over the chat's edge, still 360 wide");
   assert.equal(readerLeft({ ...room, viewport: 300 }), 0, "a window narrower than the reader: all of it");
+});
+
+
+test("a session changed minutes ago and not open in Tacit may still be running elsewhere", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  assert.equal(mayBeRunningElsewhere("2026-11-16T11:58:30Z", null, now), true);
+  assert.equal(mayBeRunningElsewhere("2026-11-16T11:54:00Z", null, now), false);
+  // Open in a Tacit terminal: Tacit already knows where it runs.
+  assert.equal(mayBeRunningElsewhere("2026-11-16T11:59:59Z", "term-1", now), false);
+});
+
+test("minutes since a change are whole and never negative", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  assert.equal(minutesSinceChange("2026-11-16T11:57:10Z", now), 2);
+  assert.equal(minutesSinceChange("2026-11-16T12:03:00Z", now), 0);
+  assert.equal(minutesSinceChange("not a date", now), Number.POSITIVE_INFINITY);
 });
