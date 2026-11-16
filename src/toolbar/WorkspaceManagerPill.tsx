@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../components/ui/parts";
+import { confirmAsync } from "../components/ui/confirmAsync";
 import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
@@ -1354,7 +1355,19 @@ export function WorkspaceManagerPill() {
                 tabIndex={-1}
                 className="tc-seat-option"
                 data-danger=""
-                onClick={() => assignWorkspaceManager(null)}
+                onClick={() => {
+                  // Asks first, and says what keeps running: removing the
+                  // manager never stops its terminal or the workers it started.
+                  void confirmAsync({
+                    title: t.project_chat_remove_title,
+                    body: t.project_chat_remove_body(agentLabel || t.project_chat_title),
+                    confirmLabel: t.project_chat_remove_action,
+                    confirmTone: "danger",
+                    focusCancel: true,
+                  }).then((ok) => {
+                    if (ok) assignWorkspaceManager(null);
+                  });
+                }}
               >
                 {t.project_chat_remove}
               </button>

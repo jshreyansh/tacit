@@ -349,7 +349,11 @@ export const zh = {
   project_chat_handover_keeps: "已交接。对话会一起带过去——两个 agent 读取相同的历史格式。",
   project_chat_handover_drops: (from: string, to: string) =>
     `已交接。对话留在 ${from}——${to} 无法读取它的历史，会改从工作日志接手。`,
-  project_chat_remove: "取消指定",
+  project_chat_remove: "移除经理…",
+  project_chat_remove_title: "移除经理？",
+  project_chat_remove_body: (agent: string) =>
+    `${agent} 将不再管理这个工作台。它的终端和它启动的工作者会继续运行，对话保留在“会话”里。你可以随时重新选择经理。`,
+  project_chat_remove_action: "移除",
   switch_to_light: "切换到浅色",
   switch_to_dark: "切换到深色",
   language: "语言",

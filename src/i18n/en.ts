@@ -352,7 +352,11 @@ export const en = {
     "Handed over. The conversation carries across — both agents read the same history.",
   project_chat_handover_drops: (from: string, to: string) =>
     `Handed over. The conversation stays with ${from} — ${to} can't read its history, so it picks up from the journal instead.`,
-  project_chat_remove: "Remove assignment",
+  project_chat_remove: "Remove manager…",
+  project_chat_remove_title: "Remove the manager?",
+  project_chat_remove_body: (agent: string) =>
+    `${agent} stops managing this workdesk. Its terminal and any workers it started keep running, and its chat stays in Sessions. You can choose a manager again at any time.`,
+  project_chat_remove_action: "Remove",
   switch_to_light: "Switch to light",
   switch_to_dark: "Switch to dark",
   language: "Language",
