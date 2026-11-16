@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChoiceRow } from "../components/ui/parts";
 import { useT } from "../i18n/useT";
 import type { Pin, PinStatus } from "../types";
 import type { TaskStep } from "../../shared/pin";
@@ -46,23 +47,22 @@ export function useOwnerView(owner: string): { label: string; icon: string | nul
 
 function OwnerChip({ owner }: { owner: string }) {
   const view = useOwnerView(owner);
+  // Workers whose terminals are gone don't need a name each; the manager
+  // or a live agent does.
+  if (view.closed) return null;
   return (
-    <span
-      className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-[var(--border)] py-px pl-1 pr-2 text-[11px] text-[var(--text-muted)]"
-      style={{ opacity: view.closed ? 0.6 : 1 }}
-      title={owner}
-    >
-      {view.icon ? <img src={view.icon} alt="" className="h-3 w-3 object-contain" draggable={false} /> : <span className="h-3 w-3" />}
+    <span className="inline-flex max-w-[180px] items-center gap-1 text-[11px] text-[var(--text-secondary)]" title={owner}>
+      {view.icon && <img src={view.icon} alt="" className="h-3 w-3 object-contain" draggable={false} />}
       <span className="truncate">{view.label}</span>
     </span>
   );
 }
 
 export function OwnerChips({ task, emptyHint }: { task: Pin; emptyHint?: string }) {
-  const owners = task.owners ?? [];
-  if (owners.length === 0) return emptyHint ? <span className="text-[11px] text-[var(--text-muted)]">{emptyHint}</span> : null;
+  const owners = [...new Set(task.owners ?? [])];
+  if (owners.length === 0) return emptyHint ? <span className="text-[11px] text-[var(--text-secondary)]">{emptyHint}</span> : null;
   return (
-    <span className="flex flex-wrap items-center gap-1">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       {owners.map((o) => (
         <OwnerChip key={o} owner={o} />
       ))}
@@ -227,35 +227,22 @@ export function NeedsYouBlock({ task }: { task: Pin }) {
   const [draft, setDraft] = useState("");
   const asker = useOwnerView(task.ask?.by ?? "");
   if (task.status !== "needs_you" || !task.ask) return null;
-  const who = task.ask.by ? asker.label : t.task_owner_manager;
+  const who = !task.ask.by ? t.task_owner_manager : asker.closed ? t.task_asker_closed : asker.label;
   return (
     <div
-      className="flex flex-col gap-2 rounded-[9px] border px-2.5 py-2"
+      className="flex flex-col gap-2.5 rounded-[12px] border p-3"
       style={{ borderColor: "color-mix(in srgb, var(--amber) 35%, transparent)", background: "color-mix(in srgb, var(--amber) 7%, transparent)" }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <span className="flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--amber)" }}>
-        {asker.icon && task.ask.by && <img src={asker.icon} alt="" className="mt-px h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />}
-        <span>
-          <span className="text-[var(--text-muted)]">{t.task_asks(who)}: </span>
-          {task.ask.reason}
-        </span>
+      <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+        {asker.icon && task.ask.by && <img src={asker.icon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" draggable={false} />}
+        {t.task_asks(who)}
       </span>
+      <span className="text-[13px] leading-snug text-[var(--text-primary)]">{task.ask.reason}</span>
       {task.ask.choices && task.ask.choices.length > 0 && (
-        <span className="flex flex-wrap gap-1.5">
-          {task.ask.choices.map((choice) => (
-            <button
-              key={choice}
-              type="button"
-              className="tc-rail-btn h-7 border px-2.5 text-[12px] text-[var(--text-primary)]"
-              style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, transparent)" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                void answerTask(task, choice);
-              }}
-            >
-              {choice}
-            </button>
+        <span className="flex flex-col gap-1.5" role="group" aria-label={task.ask.reason}>
+          {task.ask.choices.map((choice, i) => (
+            <ChoiceRow key={choice} marker="number" index={i} label={choice} onPick={() => void answerTask(task, choice)} />
           ))}
         </span>
       )}
@@ -272,10 +259,10 @@ export function NeedsYouBlock({ task }: { task: Pin }) {
               setDraft("");
             }
           }}
-          className="min-w-0 flex-1 rounded-md bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--border-hover)]"
+          className="h-9 min-w-0 flex-1 rounded-[9px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]"
         />
       </label>
-      {task.ask.by && <span className="text-[11px] text-[var(--text-muted)]">{t.task_answer_hint}</span>}
+      {task.ask.by && <span className="text-[11px] text-[var(--text-secondary)]">{t.task_answer_hint}</span>}
     </div>
   );
 }

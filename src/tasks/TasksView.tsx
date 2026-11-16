@@ -206,10 +206,10 @@ export function TasksView() {
           </label>
         </div>
       )}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 pb-2 pt-2.5" role="group" aria-label={t.tasks_title}>
+      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto px-3 pb-2 pt-2.5" role="group" aria-label={t.tasks_title}>
         <button
           type="button"
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-[var(--text-secondary)] text-[var(--bg)] hover:bg-[var(--text-primary)] disabled:opacity-40"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"
           onClick={() => void add()}
           disabled={!openProjectPath}
           title={t.tasks_new}
@@ -222,17 +222,19 @@ export function TasksView() {
         {filters.map((f) => {
           const on = filter === f;
           const count = counts[f];
+          // Empty filters stay out of the way; All and the one you're on always show.
+          if (f !== "all" && count === 0 && !on) return null;
           return (
             <button
               key={f}
               type="button"
               aria-pressed={on}
-              className="tc-rail-btn inline-flex h-7 items-center gap-1.5 border px-2.5 text-[12px]"
-              style={{ borderColor: on ? "var(--border-hover)" : "var(--border)", color: on ? "var(--text-primary)" : "var(--text-muted)", background: on ? "var(--surface-hover)" : undefined }}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium whitespace-nowrap"
+              style={{ borderColor: on ? "var(--border-hover)" : "var(--border)", color: on ? "var(--text-primary)" : "var(--text-secondary)", background: on ? "var(--surface-hover)" : undefined }}
               onClick={() => setFilter(f)}
             >
               {f === "all" ? t.tasks_filter_all : statusLabel(f, t)}
-              <span className="tc-mono text-[11px] tabular-nums" style={{ color: f === "needs_you" && count > 0 ? "var(--amber)" : undefined }}>
+              <span className="text-[11px] tabular-nums" style={{ color: f === "needs_you" && count > 0 ? "var(--amber)" : "var(--text-secondary)" }}>
                 {count}
               </span>
             </button>

@@ -1106,7 +1106,7 @@ export function WorkspaceManagerPill() {
 
       {/* Header: the mark, who runs this workdesk, and the controls. */}
       <div
-        className="flex h-[52px] shrink-0 items-center gap-2 border-b border-[var(--border)] pl-3 pr-2"
+        className="flex h-[52px] shrink-0 items-center gap-2 pl-3 pr-2"
         style={{ cursor: placement === "float" ? (dragging ? "grabbing" : "grab") : undefined }}
         // Drag to move a floating chat, or to pop the docked one out;
         // double-click to swap between the two.
@@ -1153,7 +1153,8 @@ export function WorkspaceManagerPill() {
       {/* Chat, Sessions and Tasks are tabs of this panel; a dot marks a tab
           with something waiting on you. Without a manager, Chat is the
           roster where you choose one. */}
-      <div className="shrink-0 px-3 pb-1 pt-0.5">
+      {/* Header and tabs read as one block; one rule under both. */}
+      <div className="tc-seg-quiet shrink-0 border-b border-[var(--border)] px-3 pb-2.5">
         <Segmented
           fill
           label={t.project_chat_title}

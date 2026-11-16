@@ -138,6 +138,7 @@ export const en = {
   task_owner_manager: "Manager",
   task_owner_closed: "closed terminal",
   task_asks: (who: string) => `${who} asks`,
+  task_asker_closed: "An agent",
   task_answer_placeholder: "Or type an answer, then Enter",
   task_answer_hint: "Your answer goes into its terminal.",
   task_hand: "Hand to manager",

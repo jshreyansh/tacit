@@ -158,3 +158,52 @@ export function ListRow({
     </button>
   );
 }
+
+/**
+ * One answer to an agent's question: a full-width row that grows with its
+ * text, marked by a number (pick to send), a radio or a checkbox. Used in
+ * the chat's questions and in a task that needs you.
+ */
+export function ChoiceRow({
+  label,
+  description,
+  marker,
+  index,
+  selected,
+  onPick,
+}: {
+  label: ReactNode;
+  description?: ReactNode;
+  marker: "number" | "radio" | "check";
+  /** 0-based position, shown as 1, 2, 3 for the number marker. */
+  index?: number;
+  selected?: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role={marker === "number" ? undefined : marker === "radio" ? "radio" : "checkbox"}
+      aria-checked={marker === "number" ? undefined : !!selected}
+      data-selected={selected ? "true" : undefined}
+      className="tc-choice"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <span className="tc-choice-mark" data-marker={marker} aria-hidden="true">
+        {marker === "number" ? (index ?? 0) + 1 : marker === "check" && selected ? (
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3.5 8.5l3 3 6-7" />
+          </svg>
+        ) : null}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="tc-choice-label">{label}</span>
+        {description && <span className="tc-choice-desc">{description}</span>}
+      </span>
+    </button>
+  );
+}

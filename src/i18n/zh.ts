@@ -137,6 +137,7 @@ export const zh = {
   task_owner_manager: "管理者",
   task_owner_closed: "已关闭的终端",
   task_asks: (who: string) => `${who} 在问`,
+  task_asker_closed: "一个 agent",
   task_answer_placeholder: "或输入答案，按回车",
   task_answer_hint: "你的回答会发到它的终端。",
   task_hand: "交给管理者",

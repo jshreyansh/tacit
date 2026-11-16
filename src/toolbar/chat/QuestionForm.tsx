@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useT } from "../../i18n/useT";
+import { ChoiceRow } from "../../components/ui/parts";
 import type { ChatQuestion } from "../../../shared/chat-events";
 import type { PendingQuestion } from "../../../shared/chat-transcript";
 import { answersFor, canGoOn, skipStep, type QuestionDraft } from "./questionModel";
@@ -26,18 +27,7 @@ function Option({
   description?: string;
   onPick: () => void;
 }) {
-  return (
-    <label
-      className="flex cursor-pointer items-start gap-2.5 rounded-[9px] border px-2.5 py-2 text-left"
-      style={{ borderColor: checked ? "var(--cyan)" : "var(--border)", background: checked ? "color-mix(in srgb, var(--cyan) 8%, transparent)" : undefined }}
-    >
-      <input type={multi ? "checkbox" : "radio"} checked={checked} onChange={onPick} className="mt-0.5 accent-[var(--cyan)]" />
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[13px] text-[var(--text-primary)]">{label}</span>
-        {description && <span className="text-[12px] leading-snug text-[var(--text-muted)]">{description}</span>}
-      </span>
-    </label>
-  );
+  return <ChoiceRow marker={multi ? "check" : "radio"} selected={checked} label={label} description={description} onPick={onPick} />;
 }
 
 function QuestionStep({ question, draft, onChange }: { question: ChatQuestion; draft: QuestionDraft; onChange: (draft: QuestionDraft) => void }) {
@@ -80,14 +70,14 @@ function QuestionStep({ question, draft, onChange }: { question: ChatQuestion; d
       ))}
       {question.allowOther && (
         <div
-          className="flex items-center gap-2.5 rounded-[9px] border px-2.5 py-1.5"
-          style={{ borderColor: draft.otherOn ? "var(--cyan)" : "var(--border)" }}
+          className="flex min-h-9 items-center gap-2.5 rounded-[9px] border px-2.5 py-1.5"
+          style={{ borderColor: draft.otherOn ? "color-mix(in srgb, var(--accent) 70%, transparent)" : "var(--border)", background: draft.otherOn ? "var(--accent-soft)" : undefined }}
         >
           <input
             type={question.multiSelect ? "checkbox" : "radio"}
             checked={draft.otherOn}
             onChange={() => onChange({ ...draft, otherOn: !draft.otherOn || !question.multiSelect, picked: question.multiSelect ? draft.picked : [] })}
-            className="accent-[var(--cyan)]"
+            className="accent-[var(--accent)]"
             aria-label={t.chat_question_other}
           />
           <label className="min-w-0 flex-1">
@@ -131,12 +121,12 @@ export function QuestionForm({
   return (
     <div
       className="mx-3 mb-2 flex flex-col gap-2.5 rounded-[12px] border px-3 py-3"
-      style={{ borderColor: "color-mix(in srgb, var(--cyan) 35%, var(--border))", background: "color-mix(in srgb, var(--bg) 60%, transparent)" }}
+      style={{ borderColor: "var(--border-hover)", background: "color-mix(in srgb, var(--bg) 60%, transparent)" }}
       role="form"
       aria-label={t.chat_question_title(agentName)}
     >
       <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-        <span className="uppercase tracking-[0.06em]">{t.chat_question_title(agentName)}</span>
+        <span className="tc-eyebrow">{t.chat_question_title(agentName)}</span>
         {question.header && <span className="rounded-full border border-[var(--border)] px-1.5 normal-case">{question.header}</span>}
         {questions.length > 1 && <span className="ml-auto tabular-nums">{t.chat_question_count(index + 1, questions.length)}</span>}
       </div>

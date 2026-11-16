@@ -2195,3 +2195,49 @@ a.tc-kbd[data-dragover="true"] {
 
 /* Menu items show focus as the hover fill, not the ring. */
 .tc-menu-item:focus-visible { outline: none; }
+
+/* An answer choice: grows with its text, never overflows its border. */
+.tc-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  text-align: left;
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  transition: border-color var(--duration-instant) var(--ease-out-soft), background-color var(--duration-instant) var(--ease-out-soft);
+}
+.tc-choice:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+.tc-choice[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: var(--accent-soft);
+}
+.tc-choice-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hover);
+  border-radius: 5px;
+}
+.tc-choice-mark[data-marker="radio"] { border-radius: 9px; }
+.tc-choice[data-selected="true"] .tc-choice-mark { border-color: var(--accent); background: var(--accent); color: var(--accent-foreground); }
+.tc-choice[data-selected="true"] .tc-choice-mark[data-marker="radio"] { background: radial-gradient(circle, var(--accent-foreground) 0 3px, var(--accent) 3.5px); }
+.tc-choice-label { font-size: var(--text-base); line-height: var(--leading-snug); color: var(--text-primary); overflow-wrap: anywhere; }
+.tc-choice-desc { font-size: var(--text-sm); line-height: var(--leading-snug); color: var(--text-secondary); }
+
+/* A segmented control inside a panel header: a filled track, no outline,
+   so it doesn't add a second box under the header. */
+.tc-seg-quiet .tc-seg { border-color: transparent; background: color-mix(in srgb, var(--surface-hover) 55%, transparent); }
+.tc-seg-quiet .tc-seg > button { height: 28px; }
+.tc-seg-quiet .tc-seg > button[aria-selected="true"] { background: var(--border-hover); }
