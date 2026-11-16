@@ -4,6 +4,14 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.5] - 2026-11-16
+
+### Changed
+- **Starting a workdesk is one path.** Add folders, then a card in the middle asks once who runs it: pick an agent, or skip and start agents yourself. No first-task step; picking a manager opens the panel ready to type.
+- **No manager · Assign.** A workdesk without a manager shows one control at the bottom. Assign offers agents already running (they keep their chat) or a new one. The Manager panel shows the same list.
+- **A late manager catches you up**: taking over a busy workdesk, it says what it sees and what it would do next.
+- **The left bar starts workers**, says where, and asks which folder when there's more than one.
+
 ## [0.44.4] - 2026-11-16
 
 ### Changed
