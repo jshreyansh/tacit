@@ -4,6 +4,17 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-11-16
+
+### Changed
+- **Command palette and search** use the app's font, drop the letter tiles beside every row, and show sessions by the name the Sessions list uses with the agent's icon. Palette commands are in sentence case; "Toggle command center" is "Open the Hub".
+- **Search inside sessions** shows the words that were said instead of the raw stored line, and leaves out matches in system reminders and tool output.
+- **Snapshot history** names each snapshot by when it was taken.
+
+### Fixed
+- The Chrome import explanation in Browser profiles wraps instead of running off the edge.
+- The session reader no longer shows "manager" next to "Manager session".
+
 ## [0.44.0] - 2026-11-16
 
 ### Added
