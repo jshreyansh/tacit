@@ -4,6 +4,13 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.6] - 2026-11-17
+
+### Changed
+- **Chats side by side.** The Manager panel shows a list beside the open chat: the manager, Tasks, then every chat on the workdesk by folder (running, needs you, finished). Click one and it opens on the right while the list stays. Fold the list for just the chat.
+- **Agents in terminals can be read and messaged from the panel**, not only from their tile.
+- **The Memory panel matches the others**: same glass, no lighter block behind the graph, same header and tabs.
+
 ## [0.44.5] - 2026-11-16
 
 ### Changed
