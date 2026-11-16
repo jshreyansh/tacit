@@ -133,11 +133,9 @@ export function LeftRail() {
   const chatFace = useChatDockStore((s) => s.face);
   const setChatOpen = useChatDockStore((s) => s.setOpen);
   const showChatFace = useChatDockStore((s) => s.showFace);
-  // Sessions is the list of chats: beside the chat, or in its place where
-  // it doesn't fit (then the two buttons take turns being lit).
-  const listShown = useChatDockStore((s) => s.listShown);
-  const sessionsOpen = chatOpen && (listShown || chatFace === "list");
-  const conversationOpen = chatOpen && chatFace !== "list";
+  // The chat's list of chats replaced a Sessions button here; the chat
+  // button carries its "something needs you" dot.
+  const conversationOpen = chatOpen;
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
@@ -208,8 +206,8 @@ export function LeftRail() {
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           data-on={conversationOpen ? "" : undefined}
-          title={chatLabel}
-          aria-label={chatLabel}
+          title={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
+          aria-label={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
           aria-pressed={conversationOpen}
           onClick={() => {
             if (conversationOpen) setChatOpen(false);
@@ -219,31 +217,7 @@ export function LeftRail() {
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
           </svg>
-        </button>
-
-        {/* Sessions: what's on this workdesk now, what needs you, and past
-            sessions, where a folder or a session is added. It's also in the
-            chat's header, but here it's a click away from where you start.
-            It opens in the chat's place, wherever the chat lives. */}
-        <button
-          className={`${buttonCls} text-[var(--text-muted)]`}
-          data-on={sessionsOpen ? "" : undefined}
-          data-testid="rail-sessions"
-          title={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-          aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-          aria-pressed={sessionsOpen}
-          onClick={() => {
-            // Beside the chat, it folds away and the chat stays.
-            if (sessionsOpen && listShown) useChatDockStore.getState().setListOpen(false);
-            else useChatDockStore.getState().toggleList();
-          }}
-        >
-          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8 3a5 5 0 1 1-4.2 2.3" />
-            <path d="M3.2 3.5v2.2h2.2" />
-            <path d="M8 5.5V8l1.8 1.2" />
-          </svg>
-          {needsYou > 0 && !sessionsOpen && (
+          {needsYou > 0 && !conversationOpen && (
             <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
           )}
         </button>
