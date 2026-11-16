@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.2] - 2026-11-16
+
+### Changed
+- **Sessions** starts with what's running as a flat list: each agent or terminal with its icon, where it runs, and one status chip. The folder and branch tree moved into a Folders section below, folded by default, with its actions intact.
+
 ## [0.44.1] - 2026-11-16
 
 ### Changed
