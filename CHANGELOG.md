@@ -4,6 +4,15 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.5] - 2026-11-16
+
+### Changed
+- **Workdesks are called workdesks.** New canvas, Canvases, Manage canvases and Switch to canvas now say workdesk, as do the Hub, the command palette, shortcuts, search and onboarding. "Canvas" now only means the canvas view, next to grid.
+- **Pins are called tasks.** The Hub's Pinned section is Tasks, and the drawer, empty states, tips and messages say task. Chinese follows (工作台, 任务).
+
+### Fixed
+- Deleting a workdesk no longer says its terminals will be "removed from this workdesk".
+
 ## [0.43.4] - 2026-11-14
 
 ### Fixed
