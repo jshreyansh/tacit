@@ -319,7 +319,7 @@ export function useKeyboardShortcuts() {
       // Kept off Cmd+Shift+S because mod+shift+s is saveWorkspaceAs.
       if (matchesShortcut(e, shortcuts.toggleSessionsOverlay)) {
         consumeShortcut();
-        useCanvasStore.getState().toggleSessionsOverlay();
+        useChatDockStore.getState().toggleList();
         return;
       }
 

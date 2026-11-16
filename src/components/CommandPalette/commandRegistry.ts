@@ -255,12 +255,12 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
     {
       id: "toggle-sessions-overlay",
       section: "action",
-      title: canvas.sessionsOverlayOpen
+      title: useChatDockStore.getState().open && useChatDockStore.getState().listShown
         ? t["palette.cmd.close_sessions"]
         : t["palette.cmd.open_sessions"],
       keywords: ["history", "replay"],
       hint: shortcutHint("toggleSessionsOverlay", isMac),
-      perform: () => useCanvasStore.getState().toggleSessionsOverlay(),
+      perform: () => useChatDockStore.getState().toggleList(),
     },
     {
       id: "open-snapshot-history",

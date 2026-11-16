@@ -133,9 +133,11 @@ export function LeftRail() {
   const chatFace = useChatDockStore((s) => s.face);
   const setChatOpen = useChatDockStore((s) => s.setOpen);
   const showChatFace = useChatDockStore((s) => s.showFace);
-  // Sessions opens in the chat's place, so the two buttons take turns being lit.
-  const sessionsOpen = chatOpen && chatFace === "sessions";
-  const conversationOpen = chatOpen && !sessionsOpen;
+  // Sessions is the list of chats: beside the chat, or in its place where
+  // it doesn't fit (then the two buttons take turns being lit).
+  const listShown = useChatDockStore((s) => s.listShown);
+  const sessionsOpen = chatOpen && (listShown || chatFace === "list");
+  const conversationOpen = chatOpen && chatFace !== "list";
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
@@ -211,7 +213,7 @@ export function LeftRail() {
           aria-pressed={conversationOpen}
           onClick={() => {
             if (conversationOpen) setChatOpen(false);
-            else showChatFace(chatFace === "sessions" ? "chat" : chatFace);
+            else showChatFace(chatFace === "list" ? "chat" : chatFace);
           }}
         >
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -231,8 +233,9 @@ export function LeftRail() {
           aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
           aria-pressed={sessionsOpen}
           onClick={() => {
-            if (sessionsOpen) setChatOpen(false);
-            else showChatFace("sessions");
+            // Beside the chat, it folds away and the chat stays.
+            if (sessionsOpen && listShown) useChatDockStore.getState().setListOpen(false);
+            else useChatDockStore.getState().toggleList();
           }}
         >
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

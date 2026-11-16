@@ -723,6 +723,8 @@ export function SessionReader() {
   const close = () => {
     useSessionStore.getState().exitReplay();
     closeOverlay();
+    // Opened beside the list: closing goes back to the manager's chat.
+    if (useChatDockStore.getState().face === "sessions") useChatDockStore.getState().setFace("chat");
   };
 
   if (liveChatTerminalId) {

@@ -58,6 +58,9 @@ test("only a docked chat takes room beside the bar; floating and full screen tak
   assert.equal(chatDockOffset({ open: true, width: 440 }, 8), 448);
   for (const placement of ["float", "full"] as const) assert.equal(chatDockOffset({ open: true, width: 440, placement }, 8), 0);
   assert.equal(chatDockOffset({ open: false, width: 440, placement: "dock" }, 8), 0);
+  // The list of chats beside it widens what it takes.
+  assert.equal(chatDockOffset({ open: true, width: 440, placement: "dock", listShown: true }, 8), 688);
+  assert.equal(chatDockOffset({ open: true, width: 440, placement: "full", listShown: true }, 8), 0);
 });
 
 test("a floating chat opens bottom right and always stays on screen, header in reach", async () => {

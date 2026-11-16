@@ -1,5 +1,6 @@
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
+import { useChatDockStore } from "../stores/chatDockStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 
 /**
@@ -14,8 +15,9 @@ export function openPastSession(filePath: string): void {
     view.openSession(filePath);
     return;
   }
-  useCanvasStore.getState().openSessionsOverlay();
+  // On the canvas it opens in the Manager panel, beside the list of chats.
   void useSessionStore.getState().loadReplay(filePath);
+  useChatDockStore.getState().showReader(null);
 }
 
 /** A file from Files, Memory or search: a tab in the grid, the editor drawer on the canvas. */
@@ -36,5 +38,5 @@ export function openLiveChatSession(terminalId: string): void {
     return;
   }
   useSessionStore.getState().openLiveChat(terminalId);
-  useCanvasStore.getState().openSessionsOverlay();
+  useChatDockStore.getState().showReader(null);
 }

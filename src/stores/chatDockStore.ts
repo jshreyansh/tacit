@@ -12,6 +12,20 @@ import { create } from "zustand";
 export const CHAT_DOCK_MIN_WIDTH = 360;
 export const CHAT_DOCK_MAX_WIDTH = 680;
 export const CHAT_DOCK_DEFAULT_WIDTH = 440;
+/** The list of chats beside the open one, when it's unfolded. */
+export const CHAT_LIST_WIDTH = 240;
+/** Below this window width the list folds by itself, leaving room for the canvas. */
+export const CHAT_LIST_MIN_WINDOW = 1100;
+
+const LIST_KEY = "tacit.chatDock.list.v1";
+
+function loadListOpen(): boolean {
+  try {
+    return storage()?.getItem(LIST_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 const WIDTH_KEY = "tacit.chatDock.width.v1";
 
@@ -104,7 +118,12 @@ function loadFloatRect(): FloatRect | null {
  * the chat so other places can open it on a face: a project's pin badge,
  * a terminal's pin chip, a first project added to an empty canvas.
  */
-export type ChatFace = "chat" | "sessions" | "pins" | "roster";
+export type ChatFace = "chat" | "sessions" | "pins" | "roster" | "list";
+
+/** Whether the list fits beside the chat: docked or full screen, on a wide enough window. */
+export function chatListFits(placement: ChatPlacement, windowWidth: number): boolean {
+  return placement !== "float" && windowWidth >= CHAT_LIST_MIN_WINDOW;
+}
 
 interface ChatDockStore {
   open: boolean;
@@ -118,6 +137,24 @@ interface ChatDockStore {
   /** At the end of a move or resize: keeps it for next time. */
   commitFloatRect: () => void;
   face: ChatFace;
+  /** The list of chats is unfolded (your choice, kept). */
+  listOpen: boolean;
+  setListOpen: (open: boolean) => void;
+  /** It is on screen now: unfolded, docked or full screen, and the window wide enough. Set by the panel. */
+  listShown: boolean;
+  setListShown: (shown: boolean) => void;
+  /**
+   * The "sessions" face reads one chat beside the list: a past session or
+   * a chat-mode agent (the session store says which), or, set here, an
+   * agent running in a terminal, read live from its transcript.
+   */
+  readerTerminalId: string | null;
+  /** Opens a chat on the right: a terminal agent's, or (null) whatever the session store holds. */
+  showReader: (terminalId?: string | null) => void;
+  /** Opens the panel with the list of chats: beside the chat, or in its place where it doesn't fit. */
+  showList: () => void;
+  /** Sessions on the rail and ⌘⇧H: shows the list, or hides the panel if it's showing. */
+  toggleList: () => void;
   setOpen: (open: boolean) => void;
   setFace: (face: ChatFace) => void;
   /** Opens the chat on a face. */
@@ -164,6 +201,31 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   resizing: false,
   setResizing: (resizing) => set({ resizing }),
   face: "chat",
+  listOpen: loadListOpen(),
+  setListOpen: (listOpen) => {
+    try {
+      storage()?.setItem(LIST_KEY, listOpen ? "1" : "0");
+    } catch {
+      // Storage blocked: it still folds for this session.
+    }
+    set({ listOpen });
+  },
+  listShown: false,
+  setListShown: (listShown) => {
+    if (get().listShown !== listShown) set({ listShown });
+  },
+  readerTerminalId: null,
+  showReader: (terminalId = null) => set({ open: true, face: "sessions", readerTerminalId: terminalId }),
+  toggleList: () => {
+    const state = get();
+    if (state.open && (state.listShown || state.face === "list")) set({ open: false });
+    else state.showList();
+  },
+  showList: () => {
+    get().setListOpen(true);
+    // Where it doesn't fit beside the chat, it shows in the chat's place.
+    set(get().listShown || chatListFits(get().placement, globalThis.innerWidth ?? 0) ? { open: true } : { open: true, face: "list" });
+  },
   setOpen: (open) => set({ open }),
   setFace: (face) => set({ face }),
   showFace: (face) => set({ open: true, face }),
@@ -187,6 +249,10 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
 
 /** How far the chat pushes whatever opens after it: its width and a gap, or nothing. */
 /** The room the chat takes beside the bar: only docked does. */
-export function chatDockOffset(state: { open: boolean; width: number; placement?: ChatPlacement }, gap: number): number {
-  return state.open && (state.placement ?? "dock") === "dock" ? state.width + gap : 0;
+export function chatDockOffset(
+  state: { open: boolean; width: number; placement?: ChatPlacement; listShown?: boolean },
+  gap: number,
+): number {
+  if (!state.open || (state.placement ?? "dock") !== "dock") return 0;
+  return state.width + (state.listShown ? CHAT_LIST_WIDTH : 0) + gap;
 }

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../components/ui/parts";
 import { AssignMenu } from "./AssignMenu";
+import { ChatList, SidebarGlyph } from "./ChatList";
+import { TerminalConversation } from "./TerminalConversation";
+import { SessionReader } from "./SessionReader";
+import { findTerminal } from "../actions/terminalLookup";
 import { removeManager, seatManager, startManager, useManagerSetupStore } from "../actions/managerSeat";
 import { confirmAsync } from "../components/ui/confirmAsync";
 import { useProjectStore } from "../stores/projectStore";
@@ -17,8 +21,7 @@ import { getLivePtyId } from "../actions/terminalLookup";
 import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
-import { ChatHistory } from "./ChatHistory";
-import { LiveSessions, useNeedsYouCount } from "./LiveSessions";
+import { useLiveTree, useNeedsYouCount } from "./LiveSessions";
 import { TasksView } from "../tasks/TasksView";
 import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
 import { TaskBar } from "../tasks/TaskParts";
@@ -59,7 +62,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
 import { TITLE_STRIP_CSS, titleStripHeight } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
-import { useChatDockStore } from "../stores/chatDockStore";
+import { CHAT_LIST_WIDTH, chatListFits, useChatDockStore } from "../stores/chatDockStore";
 import { usePanelPresence } from "../utils/usePanelPresence";
 import { PANEL_REVEAL_TRANSITION, PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS, panelContentStyle } from "../utils/panelAnimation";
 import { clampFloatRect, defaultFloatRect, FLOAT_MIN } from "../stores/chatDockStore";
@@ -592,19 +595,6 @@ export function WorkspaceManagerPill() {
     if (ptyId != null) window.tacit.terminal.input(ptyId, "\x1b");
   }, [managerTerminal]);
 
-  // History covers every worktree on this canvas, as the History panel did.
-  const canvasProjectDirs = useMemo(
-    () => projects.flatMap((p) => p.worktrees.map((w) => w.path)),
-    [projects],
-  );
-  const managerSessionIds = useMemo(() => new Set(history.map((row) => row.sessionId)), [history]);
-  const currentManagerSessionId =
-    managerTerminal?.sessionId ?? history.find((row) => row.isCurrent)?.sessionId ?? null;
-  /** The transcript opens in the session view beside the chat, with Resume. */
-  const openReplay = useCallback(
-    (filePath: string) => openPastSession(filePath),
-    [],
-  );
 
   // Chat mode (T6): the manager's agent runs in the engine, not its tile.
   const chatMode = !!managerTerminal?.chatMode;
@@ -711,6 +701,22 @@ export function WorkspaceManagerPill() {
   useEffect(() => {
     if (!showAssign) setAssignOpen(false);
   }, [showAssign]);
+
+  // The list of chats beside the open one: unfolded, and room for it.
+  const listOpen = useChatDockStore((s) => s.listOpen);
+  const listFits = chatListFits(placement, viewSize.width);
+  const listShown = dockOpen && listOpen && listFits;
+  useEffect(() => {
+    useChatDockStore.getState().setListShown(listShown);
+  }, [listShown]);
+  // Where it can't fit, the list is a face of its own, reached from the tabs.
+  useEffect(() => {
+    if (listFits && view === "list") setView("chat");
+  }, [listFits, view, setView]);
+  const readerTerminalId = useChatDockStore((s) => s.readerTerminalId);
+  const { attention } = useLiveTree();
+  const needsYouItem = attention.find((item) => item.terminalId !== managerTerminal?.id) ?? null;
+  const listWidth = listShown ? CHAT_LIST_WIDTH : 0;
 
   const iconButton =
     "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
@@ -895,14 +901,14 @@ export function WorkspaceManagerPill() {
       top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
       bottom: CHROME_INSET,
       left: railEdge,
-      width: shown ? dockWidth : 0,
+      width: shown ? dockWidth + listWidth : 0,
       opacity: shown ? 1 : 0,
       pointerEvents: shown ? undefined : "none",
       transition: dragging ? undefined : PANEL_REVEAL_TRANSITION,
       borderRadius: 20,
     };
     innerClass = "absolute inset-y-0 left-0 flex flex-col";
-    innerStyle = { width: dockWidth, ...panelContentStyle(shown) };
+    innerStyle = { width: dockWidth + listWidth, ...panelContentStyle(shown) };
   } else if (placement === "float") {
     // Rises into place from its corner.
     frameStyle = {
@@ -932,7 +938,7 @@ export function WorkspaceManagerPill() {
       transition: `opacity 200ms ease, transform ${PANEL_TRANSITION_DURATION_MS}ms ${ease}`,
       borderRadius: 20,
     };
-    innerClass = "absolute inset-y-0 inset-x-0 mx-auto flex w-full max-w-[880px] flex-col";
+    innerClass = `absolute inset-y-0 inset-x-0 mx-auto flex w-full flex-col ${listShown ? "max-w-[1120px]" : "max-w-[880px]"}`;
   } else {
     frameStyle = { opacity: shown ? 1 : 0, transition: "opacity 180ms ease" };
     innerStyle = {};
@@ -977,7 +983,18 @@ export function WorkspaceManagerPill() {
         style={{ background: `linear-gradient(90deg, transparent, ${speakingHue ?? "var(--accent)"}, transparent)`, opacity: 0.7 }}
       />
 
-      {/* Header: the mark, who runs this workdesk, and the controls. */}
+      {/* The list of chats on the left, the open one on the right. */}
+      <div className="flex min-h-0 flex-1">
+      {listShown && (
+        <div className="shrink-0 border-r border-[var(--border)]" style={{ width: CHAT_LIST_WIDTH }}>
+          <ChatList />
+        </div>
+      )}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+
+      {/* Header: the mark, who runs this workdesk, and the controls. A chat
+          opened from the list draws its own. */}
+      {view !== "sessions" && (
       <div
         className="flex h-[52px] shrink-0 items-center gap-2 pl-3 pr-2"
         style={{ cursor: placement === "float" ? (dragging ? "grabbing" : "grab") : undefined }}
@@ -989,6 +1006,17 @@ export function WorkspaceManagerPill() {
           if (placement === "dock" || placement === "float") useChatDockStore.getState().setPlacement(placement === "dock" ? "float" : "dock");
         }}
       >
+        {!listShown && listFits && (
+          <button
+            type="button"
+            className={iconButton}
+            onClick={() => useChatDockStore.getState().setListOpen(true)}
+            title={t.chat_list_unfold}
+            aria-label={t.chat_list_unfold}
+          >
+            <SidebarGlyph />
+          </button>
+        )}
         <ManagerMark agent={speakingCli} size={28} working={managerWorking && isLive} />
         <button
           type="button"
@@ -1023,21 +1051,22 @@ export function WorkspaceManagerPill() {
         </button>
       </div>
 
-      {/* Chat, Sessions and Tasks are tabs of this panel; a dot marks a tab
-          with something waiting on you. Without a manager, Chat is the
-          roster where you choose one. */}
-      {/* Header and tabs read as one block; one rule under both. */}
+      )}
+
+      {/* Where the list can't sit beside the chat (floating, or a narrow
+          window), Chat, Sessions and Tasks are tabs; Sessions is the list. */}
+      {!listFits && view !== "sessions" && (
       <div className="tc-seg-quiet shrink-0 border-b border-[var(--border)] px-3 pb-2.5">
         <Segmented
           fill
           label={t.project_chat_title}
-          value={view === "sessions" ? "sessions" : view === "pins" ? "pins" : "chat"}
+          value={view === "list" ? "list" : view === "pins" ? "pins" : "chat"}
           onChange={(next) => setView(next === "chat" ? (managerTerminal ? "chat" : "roster") : next)}
           options={[
             { value: "chat", label: t.workdesk_view_chat },
             {
-              value: "sessions",
-              label: <TabLabel text={t.chat_sessions} waiting={needsYou > 0 && view !== "sessions"} />,
+              value: "list",
+              label: <TabLabel text={t.chat_sessions} waiting={needsYou > 0 && view !== "list"} />,
               title: needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : undefined,
             },
             {
@@ -1048,6 +1077,9 @@ export function WorkspaceManagerPill() {
           ]}
         />
       </div>
+      )}
+      {/* With the list beside it, the header gets the rule the tabs drew. */}
+      {listFits && view !== "sessions" && <div className="shrink-0 border-b border-[var(--border)]" />}
 
       {/* A face (choosing a manager, or past chats) gets a way back. */}
       {view === "roster" && managerTerminal && (
@@ -1144,17 +1176,18 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {/* What is on this workdesk now (needs you, then every project's
-          terminals), then past sessions with the agent, title, size and when;
-          a past row opens its transcript in the session view beside the chat. */}
+      {/* A chat opened from the list: an agent in a terminal, read live; a
+          chat-mode agent or a past session, in the session reader. */}
       {view === "sessions" && (
-        <ChatHistory
-          projectDirs={canvasProjectDirs}
-          managerSessionIds={managerSessionIds}
-          currentSessionId={currentManagerSessionId}
-          onOpen={openReplay}
-          live={(query) => <LiveSessions query={query} />}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {readerTerminalId ? <TerminalConversation terminalId={readerTerminalId} /> : <SessionReader />}
+        </div>
+      )}
+      {/* No room beside the chat: the list in its place. */}
+      {view === "list" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ChatList />
+        </div>
       )}
 
       {/* A project's pins; one opens in the pin view beside the chat. */}
@@ -1282,6 +1315,25 @@ export function WorkspaceManagerPill() {
 
       {view === "chat" && !viewing && managerTerminal && (
         <div className="shrink-0 px-3 pb-3">
+          {/* Folded away, the list still says when a chat needs you. */}
+          {!listShown && needsYouItem && (
+            <button
+              type="button"
+              className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left hover:border-[var(--border-hover)]"
+              style={{ fontSize: "var(--text-xs)" }}
+              onClick={() => {
+                const terminal = findTerminal(needsYouItem.terminalId)?.terminal;
+                if (terminal?.chatMode) {
+                  useSessionStore.getState().openLiveChat(needsYouItem.terminalId);
+                  useChatDockStore.getState().showReader(null);
+                } else useChatDockStore.getState().showReader(needsYouItem.terminalId);
+              }}
+            >
+              <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--amber)]" />
+              <span className="min-w-0 flex-1 truncate text-[var(--text-secondary)]">{t.chat_list_needs_you(needsYouItem.title)}</span>
+              <span className="shrink-0 text-[var(--text-primary)]">{t.chat_list_open}</span>
+            </button>
+          )}
           {running && chatMode && pendingMove === "terminal" && pendingMoveLine}
           {running && chatMode && pendingMove !== "terminal" && (
             <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
@@ -1330,6 +1382,9 @@ export function WorkspaceManagerPill() {
           />
         </div>
       )}
+
+      </div>
+      </div>
 
       {/* A floating chat resizes from its edges and corners. */}
       {placement === "float" && (
