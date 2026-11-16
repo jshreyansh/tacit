@@ -363,7 +363,12 @@ export function RightPanel() {
       {/* Files, Diff and Git share one rail button, so their tabs sit here;
           Memory has its own button and just its name. */}
       <div className="shrink-0 px-2 pt-2 pb-2">
-        <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg)] p-0.5">
+        {/* Files, Diff and Git: tabs in the same quiet well as the Manager
+            panel's. Memory: just its name, as a panel header, no well. */}
+        <div
+          className="flex items-center gap-0.5 rounded-lg p-0.5"
+          style={{ background: isCodeTab(activeTab) ? "color-mix(in srgb, var(--surface-hover) 55%, transparent)" : undefined }}
+        >
           {isCodeTab(activeTab) ? (
             <div role="tablist" aria-label={t.left_panel_code} className="flex min-w-0 flex-1 items-center gap-0.5">
               {CODE_TABS.map(({ id, icon: Icon, labelKey }) => {
@@ -389,7 +394,7 @@ export function RightPanel() {
               })}
             </div>
           ) : (
-            <div className="flex-1 min-w-0 truncate px-2 text-[11px] font-semibold text-[var(--text-primary)]">
+            <div className="flex-1 min-w-0 truncate px-2 text-[13px] font-semibold text-[var(--text-primary)]">
               {t[TAB_CONFIG.find((tab) => tab.id === activeTab)?.labelKey ?? "left_panel_files"]}
             </div>
           )}

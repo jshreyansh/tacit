@@ -325,7 +325,6 @@ function MemoryGraph({
         node.emphasis += (target - node.emphasis) * 0.16;
       }
 
-      const bgColor = getCssVar("--surface");
       const borderColor = getCssVar("--border");
       const textPrimary = getCssVar("--text-primary");
       const textMuted = getCssVar("--text-muted");
@@ -333,10 +332,8 @@ function MemoryGraph({
 
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Transparent: the panel's glass shows through, as in every other panel.
       ctx.clearRect(0, 0, w, h);
-
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, w, h);
 
       for (const edge of edgeRefs) {
         if (!edge.source || !edge.target) continue;
@@ -1037,7 +1034,7 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
   const iconBtn =
     "inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] hover:text-[var(--text-primary)] transition-colors";
   const scopeTabs = (
-    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 pt-2">
+    <div className="tc-seg-quiet flex shrink-0 items-center gap-1 px-3 pb-1 pt-2">
       <Segmented
         label={t.memory_title}
         value={scope}
