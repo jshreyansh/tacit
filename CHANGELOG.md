@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.7] - 2026-11-17
+
+### Changed
+- **No Sessions button on the left bar**: the list beside the manager's chat replaces it. The chat button shows the amber dot when something needs you.
+
 ## [0.44.6] - 2026-11-17
 
 ### Changed
