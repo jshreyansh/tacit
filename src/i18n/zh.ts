@@ -1285,6 +1285,12 @@ export const zh = {
   canvas_dragover_chip: "松开以添加为项目",
 
   panel_new_terminal: "新建终端",
+  folder_bar_label: "文件夹",
+  folder_show: "显示",
+  folder_menu: (name: string) => `${name} 选项`,
+  folder_remove: "从工作台移除…",
+  folder_remove_title: (name: string) => `把 ${name} 从这个工作台移除？`,
+  folder_remove_action: "移除",
   panel_new_terminal_shell: "新建终端(Shell)",
   panel_new_terminal_claude: "新建终端(Claude)",
   panel_new_terminal_codex: "新建终端(Codex)",

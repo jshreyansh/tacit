@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
 import { CanvasEmptyState } from "../components/CanvasEmptyState";
+import { FolderBar } from "./FolderBar";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useIdentityStore } from "../stores/identityStore";
@@ -569,6 +570,7 @@ export function WorkdeskView() {
         </div>
       )}
 
+      {!openCard && <FolderBar />}
       {!openCard && (
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-24 pt-3">
         {/* No folder yet: the same setup as the empty canvas. A workdesk

@@ -2192,3 +2192,6 @@ a.tc-kbd[data-dragover="true"] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Menu items show focus as the hover fill, not the ring. */
+.tc-menu-item:focus-visible { outline: none; }

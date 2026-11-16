@@ -1311,6 +1311,12 @@ export const en = {
   canvas_dragover_chip: "Drop folder to add as project",
 
   panel_new_terminal: "New Terminal",
+  folder_bar_label: "Folders",
+  folder_show: "Show",
+  folder_menu: (name: string) => `${name} options`,
+  folder_remove: "Remove from workdesk…",
+  folder_remove_title: (name: string) => `Remove ${name} from this workdesk?`,
+  folder_remove_action: "Remove",
   panel_new_terminal_shell: "New Terminal (Shell)",
   panel_new_terminal_claude: "New Terminal (Claude)",
   panel_new_terminal_codex: "New Terminal (Codex)",

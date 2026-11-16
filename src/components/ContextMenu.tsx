@@ -104,8 +104,15 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
       ref={ref}
       role="menu"
       aria-label={t.context_menu_aria_label}
-      className="fixed z-[100] py-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg min-w-[140px]"
-      style={{ left: pos.x, top: pos.y }}
+      className="tc-menu fixed z-[100] w-max min-w-[180px] max-w-[300px] border border-[var(--border)] p-1 shadow-lg"
+      // Overlay glass: nearly solid, since it sits over other glass.
+      style={{
+        left: pos.x,
+        top: pos.y,
+        background: "color-mix(in srgb, var(--surface) 94%, transparent)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+      }}
       onKeyDown={handleKeyDown}
     >
       {items.map((item, i) =>
@@ -113,21 +120,20 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
           <div
             key={`sep-${i}`}
             role="separator"
-            className="my-1 border-t border-[var(--border)]"
+            className="mx-1 my-1 border-t border-[var(--border)]"
           />
         ) : (
           <button
             key={`${item.label}-${i}`}
             role="menuitem"
             tabIndex={-1}
-            className={`w-full px-3 py-1.5 text-left text-[12px] transition-colors duration-quick ${
+            className={`tc-menu-item w-full rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors duration-instant ${
               item.active
-                ? "text-[var(--accent)] bg-[var(--accent)]/10"
+                ? "text-[var(--text-primary)] bg-[var(--surface-hover)]"
                 : item.danger
-                  ? "text-[var(--red)] hover:text-[var(--red-soft)] hover:bg-[var(--border)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]"
+                  ? "text-[var(--red)] hover:bg-[var(--red-soft)] focus:bg-[var(--red-soft)]"
+                  : "text-[var(--text-primary)] hover:bg-[var(--surface-hover)] focus:bg-[var(--surface-hover)]"
             }`}
-            style={{ fontFamily: '"Geist Mono", monospace' }}
             onClick={() => {
               item.onClick();
               onClose();
