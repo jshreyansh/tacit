@@ -1,4 +1,9 @@
 import type { SearchResult } from "../../stores/searchStore";
+import { readableSessionSnippet } from "./sessionSnippet";
+import { chatTitle } from "../../toolbar/chatHistoryModel";
+import { agentIcon } from "../../toolbar/agentIcons";
+import { findAgentAdapter } from "../../../shared/agent-adapters";
+import { getTranslations } from "../../i18n/useT";
 import { fuzzyScore } from "../../utils/fuzzyScore";
 import { useProjectStore } from "../../stores/projectStore";
 import { useLeftPanelRepoStore } from "../../stores/leftPanelRepoStore";
@@ -168,12 +173,25 @@ export async function collectSessionResults(
   const trimmed = query.trim();
 
   for (const e of entries) {
+    // Matching uses the whole first prompt; the row shows the title the
+    // Sessions list uses ("Manager session" for a manager's briefing).
     const titleText = e.firstPrompt || `(session ${e.sessionId.slice(0, 8)})`;
+    const shown = chatTitle(e.firstPrompt);
+    const tr = getTranslations();
+    const displayTitle =
+      shown.kind === "manager"
+        ? tr.chat_history_manager_session
+        : shown.kind === "pasted"
+          ? tr.chat_history_pasted
+          : shown.kind === "untitled"
+            ? titleText
+            : shown.text;
     const projectName = titleForProjectDir(e.projectDir);
     const age = formatRelativeAge(e.lastActivityAt);
-    const subtitle = [projectName, e.provider, age, `${e.estimatedMessageCount} msgs`]
-      .filter(Boolean)
-      .join(" · ");
+    const agent = findAgentAdapter(e.provider)?.displayName ?? e.provider;
+    // No message count: the index only estimates it from file size.
+    const subtitle = [projectName, agent, age].filter(Boolean).join(" · ");
+    const icon = agentIcon(e.provider);
 
     if (trimmed) {
       const score = fuzzyScore(titleText, trimmed, [
@@ -185,8 +203,9 @@ export async function collectSessionResults(
       results.push({
         id: `session:${e.sessionId}`,
         category: "session",
-        title: titleText,
+        title: displayTitle,
         subtitle,
+        icon,
         score,
         data: { type: "session", filePath: e.filePath },
       });
@@ -198,8 +217,9 @@ export async function collectSessionResults(
       results.push({
         id: `session:${e.sessionId}`,
         category: "session",
-        title: titleText,
+        title: displayTitle,
         subtitle,
+        icon,
         score: 0.5 + recency * 0.5,
         data: { type: "session", filePath: e.filePath },
       });
@@ -274,11 +294,15 @@ export async function collectAsyncResults(
         lineNumber: number;
         preview: string;
       }>) {
+        const snippet = readableSessionSnippet(m.preview);
+        // A hit inside a system reminder or a tool's output isn't something
+        // anyone said; leave it out rather than show raw JSON.
+        if (!snippet) continue;
         results.push({
           id: `session-content:${m.sessionId}:${m.lineNumber}`,
           category: "session",
-          title: `"${m.preview.slice(0, 80)}"`,
-          subtitle: `content match · line ${m.lineNumber}`,
+          title: `“${snippet.slice(0, 90)}”`,
+          subtitle: getTranslations().search_found_in_session,
           score: 0.45,
           data: { type: "session", filePath: m.filePath },
         });
@@ -290,3 +314,4 @@ export async function collectAsyncResults(
 
   return results;
 }
+

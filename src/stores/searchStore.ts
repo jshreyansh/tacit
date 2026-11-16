@@ -23,6 +23,8 @@ export interface SearchResult {
   category: SearchCategory;
   title: string;
   subtitle: string;
+  /** An agent's icon for a session; other results show none. */
+  icon?: string;
   score: number;
   data: SearchResultData;
 }

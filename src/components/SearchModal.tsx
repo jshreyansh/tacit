@@ -15,7 +15,9 @@ import {
 import { executeResult } from "./SearchModal/resultNavigation";
 import { useProjectStore } from "../stores/projectStore";
 
-const MONO_STYLE = { fontFamily: '"Geist Mono", monospace' } as const;
+// The palette reads in the UI font like the rest of the app; key chips keep
+// their own code font (tc-kbd).
+const MONO_STYLE = {} as const;
 
 const CATEGORY_ORDER: SearchCategory[] = [
   "action",
@@ -294,21 +296,11 @@ export function SearchModal() {
         onMouseEnter={() => setSelectedIndex(globalIdx)}
         onClick={() => executeResult(result)}
       >
-        <span
-          aria-hidden
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
-          style={{
-            ...MONO_STYLE,
-            color: isSelected ? "var(--accent)" : "var(--text-muted)",
-            backgroundColor: isSelected
-              ? "color-mix(in srgb, var(--accent) 16%, transparent)"
-              : "color-mix(in srgb, var(--text-muted) 10%, transparent)",
-            transition:
-              "color var(--duration-quick) var(--ease-out-soft), background-color var(--duration-quick) var(--ease-out-soft)",
-          }}
-        >
-          {CATEGORY_GLYPHS[result.category]}
-        </span>
+        {result.icon && (
+          <span aria-hidden className="tc-icon-shell shrink-0" style={{ width: 22, height: 22 }}>
+            <img src={result.icon} alt="" className="h-[15px] w-[15px] object-contain" draggable={false} />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <div
             className="truncate text-[13px]"

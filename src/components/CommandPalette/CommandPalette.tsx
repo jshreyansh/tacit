@@ -12,7 +12,8 @@ import {
   type PaletteCommand,
 } from "./commandRegistry";
 
-const MONO_STYLE = { fontFamily: '"Geist Mono", monospace' } as const;
+// Same as search: the UI font, with key chips in their own code font.
+const MONO_STYLE = {} as const;
 
 const SECTION_BOOST: Record<CommandSection, number> = {
   // "Open settings" / "Toggle theme" should win over "Toggle Files" tab
@@ -255,21 +256,7 @@ export function CommandPalette() {
         onMouseEnter={() => setSelectedIndex(globalIndex)}
         onClick={() => runCommand(command)}
       >
-        <span
-          aria-hidden
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
-          style={{
-            ...MONO_STYLE,
-            color: isSelected ? "var(--accent)" : "var(--text-muted)",
-            backgroundColor: isSelected
-              ? "color-mix(in srgb, var(--accent) 16%, transparent)"
-              : "color-mix(in srgb, var(--text-muted) 10%, transparent)",
-            transition:
-              "color var(--duration-quick) var(--ease-out-soft), background-color var(--duration-quick) var(--ease-out-soft)",
-          }}
-        >
-          {sectionGlyph}
-        </span>
+
         <div className="min-w-0 flex-1">
           <div
             className="truncate text-[13px]"
