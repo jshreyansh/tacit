@@ -1,4 +1,4 @@
-import { useChatDockStore } from "../stores/chatDockStore";
+import { askWhoRunsIt } from "../actions/managerSeat";
 import { useNotificationStore } from "../stores/notificationStore";
 import { generateId, useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
@@ -112,12 +112,9 @@ export async function addProjectFromDirectoryPath(
   const project = buildProjectFromScan(info);
   addProject(project);
 
-  // The first folder on a workdesk: the next step is choosing who runs it,
-  // so open the Manager panel's Chat tab (the roster while the seat is
-  // empty). The folder itself shows in Sessions and on the canvas.
-  if (wasEmpty) {
-    useChatDockStore.getState().showFace("chat");
-  }
+  // The first folder on a workdesk: the setup card in the middle asks, once,
+  // who runs it. The Manager panel stays closed until there's someone to talk to.
+  if (wasEmpty) askWhoRunsIt();
 
   if (options.notifyAdded) {
     useNotificationStore

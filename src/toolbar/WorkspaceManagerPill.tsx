@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../components/ui/parts";
-import { DirectStart } from "./DirectStart";
+import { AssignMenu } from "./AssignMenu";
+import { removeManager, seatManager, startManager, useManagerSetupStore } from "../actions/managerSeat";
 import { confirmAsync } from "../components/ui/confirmAsync";
-import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import {
@@ -10,12 +10,8 @@ import {
   PeekLine,
   useManagerConversation,
 } from "./ProjectChatPanel";
-import {
-  WORKSPACE_MANAGER_BRIEFING,
-  type ManagerSessionRow,
-} from "../../shared/manager-role";
+import type { ManagerSessionRow } from "../../shared/manager-role";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
-import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { waitForTerminalReady } from "../actions/sceneConnectionActions";
 import { getLivePtyId } from "../actions/terminalLookup";
 import { useNotificationStore } from "../stores/notificationStore";
@@ -73,7 +69,7 @@ import { useWindowSize } from "../utils/useWindowSize";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
-import { findAgentAdapter, listAgentAdapters } from "../../shared/agent-adapters";
+import { findAgentAdapter } from "../../shared/agent-adapters";
 import type { TerminalType } from "../types";
 import { openPastSession } from "../actions/openSession";
 
@@ -91,7 +87,6 @@ function formatWhen(iso: string): string {
 // is those tools plus the briefing, and every adapter in
 // shared/agent-adapters.ts gets both. Shell and Lazygit terminals aren't
 // agent loops, so they have no adapter and aren't offered.
-const MANAGER_AGENTS = listAgentAdapters().filter((adapter) => !adapter.retired);
 
 function agentName(type: string): string {
   return findAgentAdapter(type)?.displayName ?? type;
@@ -160,28 +155,7 @@ export function WorkspaceManagerPill() {
     return null;
   }, [projects, workspaceManagerTerminalId]);
 
-  const agentDetections = useAgentAvailabilityStore((state) => state.byId);
 
-  const eligibleManagerTerminals = useMemo(() => {
-    const list: Array<{ id: string; type: TerminalType; label: string }> = [];
-    for (const project of projects) {
-      for (const worktree of project.worktrees) {
-        for (const terminal of worktree.terminals) {
-          if (terminal.stashed) continue;
-          if (terminal.id === workspaceManagerTerminalId) continue;
-          if (!findAgentAdapter(terminal.type)) continue;
-          list.push({
-            id: terminal.id,
-            type: terminal.type,
-            // Qualified below via labelFor — kept raw here only as a fallback
-            // for a terminal that has since disappeared from the store.
-            label: terminal.customTitle || terminal.title || terminal.type,
-          });
-        }
-      }
-    }
-    return list;
-  }, [projects, workspaceManagerTerminalId]);
 
   /**
    * Which face the seat is showing.
@@ -454,162 +428,21 @@ export function WorkspaceManagerPill() {
     setView(view === "roster" && managerTerminal ? "chat" : "roster");
   }, [setDockOpen, setView, view, managerTerminal]);
 
-  /** Terminal record by id, across every project — used for the handover notice. */
-  const findTerminalById = useCallback(
-    (terminalId: string) => {
-      for (const project of projects) {
-        for (const worktree of project.worktrees) {
-          const terminal = worktree.terminals.find((x) => x.id === terminalId);
-          if (terminal) return terminal;
-        }
-      }
-      return null;
-    },
-    [projects],
-  );
-
-  const sendWorkspaceManagerBriefing = useCallback(
-    async (terminalId: string) => {
-      // A tile in chat mode runs no shell to type into: the briefing is a
-      // message in its chat, as it is for a new manager.
-      if (findTerminalById(terminalId)?.chatMode) {
-        try {
-          await ensureManagerChat(terminalId);
-          if (await sendToManagerChat(terminalId, WORKSPACE_MANAGER_BRIEFING)) return;
-        } catch {
-          // Warned about below.
-        }
-        useNotificationStore
-          .getState()
-          .notify("warn", "Couldn't brief the new manager in its chat. It still has the role; just ask it to call get_workspace_summary directly.");
-        return;
-      }
-      const found = await waitForTerminalReady(terminalId);
-      const ptyId = found ? getLivePtyId(terminalId) : null;
-      if (!found || ptyId == null) {
-        useNotificationStore
-          .getState()
-          .notify(
-            "warn",
-            "Couldn't brief the new manager — its shell process isn't ready yet. It still has the role; just ask it to call get_workspace_summary directly.",
-          );
-        return;
-      }
-      const result = await window.tacit.browser.notifyWired(
-        {
-          terminalId,
-          ptyId,
-          terminalType: found.terminal.type,
-          worktreePath: found.worktree.path,
-        },
-        WORKSPACE_MANAGER_BRIEFING,
-      );
-      if (!result.ok) {
-        useNotificationStore
-          .getState()
-          .notify(
-            "warn",
-            `Couldn't brief the new manager: ${result.detail ?? result.error}. It still has the role; just ask it to call get_workspace_summary directly.`,
-          );
-      }
-    },
-    [findTerminalById],
-  );
 
   const assignWorkspaceManager = useCallback(
-    (terminalId: string | null, options?: { briefedAtLaunch?: boolean }) => {
-      if (!activeCanvas) return;
-      const outgoing = managerTerminal;
-      useCanvasRegistryStore
-        .getState()
-        .setWorkspaceManager(activeCanvas.id, terminalId);
+    (terminalId: string | null) => {
+      if (terminalId) seatManager(terminalId);
+      else removeManager();
       returnToChat();
-      if (terminalId) {
-        // Say plainly whether the conversation survives the handover. Two
-        // agents of the same CLI read the same transcript format, so it does;
-        // across CLIs it cannot, and the new holder picks up from the journal
-        // instead. Silence here would leave the user to discover which of the
-        // two they got by noticing the new agent knows nothing.
-        const incoming = findTerminalById(terminalId);
-        if (outgoing && incoming && outgoing.id !== incoming.id) {
-          const carries = outgoing.type === incoming.type;
-          useNotificationStore
-            .getState()
-            .notify(
-              "info",
-              carries
-                ? t.project_chat_handover_keeps
-                : t.project_chat_handover_drops(
-                    agentName(outgoing.type),
-                    agentName(incoming.type),
-                  ),
-            );
-        }
-        if (!options?.briefedAtLaunch) void sendWorkspaceManagerBriefing(terminalId);
-      }
     },
-    [activeCanvas, returnToChat, sendWorkspaceManagerBriefing, managerTerminal, t],
+    [returnToChat],
   );
 
   const spawnAndAssignManager = useCallback(
-    (type: TerminalType, start?: { projectId: string; worktreeId: string; firstMessage: string }) => {
-      const {
-        focusedProjectId,
-        focusedWorktreeId,
-        projects: currentProjects,
-      } = useProjectStore.getState();
-      let projectId = start?.projectId ?? focusedProjectId;
-      let worktreeId = start?.worktreeId ?? focusedWorktreeId;
-      if (!projectId || !worktreeId) {
-        // No terminal has been focused this session (common right after
-        // launch, before you've clicked into anything) — currentProjects[0]
-        // is raw array/insertion order, not a meaningful signal, and can
-        // land on a stale scratch project that happens to sit first in the
-        // list. Prefer the worktree with the most real (non-stashed)
-        // terminal activity instead — the best available proxy for "where
-        // the user is actually working" when nothing is explicitly focused.
-        let best: { projectId: string; worktreeId: string; count: number } | null =
-          null;
-        for (const project of currentProjects) {
-          for (const worktree of project.worktrees) {
-            const count = worktree.terminals.filter((t) => !t.stashed).length;
-            if (!best || count > best.count) {
-              best = { projectId: project.id, worktreeId: worktree.id, count };
-            }
-          }
-        }
-        if (!best) return;
-        projectId = best.projectId;
-        worktreeId = best.worktreeId;
-      }
-      // A new agent gets the briefing as its launch prompt. Typed in, it
-      // could land before the agent had started: Antigravity then showed it
-      // as raw `^[[200~` text, echoed by the terminal while nothing was
-      // reading it yet.
-      if (hasChatMode(type)) {
-        // Managers whose agent has a chat start in it (T6): the tile starts
-        // no process, and the briefing is the chat's first message.
-        const terminal = createTerminalInScene({ projectId, worktreeId, type });
-        useProjectStore.getState().setTerminalChatMode(projectId, worktreeId, terminal.id, true);
-        assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
-        // Your first message goes right after the briefing; the chat queues
-        // it until the briefing's turn ends.
-        void ensureManagerChat(terminal.id)
-          .then(() => sendToManagerChat(terminal.id, WORKSPACE_MANAGER_BRIEFING))
-          .then(() => (start?.firstMessage ? sendToManagerChat(terminal.id, start.firstMessage) : undefined));
-        return;
-      }
-      const terminal = createTerminalInScene({
-        projectId,
-        worktreeId,
-        type,
-        initialPrompt: start?.firstMessage
-          ? `${WORKSPACE_MANAGER_BRIEFING}\n\nThe user's first request:\n${start.firstMessage}`
-          : WORKSPACE_MANAGER_BRIEFING,
-      });
-      assignWorkspaceManager(terminal.id, { briefedAtLaunch: true });
+    (type: TerminalType) => {
+      if (startManager(type)) returnToChat();
     },
-    [assignWorkspaceManager],
+    [returnToChat],
   );
 
   const flyToManager = useCallback(() => {
@@ -861,6 +694,24 @@ export function WorkspaceManagerPill() {
   );
   const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
 
+  // The setup card asks who runs a new workdesk; the Assign control waits
+  // until it's answered, and there's nothing to assign without a folder.
+  const settingUp = useManagerSetupStore((s) => (activeCanvas ? !!s.asking[activeCanvas.id] : false));
+  const showAssign = !managerTerminal && projects.length > 0 && !settingUp;
+  const [assignOpen, setAssignOpen] = useState(false);
+  const assignRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!assignOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!assignRef.current?.contains(e.target as Node)) setAssignOpen(false);
+    };
+    window.addEventListener("mousedown", close, true);
+    return () => window.removeEventListener("mousedown", close, true);
+  }, [assignOpen]);
+  useEffect(() => {
+    if (!showAssign) setAssignOpen(false);
+  }, [showAssign]);
+
   const iconButton =
     "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
 
@@ -998,20 +849,35 @@ export function WorkspaceManagerPill() {
                 </svg>
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              className={`tc-pill flex h-12 items-center gap-2.5 px-4 text-left text-[13px] text-[var(--text-secondary)] ${PILL_GLASS}`}
-              style={{ width: "min(30rem, calc(100vw - 26rem))", borderStyle: "dashed" }}
-              onClick={openRoster}
-            >
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-                <path d="M8 3v10M3 8h10" />
-              </svg>
-              {t.project_chat_choose}
-              <span className="ml-auto text-[12px] text-[var(--text-muted)]">{t.project_chat_choose_hint}</span>
-            </button>
-          )}
+          ) : showAssign ? (
+            // No manager: one quiet control where the manager's input would
+            // be. Assign opens the list of who could take the seat.
+            <div className="relative" ref={assignRef}>
+              {assignOpen && (
+                <div
+                  className="tc-menu-pop bottom-[calc(100%+8px)] left-1/2 w-[320px] -translate-x-1/2"
+                  style={{ position: "absolute" }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setAssignOpen(false);
+                  }}
+                >
+                  <AssignMenu managerId={null} onPicked={() => setAssignOpen(false)} />
+                </div>
+              )}
+              <div className={`tc-pill flex h-10 items-center gap-3 pl-4 pr-1.5 text-[13px] text-[var(--text-secondary)] ${PILL_GLASS}`}>
+                {t.assign_none}
+                <button
+                  type="button"
+                  aria-expanded={assignOpen}
+                  aria-haspopup="menu"
+                  className="inline-flex h-7 items-center rounded-full bg-[var(--text-primary)] px-3 text-[12px] font-medium text-[var(--bg)] hover:opacity-90"
+                  onClick={() => setAssignOpen((v) => !v)}
+                >
+                  {t.assign_action}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
   );
@@ -1295,74 +1161,34 @@ export function WorkspaceManagerPill() {
       {view === "pins" && <TasksView />}
 
       {view === "roster" && (
-        <div role="menu" aria-label={t.project_chat_assign} className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {!managerTerminal && (
-            <div className="px-2 pb-2 pt-3">
-              <div className="text-[16px] font-semibold text-[var(--text-primary)]">{t.project_chat_choose_title}</div>
-              <div className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">{t.project_chat_choose_body}</div>
+            <div className="px-2.5 pb-2 pt-3">
+              <div className="text-[16px] font-semibold text-[var(--text-primary)]">{t.assign_panel_title}</div>
+              <div className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">{t.assign_panel_body}</div>
             </div>
           )}
-          {(managerTerminal || eligibleManagerTerminals.length > 0) && (
-            <div className="tc-seat-group">{t.project_chat_running_now}</div>
-          )}
           {managerTerminal && (
-            <div className="tc-seat-option pointer-events-none justify-between text-[var(--text-primary)]">
-              <img src={agentIcon(managerTerminal.type)} alt="" />
-              <span className="min-w-0 flex-1 truncate">{managerLabel}</span>
+            <div className="tc-menu-option pointer-events-none">
+              <img src={agentIcon(managerTerminal.type)} alt="" className="h-4 w-4 shrink-0 object-contain" />
+              <span className="min-w-0 flex-1 truncate">{agentLabel} · {managerLabel}</span>
               <span className="tc-mono shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
                 {t.project_chat_holding}
               </span>
             </div>
           )}
-          {eligibleManagerTerminals.map((term) => (
-            <button
-              key={term.id}
-              data-popover-item
-              role="menuitem"
-              tabIndex={-1}
-              className="tc-seat-option"
-              onClick={() => assignWorkspaceManager(term.id)}
-            >
-              <img src={agentIcon(term.type)} alt="" />
-              <span className="min-w-0 flex-1 truncate">{labelFor(term.id) || term.label}</span>
-              <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{agentName(term.type)}</span>
-            </button>
-          ))}
-          <div className="tc-seat-group">{t.project_chat_start_new}</div>
-          {MANAGER_AGENTS.map(({ id: type, displayName }) => {
-            // An agent whose CLI isn't installed stays listed, dimmed, with
-            // the reason, rather than spawning a manager that fails at launch.
-            const detection = agentDetections[type];
-            const missing = detection !== undefined && !detection.installed;
-            return (
-              <button
-                key={type}
-                data-popover-item
-                role="menuitem"
-                tabIndex={-1}
-                className={`tc-seat-option${missing ? " opacity-50" : ""}`}
-                aria-disabled={missing || undefined}
-                title={missing ? (detection.reason ?? undefined) : undefined}
-                onClick={() => {
-                  if (missing) return;
-                  spawnAndAssignManager(type as TerminalType);
-                }}
-              >
-                <img src={agentIcon(type)} alt="" />
-                <span className="min-w-0 flex-1 truncate">{displayName}</span>
-                {missing && <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{t.agent_not_installed}</span>}
-              </button>
-            );
-          })}
+          {projects.length === 0 ? (
+            <div className="px-2.5 py-2 text-[13px] text-[var(--text-muted)]">{t.manager_needs_folder}</div>
+          ) : (
+            <AssignMenu managerId={managerTerminal?.id ?? null} onPicked={returnToChat} />
+          )}
           {managerTerminal && (
             <>
               <div className="mx-2 my-1.5 h-px bg-[var(--border)] opacity-60" />
               <button
-                data-popover-item
-                role="menuitem"
-                tabIndex={-1}
-                className="tc-seat-option"
-                data-danger=""
+                type="button"
+                className="tc-menu-option"
+                style={{ color: "var(--red)" }}
                 onClick={() => {
                   // Asks first, and says what keeps running: removing the
                   // manager never stops its terminal or the workers it started.
@@ -1382,12 +1208,6 @@ export function WorkspaceManagerPill() {
             </>
           )}
         </div>
-      )}
-      {/* No manager: a message can still start an agent directly. */}
-      {view === "roster" && !managerTerminal && (
-        <DirectStart
-          onSend={(type, projectId, worktreeId, text) => spawnAndAssignManager(type, { projectId, worktreeId, firstMessage: text })}
-        />
       )}
 
       {/* A past holder cannot be messaged, so the composer is replaced rather

@@ -1,6 +1,8 @@
 import { addTerminal, addBrowser, addNote, addTask } from "../actions/dockActions";
 import { useAgentDetection } from "../stores/agentAvailabilityStore";
 import { useNotificationStore } from "../stores/notificationStore";
+import { useProjectStore } from "../stores/projectStore";
+import { getTranslations } from "../i18n/useT";
 import type { DockId } from "../stores/dockStore";
 import { useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import type { TerminalType } from "../types";
@@ -151,6 +153,49 @@ export function createFromDock(entry: DockEntry, missingReason: string | null, m
     useNotificationStore.getState().notify("warn", missingReason ?? "This agent isn't installed");
     return false;
   }
+  if (entry.group === "agents" && entry.terminalType) {
+    // An agent from the bar is a worker, never the manager; it starts in the
+    // focused folder, or the only one.
+    const folders = workerFolders();
+    const { focusedProjectId, focusedWorktreeId } = useProjectStore.getState();
+    const where = folders.find((f) => f.projectId === focusedProjectId && f.worktreeId === focusedWorktreeId) ?? folders[0];
+    if (!where) {
+      useNotificationStore.getState().notify("warn", getTranslations().worker_needs_folder);
+      return false;
+    }
+    startWorker(entry, where);
+    return true;
+  }
   addFromDock(entry);
   return true;
+}
+
+export interface WorkerFolder {
+  projectId: string;
+  worktreeId: string;
+  /** Folder, and branch when the folder has more than one worktree. */
+  label: string;
+}
+
+/** Every folder (worktree) on the workdesk an agent could start in. */
+export function workerFolders(): WorkerFolder[] {
+  const out: WorkerFolder[] = [];
+  for (const project of useProjectStore.getState().projects) {
+    for (const worktree of project.worktrees) {
+      const label = project.worktrees.length > 1 && worktree.name ? `${project.name} · ${worktree.name}` : project.name;
+      out.push({ projectId: project.id, worktreeId: worktree.id, label });
+    }
+  }
+  return out;
+}
+
+/** Starts an agent as a worker in a folder, and says so. */
+export function startWorker(entry: DockEntry, where: WorkerFolder): void {
+  if (!entry.terminalType) return;
+  const id = addTerminal(entry.terminalType, where);
+  if (!id) return;
+  const t = getTranslations();
+  useNotificationStore.getState().notify("info", t.worker_started(entry.label(t), where.label));
+  const view = useWorkdeskViewStore.getState();
+  if (view.mode === "grid") view.setOpenNode({ kind: "terminal", id });
 }

@@ -156,6 +156,18 @@ export const WORKSPACE_MANAGER_BRIEFING = [
 ].join(" ");
 
 /**
+ * Added for a manager that takes over a workdesk with work already on it, so
+ * its first reply catches you up instead of waiting to be asked.
+ */
+export const WORKSPACE_MANAGER_CATCH_UP =
+  "This workdesk already has work on it. After get_workspace_summary, tell the user in a few short lines what you see (folders, running agents and what they're on, open tasks) and what you'd do next, then wait for their answer before starting anything.";
+
+/** The briefing for a new holder; with work already on the workdesk, it also asks for a catch-up. */
+export function workspaceManagerBriefing(hasWork: boolean): string {
+  return hasWork ? `${WORKSPACE_MANAGER_BRIEFING} ${WORKSPACE_MANAGER_CATCH_UP}` : WORKSPACE_MANAGER_BRIEFING;
+}
+
+/**
  * Is this transcript line the handover briefing rather than something the user
  * wrote?
  *

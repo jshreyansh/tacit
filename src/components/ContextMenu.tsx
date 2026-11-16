@@ -9,7 +9,9 @@ export type MenuItem =
       danger?: boolean;
       onClick: () => void;
     }
-  | { type: "separator" };
+  | { type: "separator" }
+  /** A heading over the items that follow; not selectable. */
+  | { type: "label"; label: string };
 
 interface Props {
   x: number;
@@ -122,6 +124,10 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
             role="separator"
             className="mx-1 my-1 border-t border-[var(--border)]"
           />
+        ) : item.type === "label" ? (
+          <div key={`label-${i}`} className="tc-eyebrow px-2.5 pb-1 pt-1.5">
+            {item.label}
+          </div>
         ) : (
           <button
             key={`${item.label}-${i}`}

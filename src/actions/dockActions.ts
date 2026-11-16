@@ -33,11 +33,14 @@ export function visibleCanvasCenter(): { x: number; y: number } {
 }
 
 /** Adds a terminal (or an agent's) to the canvas; its id, or null with no project open. */
-export function addTerminal(type: TerminalType): string | null {
+export function addTerminal(
+  type: TerminalType,
+  where?: { projectId: string; worktreeId: string },
+): string | null {
   const { focusedProjectId, focusedWorktreeId, projects } =
     useProjectStore.getState();
-  let projectId = focusedProjectId;
-  let worktreeId = focusedWorktreeId;
+  let projectId = where?.projectId ?? focusedProjectId;
+  let worktreeId = where?.worktreeId ?? focusedWorktreeId;
   if (!projectId || !worktreeId) {
     const fallbackProject = projects[0];
     const fallbackWorktree = fallbackProject?.worktrees[0];

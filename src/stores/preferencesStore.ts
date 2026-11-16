@@ -88,7 +88,10 @@ interface PreferencesStore {
   attentionPrefs: AttentionPrefs;
   /** The editor "Open in" offers first (T20); null means the first one found. */
   defaultEditor: string | null;
+  /** The agent last chosen as a workdesk manager, offered first next time. */
+  lastManagerAgent: string | null;
   setDefaultEditor: (editorId: string) => void;
+  setLastManagerAgent: (agent: string) => void;
   setWallpaperLook: (change: Partial<WallpaperLook>) => void;
   setAttentionPrefs: (change: Partial<AttentionPrefs>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
@@ -153,6 +156,8 @@ interface SavedPrefs {
   /** Which system notifications to show (T16). */
   attentionPrefs: AttentionPrefs;
   defaultEditor: string | null;
+  /** The agent last chosen as a workdesk manager, offered first next time. */
+  lastManagerAgent: string | null;
 }
 
 function sanitizeAgentApprovals(value: unknown): Record<string, AgentApprovalChoice> {
@@ -356,6 +361,7 @@ function loadPreferences(): SavedPrefs {
         agentApprovals,
         attentionPrefs: sanitizeAttentionPrefs(parsed.attentionPrefs),
         defaultEditor: typeof parsed.defaultEditor === "string" ? parsed.defaultEditor : null,
+        lastManagerAgent: typeof parsed.lastManagerAgent === "string" ? parsed.lastManagerAgent : null,
       };
     }
   } catch {
@@ -389,6 +395,7 @@ function loadPreferences(): SavedPrefs {
     agentApprovals: {},
     attentionPrefs: DEFAULT_ATTENTION_PREFS,
     defaultEditor: null,
+    lastManagerAgent: null,
   };
 }
 
@@ -502,6 +509,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     agentApprovals: state.agentApprovals,
     attentionPrefs: state.attentionPrefs,
     defaultEditor: state.defaultEditor,
+    lastManagerAgent: state.lastManagerAgent,
   };
 }
 
@@ -537,6 +545,12 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   agentApprovals: initialPrefs.agentApprovals,
   attentionPrefs: initialPrefs.attentionPrefs,
   defaultEditor: initialPrefs.defaultEditor,
+  lastManagerAgent: initialPrefs.lastManagerAgent,
+  setLastManagerAgent: (lastManagerAgent) => {
+    if (get().lastManagerAgent === lastManagerAgent) return;
+    set({ lastManagerAgent });
+    savePreferences(getSaveState({ ...get(), lastManagerAgent }));
+  },
   setDefaultEditor: (defaultEditor) => {
     set({ defaultEditor });
     savePreferences(getSaveState({ ...get(), defaultEditor }));

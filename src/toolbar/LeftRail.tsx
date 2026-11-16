@@ -21,7 +21,8 @@ import { useUpdaterStore } from "../stores/updaterStore";
 import { UpdateModal } from "../components/UpdateModal";
 import { UpdateStatusButton } from "./UpdateStatusButton";
 import { AllNodesIcon } from "./NodeTray";
-import { DockIcon, createFromDock, dockEntry, useDockAvailability, type DockEntry } from "./dockEntries";
+import { DockIcon, createFromDock, dockEntry, startWorker, useDockAvailability, workerFolders, type DockEntry, type WorkerFolder } from "./dockEntries";
+import { ContextMenu } from "../components/ContextMenu";
 
 /**
  * The left rail — everywhere you can look, plus Settings.
@@ -87,16 +88,42 @@ function DockRailButton({ entry }: { entry: DockEntry }) {
   const t = useT();
   const { missing, title } = useDockAvailability(entry);
   const label = title ? `${entry.label(t)} ${missing ? "" : title}`.trim() : entry.label(t);
+  const isAgent = entry.group === "agents";
+  // With more than one folder, an agent asks where to start as a worker.
+  const [picker, setPicker] = useState<{ x: number; y: number; folders: WorkerFolder[] } | null>(null);
+  const hint = missing ? (title ?? label) : isAgent ? t.dock_start_worker(entry.label(t)) : t.dock_add(label);
   return (
-    <button
-      className={`${buttonCls}${missing ? " opacity-40" : ""}`}
-      aria-disabled={missing || undefined}
-      onClick={() => createFromDock(entry, title, missing)}
-      title={missing ? (title ?? label) : t.dock_add(label)}
-      aria-label={missing ? (title ?? label) : t.dock_add(label)}
-    >
-      <DockIcon art={entry.art} />
-    </button>
+    <>
+      <button
+        className={`${buttonCls}${missing ? " opacity-40" : ""}`}
+        aria-disabled={missing || undefined}
+        aria-haspopup={isAgent ? "menu" : undefined}
+        onClick={(e) => {
+          const folders = isAgent && !missing ? workerFolders() : [];
+          if (folders.length > 1) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setPicker({ x: rect.right + 8, y: rect.top, folders });
+            return;
+          }
+          createFromDock(entry, title, missing);
+        }}
+        title={hint}
+        aria-label={hint}
+      >
+        <DockIcon art={entry.art} />
+      </button>
+      {picker && (
+        <ContextMenu
+          x={picker.x}
+          y={picker.y}
+          onClose={() => setPicker(null)}
+          items={[
+            { type: "label", label: t.worker_pick_folder(entry.label(t)) },
+            ...picker.folders.map((folder) => ({ label: folder.label, onClick: () => startWorker(entry, folder) })),
+          ]}
+        />
+      )}
+    </>
   );
 }
 

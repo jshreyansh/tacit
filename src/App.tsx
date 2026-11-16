@@ -9,6 +9,7 @@ import { useSettingsModalStore } from "./stores/settingsModalStore";
 import { NodeTray } from "./toolbar/NodeTray";
 import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
+import { ManagerSetupCard } from "./components/ManagerSetupCard";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
 import { useAttention } from "./attention/useAttention";
@@ -1265,6 +1266,7 @@ export function App() {
       <CanvasRoot />
       <OnboardingModal />
       <WorkspaceManagerPill />
+      <ManagerSetupCard />
       {drawingEnabled && <DrawingPanel />}
       {/* Canvas-only overlays: the grid has none of what they point at. */}
       {!gridMode && completionGlowEnabled && <CompletionGlow />}
