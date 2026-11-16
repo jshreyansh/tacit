@@ -16,7 +16,8 @@ import {
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useNotificationStore } from "../stores/notificationStore";
 
-const MONO_STYLE = { fontFamily: '"Geist Mono", monospace' } as const;
+// The UI font, as in search and the command palette; key chips keep theirs.
+const MONO_STYLE = {} as const;
 
 function IconHistory({ size = 14 }: { size?: number }) {
   return (
@@ -369,27 +370,7 @@ export function SnapshotHistoryModal() {
           onMouseEnter={() => setSelectedIndex(index)}
           onClick={() => triggerRestore(entry.id)}
         >
-          <span
-            aria-hidden
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
-            style={{
-              ...MONO_STYLE,
-              color: isSelected
-                ? "var(--accent)"
-                : isFromAnchor
-                  ? "var(--text-secondary)"
-                  : "var(--text-muted)",
-              backgroundColor: isSelected
-                ? "color-mix(in srgb, var(--accent) 16%, transparent)"
-                : isFromAnchor
-                  ? "color-mix(in srgb, var(--text-secondary) 14%, transparent)"
-                  : "color-mix(in srgb, var(--text-muted) 10%, transparent)",
-              transition:
-                "color var(--duration-quick) var(--ease-out-soft), background-color var(--duration-quick) var(--ease-out-soft)",
-            }}
-          >
-            {isFromAnchor ? "F" : "H"}
-          </span>
+
           <div className="min-w-0 flex-1">
             <div
               className="tc-body-sm truncate"
@@ -397,7 +378,11 @@ export function SnapshotHistoryModal() {
                 fontWeight: isSelected ? 500 : 400,
               }}
             >
-              {entry.label ?? t["snapshot.modal.default_label"]}
+              {/* A label that only repeats the counts says nothing the meta
+                  line doesn't; the time it was taken names it better. */}
+              {!entry.label || /^\d+ terminals? · \d+ projects?$/.test(entry.label)
+                ? absoluteTimeLabel(entry.savedAt)
+                : entry.label}
             </div>
             <div
               className="tc-meta truncate"

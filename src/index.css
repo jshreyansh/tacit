@@ -385,9 +385,10 @@ body {
 .tc-timestamp {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
   color: var(--text-secondary);
 }
+/* A time beside a row's title stays on one line. */
+.tc-row .tc-timestamp, .tc-row-meta .tc-timestamp { white-space: nowrap; }
 /* .tc-role / .tc-role-user / .tc-role-assistant retired alongside the
    --role-* tokens. The replay view now leans on a gutter glyph + prose
    weight to mark speakers, so per-role badges have nothing to badge. */

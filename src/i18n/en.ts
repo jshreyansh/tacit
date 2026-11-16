@@ -1588,7 +1588,7 @@ export const en = {
   "snapshot.notify.restore_failed": "Restore failed.",
   // history label generation
   "snapshot.label.summary": (terminals: number, projects: number) =>
-    `${terminals} terminals · ${projects} projects`,
+    `${terminals} terminal${terminals === 1 ? "" : "s"} · ${projects} project${projects === 1 ? "" : "s"}`,
   "snapshot.label.added_terminals": (n: number) =>
     `After adding ${n} terminal${n === 1 ? "" : "s"}`,
   "snapshot.label.closed_terminals": (n: number) =>

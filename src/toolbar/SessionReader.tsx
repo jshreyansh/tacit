@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { focusInitialDialogTarget, trapDialogTabKey } from "../components/ui/ConfirmDialog";
 import { confirmAsync } from "../components/ui/confirmAsync";
+import { StatusChip } from "../components/ui/parts";
 import { useManagerTranscript } from "../stores/managerChatStore";
 import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
@@ -529,11 +530,10 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
             <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]" title={titleText}>
               {titleText}
             </span>
-            {manager && (
-              <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[11px] text-[var(--text-muted)]">{t.chat_history_badge_manager}</span>
-            )}
+            {/* The role only needs saying when the title doesn't already. */}
+            {manager && titleText !== t.chat_history_manager_session && <StatusChip>{t.chat_history_badge_manager}</StatusChip>}
           </span>
-          <span className="truncate text-[12px] text-[var(--text-muted)]">{meta}</span>
+          <span className="truncate text-[12px] text-[var(--text-secondary)]">{meta}</span>
         </div>
         {actions}
         {!layout.turnsBeside && (

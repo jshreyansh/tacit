@@ -732,7 +732,7 @@ export function IdentityManagerModal() {
                 <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
                   Each selected Chrome profile becomes its own persistent Tacit profile. Guest and your existing profiles stay unchanged. Quit Chrome first; Tacit snapshots source data read-only.
                 </p>
-                <p className="tc-timestamp mt-1" style={{ color: "var(--text-muted)" }}>
+                <p className="tc-meta mt-1 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   Portable cookies and site storage are imported, so signed-in sessions and per-site app state carry over. A profile that is signed out in Chrome stays signed out here. History, bookmarks, and saved passwords are reported as unsupported in this version; passwords are never read.
                 </p>
 
