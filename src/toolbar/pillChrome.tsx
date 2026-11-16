@@ -22,17 +22,16 @@ const COMPOSER_BOTTOM_INSET = 16;
 const COMPOSER_FALLBACK_HEIGHT = 120;
 const BOTTOM_OFFSET_PLAIN = 20;
 
-// Liquid-glass recipe: a low-opacity theme-aware tint (so the app's own
-// palette shows through, not a generic gray) behind a heavy blur+saturate
-// boost — saturate is what actually sells "glass" over a plain frosted
-// panel, since it makes whatever's behind visibly richer, not just soft.
+// The same glass as every floating panel (--chrome-glass, --glass-filter in
+// index.css): it darkens what's behind before tinting, so the pill's labels
+// stay readable over a bright wallpaper.
 // The inset highlight is intentionally a fixed light rgba rather than a
 // theme token: real glass/metal catches a light highlight along its top
 // edge in both light and dark rooms, so this doesn't flip with the theme
 // the way a color token would.
 export const PILL_GLASS =
-  "bg-[color-mix(in_srgb,var(--surface)_58%,transparent)] " +
-  "[backdrop-filter:blur(28px)_saturate(1.7)] [-webkit-backdrop-filter:blur(28px)_saturate(1.7)] " +
+  "bg-[var(--chrome-glass)] " +
+  "[backdrop-filter:var(--glass-filter)] [-webkit-backdrop-filter:var(--glass-filter)] " +
   "border border-[color-mix(in_srgb,var(--border)_45%,transparent)] " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_0_0_1px_rgba(255,255,255,0.04)," +
   "0_12px_36px_-10px_color-mix(in_srgb,var(--shadow-color)_45%,transparent)," +

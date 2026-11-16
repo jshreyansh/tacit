@@ -453,7 +453,7 @@ export function WorkdeskView() {
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
   const empty = sections.counts.all === 0;
   const browserWindow = openCard?.kind === "browser";
-  const barGlass = browserWindow ? "pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:blur(22px)_saturate(1.6)]" : "";
+  const barGlass = browserWindow ? "pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:var(--glass-filter)] [-webkit-backdrop-filter:var(--glass-filter)]" : "";
 
   return (
     <section

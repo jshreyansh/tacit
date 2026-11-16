@@ -118,8 +118,14 @@
   /* Floating chrome: rails and the panels beside them. Glass rather than a
      flat surface, because they sit *over* the canvas now instead of taking a
      slice out of it. */
-  --chrome-glass: rgba(34, 33, 32, 0.74);
-  --chrome-edge: rgba(236, 235, 231, 0.09);
+  /* Glass darkens what's behind it before tinting it (brightness), so text
+     keeps its contrast over the brightest part of any wallpaper: metadata
+     text stays above 5:1 even on a white patch. Low saturation keeps the
+     photo from tinting the text. One recipe for all floating chrome. */
+  --chrome-glass: rgba(34, 33, 32, 0.84);
+  --glass-filter: blur(24px) saturate(1.3) brightness(0.5);
+  --chrome-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --chrome-edge: rgba(236, 235, 231, 0.1);
   --chrome-shadow: 0 18px 46px rgba(0, 0, 0, 0.46);
   --radius: 8px;
   /* Find-match decorations. Dark theme gets a low-luminance brass marker:
@@ -193,7 +199,9 @@
      feeling lifted from the same surface family, and the lower alpha
      stops the popup from looking like it's floating on coal. */
   --scrim: rgba(28, 25, 23, 0.42);
-  --chrome-glass: rgba(255, 255, 255, 0.80);
+  --chrome-glass: rgba(255, 255, 255, 0.86);
+  --glass-filter: blur(24px) saturate(1.3) brightness(1.15);
+  --chrome-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
   --chrome-edge: rgba(26, 25, 24, 0.09);
   --chrome-shadow: 0 18px 42px rgba(28, 25, 23, 0.14);
   --radius: 8px;
@@ -1537,12 +1545,12 @@ a.tc-kbd[data-dragover="true"] {
    anything, hence the pairing below. */
 .tc-float {
   background: var(--chrome-glass);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6);
-  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
   border: 1px solid var(--chrome-edge);
   border-radius: 26px;
   corner-shape: squircle;
-  box-shadow: var(--chrome-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--chrome-shadow), var(--chrome-highlight);
 }
 
 /* A rail button, and the chip that marks the open one.
