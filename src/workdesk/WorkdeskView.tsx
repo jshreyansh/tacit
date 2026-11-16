@@ -3,6 +3,7 @@ import { useT } from "../i18n/useT";
 import { useProjectStore } from "../stores/projectStore";
 import { CanvasEmptyState } from "../components/CanvasEmptyState";
 import { FolderBar } from "./FolderBar";
+import { StatusChip } from "../components/ui/parts";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useIdentityStore } from "../stores/identityStore";
@@ -104,21 +105,15 @@ function NoteIcon() {
   );
 }
 
+/** The same status chip the Sessions list uses; idle is plain text. */
 function StatusLabel({ card, now, t }: { card: TerminalCard; now: number; t: Dict }) {
-  if (card.state === "active") {
-    return (
-      <span className="flex items-center gap-1.5" style={{ color: "var(--cyan)" }}>
-        <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
-        {t.workdesk_state_running(minutesSince(card.since, now))}
-      </span>
-    );
-  }
+  if (card.state === "active") return <StatusChip tone="live">{t.workdesk_state_running(minutesSince(card.since, now))}</StatusChip>;
   if (card.state === "attention") {
     const error = card.attentionReason === "error";
-    return <span style={{ color: error ? "var(--red)" : "var(--amber)" }}>{error ? t.workdesk_state_error : t.workdesk_state_needs_you}</span>;
+    return <StatusChip tone={error ? "error" : "ask"}>{error ? t.workdesk_state_error : t.workdesk_state_needs_you}</StatusChip>;
   }
-  if (card.state === "done") return <span style={{ color: "var(--green)" }}>{t.workdesk_state_done}</span>;
-  return <span className="text-[var(--text-muted)]">{t.workdesk_state_idle}</span>;
+  if (card.state === "done") return <StatusChip>{t.workdesk_state_done}</StatusChip>;
+  return <span className="text-[var(--text-secondary)]">{t.workdesk_state_idle}</span>;
 }
 
 const cardCls =
@@ -153,7 +148,7 @@ function TerminalCardView({
   t: Dict;
 }) {
   const icon = card.isAgent ? agentIcon(card.type) : null;
-  const typeLabel = card.isAgent ? (findAgentAdapter(card.type)?.id ?? card.type) : card.type;
+  const typeLabel = card.isAgent ? (findAgentAdapter(card.type)?.displayName ?? card.type) : card.type;
   return (
     <button
       type="button"
@@ -167,13 +162,9 @@ function TerminalCardView({
         ) : (
           <span className="flex shrink-0 text-[var(--text-muted)]"><ShellIcon /></span>
         )}
-        <span className="tc-mono shrink-0 text-[12px] text-[var(--text-primary)]">{typeLabel}</span>
-        {card.isManager && (
-          <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[10px] text-[var(--text-muted)]">
-            {t.workdesk_manager_badge}
-          </span>
-        )}
-        <span className="min-w-0 truncate text-[12px] text-[var(--text-muted)]">{card.title !== card.type ? card.title : card.subtitle}</span>
+        <span className="shrink-0 text-[12px] font-medium text-[var(--text-primary)]">{typeLabel}</span>
+        {card.isManager && <StatusChip>{t.workdesk_manager_badge}</StatusChip>}
+        <span className="min-w-0 truncate text-[12px] text-[var(--text-secondary)]">{card.title !== card.type ? card.title : card.subtitle}</span>
         <span className="ml-auto shrink-0 pl-1 text-[11px]"><StatusLabel card={card} now={now} t={t} /></span>
       </div>
       <div className="tc-mono min-h-0 flex-1 overflow-hidden px-3 py-2.5 text-[11px] leading-[1.65] text-[var(--text-muted)]">
@@ -239,8 +230,8 @@ function TaskCardView({ card, t }: { card: TaskCard; t: Dict }) {
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><TaskIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
-        <span className="ml-auto shrink-0 rounded-full border px-1.5 text-[11px]" style={{ color, borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}>
-          {statusLabel(card.status, t)}
+        <span className="ml-auto shrink-0">
+          <StatusChip tone={card.status === "needs_you" ? "ask" : card.status === "in_progress" ? "live" : "neutral"}>{statusLabel(card.status, t)}</StatusChip>
         </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 py-2.5">
@@ -249,10 +240,10 @@ function TaskCardView({ card, t }: { card: TaskCard; t: Dict }) {
             <span aria-hidden="true" className="block h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
               <span className="block h-1 rounded-full" style={{ width: `${card.percent}%`, background: color }} />
             </span>
-            <span className="tc-mono text-[11px] text-[var(--text-muted)]">{card.progress}</span>
+            <span className="text-[11px] tabular-nums text-[var(--text-secondary)]">{card.progress}</span>
           </span>
         )}
-        <span className="line-clamp-3 text-[12px] leading-[1.6]" style={{ color: card.status === "needs_you" ? "var(--amber)" : "var(--text-secondary)" }}>
+        <span className="line-clamp-3 text-[12px] leading-[1.6]" style={{ color: card.status === "needs_you" ? "var(--text-primary)" : "var(--text-secondary)" }}>
           {card.current ?? (card.status === "done" ? t.workdesk_all_steps_done : t.workdesk_no_steps)}
         </span>
         <span className="mt-auto">
@@ -292,7 +283,6 @@ function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><NoteIcon /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
-        <span className="ml-auto shrink-0 pl-1 text-[11px] text-[var(--text-muted)]">{t.workdesk_note}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap px-3 py-2.5 text-[12px] leading-[1.7] text-[var(--text-secondary)]">
         {card.body}
@@ -303,9 +293,9 @@ function NoteCardView({ card, t }: { card: NoteCard; t: Dict }) {
 
 function SectionHead({ title, summary }: { title: string; summary: string }) {
   return (
-    <div className="mt-1 flex items-baseline gap-2">
+    <div className="mt-2 flex items-baseline gap-2">
       <span className="tc-eyebrow">{title}</span>
-      <span className="text-[11px] text-[var(--text-muted)]">{summary}</span>
+      <span className="text-[11px] tabular-nums text-[var(--text-secondary)]">{summary}</span>
     </div>
   );
 }

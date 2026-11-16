@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatTitle, duration, filterChatHistory, projectName, relativeAge } from "../src/toolbar/chatHistoryModel";
+import { briefingTitle, chatTitle, duration, filterChatHistory, projectName, relativeAge } from "../src/toolbar/chatHistoryModel";
 
 const entry = (over: Partial<Parameters<typeof filterChatHistory>[0][number]>) => ({
   sessionId: "s",
@@ -56,4 +56,25 @@ test("ages, durations and project names read as a person would say them", () => 
   assert.equal(duration("2026-10-17T10:00:00Z", "2026-10-17T10:42:00Z"), "42m");
   assert.equal(duration("2026-10-17T10:00:00Z", "2026-10-17T12:05:00Z"), "2h 5m");
   assert.equal(projectName("/Users/me/auto-video-remotion-pipeline/"), "auto-video-remotion-pipeline");
+});
+
+
+test("a session the manager started is named by its job, not its briefing", () => {
+  assert.equal(
+    briefingTitle("You're a worker on the Lantern launch page in /Users/me/lantern (plain index.html). Read AGENTS.md first."),
+    "Worker · Lantern launch page",
+  );
+  assert.equal(
+    briefingTitle("You're the browser-QA worker for the Lantern launch page in /Users/me/lantern (plain…"),
+    "Browser-QA worker · Lantern launch page",
+  );
+  assert.equal(
+    briefingTitle('A browser on the canvas is wired to you: "Lantern — a calendar" (browser b-1). Read or drive it'),
+    "Wired to a browser · Lantern — a calendar",
+  );
+  assert.equal(briefingTitle("fix the login bug"), null);
+  assert.deepEqual(chatTitle("You're a worker on the Lantern launch page in /Users/me/x"), {
+    kind: "text",
+    text: "Worker · Lantern launch page",
+  });
 });

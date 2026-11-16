@@ -41,7 +41,25 @@ export function chatTitle(firstPrompt: string | null | undefined): ChatTitle {
     .filter(Boolean);
   if (plain.length === 0) return PASTED_BLOCK.test(raw) ? { kind: "pasted" } : { kind: "untitled" };
   if (isWorkspaceManagerBriefing(plain[0])) return { kind: "manager" };
-  return { kind: "text", text: plain[0].replace(/\s+/g, " ") };
+  const line = plain[0].replace(/\s+/g, " ");
+  return { kind: "text", text: briefingTitle(line) ?? line };
+}
+
+/**
+ * Sessions the manager started open with a briefing, not something a person
+ * typed: name them by their job instead of by the briefing's first words.
+ * "You're the browser-QA worker for the Lantern launch page in /Users/…"
+ * becomes "Browser-QA worker · Lantern launch page".
+ */
+export function briefingTitle(line: string): string | null {
+  const worker = line.match(/^You're (?:a|an|the) ((?:[\w-]+ )?worker) (?:on|for) (?:the )?(.+?)(?: in \/| \(|\. |$)/i);
+  if (worker) {
+    const role = worker[1][0].toUpperCase() + worker[1].slice(1);
+    return `${role} · ${worker[2].trim()}`;
+  }
+  const wired = line.match(/^A browser on the canvas is wired to you: "([^"]+)"/i);
+  if (wired) return `Wired to a browser · ${wired[1].trim()}`;
+  return null;
 }
 
 export function projectName(dir: string): string {
