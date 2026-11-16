@@ -6,6 +6,7 @@ import { useT } from "../../i18n/useT";
 import { useActivityFocusStore } from "../../stores/activityFocusStore";
 import { taskActorName } from "../../utils/taskActor";
 import { TaskControl } from "../../toolbar/TaskControl";
+import { EmptyState, ListRow, SectionHeader, Segmented } from "../ui/parts";
 
 const themeCache = { theme: "", vars: {} as Record<string, string> };
 
@@ -571,7 +572,7 @@ function MemoryGraph({
         </div>
       )}
       {graph.nodes.length > 0 && (
-        <div className="absolute bottom-2 left-2 flex gap-2.5 text-[10px] text-[var(--text-muted)]">
+        <div className="absolute bottom-2 left-3 flex gap-3 text-[11px] text-[var(--text-secondary)]">
           {(["user", "feedback", "project", "reference"] as const).map((t) => (
             <span key={t} className="flex items-center gap-1">
               <span
@@ -583,6 +584,111 @@ function MemoryGraph({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+const VIEW_KEY = "tacit.memory.view.v1";
+const TYPE_ORDER = ["feedback", "project", "user", "reference"] as const;
+
+/** "release-flow" or "project_remember-mango" → "Release flow", "Remember mango". */
+export function memoryTitle(name: string, fileName: string): string {
+  const raw = (name || fileName.replace(/\.md$/, "")).replace(/^(user|feedback|project|reference)_/, "");
+  const words = raw.replace(/[-_]+/g, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : fileName;
+}
+
+type MemoryNodeView = {
+  fileName: string;
+  filePath: string;
+  name: string;
+  type: string;
+  description: string;
+  mtime: number;
+};
+
+/**
+ * The memories as a list, grouped by type and newest first: what people
+ * scan for. The graph stays one click away for seeing links.
+ */
+function MemoryList({ nodes, onOpenFile }: { nodes: MemoryNodeView[]; onOpenFile: (filePath: string) => void }) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = nodes.filter(
+    (n) =>
+      n.type !== "index" &&
+      (!q || `${n.name} ${n.description} ${n.fileName}`.toLowerCase().includes(q)),
+  );
+  const known = new Set<string>(TYPE_ORDER);
+  const groups = [...TYPE_ORDER, "other"]
+    .map((type) => ({
+      type,
+      items: shown
+        .filter((n) => (type === "other" ? !known.has(n.type) : n.type === type))
+        .sort((a, b) => b.mtime - a.mtime),
+    }))
+    .filter((g) => g.items.length > 0);
+  const label = (type: string) =>
+    type === "feedback"
+      ? t.memory_type_feedback
+      : type === "project"
+        ? t.memory_type_project
+        : type === "user"
+          ? t.memory_type_user
+          : type === "reference"
+            ? t.memory_type_reference
+            : t.memory_type_other;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-3 pt-1">
+        <label className="flex h-8 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2.5 text-[var(--text-muted)] focus-within:border-[var(--border-hover)]">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" />
+            <path d="M13.5 13.5l-3.2-3.2" />
+          </svg>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            placeholder={t.memory_search}
+            aria-label={t.memory_search}
+            className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+        {groups.length === 0 && <EmptyState className="pt-4">{t.memory_no_match}</EmptyState>}
+        {groups.map((g) => (
+          <section key={g.type} aria-label={label(g.type)}>
+            <SectionHeader label={label(g.type)} count={g.items.length} />
+            {g.items.map((n) => (
+              <ListRow
+                key={n.filePath}
+                className="items-start"
+                onClick={() => onOpenFile(n.filePath)}
+                title={memoryTitle(n.name, n.fileName)}
+                meta={n.description || n.fileName}
+                icon={
+                  <span
+                    aria-hidden="true"
+                    className="mt-1.5 h-2 w-2 rounded-full"
+                    style={{ backgroundColor: getTypeColor(known.has(n.type) ? n.type : "unknown") }}
+                  />
+                }
+                trailing={
+                  <span className="tc-timestamp">
+                    {new Date(n.mtime).toLocaleDateString([], { month: "short", day: "numeric" })}
+                  </span>
+                }
+              />
+            ))}
+          </section>
+        ))}
+      </div>
+      <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-2 text-[11px] text-[var(--text-secondary)]">
+        <span>{t.memory_count(nodes.filter((n) => n.type !== "index").length)}</span>
+      </div>
     </div>
   );
 }
@@ -815,6 +921,21 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
     useMemoryStore();
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const [scope, setScope] = useState<MemoryScope>("worktree");
+  const [view, setViewState] = useState<"list" | "graph">(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "graph" ? "graph" : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const setView = (next: "list" | "graph") => {
+    setViewState(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // Not kept for next time; the view still switches.
+    }
+  };
   // The title bar's "Show in Activity": switch here and scroll to the task.
   const focusTaskId = useActivityFocusStore((st) => st.taskId);
   const focusNonce = useActivityFocusStore((st) => st.nonce);
@@ -913,47 +1034,61 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
 
   const busy = scope === "activity" ? activityLoading : loading;
 
+  const iconBtn =
+    "inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] hover:text-[var(--text-primary)] transition-colors";
   const scopeTabs = (
-    <div className="flex items-center gap-1 px-2 pt-2 pb-1 shrink-0">
-      {(["worktree", "workspace", "activity"] as const).map((s) => (
-        <button
-          key={s}
-          onClick={() => setScope(s)}
-          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-            scope === s
-              ? "bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] text-[var(--text-primary)]"
-              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          {s === "worktree"
-            ? t.memory_scope_worktree
-            : s === "workspace"
-              ? t.memory_scope_workspace
-              : t.memory_scope_activity}
+    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 pt-2">
+      <Segmented
+        label={t.memory_title}
+        value={scope}
+        onChange={setScope}
+        options={[
+          { value: "worktree", label: t.memory_scope_worktree },
+          { value: "workspace", label: t.memory_scope_workspace },
+          { value: "activity", label: t.memory_scope_activity },
+        ]}
+      />
+      <span className="ml-auto flex items-center gap-0.5">
+        {scope !== "activity" && (
+          <button
+            type="button"
+            className={iconBtn}
+            onClick={() => setView(view === "list" ? "graph" : "list")}
+            title={view === "list" ? t.memory_view_graph : t.memory_view_list}
+            aria-label={view === "list" ? t.memory_view_graph : t.memory_view_list}
+          >
+            {view === "list" ? (
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                <circle cx="4" cy="4" r="2" />
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="7" cy="12" r="2" />
+                <path d="M5.6 5.2 6.4 10M6 4.2l4 .6M8.5 10.8l2.6-4.3" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                <path d="M3 4h10M3 8h10M3 12h10" />
+              </svg>
+            )}
+          </button>
+        )}
+        <button type="button" onClick={() => setRefreshNonce((n) => n + 1)} title={t.memory_refresh} aria-label={t.memory_refresh} className={iconBtn}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={busy ? { animation: "tc-spin 0.9s linear infinite" } : undefined}
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
         </button>
-      ))}
-      <button
-        onClick={() => setRefreshNonce((n) => n + 1)}
-        title={t.memory_refresh}
-        aria-label={t.memory_refresh}
-        className="ml-auto p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] transition-colors"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          style={busy ? { animation: "tc-spin 0.9s linear infinite" } : undefined}
-        >
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v6h-6" />
-        </svg>
-      </button>
+      </span>
     </div>
   );
 
@@ -1020,12 +1155,16 @@ export function MemoryContent({ worktreePath, onFileClick }: Props) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {scopeTabs}
-      <MemoryGraph
-        graph={graph}
-        selectedNode={selectedNode}
-        onSelectNode={setSelectedNode}
-        onOpenFile={onFileClick}
-      />
+      {view === "list" ? (
+        <MemoryList nodes={graph.nodes} onOpenFile={onFileClick} />
+      ) : (
+        <MemoryGraph
+          graph={graph}
+          selectedNode={selectedNode}
+          onSelectNode={setSelectedNode}
+          onOpenFile={onFileClick}
+        />
+      )}
     </div>
   );
 }

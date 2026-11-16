@@ -16,6 +16,8 @@ import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 
 import { useHubStore } from "../stores/hubStore";
 import { PanelCollapseButton } from "./PanelCollapseButton";
+import { StatusChip } from "./ui/parts";
+import { agentIcon } from "../toolbar/agentIcons";
 import { useProjectStore } from "../stores/projectStore";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -365,6 +367,14 @@ interface TerminalTypeBadgeProps {
 }
 
 function TerminalTypeBadge({ type }: TerminalTypeBadgeProps) {
+  const icon = agentIcon(type);
+  if (icon) {
+    return (
+      <span aria-hidden className="tc-icon-shell shrink-0" style={{ width: 22, height: 22 }}>
+        <img src={icon} alt="" className="h-[15px] w-[15px] object-contain" draggable={false} />
+      </span>
+    );
+  }
   return (
     <span
       aria-hidden
@@ -396,8 +406,8 @@ function SectionShell({
   showEmpty,
 }: SectionShellProps) {
   return (
-    <section className="px-4 pt-4 pb-3">
-      <div className="flex items-baseline justify-between mb-2">
+    <section className={`px-4 ${showEmpty ? "pt-3 pb-1" : "pt-4 pb-2"}`}>
+      <div className={`flex items-baseline justify-between ${showEmpty ? "mb-1" : "mb-2"}`}>
         <span className="tc-eyebrow">{eyebrow}</span>
         {trailing != null && trailing !== "" && (
           <span
@@ -409,9 +419,7 @@ function SectionShell({
         )}
       </div>
       {showEmpty ? (
-        <div className="tc-label" style={{ color: "var(--text-muted)" }}>
-          {empty}
-        </div>
+        <div className="text-[12px] leading-snug text-[var(--text-secondary)]">{empty}</div>
       ) : (
         children
       )}
@@ -419,7 +427,25 @@ function SectionShell({
   );
 }
 
+const TIPS_KEY = "tacit.hub.tipsOpen.v1";
+
 export function Hub() {
+  const [tipsOpen, setTipsOpen] = useState(() => {
+    try {
+      return localStorage.getItem(TIPS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleTips = () =>
+    setTipsOpen((open) => {
+      try {
+        localStorage.setItem(TIPS_KEY, open ? "0" : "1");
+      } catch {
+        // Not kept for next time.
+      }
+      return !open;
+    });
   const t = useT();
   const open = useHubStore((s) => s.open);
   const closeHub = useHubStore((s) => s.closeHub);
@@ -608,7 +634,7 @@ export function Hub() {
     <div
       ref={containerRef}
       role="complementary"
-      aria-label={`${t["hub.title"]} ${t["hub.subtitle"]}`}
+      aria-label={t["hub.title"]}
       aria-hidden={!open}
       // Unfolds like the panels either rail opens, rather than sliding in
       // from off-screen on its own timing tokens. Same surface class, same
@@ -637,16 +663,7 @@ export function Hub() {
         style={{ borderBottom: "1px solid var(--border)" }}
       >
         <div className="flex items-baseline gap-2">
-          <span
-            className="tc-display"
-            style={{
-              fontSize: "15px",
-              letterSpacing: "var(--tracking-title)",
-            }}
-          >
-            {t["hub.title"]}
-          </span>
-          <span className="tc-eyebrow">{t["hub.subtitle"]}</span>
+          <span className="tc-panel-title">{t["hub.title"]}</span>
         </div>
         <PanelCollapseButton onCollapse={closeHub} />
       </header>
@@ -697,7 +714,7 @@ export function Hub() {
           </div>
         </section>
 
-        <div style={{ borderTop: "1px solid var(--border)" }} />
+        
 
         <SectionShell
           eyebrow={t["hub.section.recentActivity"]}
@@ -765,7 +782,7 @@ export function Hub() {
           </ul>
         </SectionShell>
 
-        <div style={{ borderTop: "1px solid var(--border)" }} />
+        
 
         <SectionShell
           eyebrow={t["hub.section.waypoints"]}
@@ -819,7 +836,7 @@ export function Hub() {
           )}
         </SectionShell>
 
-        <div style={{ borderTop: "1px solid var(--border)" }} />
+        
 
         <SectionShell
           eyebrow={t["hub.section.pinned"]}
@@ -880,7 +897,7 @@ export function Hub() {
           </ul>
         </SectionShell>
 
-        <div style={{ borderTop: "1px solid var(--border)" }} />
+        
 
         <SectionShell
           eyebrow={t["hub.section.canvases"]}
@@ -936,12 +953,7 @@ export function Hub() {
                           {canvas.name}
                         </span>
                         {isActive && (
-                          <span
-                            className="tc-eyebrow shrink-0"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            {t["hub.canvases.activeBadge"]}
-                          </span>
+                          <StatusChip>{t["hub.canvases.activeBadge"]}</StatusChip>
                         )}
                         {/* Tasks there waiting on you, in the amber the Needs you dots use. */}
                         {waiting > 0 && (
@@ -1118,13 +1130,22 @@ export function Hub() {
 
         {capabilityRows.length > 0 && (
           <>
-            <div style={{ borderTop: "1px solid var(--border)" }} />
-            <SectionShell
-              eyebrow={t["hub.section.tryNext"]}
-              empty=""
-              showEmpty={false}
-            >
-              <ul className="-mx-1">
+            
+            <section className="px-4 pt-3 pb-2">
+              <button
+                type="button"
+                aria-expanded={tipsOpen}
+                onClick={() => toggleTips()}
+                className="flex w-full items-center gap-1.5 text-left"
+              >
+                <svg width="9" height="9" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-secondary)] transition-transform duration-quick ${tipsOpen ? "rotate-90" : ""}`} aria-hidden="true">
+                  <path d="M3 2l4 3-4 3z" fill="currentColor" />
+                </svg>
+                <span className="tc-eyebrow">{t["hub.section.tryNext"]}</span>
+                <span className="tc-count">{Math.min(capabilityRows.length, 4)}</span>
+              </button>
+              {tipsOpen && (
+              <ul className="-mx-1 mt-2">
                 {capabilityRows.slice(0, 4).map((hint) => {
                   const chord = hint.shortcutKey
                     ? formatShortcut(shortcuts[hint.shortcutKey], isMac)
@@ -1158,33 +1179,14 @@ export function Hub() {
                   );
                 })}
               </ul>
-            </SectionShell>
+              )}
+            </section>
           </>
         )}
 
         <div className="h-3" />
       </div>
 
-      <footer
-        className="flex items-center gap-3 px-4 py-2"
-        style={{
-          borderTop: "1px solid var(--border)",
-          color: "var(--text-muted)",
-        }}
-      >
-        <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
-          {formatShortcut(shortcuts.toggleHub, isMac)}
-        </span>
-        <span className="tc-timestamp" style={{ color: "var(--text-muted)" }}>
-          {t["hub.toggle"]}
-        </span>
-        <span
-          className="tc-timestamp ml-auto"
-          style={{ color: "var(--text-muted)" }}
-        >
-          {t["hub.escCloses"]}
-        </span>
-      </footer>
       </div>
     </div>
   );

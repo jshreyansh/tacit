@@ -1445,9 +1445,11 @@ a.tc-kbd[data-dragover="true"] {
 }
 .tc-settings-rail-item.is-active {
   color: var(--text-primary);
-  background: var(--accent-soft);
+  background: var(--surface-hover);
   font-weight: var(--weight-medium);
 }
+/* The fill marks the selected tab; no bar beside it. */
+.tc-settings-rail-item.is-active::before { background: transparent !important; }
 .tc-settings-rail-item.is-active::before {
   background: var(--accent);
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Segmented } from "../components/ui/parts";
 import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
@@ -119,6 +120,17 @@ const AGENT_HUE: Record<string, string> = {
  * Phase 1: no inline typing here, clicking the label flies to the assigned
  * terminal's real card instead — see the design doc for why.
  */
+
+/** A tab's name, with an amber dot when something there waits on you. */
+function TabLabel({ text, waiting }: { text: string; waiting: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {text}
+      {waiting && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--amber)]" />}
+    </span>
+  );
+}
+
 export function WorkspaceManagerPill() {
   const t = useT();
   // Context recording's controls are in Activity; what others do to it is said here.
@@ -1120,42 +1132,6 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
-        {/* Sessions and Pins each open in place of the conversation; the lit
-            icon takes you back. Sessions is on the left bar too. */}
-        <button
-          type="button"
-          className={`${iconButton} relative`}
-          data-on={view === "sessions" ? "" : undefined}
-          aria-pressed={view === "sessions"}
-          onClick={() => setView(view === "sessions" ? "chat" : "sessions")}
-          title={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-          aria-label={needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : t.chat_sessions}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8 3a5 5 0 1 1-4.2 2.3" />
-            <path d="M3.2 3.5v2.2h2.2" />
-            <path d="M8 5.5V8l1.8 1.2" />
-          </svg>
-          {needsYou > 0 && view !== "sessions" && (
-            <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
-          )}
-        </button>
-        <button
-          type="button"
-          className={`${iconButton} relative`}
-          data-on={view === "pins" ? "" : undefined}
-          aria-pressed={view === "pins"}
-          onClick={() => setView(view === "pins" ? "chat" : "pins")}
-          title={tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : t.tasks_title}
-          aria-label={tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : t.tasks_title}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2.5 4l1.2 1.2L6 3M2.5 8l1.2 1.2L6 7M2.5 12h0.01M8 4h5.5M8 8h5.5M8 12h5.5" />
-          </svg>
-          {tasksWaiting > 0 && view !== "pins" && (
-            <span aria-hidden="true" className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-[var(--amber)] shadow-[0_0_0_2px_var(--surface)]" />
-          )}
-        </button>
         {/* Where the chat lives, and going to the manager's tile. */}
         <ChatPlacementMenu buttonClass={iconButton} extras={managerTerminal ? [{ label: t.project_chat_go_to, onClick: flyToManager }] : []} />
         <button
@@ -1171,6 +1147,31 @@ export function WorkspaceManagerPill() {
             <path d="M6.5 8L4 10.5 6.5 13" />
           </svg>
         </button>
+      </div>
+
+      {/* Chat, Sessions and Tasks are tabs of this panel; a dot marks a tab
+          with something waiting on you. Without a manager, Chat is the
+          roster where you choose one. */}
+      <div className="shrink-0 px-3 pb-1 pt-0.5">
+        <Segmented
+          fill
+          label={t.project_chat_title}
+          value={view === "sessions" ? "sessions" : view === "pins" ? "pins" : "chat"}
+          onChange={(next) => setView(next === "chat" ? (managerTerminal ? "chat" : "roster") : next)}
+          options={[
+            { value: "chat", label: t.workdesk_view_chat },
+            {
+              value: "sessions",
+              label: <TabLabel text={t.chat_sessions} waiting={needsYou > 0 && view !== "sessions"} />,
+              title: needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : undefined,
+            },
+            {
+              value: "pins",
+              label: <TabLabel text={t.tasks_title} waiting={tasksWaiting > 0 && view !== "pins"} />,
+              title: tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : undefined,
+            },
+          ]}
+        />
       </div>
 
       {/* A face (choosing a manager, or past chats) gets a way back. */}

@@ -60,7 +60,13 @@ export function parseMemoryFile(filePath: string): MemoryFile | null {
     const frontmatter = fmMatch[1];
     const body = fmMatch[2].trim();
 
-    const unquote = (value: string): string => value.trim().replace(/^(["'])(.*)\1$/, "$2");
+    const unquote = (value: string): string => {
+      const v = value.trim();
+      const m = v.match(/^(["'])(.*)\1$/);
+      if (!m) return v;
+      // YAML double quotes escape \" and \\ inside the value.
+      return m[1] === '"' ? m[2].replace(/\\(["\\])/g, "$1") : m[2];
+    };
     const get = (key: string): string => {
       const m = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
       if (m) return unquote(m[1]);

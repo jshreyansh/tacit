@@ -82,14 +82,14 @@ export function relativeAge(iso: string, now = Date.now()): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-/** Clock time for today, "Mon 14:02" this week, else the date. */
+/** Clock time for today, the weekday this week ("Mon"), else the date. */
 export function stamp(iso: string, now = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const sameDay = d.toDateString() === now.toDateString();
   if (sameDay) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const days = (now.getTime() - d.getTime()) / 86_400_000;
-  if (days < 7) return `${d.toLocaleDateString([], { weekday: "short" })} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  if (days < 7) return d.toLocaleDateString([], { weekday: "short" });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { Switch } from "./ui/parts";
 import { useLocaleStore } from "../stores/localeStore";
 import { useThemeStore } from "../stores/themeStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -56,7 +57,7 @@ const SectionHeader = ({
   subtitle?: ReactNode;
 }) => (
   <div className="mb-6 flex flex-col gap-1">
-    <h3 className="tc-display">{title}</h3>
+    <h3 className="tc-title">{title}</h3>
     {subtitle && <p className="tc-meta">{subtitle}</p>}
   </div>
 );
@@ -179,31 +180,9 @@ function OnOffSegment({
   disabled?: { on?: boolean; off?: boolean };
 }) {
   const t = useT();
-  const base =
-    "inline-flex min-w-[52px] justify-center px-3 py-1 text-[13px] rounded-md transition-colors duration-quick disabled:cursor-not-allowed";
-  const active = "bg-[var(--accent-soft)] text-[var(--text-primary)]";
-  const inactive =
-    "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]";
-  return (
-    <div className="tc-segment inline-flex border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
-      <button
-        type="button"
-        className={`${base} ${value ? active : inactive}`}
-        onClick={() => onChange(true)}
-        disabled={disabled?.on}
-      >
-        {t.setting_on}
-      </button>
-      <button
-        type="button"
-        className={`${base} ${!value ? active : inactive}`}
-        onClick={() => onChange(false)}
-        disabled={disabled?.off}
-      >
-        {t.setting_off}
-      </button>
-    </div>
-  );
+  // Turning it the other way is what can be disabled.
+  const locked = value ? disabled?.off : disabled?.on;
+  return <Switch checked={value} onChange={onChange} disabled={locked} label={value ? t.setting_on : t.setting_off} />;
 }
 
 /** Which editor "Open in" offers first (T20). Nothing to choose from, nothing shown. */
@@ -217,11 +196,18 @@ function DefaultEditorRow() {
   if (!current) return null;
   return (
     <SettingsRow label={t["editor.defaultLabel"]} description={t["editor.defaultHint"]}>
-      <ChoiceSegment
+      <select
         value={current.id}
-        options={editors.map((editor) => ({ value: editor.id, label: editor.name }))}
-        onChange={setDefaultEditor}
-      />
+        onChange={(e) => setDefaultEditor(e.target.value)}
+        aria-label={t["editor.defaultLabel"]}
+        className="h-8 min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 text-[12px] font-medium text-[var(--text-primary)] outline-none hover:border-[var(--border-hover)]"
+      >
+        {editors.map((editor) => (
+          <option key={editor.id} value={editor.id}>
+            {editor.name}
+          </option>
+        ))}
+      </select>
     </SettingsRow>
   );
 }
@@ -236,24 +222,12 @@ function ChoiceSegment<T extends string>({
   onChange: (next: T) => void;
 }) {
   return (
-    <div className="tc-segment inline-flex border border-[var(--border)] bg-[var(--surface)]/40 p-0.5">
-      {options.map((opt) => {
-        const selected = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            className={`min-w-[64px] px-3 py-1 text-[13px] rounded-md transition-colors duration-quick ${
-              selected
-                ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-            }`}
-            onClick={() => onChange(opt.value)}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
+    <div className="tc-seg">
+      {options.map((opt) => (
+        <button key={opt.value} type="button" aria-pressed={opt.value === value} onClick={() => onChange(opt.value)}>
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -510,18 +484,10 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
       {/* The version never truncates. It is nine characters, it is the one
           thing on this row someone came here to read, and "v0.39.…" answers
           nothing. The status control beside it is the flexible half. */}
-      <div className="flex flex-col gap-0.5 shrink-0">
-        <span className="tc-eyebrow" style={MONO_STYLE}>
-          {t.settings_version}
-        </span>
-        <span
-          className="text-[12px] text-[var(--text-metadata)] tabular-nums whitespace-nowrap"
-          style={MONO_STYLE}
-        >
-          v{appVersion ?? "unknown"}
-        </span>
-      </div>
-      <div className="min-w-0 text-right">{statusEl}</div>
+      <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-[var(--text-secondary)]">
+        Tacit {appVersion ?? "?"}
+      </span>
+      <div className="min-w-0 whitespace-nowrap text-right text-[11px]">{statusEl}</div>
     </div>
   );
 }
@@ -1109,49 +1075,18 @@ export function SettingsModal({ onClose }: Props) {
         className="tc-enter-fade-up tc-squircle flex h-[85vh] w-full max-w-3xl mx-4 flex-col overflow-hidden border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
         style={{ minHeight: 540 }}
       >
-        {/* Header — settings title plus the discoverability cue: ⌘,
-            and Esc as live keyboard chips. Reads as both crown and
-            help line at the top of the surface. */}
-        <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-4">
-          <h2 className="tc-display">{t.settings}</h2>
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-              <span className="tc-kbd" style={MONO_STYLE}>
-                {isMac ? "⌘ ," : "Ctrl ,"}
-              </span>
-              <span>·</span>
-              <span className="tc-kbd" style={MONO_STYLE}>
-                Esc
-              </span>
-            </span>
-            <button
-              type="button"
-              className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors duration-quick"
-              onClick={onClose}
-              aria-label="Close settings"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </div>
-        </header>
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex flex-1 min-h-0 overflow-hidden">
           {/* Rail — vertical category nav + persistent version footer.
               Sticky version row mirrors macOS System Settings: the
               user can always see what build they're on without paging
               into a tab for it. */}
           <nav
             aria-label="Settings sections"
-            className="flex w-[180px] shrink-0 flex-col justify-between border-r border-[var(--border)] bg-[var(--sidebar)]"
+            className="flex w-[200px] shrink-0 flex-col justify-between border-r border-[var(--border)] bg-[var(--sidebar)]"
           >
             <div className="flex flex-col gap-0.5 p-2">
+              <h2 className="tc-panel-title px-3 pb-3 pt-2">{t.settings}</h2>
               {tabs.map((id) => {
                 const active = tab === id;
                 return (
@@ -1182,9 +1117,20 @@ export function SettingsModal({ onClose }: Props) {
           {/* Pane — keyed on `tab` so the entrance animation re-triggers
               per switch. Quick opacity fade only — no slide; settings is
               not a place where motion should distract. */}
+          <button
+            type="button"
+            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors duration-quick"
+            onClick={onClose}
+            aria-label={t.close_settings}
+            title={`${t.close_settings} (Esc)`}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
           <div
             key={tab}
-            className="tc-enter-fade-quick flex-1 overflow-y-auto px-7 py-6"
+            className="tc-enter-fade-quick flex-1 overflow-y-auto px-8 py-6"
           >
             {tab === "general" && (
               <section>

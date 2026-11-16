@@ -47,7 +47,7 @@ test("parseMemoryFile reads a type nested under metadata, and unquotes values", 
     filePath,
     `---
 name: release-flow
-description: "Each change ships as a version"
+description: "Each change ships as a \\"version\\""
 metadata:
   node_type: memory
   type: project
@@ -60,7 +60,7 @@ Body.
 
   const result = parseMemoryFile(filePath);
   assert.equal(result.type, "project");
-  assert.equal(result.description, "Each change ships as a version");
+  assert.equal(result.description, 'Each change ships as a "version"');
   assert.equal(result.name, "release-flow");
 
   fs.rmSync(tmpDir, { recursive: true });

@@ -92,9 +92,8 @@ function TaskNeedsRow({ task }: { task: Pin }) {
 function Heading({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "amber" }) {
   return (
     <div
-      className={`flex items-center gap-1.5 px-3.5 pb-1 pt-2.5 text-[11px] uppercase tracking-[0.06em] ${
-        tone === "amber" ? "text-[var(--amber)]" : "text-[var(--text-muted)]"
-      }`}
+      className="tc-eyebrow flex items-center gap-1.5 px-4 pb-1.5 pt-4"
+      style={tone === "amber" ? { color: "var(--amber)" } : undefined}
     >
       {children}
     </div>

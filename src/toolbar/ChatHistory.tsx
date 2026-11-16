@@ -3,6 +3,7 @@ import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import { agentIcon } from "./agentIcons";
+import { StatusChip } from "../components/ui/parts";
 import { groupHistoryByProject, shouldRefreshHistorySection } from "../components/historySectionModel";
 import {
   loadHiddenSessions,
@@ -12,10 +13,8 @@ import {
 } from "../components/SessionsPanel";
 import {
   chatTitle,
-  duration,
   filterChatHistory,
   projectName,
-  relativeAge,
   stamp,
   type ChatHistoryEntry,
 } from "./chatHistoryModel";
@@ -92,18 +91,18 @@ function HistoryItem({
   const { text, manager } = titleText(entry, t);
   const icon = agentIcon(entry.provider);
   const agent = findAgentAdapter(entry.provider)?.displayName ?? entry.provider;
-  const ran = duration(entry.startedAt, entry.lastActivityAt);
-  const meta = [agent, t.chat_history_msgs(entry.estimatedMessageCount), ran, relativeAge(entry.lastActivityAt)]
-    .filter(Boolean)
-    .join(" · ");
+  // One meta line: which agent, and whether it held the manager's seat.
+  // The index only estimates message counts from file size (off by 100x
+  // for long sessions), so the row doesn't show one.
+  const meta = heldSeat && !manager ? `${agent} · ${t.chat_history_badge_manager}` : agent;
 
   return (
     <div
       role="button"
       tabIndex={0}
       aria-current={selected || undefined}
-      className="tc-rail-btn group relative mx-1.5 flex cursor-pointer items-start gap-2.5 px-2.5 py-2 text-left"
-      data-on={selected ? "" : undefined}
+      className="tc-row group relative cursor-pointer"
+      data-selected={selected ? "true" : undefined}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -113,32 +112,20 @@ function HistoryItem({
       }}
       title={entry.firstPrompt}
     >
-      <span className="tc-icon-shell mt-0.5 shrink-0" style={{ width: 22, height: 22 }}>
+      <span className="tc-icon-shell shrink-0" style={{ width: 22, height: 22 }}>
         {icon && <img src={icon} alt="" className="h-[15px] w-[15px] object-contain" draggable={false} />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span
-            className="min-w-0 truncate text-[13px]"
-            style={{ color: manager ? "var(--text-secondary)" : "var(--text-primary)", fontStyle: manager ? "italic" : undefined }}
-          >
-            {text}
-          </span>
-          {current ? (
-            <span className="shrink-0 rounded-full px-1.5 text-[10px] uppercase tracking-wider" style={{ color: "var(--green)", border: "1px solid color-mix(in srgb, var(--green) 40%, transparent)" }}>
-              {t.chat_history_badge_now}
-            </span>
-          ) : heldSeat || manager ? (
-            <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[10px] text-[var(--text-muted)]">
-              {t.chat_history_badge_manager}
-            </span>
-          ) : null}
+        <span className="tc-row-title block">{text}</span>
+        <span className="tc-row-meta block">{meta}</span>
+      </span>
+      {current ? (
+        <span className="group-hover:hidden">
+          <StatusChip tone="live">{t.chat_history_badge_now}</StatusChip>
         </span>
-        <span className="tc-mono mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{meta}</span>
-      </span>
-      <span className="tc-mono mt-0.5 shrink-0 text-[11px] tabular-nums text-[var(--text-muted)] group-hover:hidden">
-        {stamp(entry.lastActivityAt)}
-      </span>
+      ) : (
+        <span className="tc-timestamp group-hover:hidden">{stamp(entry.lastActivityAt)}</span>
+      )}
       {/* Star and hide on hover, in the stamp's place. Hiding takes two
           clicks, as in the History panel. */}
       <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
@@ -311,7 +298,7 @@ export function ChatHistory({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-3 pb-2 pt-2.5">
-        <label className="flex h-9 items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 text-[var(--text-muted)] focus-within:border-[var(--border-hover)]">
+        <label className="flex h-8 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2.5 text-[var(--text-muted)] focus-within:border-[var(--border-hover)]">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
             <path d="M13.5 13.5l-3.2-3.2" />
@@ -329,9 +316,8 @@ export function ChatHistory({
             }}
             placeholder={live ? t.chat_sessions_search : t.chat_history_search}
             aria-label={live ? t.chat_sessions_search : t.chat_history_search}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
-          <span className="tc-mono shrink-0 text-[11px] tabular-nums">{loading && entries.length === 0 ? "…" : visible.length}</span>
         </label>
       </div>
 
@@ -381,14 +367,14 @@ export function ChatHistory({
                 <svg width="9" height="9" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-muted)] transition-transform duration-quick ${isCollapsed ? "" : "rotate-90"}`} aria-hidden="true">
                   <path d="M3 2l4 3-4 3z" fill="currentColor" />
                 </svg>
-                <span className="truncate text-[12px] font-medium text-[var(--text-secondary)]">{projectName(group.projectDir)}</span>
-                <span className="tc-mono text-[11px] text-[var(--text-muted)]">{group.entries.length}</span>
+                <span className="tc-eyebrow truncate">{projectName(group.projectDir)}</span>
+                <span className="tc-count">{group.entries.length}</span>
               </button>
               {!isCollapsed && shown.map(item)}
               {!isCollapsed && more > 0 && (
                 <button
                   type="button"
-                  className="tc-mono ml-5 mt-0.5 px-2 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  className="ml-12 mt-0.5 px-1 py-1 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   onClick={() => setLimits((prev) => new Map(prev).set(group.projectDir, limit + GROUP_LIMIT))}
                 >
                   {t.chat_history_more(more)}
