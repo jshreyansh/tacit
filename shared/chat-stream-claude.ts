@@ -289,6 +289,15 @@ export function claudeApprovalLine(requestId: string, allow: boolean, input: unk
 }
 
 /**
+ * What Claude hears when the person declines a tool and says what to do
+ * instead; without words, the plain refusal.
+ */
+export function claudeDenyMessage(note?: string): string | undefined {
+  const said = note?.trim();
+  return said ? `The person declined this in Tacit and said what to do instead:\n\n${said}` : undefined;
+}
+
+/**
  * What Claude hears when the person keeps planning instead of starting on
  * its plan: not a plain refusal, which Claude takes as the end of it and
  * sums up, but to stay in plan mode and revise, with what they'd change.

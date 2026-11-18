@@ -135,7 +135,7 @@ function WorkerCard({ props, spawn, t }: { props: ToolCardProps; spawn: { agent:
   const id = spawnedTerminalId(typeof props.result === "string" ? props.result : undefined);
   const agentName = spawn.agent ? (findAgentAdapter(spawn.agent)?.displayName ?? spawn.agent) : t.chat_worker;
   return (
-    <div className="my-1 flex items-center gap-2.5 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
+    <div className="my-1 flex items-center gap-2.5 tc-sq-card border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
       <span className="tc-icon-shell shrink-0" style={{ width: 26, height: 26 }}>
         {icon && <img src={icon} alt="" className="h-[18px] w-[18px] object-contain" draggable={false} />}
       </span>
@@ -180,7 +180,7 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
       : t.chat_question_not_answered;
   const hasOptions = view.questions.some((q) => q.options.length > 0);
   return (
-    <div className="my-1 flex flex-col gap-2 rounded-[10px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
+    <div className="my-1 flex flex-col gap-2 tc-sq-card border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2.5">
       <span className="flex items-center gap-2 text-[13px] text-[var(--text-primary)]">
         {t.chat_question_asked}
         <span className="text-[12px] text-[var(--text-muted)]">· {state}</span>
@@ -252,7 +252,7 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
     const ask = view.kind === "ask";
     return (
       <div
-        className="my-1 flex flex-col gap-1.5 rounded-[10px] border px-3 py-2.5"
+        className="my-1 flex flex-col gap-1.5 tc-sq-card border px-3 py-2.5"
         style={{ borderColor: ask ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
       >
         <span className="flex items-center gap-2 text-[13px]">
@@ -319,7 +319,7 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   const plan = props.toolName === "TodoWrite" ? todoPlan(props.args) : null;
   if (plan) {
     return (
-      <div className="my-1 rounded-[10px] border border-[var(--border)] px-3 py-2">
+      <div className="my-1 tc-sq-card border border-[var(--border)] px-3 py-2">
         <div className="tc-eyebrow mb-1.5">{t.chat_plan}</div>
         <PlanSteps steps={plan} />
       </div>
@@ -344,7 +344,7 @@ const ToolCard: FC<ToolCardProps> = (props) => {
         <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
       </button>
       {expanded && (
-        <div className="mb-1 ml-4 mt-1 overflow-hidden rounded-lg border border-[var(--border)]">
+        <div className="mb-1 ml-4 mt-1 overflow-hidden tc-sq-card border border-[var(--border)]">
           {props.argsText && (
             <pre className="tc-mono max-h-40 overflow-auto whitespace-pre-wrap break-all bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[11px] text-[var(--text-muted)]">
               {prettyJson(props.argsText)}
@@ -467,7 +467,7 @@ function UserBubble() {
   return (
     <div
       className="max-w-[86%] whitespace-pre-wrap break-words border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[var(--text-primary)]"
-      style={{ fontSize: "var(--text-sm)", borderRadius: "12px 12px 4px 12px", lineHeight: 1.5 }}
+      style={{ fontSize: "var(--text-sm)", borderRadius: "16px 16px 6px 16px", cornerShape: "squircle", lineHeight: 1.5 } as React.CSSProperties}
     >
       <MessagePrimitive.Parts components={{ Text: UserText }} />
     </div>
@@ -550,7 +550,7 @@ function BriefingLine({ text }: { text: string }) {
         </svg>
         {t.chat_briefing_sent}
       </summary>
-      <div className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap rounded-[9px] border border-[var(--border)] px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+      <div className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap tc-sq-ctl border border-[var(--border)] px-2.5 py-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
         {text}
       </div>
     </details>
@@ -589,7 +589,7 @@ const TurnNote: FC<{ data: unknown }> = ({ data }) => {
     return <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">{t.chat_interrupted}</div>;
   }
   return (
-    <div className="mt-1 rounded-lg border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
+    <div className="mt-1 tc-sq-card border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
       {note.error ?? t.chat_turn_failed}
     </div>
   );
@@ -605,6 +605,44 @@ const PLAN_GO_MODES: Record<string, { go: string; ask?: string }> = {
   codex: { go: "auto", ask: "read-only" },
   opencode: { go: "build" },
 };
+
+/** A card's kind, as a small tinted badge by its title: an approval amber, a plan teal. */
+function KindBadge({ kind }: { kind: "approval" | "plan" }) {
+  const color = kind === "approval" ? "var(--amber)" : "var(--cyan)";
+  return (
+    <span className="tc-sq-sm flex h-6 w-6 shrink-0 items-center justify-center" style={{ color, background: `color-mix(in srgb, ${color} 15%, transparent)` }}>
+      {kind === "approval" ? (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+          <path d="M6 4h7M6 8h7M6 12h7M3 4h.01M3 8h.01M3 12h.01" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+const CARD_BUTTON = "tc-sq-ctl inline-flex h-8 items-center gap-1.5 px-3 text-[12.5px]";
+const PRIMARY = { background: "var(--text-primary)", color: "var(--bg)" } as const;
+const SECONDARY = { background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", color: "var(--text-primary)" } as const;
+
+/**
+ * The frame both cards share: behind the message box when docked, or a
+ * glass card above the pill when floating over the canvas.
+ */
+function CardFrame({ floating, glass, label, children }: PropsWithChildren<{ floating: boolean; glass: string; label: string }>) {
+  return floating ? (
+    <div role="alertdialog" aria-label={label} className={`tc-enter-fade-up tc-sq-card border px-0 pb-0 pt-0 ${glass}`} style={{ borderColor: "var(--border-hover)", borderRadius: 16 }}>
+      {children}
+    </div>
+  ) : (
+    <div role="alertdialog" aria-label={label} className="tc-behind">
+      {children}
+    </div>
+  );
+}
 
 /**
  * A plan the agent is ready to start on. Keep planning opens a box for
@@ -632,22 +670,23 @@ function PlanCard({
   const [note, setNote] = useState("");
   const send = () => onKeepPlanning(note.trim() || undefined);
   return (
-    <div
-      role="alertdialog"
-      aria-label={t.chat_plan_ready}
-      className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
-      style={{ borderColor: "color-mix(in srgb, var(--cyan) 45%, transparent)", ...(floating ? { borderRadius: 16 } : { background: "color-mix(in srgb, var(--cyan) 5%, transparent)" }) }}
-    >
-      <div className="text-[13px] font-medium text-[var(--text-primary)]">{t.chat_plan_ready}</div>
+    <CardFrame floating={floating} glass={glass} label={t.chat_plan_ready}>
+      <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
+        <KindBadge kind="plan" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--cyan)" }}>{t.chat_card_plan}</span>
+          <span className="text-[13.5px] font-semibold text-[var(--text-primary)]">{t.chat_plan_ready}</span>
+        </span>
+      </div>
       {plan && (
         <div
-          className={`${markdownClassName} mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-3 py-2`}
-          style={{ fontSize: "var(--text-sm)" }}
+          className={`${markdownClassName} tc-sq-ctl mx-3 max-h-64 overflow-y-auto bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2`}
+          style={{ fontSize: "var(--text-sm)", boxShadow: "inset 0 0 0 1px var(--border)" }}
           dangerouslySetInnerHTML={{ __html: renderMarkdown(plan) }}
         />
       )}
       {keeping ? (
-        <div className="mt-2.5">
+        <div className="px-3 pb-3 pt-2.5">
           <textarea
             autoFocus
             rows={2}
@@ -666,37 +705,181 @@ function PlanCard({
                 setKeeping(false);
               }
             }}
-            className="block max-h-32 w-full resize-none rounded-lg border border-[var(--border-hover)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+            className="tc-sq-ctl block max-h-32 w-full resize-none bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            style={{ boxShadow: "inset 0 0 0 1px var(--border-hover)" }}
           />
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={send}>
+            <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={send}>
               {t.chat_plan_keep}
             </button>
-            <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => setKeeping(false)}>
+            <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)]`} onClick={() => setKeeping(false)}>
               {t.chat_plan_back}
             </button>
           </div>
         </div>
       ) : (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => onGo("go")}>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] px-3 py-2.5">
+          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={() => onGo("go")}>
             {canAsk ? t.chat_plan_go_accept : t.chat_plan_go}
           </button>
           {canAsk && (
-            <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onGo("ask")}>
+            <button type="button" className={CARD_BUTTON} style={SECONDARY} onClick={() => onGo("ask")}>
               {t.chat_plan_go_ask}
             </button>
           )}
-          <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => setKeeping(true)}>
+          <span className="flex-1" />
+          <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)] hover:text-[var(--text-primary)]`} onClick={() => setKeeping(true)}>
             {t.chat_plan_keep}
           </button>
         </div>
       )}
-    </div>
+    </CardFrame>
   );
 }
 
-/** Approvals the manager waits on, stuck above the composer. */
+/**
+ * One approval: what it would run, Allow, Always… (always allow it, or
+ * switch to Auto), and Deny… with a line for what to do instead.
+ */
+function ApprovalCard({
+  approval,
+  more,
+  floating,
+  glass,
+  onAnswer,
+  onSwitchToAuto,
+  onFollowUp,
+}: {
+  approval: PendingApproval;
+  /** How many more wait behind this one. */
+  more: number;
+  floating: boolean;
+  glass: string;
+  onAnswer: (requestId: string, decision: ApprovalDecision, note?: string) => void;
+  onSwitchToAuto?: () => void;
+  onFollowUp?: (text: string) => void;
+}) {
+  const t = useT();
+  const [alwaysOpen, setAlwaysOpen] = useState(false);
+  const [denying, setDenying] = useState(false);
+  const [reason, setReason] = useState("");
+  const menuRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!alwaysOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setAlwaysOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [alwaysOpen]);
+  const input = (typeof approval.input === "object" && approval.input !== null ? approval.input : {}) as Record<string, unknown>;
+  // A command as it will run; access asked for as its summary; else the subject.
+  const what =
+    typeof input.command === "string" ? input.command : typeof input.summary === "string" ? input.summary : subjectOf(input) || JSON.stringify(approval.input).slice(0, 200);
+  const title = approval.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(approval.toolName));
+  const deny = () => {
+    const said = reason.trim();
+    onAnswer(approval.requestId, "deny", said || undefined);
+    if (said) onFollowUp?.(said);
+  };
+  return (
+    <CardFrame floating={floating} glass={glass} label={title}>
+      <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
+        <KindBadge kind="approval" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--amber)" }}>{t.chat_card_approval}</span>
+          <span className="truncate text-[13.5px] font-semibold text-[var(--text-primary)]">{title}</span>
+        </span>
+        {more > 0 && <span className="shrink-0 text-[11.5px] text-[var(--text-muted)]">{t.chat_approval_more(more)}</span>}
+      </div>
+      <pre className="tc-mono tc-sq-ctl mx-3 max-h-28 overflow-auto whitespace-pre-wrap break-all bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2.5 py-2 text-[12px] text-[var(--text-primary)]" style={{ boxShadow: "inset 0 0 0 1px var(--border)" }}>
+        {what}
+      </pre>
+      {denying ? (
+        <div className="flex items-center gap-1.5 px-3 pb-3 pt-2.5">
+          <input
+            autoFocus
+            value={reason}
+            placeholder={t.chat_approval_deny_placeholder}
+            aria-label={t.chat_approval_deny_placeholder}
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                deny();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setDenying(false);
+              }
+            }}
+            className="tc-sq-ctl h-8 min-w-0 flex-1 bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            style={{ boxShadow: "inset 0 0 0 1px var(--border-hover)" }}
+          />
+          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={deny}>
+            {t.chat_approval_deny}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex items-center gap-1.5 border-t border-[var(--border)] px-3 py-2.5">
+          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={() => onAnswer(approval.requestId, "allow_once")}>
+            {t.chat_approval_allow_once}
+          </button>
+          <span ref={menuRef} className="relative">
+            <button type="button" className={CARD_BUTTON} style={SECONDARY} aria-haspopup="menu" aria-expanded={alwaysOpen} onClick={() => setAlwaysOpen((v) => !v)}>
+              {t.chat_approval_always_menu}
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="opacity-60">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+            {alwaysOpen && (
+              <div role="menu" className="tc-menu-pop !absolute bottom-10 left-0 w-[260px]">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tc-menu-option !items-start"
+                  onClick={() => {
+                    setAlwaysOpen(false);
+                    onAnswer(approval.requestId, "allow_always");
+                  }}
+                >
+                  <span className="flex min-w-0 flex-col items-start gap-0.5">
+                    <span className="text-[13px] text-[var(--text-primary)]">{t.chat_approval_allow_always}</span>
+                    <span className="tc-menu-option-detail">{t.chat_approval_allow_always_hint}</span>
+                  </span>
+                </button>
+                {onSwitchToAuto && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tc-menu-option !items-start"
+                    onClick={() => {
+                      setAlwaysOpen(false);
+                      // The mode first, so what the agent does after this is in Auto.
+                      onSwitchToAuto();
+                      onAnswer(approval.requestId, "allow_once");
+                    }}
+                  >
+                    <span className="flex min-w-0 flex-col items-start gap-0.5">
+                      <span className="text-[13px] text-[var(--text-primary)]">{t.chat_approval_switch_auto}</span>
+                      <span className="tc-menu-option-detail">{t.chat_approval_switch_auto_hint}</span>
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </span>
+          <span className="flex-1" />
+          <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)] hover:text-[var(--text-primary)]`} onClick={() => setDenying(true)}>
+            {t.chat_approval_deny_more}
+          </button>
+        </div>
+      )}
+    </CardFrame>
+  );
+}
+
+/** Approvals the agent waits on: behind the message box, or floating over the canvas. */
 export function ApprovalCards({
   approvals,
   onAnswer,
@@ -704,10 +887,11 @@ export function ApprovalCards({
   glass = "",
   onPlanMode,
   onSwitchToAuto,
+  onFollowUp,
   agent = "claude",
 }: {
   approvals: readonly PendingApproval[];
-  /** `note`: keeping on planning, what the person would change. */
+  /** `note`: keeping on planning, what the person would change; denying, what to do instead. */
   onAnswer: (requestId: string, decision: ApprovalDecision, note?: string) => void;
   /** Above the pill, over the canvas: the first request only, on glass. */
   floating?: boolean;
@@ -719,91 +903,47 @@ export function ApprovalCards({
    * safe without asking. Only when the agent has Auto and isn't in it.
    */
   onSwitchToAuto?: () => void;
+  /**
+   * What the person said with a denial, for agents that don't hear it with
+   * the denial itself (Claude does): sent as their next message.
+   */
+  onFollowUp?: (text: string) => void;
   /** Whose modes a plan goes on in: Claude's accept-edits or ask, Codex's auto or read-only. */
   agent?: string;
 }) {
-  const t = useT();
   if (approvals.length === 0) return null;
-  const shown = floating ? approvals.slice(0, 1) : approvals;
+  // One at a time: the oldest in front, the count of the rest on it.
+  const a = approvals[0];
+  const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
+  // A plan, done in plan mode: start on it, and how, or keep planning.
+  if (a.toolName === "ExitPlanMode") {
+    return (
+      <PlanCard
+        key={a.requestId}
+        plan={typeof input.plan === "string" ? input.plan : ""}
+        floating={floating}
+        glass={glass}
+        canAsk={PLAN_GO_MODES[agent]?.ask !== undefined}
+        onGo={(how) => {
+          onAnswer(a.requestId, "allow_once");
+          const modes = PLAN_GO_MODES[agent];
+          onPlanMode?.((how === "ask" ? modes?.ask : modes?.go) ?? (how === "go" ? "acceptEdits" : "default"));
+        }}
+        onKeepPlanning={(note) => onAnswer(a.requestId, "deny", note)}
+      />
+    );
+  }
   return (
-    <div className={floating ? "flex w-full flex-col" : "flex flex-col gap-2 px-3 pb-2"}>
-      {shown.map((a) => {
-        const input = (typeof a.input === "object" && a.input !== null ? a.input : {}) as Record<string, unknown>;
-        // A plan, done in plan mode: start on it, and how, or keep planning.
-        if (a.toolName === "ExitPlanMode") {
-          return (
-            <PlanCard
-              key={a.requestId}
-              plan={typeof input.plan === "string" ? input.plan : ""}
-              floating={floating}
-              glass={glass}
-              canAsk={PLAN_GO_MODES[agent]?.ask !== undefined}
-              onGo={(how) => {
-                onAnswer(a.requestId, "allow_once");
-                const modes = PLAN_GO_MODES[agent];
-                onPlanMode?.((how === "ask" ? modes?.ask : modes?.go) ?? (how === "go" ? "acceptEdits" : "default"));
-              }}
-              onKeepPlanning={(note) => onAnswer(a.requestId, "deny", note)}
-            />
-          );
-        }
-        // A command as it will run; access asked for as its summary; else the subject.
-        const what =
-          typeof input.command === "string" ? input.command : typeof input.summary === "string" ? input.summary : subjectOf(input) || JSON.stringify(a.input).slice(0, 200);
-        return (
-          <div
-            key={a.requestId}
-            role="alertdialog"
-            aria-label={a.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(a.toolName))}
-            className={`rounded-xl border px-3 pb-3 pt-2.5 ${floating ? `tc-enter-fade-up ${glass}` : ""}`}
-            style={{
-              borderColor: "color-mix(in srgb, var(--amber) 50%, transparent)",
-              ...(floating
-                ? { borderRadius: 16, cornerShape: "squircle" }
-                : { background: "color-mix(in srgb, var(--amber) 6%, transparent)" }),
-            }}
-          >
-            <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--amber)" }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-                <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
-              </svg>
-              {a.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(a.toolName))}
-              {floating && approvals.length > 1 && (
-                <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.chat_approval_more(approvals.length - 1)}</span>
-              )}
-            </div>
-            <pre className="tc-mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 py-2 text-[12px] text-[var(--text-primary)]">
-              {what}
-            </pre>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <button type="button" className="h-8 rounded-[9px] px-3 text-[12px] font-medium" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} onClick={() => onAnswer(a.requestId, "allow_once")}>
-                {t.chat_approval_allow_once}
-              </button>
-              <button type="button" className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]" onClick={() => onAnswer(a.requestId, "allow_always")}>
-                {t.chat_approval_allow_always}
-              </button>
-              {onSwitchToAuto && (
-                <button
-                  type="button"
-                  className="tc-rail-btn h-8 border border-[var(--border-hover)] px-3 text-[12px] text-[var(--text-primary)]"
-                  title={t.chat_approval_switch_auto_hint}
-                  onClick={() => {
-                    // The mode first, so what Claude does after this is in Auto.
-                    onSwitchToAuto();
-                    onAnswer(a.requestId, "allow_once");
-                  }}
-                >
-                  {t.chat_approval_switch_auto}
-                </button>
-              )}
-              <button type="button" className="tc-rail-btn h-8 border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)]" onClick={() => onAnswer(a.requestId, "deny")}>
-                {t.chat_approval_deny}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <ApprovalCard
+      key={a.requestId}
+      approval={a}
+      more={approvals.length - 1}
+      floating={floating}
+      glass={glass}
+      onAnswer={onAnswer}
+      onSwitchToAuto={onSwitchToAuto}
+      onFollowUp={agent === "claude" ? undefined : onFollowUp}
+    />
   );
 }
 

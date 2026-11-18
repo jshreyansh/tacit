@@ -28,6 +28,8 @@ import type { ChatTranscript } from "../../shared/chat-transcript";
 import { cleanTailLines } from "./terminalTail";
 import { useBrowserSnapshots } from "./browserSnapshots";
 import { WorkdeskTab } from "./WorkdeskTab";
+import { FileCardView, useFileTiles } from "./FileCards";
+import { BrowserTabIcon, BrowserTabSound } from "./BrowserTabIcon";
 import { STATUS_COLOR } from "../tasks/taskModel";
 import { statusLabel, useOwnerView } from "../tasks/TaskParts";
 import {
@@ -191,8 +193,9 @@ function BrowserCardView({ card, picture }: { card: BrowserCard; picture: string
       onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "browser", id: card.id })}
     >
       <div className={headCls}>
-        <span className="flex shrink-0 text-[var(--text-muted)]"><GlobeIcon /></span>
+        <span className="flex shrink-0 text-[var(--text-muted)]"><BrowserTabIcon cardId={card.id} favicon={card.favicon} /></span>
         <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
+        <BrowserTabSound cardId={card.id} />
         <span className="tc-mono ml-auto max-w-[45%] shrink-0 truncate pl-1 text-[11px] text-[var(--text-muted)]">{card.host}</span>
       </div>
       {picture ? (
@@ -312,6 +315,7 @@ export function WorkdeskView() {
   const [closing, setClosing] = useState<WorkdeskCard | null>(null);
   const sessionTabs = useWorkdeskViewStore((s) => s.sessionTabs);
   const fileTabs = useWorkdeskViewStore((s) => s.fileTabs);
+  const tasksTab = useWorkdeskViewStore((s) => s.tasksTab);
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -323,6 +327,7 @@ export function WorkdeskView() {
   const leftInset = useLeftChromeInset();
   const leftShift = useLeftChromeShift();
   const [tails, setTails] = useState<Record<string, string[]>>({});
+  const fileTiles = useFileTiles();
   const [now, setNow] = useState(() => Date.now());
 
   const managerTerminalId = (canvases.find((c) => c.id === activeCanvasId) ?? canvases[0])?.workspaceManagerTerminalId ?? null;
@@ -353,10 +358,11 @@ export function WorkdeskView() {
   // Past sessions and files opened here, each in a tab after the nodes.
   const extraCards = useMemo<TabCard[]>(
     () => [
+      ...(tasksTab ? [{ kind: "tasks", id: "all", title: t.nav_all_tasks } as TabCard] : []),
       ...sessionTabs.map((s): TabCard => ({ kind: "session", id: s.id, title: s.title ?? t.reader_loading, agent: s.agent })),
       ...fileTabs.map((p): TabCard => ({ kind: "file", id: p, title: p.split("/").pop() ?? p })),
     ],
-    [sessionTabs, fileTabs, t],
+    [sessionTabs, fileTabs, tasksTab, t],
   );
   const openCard: TabCard | null = openNode
     ? ([...allCards, ...extraCards].find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null)
@@ -415,9 +421,10 @@ export function WorkdeskView() {
   };
   const closeTab = (card: TabCard) => {
     // A session or file tab just closes; reading or editing it is all it was.
-    if (card.kind === "session" || card.kind === "file") {
+    if (card.kind === "session" || card.kind === "file" || card.kind === "tasks") {
       const next = nextAfter(card);
       if (card.kind === "session") useWorkdeskViewStore.getState().closeSession(card.id);
+      else if (card.kind === "tasks") useWorkdeskViewStore.getState().closeTasks();
       else useWorkdeskViewStore.getState().closeFile(card.id);
       setOpenNode(next);
       return;
@@ -443,7 +450,7 @@ export function WorkdeskView() {
   // Beside whatever is open on the left (the chat, a panel, the Hub), never under it.
   const left = leftInset;
   const linesOf = (card: TerminalCard) => (card.chatMode ? lastReply(transcripts[card.id]) : (tails[card.id] ?? []));
-  const empty = sections.counts.all === 0;
+  const empty = sections.counts.all === 0 && fileTiles.length === 0;
   const browserWindow = openCard?.kind === "browser";
   const barGlass = browserWindow ? "pointer-events-auto bg-[var(--chrome-glass)] [backdrop-filter:var(--glass-filter)] [-webkit-backdrop-filter:var(--glass-filter)]" : "";
 
@@ -484,9 +491,6 @@ export function WorkdeskView() {
           style={{ color: openCard ? "var(--text-muted)" : "var(--text-primary)" }}
         >
           <GridViewIcon size={14} />
-          <span className="tabular-nums" style={{ color: openCard ? "var(--text-faint)" : "var(--text-secondary)" }}>
-            {sections.counts.all}
-          </span>
         </button>
         <span className="mx-1.5 h-[18px] w-px shrink-0 bg-[var(--border)]" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
@@ -518,10 +522,10 @@ export function WorkdeskView() {
                   ) : (
                     <span className="flex shrink-0">
                       {card.kind === "browser" ? (
-                        <GlobeIcon />
+                        <BrowserTabIcon cardId={card.id} favicon={card.favicon} />
                       ) : card.kind === "note" ? (
                         <NoteIcon />
-                      ) : card.kind === "task" ? (
+                      ) : card.kind === "task" || card.kind === "tasks" ? (
                         <TaskIcon />
                       ) : card.kind === "file" ? (
                         <FileIcon />
@@ -533,6 +537,7 @@ export function WorkdeskView() {
                     </span>
                   )}
                   <span className="truncate">{label}</span>
+                  {card.kind === "browser" && <BrowserTabSound cardId={card.id} />}
                   {card.kind === "terminal" && card.state === "active" && (
                     <span className="tc-live-pip inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--cyan)" }} aria-hidden="true" />
                   )}
@@ -637,6 +642,16 @@ export function WorkdeskView() {
               <div className={gridCols}>
                 {sections.notes.map((card) => (
                   <NoteCardView key={card.id} card={card} t={t} />
+                ))}
+              </div>
+            </>
+          )}
+          {fileTiles.length > 0 && (
+            <>
+              <SectionHead title={t.workdesk_section_files} summary={String(fileTiles.length)} />
+              <div className={gridCols}>
+                {fileTiles.map((tile) => (
+                  <FileCardView key={tile.id} tile={tile} />
                 ))}
               </div>
             </>

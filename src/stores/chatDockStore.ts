@@ -14,6 +14,7 @@ export const CHAT_DOCK_MAX_WIDTH = 680;
 export const CHAT_DOCK_DEFAULT_WIDTH = 440;
 /** The list of chats beside the open one, when it's unfolded. */
 export const CHAT_LIST_WIDTH = 240;
+
 /** Below this window width the list folds by itself, leaving room for the canvas. */
 export const CHAT_LIST_MIN_WINDOW = 1100;
 

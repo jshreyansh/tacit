@@ -3,6 +3,7 @@ import { openFileInView, openPastSession } from "../actions/openSession";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { usePinStore } from "../stores/pinStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { showPinOnCanvas } from "../tasks/showPinOnCanvas";
 import { flyToBounds, panToTerminal } from "../utils/panToTerminal";
 import { canvasFocusedNode } from "./canvasFocus";
@@ -17,6 +18,15 @@ import { canvasFocusedNode } from "./canvasFocus";
 
 /** The grid, on the node you're on in the canvas; with none, the overview. */
 export function showGridOnFocusedNode(): void {
+  // All the tasks open on the canvas: their tab in the grid.
+  const page = useCanvasPageStore.getState();
+  if (page.page === "tasks") {
+    page.close();
+    const view = useWorkdeskViewStore.getState();
+    view.setMode("grid");
+    view.openTasks();
+    return;
+  }
   useWorkdeskViewStore.getState().showGrid(canvasFocusedNode());
 }
 
@@ -38,6 +48,11 @@ export async function showOpenNodeOnCanvas(): Promise<void> {
     case "file":
       view.setMode("canvas");
       openFileInView(node.id);
+      return;
+    // All the tasks: their page beside the sheet.
+    case "tasks":
+      view.setMode("canvas");
+      useCanvasPageStore.getState().open("tasks");
       return;
     case "terminal":
       view.setMode("canvas");

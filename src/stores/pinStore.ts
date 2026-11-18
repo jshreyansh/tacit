@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import type { Pin, CreatePinInput, UpdatePinInput, PinEvent } from "../types";
-import { useChatDockStore } from "./chatDockStore";
 
 interface TerminalPinAssignment {
   pinId: string;
@@ -129,9 +128,9 @@ export const usePinStore = create<PinStoreState & PinStoreActions>(
             );
           });
       }
+      // Which folder's tasks are listed; where they show (the tasks page,
+      // a tab in the grid) is up to whoever opens them.
       set({ openProjectPath: projectPath });
-      // A project's pins are shown in the docked chat's Pins view.
-      useChatDockStore.getState().showFace("pins");
     },
 
     closeDrawer: () =>

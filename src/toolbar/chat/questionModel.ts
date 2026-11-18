@@ -46,3 +46,38 @@ export function skipStep(
   const answers = answersFor(questions, drafts.map((d, i) => (i === index ? { picked: [], other: "", otherOn: false } : d)));
   return Object.keys(answers).length > 0 ? { submit: answers } : { skipAll: true };
 }
+
+/**
+ * Where the form goes after question `index`: the next question, then a
+ * review of every answer when there are several, else submit.
+ */
+export function stepAfter(index: number, total: number): { question: number } | "review" | "submit" {
+  if (index < total - 1) return { question: index + 1 };
+  return total > 1 ? "review" : "submit";
+}
+
+export interface Receipt {
+  index: number;
+  label: string;
+  answer: string;
+}
+
+/**
+ * The answers given so far, as chips above the stack: every question
+ * answered except the one open now. A secret shows as dots.
+ */
+export function receiptsFor(questions: readonly ChatQuestion[], drafts: readonly QuestionDraft[], open: number): Receipt[] {
+  const out: Receipt[] = [];
+  questions.forEach((q, i) => {
+    if (i === open) return;
+    const answer = answerOf(q, drafts[i] ?? { picked: [], other: "", otherOn: false });
+    if (answer.length === 0) return;
+    out.push({ index: i, label: q.header || q.question, answer: q.secret ? "••••••" : answer.join(", ") });
+  });
+  return out;
+}
+
+/** A draft that hands the choice back to the agent, in the person's words. */
+export function decideDraft(text: string): QuestionDraft {
+  return { picked: [], other: text, otherOn: true };
+}

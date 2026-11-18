@@ -95,13 +95,14 @@ export function QueuedMessages({ terminalId, onSendNow }: { terminalId: string; 
   const [draft, setDraft] = useState("");
   if (queue.length === 0) return null;
   const store = useManagerChatStore.getState();
-  const icon = "tc-rail-btn inline-flex h-7 w-7 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)]";
+  const icon = "tc-sq-ctl inline-flex h-7 w-7 shrink-0 items-center justify-center text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]";
+  // Behind the message box, like everything else waiting on its turn.
   return (
-    <div className="flex flex-col gap-1.5 px-3 pb-2">
+    <div className="tc-behind flex flex-col">
       {queue.map((q, i) => (
-        <div key={q.id} className="flex items-center gap-2 rounded-[9px] border border-dashed border-[var(--border-hover)] py-1.5 pl-2.5 pr-1.5 text-[12px] text-[var(--text-secondary)]">
-          <span className="shrink-0 rounded-full border px-1.5 text-[11px]" style={{ color: "var(--amber)", borderColor: "color-mix(in srgb, var(--amber) 40%, transparent)" }}>
-            {t.chat_queued(i + 1)}
+        <div key={q.id} className="flex items-center gap-2 py-1.5 pl-3.5 pr-2 text-[12px] text-[var(--text-secondary)]">
+          <span className="shrink-0 text-[11.5px] text-[var(--text-muted)]">
+            {i === 0 ? t.chat_queued_next : t.chat_queued(i + 1)}
           </span>
           {editing === q.id ? (
             <input
@@ -209,7 +210,16 @@ export function UsageMeter({ transcript, agent }: { transcript: ChatTranscript; 
   const percent = contextPercent(context);
   const limit = transcript.limit;
   const used = limit?.usedPercent;
-  if ((percent === null || !context) && used === undefined) return null;
+  // Before the agent's first reply nothing is known yet: an empty ring
+  // that says so, rather than no meter at all.
+  if ((percent === null || !context) && used === undefined) {
+    return (
+      <span className="flex h-7 shrink-0 items-center gap-1 px-1 text-[11px] text-[var(--text-muted)]" title={t.chat_context_pending} aria-label={t.chat_context_pending}>
+        <Ring percent={0} color="var(--text-muted)" />
+        <span>–</span>
+      </span>
+    );
+  }
   const tone = percent === null ? "var(--text-muted)" : percent >= 85 ? "var(--red)" : percent >= 65 ? "var(--amber)" : "var(--text-muted)";
   const usedTone = used !== undefined ? (limitTone(used) === "muted" ? "var(--accent)" : TONE_COLOR[limitTone(used)]) : tone;
   const resets = resetLabel(limit?.resetsAt);
@@ -305,7 +315,7 @@ export function PlanCard({ transcript }: { transcript: ChatTranscript }) {
   const done = steps.filter((s) => s.status === "done").length;
   const current = steps.find((s) => s.status === "active") ?? steps.find((s) => s.status === "pending");
   return (
-    <div className="mx-3 mb-2 rounded-[10px] border border-[var(--border)] px-3 py-2">
+    <div className="mx-3 mb-2 tc-sq-card border border-[var(--border)] px-3 py-2">
       <button type="button" className="flex w-full items-center gap-2 text-left text-[12px] text-[var(--text-muted)]" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="uppercase tracking-[0.06em]">{t.chat_plan}</span>
         <span className="tabular-nums">
@@ -346,7 +356,7 @@ export function LimitCard({
   const store = useManagerChatStore.getState();
   if (waitUntil) {
     return (
-      <div className="mx-3 mb-2 flex items-center gap-2 rounded-[10px] border border-[var(--border)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
+      <div className="mx-3 mb-2 flex items-center gap-2 tc-sq-card border border-[var(--border)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
         <span className="min-w-0 flex-1">{t.chat_limit_waiting(resetLabel(waitUntil) ?? "", queued)}</span>
         <button type="button" className="tc-rail-btn h-7 px-2 text-[12px] text-[var(--text-secondary)]" onClick={() => store.setWaitUntil(terminalId, null)}>
           {t.cancel}
@@ -361,7 +371,7 @@ export function LimitCard({
     store.setWaitUntil(terminalId, transcript.limit.resetsAt);
   };
   return (
-    <div className="mx-3 mb-2 flex flex-col gap-2 rounded-[12px] border px-3 py-2.5" style={{ borderColor: "color-mix(in srgb, var(--amber) 40%, transparent)", background: "color-mix(in srgb, var(--amber) 6%, transparent)" }}>
+    <div className="mx-3 mb-2 flex flex-col gap-2 tc-sq-card border px-3 py-2.5" style={{ borderColor: "color-mix(in srgb, var(--amber) 40%, transparent)", background: "color-mix(in srgb, var(--amber) 6%, transparent)" }}>
       <div className="text-[13px] font-medium text-[var(--text-primary)]">{t.chat_limit_title(agentName)}</div>
       <div className="text-[12px] leading-relaxed text-[var(--text-secondary)]">{resets ? t.chat_limit_body(resets) : t.chat_limit_body_unknown}</div>
       <div className="flex flex-wrap gap-1.5">

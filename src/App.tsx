@@ -45,6 +45,8 @@ import {
   updateTerminalCustomTitleInScene,
 } from "./actions/terminalSceneActions";
 import { useProjectStore, generateId } from "./stores/projectStore";
+import { useBrowserTabStateStore } from "./stores/browserTabStateStore";
+import { useFileTileStore } from "./stores/fileTileStore";
 import { useBrowserCardStore } from "./stores/browserCardStore";
 import {
   addBrowserCardToScene,
@@ -113,6 +115,7 @@ import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { CanvasPage } from "./components/CanvasPage";
 import { NewCanvasDialog } from "./components/NewCanvasDialog";
 import { IdentityManagerModal } from "./components/IdentityManagerModal";
 import { AgentProfilePromptModal } from "./components/AgentProfilePromptModal";
@@ -533,6 +536,8 @@ export function App() {
         useNotificationStore.getState().notify(notice.type, notice.message, action);
       }
       if (event.phase !== "done" || event.outcome !== "completed") return;
+      // Listed in each browser node's menu, newest first.
+      if (event.revealToken) useBrowserTabStateStore.getState().addDownload(event.filename, event.revealToken);
       // A file the user now has is a choice point, not activity: it is the
       // one thing from a browsing session that outlives the session. Recorded
       // only when it can be attributed to a node — an entry with no node to
@@ -1059,12 +1064,15 @@ export function App() {
           .flat()
           .filter((p) => p.x != null && p.y != null).length;
         const connectionCount = useConnectionStore.getState().connections.length;
+        // Files shown on the canvas, so "look at hero.png" finds it.
+        const files = Object.values(useFileTileStore.getState().tiles).map((tile) => tile.path);
         return {
           terminalCount,
           browserCount,
           pinCount,
           connectionCount,
           statusCounts,
+          files,
         };
       },
 
@@ -1284,6 +1292,7 @@ export function App() {
       {/* In the grid, sessions and files open as tabs of their own. */}
       {!gridMode && <SessionsOverlay />}
       {!gridMode && <FileEditorDrawer />}
+      {!gridMode && <CanvasPage />}
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />

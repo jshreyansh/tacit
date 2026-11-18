@@ -72,7 +72,7 @@ function ViewerBody({ kind, url, name }: { kind: PreviewKind; url: string; name:
       if (error) return <div className="text-[13px] text-[var(--text-muted)]">{t.chat_attachment_unreadable}</div>;
       if (text === null) return <div className="text-[13px] text-[var(--text-muted)]">{t.loading}</div>;
       return (
-        <div className="h-full w-full overflow-auto rounded-[10px] border border-[var(--border)] bg-[var(--bg)] px-6 py-5">
+        <div className="h-full w-full overflow-auto tc-sq-card border border-[var(--border)] bg-[var(--bg)] px-6 py-5">
           {kind === "markdown" ? (
             <div className={markdownClassName} dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
           ) : (
@@ -113,14 +113,14 @@ function AttachmentViewer({ id, name, kind, onClose }: { id: string; name: strin
         <span className="min-w-0 flex-1 truncate text-[13px]">{name}</span>
         <button
           type="button"
-          className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/20 px-2.5 text-[12px] hover:bg-white/10"
+          className="flex h-7 items-center gap-1.5 tc-sq-ctl border border-white/20 px-2.5 text-[12px] hover:bg-white/10"
           onClick={() => void quickLookAttachment(id).catch(notifyError)}
         >
           {t.chat_attachment_quick_look}
         </button>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-[8px] hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center tc-sq-ctl hover:bg-white/10"
           onClick={onClose}
           aria-label={t.close}
           title={t.close}
@@ -162,7 +162,7 @@ export function AttachmentTile({ attachment, onRemove }: { attachment: Shown; on
       {attachment.kind === "image" && attachment.preview ? (
         <button
           type="button"
-          className="block h-14 w-14 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--surface-hover)] disabled:cursor-default"
+          className="block h-14 w-14 overflow-hidden tc-sq-card border border-[var(--border)] bg-[var(--surface-hover)] disabled:cursor-default"
           onClick={open}
           disabled={!open}
           aria-label={label}
@@ -172,12 +172,12 @@ export function AttachmentTile({ attachment, onRemove }: { attachment: Shown; on
       ) : (
         <button
           type="button"
-          className="flex h-14 w-[160px] items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[var(--surface-hover)] px-2 text-left hover:border-[var(--border-hover)] disabled:cursor-default disabled:hover:border-[var(--border)]"
+          className="flex h-14 w-[160px] items-center gap-2 tc-sq-card border border-[var(--border)] bg-[var(--surface-hover)] px-2 text-left hover:border-[var(--border-hover)] disabled:cursor-default disabled:hover:border-[var(--border)]"
           onClick={open}
           disabled={!open}
           aria-label={label}
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-[var(--bg)] text-[var(--text-muted)]">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden tc-sq-sm bg-[var(--bg)] text-[var(--text-muted)]">
             {attachment.preview ? <img src={attachment.preview} alt="" className="h-full w-full object-cover" /> : <FileIcon />}
           </span>
           <span className="flex min-w-0 flex-col">

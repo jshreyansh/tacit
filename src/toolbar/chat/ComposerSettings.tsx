@@ -30,6 +30,9 @@ function Chip({
   onPick,
   hideLabelClass,
   itemIcon,
+  tint,
+  labelNode,
+  footer,
 }: {
   icon: ReactNode;
   label: string;
@@ -41,6 +44,12 @@ function Chip({
   hideLabelClass: string;
   /** Shown at the start of each item in the menu: the model chip's provider mark. */
   itemIcon?: ReactNode;
+  /** A coloured capsule (the mode): its text colour and fill. */
+  tint?: { color: string; fill: string };
+  /** What the chip says, when it's more than its label (the model with its effort). */
+  labelNode?: ReactNode;
+  /** Under the items: the effort switch in the model's menu. */
+  footer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   // Where the menu sits, against the chip: it stays inside the message
@@ -59,7 +68,12 @@ function Chip({
     <span ref={ref} className="relative inline-flex min-w-0">
       <button
         type="button"
-        className="tc-rail-btn flex h-7 min-w-0 items-center gap-1.5 px-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        className={
+          tint
+            ? "ml-1 flex h-7 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition-[filter] hover:brightness-125"
+            : "tc-sq-ctl flex h-7 min-w-0 items-center gap-1.5 px-2 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+        }
+        style={tint ? { color: tint.color, background: tint.fill } : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${title}: ${label}`}
@@ -72,7 +86,10 @@ function Chip({
         }}
       >
         <span className="flex shrink-0 items-center">{icon}</span>
-        <span className={`min-w-0 truncate ${hideLabelClass}`}>{label}</span>
+        <span className={`min-w-0 truncate ${hideLabelClass}`}>{labelNode ?? label}</span>
+        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className={`shrink-0 opacity-60 ${hideLabelClass}`}>
+          <path d="M4 6l4 4 4-4" />
+        </svg>
       </button>
       {open && (
         <div
@@ -105,6 +122,7 @@ function Chip({
               </svg>
             </button>
           ))}
+          {footer}
         </div>
       )}
     </span>
@@ -124,26 +142,6 @@ function ModelIcon({ agent }: { agent?: string }) {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
       <path d="M8 1.75l1.6 4.65L14.25 8 9.6 9.6 8 14.25 6.4 9.6 1.75 8 6.4 6.4z" />
-    </svg>
-  );
-}
-
-/** Four bars, as many filled as the effort is high; none filled for the agent's own default. */
-function EffortIcon({ level }: { level: number }) {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-      {[0, 1, 2, 3].map((i) => (
-        <rect
-          key={i}
-          x={1.5 + i * 3.5}
-          y={11 - i * 2.5}
-          width="2.4"
-          height={3.5 + i * 2.5}
-          rx="0.8"
-          fill="currentColor"
-          opacity={i < level ? 1 : 0.32}
-        />
-      ))}
     </svg>
   );
 }
@@ -192,14 +190,47 @@ function ModeIcon({ mode }: { mode: string | null }) {
   }
 }
 
+/**
+ * The mode's colour, by how freely the agent acts: Plan teal, accepting
+ * edits the warm accent, Auto amber, full access red. Asking and read-only
+ * stay plain.
+ */
+export function modeTint(mode: string | null): { color: string; fill: string } {
+  switch (mode) {
+    case "plan":
+      return { color: "var(--cyan)", fill: "color-mix(in srgb, var(--cyan) 14%, transparent)" };
+    case "acceptEdits":
+      return { color: "var(--text-primary)", fill: "color-mix(in srgb, var(--accent) 18%, transparent)" };
+    case "auto":
+      return { color: "var(--amber)", fill: "color-mix(in srgb, var(--amber) 15%, transparent)" };
+    case "full-access":
+    case "bypassPermissions":
+      return { color: "var(--red)", fill: "color-mix(in srgb, var(--red) 15%, transparent)" };
+    default:
+      return { color: "var(--text-secondary)", fill: "color-mix(in srgb, var(--text-primary) 7%, transparent)" };
+  }
+}
+
 export function ComposerSettings({ terminalId, transcript, agent }: { terminalId: string; transcript: ChatTranscript; agent?: string }) {
   const t = useT();
   const view = settingsView(transcript);
   if (!view) return null;
-  const effortIndex = view.effort ? view.efforts.indexOf(view.effort) : -1;
-  const effortBars = effortIndex < 0 ? 0 : Math.max(1, Math.ceil(((effortIndex + 1) / view.efforts.length) * 4));
+  const modeId = view.mode?.id ?? null;
   return (
     <span className="flex min-w-0 items-center">
+      {view.modes.length > 0 && (
+        <Chip
+          icon={<ModeIcon mode={modeId} />}
+          label={view.mode ? (view.mode.short ?? view.mode.label) : t.chat_settings_mode}
+          title={t.chat_settings_mode}
+          items={view.modes}
+          selected={modeId}
+          onPick={(id) => void configureChat(terminalId, { mode: id })}
+          hideLabelClass="@max-[260px]:hidden"
+          tint={modeTint(modeId)}
+        />
+      )}
+      <span className="min-w-1 flex-1" />
       {view.models.length > 0 && (
         <Chip
           icon={<ModelIcon agent={agent} />}
@@ -214,26 +245,31 @@ export function ComposerSettings({ terminalId, transcript, agent }: { terminalId
       )}
       {view.efforts.length > 0 && (
         <Chip
-          icon={<EffortIcon level={effortBars} />}
-          label={view.effort ? effortLabel(view.effort, t) : t.chat_settings_effort_default}
+          icon={<EffortIcon level={effortLevel(view.effort, view.efforts)} />}
+          label={view.effort ? effortLabel(view.effort, t) : t.chat_effort_default_short}
           title={t.chat_settings_effort}
           items={view.efforts.map((e) => ({ id: e, label: effortLabel(e, t) }))}
           selected={view.effort}
           onPick={(id) => void configureChat(terminalId, { effort: id })}
-          hideLabelClass="@max-[400px]:hidden"
-        />
-      )}
-      {view.modes.length > 0 && (
-        <Chip
-          icon={<ModeIcon mode={view.mode?.id ?? null} />}
-          label={view.mode ? (view.mode.short ?? view.mode.label) : t.chat_settings_mode}
-          title={t.chat_settings_mode}
-          items={view.modes}
-          selected={view.mode?.id ?? null}
-          onPick={(id) => void configureChat(terminalId, { mode: id })}
-          hideLabelClass="@max-[400px]:hidden"
+          hideLabelClass="@max-[340px]:hidden"
         />
       )}
     </span>
   );
+}
+
+/** Four bars, as many filled as the effort is high; none for the agent's own default. */
+function EffortIcon({ level }: { level: number }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      {[0, 1, 2, 3].map((i) => (
+        <rect key={i} x={1.5 + i * 3.5} y={11 - i * 2.5} width="2.4" height={3.5 + i * 2.5} rx="0.8" fill="currentColor" opacity={i < level ? 1 : 0.32} />
+      ))}
+    </svg>
+  );
+}
+
+function effortLevel(effort: string | null, efforts: readonly string[]): number {
+  const at = effort ? efforts.indexOf(effort) : -1;
+  return at < 0 ? 0 : Math.max(1, Math.ceil(((at + 1) / efforts.length) * 4));
 }

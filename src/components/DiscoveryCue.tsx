@@ -10,6 +10,7 @@ import {
 } from "../canvas/viewportBounds";
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
+import { openAllTasks } from "../actions/openSession";
 import { usePinStore } from "../stores/pinStore";
 import { useSearchStore } from "../stores/searchStore";
 import { useCommandPaletteStore } from "../stores/commandPaletteStore";
@@ -161,6 +162,7 @@ function usePinningDiscoveryCue(): CueViewModel | null {
       label: t["discovery.pinning.action"],
       onClick: () => {
         usePinStore.getState().openDrawer(focused.path);
+        openAllTasks();
         markSeen(CUE_ID_PINNING);
       },
     },

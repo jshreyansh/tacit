@@ -47,6 +47,8 @@ import {
 } from "./focusScheduler";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
 import { usePinDragStore } from "../stores/pinDragStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { usePinStore } from "../stores/pinStore";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
@@ -1246,6 +1248,13 @@ export function TerminalTile({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
+              // The task full size: its tab in the grid; on the canvas, the
+              // tasks page with its detail over it.
+              if (useWorkdeskViewStore.getState().mode === "grid") {
+                useWorkdeskViewStore.getState().setOpenNode({ kind: "task", id: terminalTaskAssignment.pinId });
+                return;
+              }
+              useCanvasPageStore.getState().open("tasks");
               const pinState = usePinStore.getState();
               pinState.openDrawer(terminalTaskAssignment.repo);
               pinState.openDetail(terminalTaskAssignment.pinId);

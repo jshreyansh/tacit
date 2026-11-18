@@ -23,6 +23,7 @@ import {
   claudeCapabilities,
   claudeControlLine,
   claudeInterruptLine,
+  claudeDenyMessage,
   claudeKeepPlanningMessage,
   claudeUserLine,
   createClaudeStreamState,
@@ -272,7 +273,7 @@ export function startClaudeDriver(options: DriverOptions): ChatDriver {
       const rules = decision === "allow_always" && pending ? alwaysRules(pending.toolName, pending.suggestions) : null;
       if (decision === "deny") {
         // Keep planning: Claude stays in plan mode and revises, rather than stopping.
-        const message = pending?.toolName === "ExitPlanMode" ? claudeKeepPlanningMessage(note) : undefined;
+        const message = pending?.toolName === "ExitPlanMode" ? claudeKeepPlanningMessage(note) : claudeDenyMessage(note);
         write(claudeApprovalLine(requestId, false, undefined, message));
       } else if (rules) {
         // A rule Claude keeps in the folder's settings, so later chats don't ask either.

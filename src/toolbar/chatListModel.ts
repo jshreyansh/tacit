@@ -37,6 +37,8 @@ export function buildChatList(
     /** Terminals not listed: the manager (pinned above), plain shells. */
     hidden?: ReadonlySet<string>;
     query?: string;
+    /** Keep the workdesk's folders with nothing in them (the navigator lists every folder). */
+    keepEmpty?: boolean;
   } = {},
 ): ChatListFolder[] {
   const query = options.query?.trim() ?? "";
@@ -78,7 +80,26 @@ export function buildChatList(
     }
     folder.past.push(entry);
   }
-  return out.filter((folder) => folder.live.length > 0 || folder.past.length > 0);
+  const kept = new Set(options.keepEmpty && !query ? folders.map((f) => f.id) : []);
+  return out.filter((folder) => kept.has(folder.key) || folder.live.length > 0 || folder.past.length > 0);
+}
+
+/** A folder's chats, the ones that need you first, then those running, then the rest. */
+export function orderLive<T extends { state: CanvasTerminalItem["state"] }>(items: readonly T[]): T[] {
+  const rank = (s: CanvasTerminalItem["state"]) => (s === "attention" ? 0 : s === "active" ? 1 : 2);
+  return [...items].sort((a, b) => rank(a.state) - rank(b.state));
+}
+
+/** The dot on a folder's row: amber if anything in it needs you, else green while something runs. */
+export function folderDot(live: readonly { state: CanvasTerminalItem["state"] }[]): "need" | "run" | null {
+  if (live.some((i) => i.state === "attention")) return "need";
+  if (live.some((i) => i.state === "active")) return "run";
+  return null;
+}
+
+/** Tasks still open (pass tasks only, not notes): neither done nor dropped. */
+export function openTaskCount(tasks: readonly { status: string }[]): number {
+  return tasks.filter((p) => p.status !== "done" && p.status !== "dropped").length;
 }
 
 /** The dot on a live row: running, needs you, or nothing to say. */

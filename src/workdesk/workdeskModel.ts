@@ -45,6 +45,8 @@ export interface BrowserCard {
   url: string;
   host: string;
   identityId: string;
+  /** The page's icon, as its tab shows it. */
+  favicon?: string;
 }
 
 export interface NoteCard {
@@ -86,8 +88,15 @@ export interface FileTabCard {
   title: string;
 }
 
-/** What a tab in the workdesk view can hold: any node, a past session, or a file. */
-export type TabCard = WorkdeskCard | SessionTabCard | FileTabCard;
+/** All the tasks, in a tab of the workdesk view. */
+export interface TasksTabCard {
+  kind: "tasks";
+  id: "all";
+  title: string;
+}
+
+/** What a tab in the workdesk view can hold: any node, a past session, a file, or all the tasks. */
+export type TabCard = WorkdeskCard | SessionTabCard | FileTabCard | TasksTabCard;
 
 export interface BrowserGroup {
   identityId: string;
@@ -117,7 +126,7 @@ export interface WorkdeskSections {
 export interface WorkdeskInputs {
   projects: readonly ProjectData[];
   telemetry: ReadonlyMap<string, TerminalTelemetrySnapshot | null | undefined>;
-  browsers: ReadonlyArray<{ id: string; url: string; title: string; identityId: string }>;
+  browsers: ReadonlyArray<{ id: string; url: string; title: string; identityId: string; favicon?: string }>;
   identityNames: Readonly<Record<string, string>>;
   pins: readonly Pin[];
   managerTerminalId: string | null;
@@ -188,7 +197,15 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
       name: input.identityNames[b.identityId] ?? b.identityId,
       cards: [],
     };
-    group.cards.push({ kind: "browser", id: b.id, title: b.title || hostOf(b.url), url: b.url, host: hostOf(b.url), identityId: b.identityId });
+    group.cards.push({
+      kind: "browser",
+      id: b.id,
+      title: b.title || hostOf(b.url),
+      url: b.url,
+      host: hostOf(b.url),
+      identityId: b.identityId,
+      ...(b.favicon ? { favicon: b.favicon } : {}),
+    });
     groups.set(b.identityId, group);
   }
   const browserGroups = [...groups.values()];

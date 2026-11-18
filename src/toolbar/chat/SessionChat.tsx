@@ -38,6 +38,8 @@ export function ChatComposer({
   compact = false,
   settings,
   meter,
+  behind,
+  place,
 }: {
   terminalId: string;
   running: boolean;
@@ -49,8 +51,11 @@ export function ChatComposer({
   settings?: React.ReactNode;
   /** The usage ring, beside send. */
   meter?: React.ReactNode;
+  /** Questions, approvals and queued messages, behind the box. */
+  behind?: React.ReactNode;
+  /** Where it works, under the box. */
+  place?: React.ReactNode;
 }) {
-  const t = useT();
   const [draft, setDraft] = useState("");
   useTakeChatNote(terminalId, setDraft);
   const [sending, setSending] = useState(false);
@@ -83,22 +88,10 @@ export function ChatComposer({
         meter={meter}
         compact={compact}
         canSend={!!ready && !sending}
-        showSend={!running || !!ready}
-        trailing={
-          running ? (
-            <button
-              type="button"
-              className="tc-rail-btn ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)]"
-              onClick={onStop}
-              title={t.project_chat_stop}
-            >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <rect x="5" y="5" width="14" height="14" rx="2" />
-              </svg>
-              <span className="@max-[300px]:hidden">{t.project_chat_stop}</span>
-            </button>
-          ) : null
-        }
+        running={running}
+        onStop={onStop}
+        behind={behind}
+        place={place}
       />
     </div>
   );
@@ -143,29 +136,12 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         onCancel={() => interruptManagerChat(terminalId)}
       />
       {transcript.failure && (
-        <div className="mx-3 mb-2 rounded-lg border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
+        <div className="mx-3 mb-2 tc-sq-card border px-2.5 py-1.5 text-[12px]" style={{ borderColor: "color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)" }}>
           {transcript.failure}
         </div>
       )}
-      {transcript.questions[0] && (
-        <QuestionForm
-          key={transcript.questions[0].requestId}
-          pending={transcript.questions[0]}
-          agentName={agentName}
-          onSubmit={(answers) => void answerChatQuestion(terminalId, transcript.questions[0].requestId, answers)}
-          onSkip={() => void answerChatQuestion(terminalId, transcript.questions[0].requestId, null)}
-        />
-      )}
-      <ApprovalCards
-        approvals={transcript.approvals}
-        onAnswer={(id, decision, note) => void answerManagerApproval(terminalId, id, decision, note)}
-        onPlanMode={(mode) => void configureChat(terminalId, { mode })}
-        onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(terminalId, { mode: "auto" }) : undefined}
-        agent={agent}
-      />
       <PlanCard transcript={transcript} />
       <LimitCard terminalId={terminalId} transcript={transcript} agentName={agentName} />
-      <QueuedMessages terminalId={terminalId} onSendNow={(text, attachments) => void sendNow(text, attachments).catch(notifyFailure)} />
       <ChatComposer
         terminalId={terminalId}
         running={transcript.running}
@@ -175,6 +151,28 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         compact={compact}
         settings={<ComposerSettings terminalId={terminalId} transcript={transcript} agent={agent} />}
         meter={<UsageMeter transcript={transcript} agent={agent} />}
+        behind={
+          <>
+            <QueuedMessages terminalId={terminalId} onSendNow={(text, attachments) => void sendNow(text, attachments).catch(notifyFailure)} />
+            <ApprovalCards
+              approvals={transcript.approvals}
+              onAnswer={(id, decision, note) => void answerManagerApproval(terminalId, id, decision, note)}
+              onPlanMode={(mode) => void configureChat(terminalId, { mode })}
+              onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(terminalId, { mode: "auto" }) : undefined}
+              onFollowUp={(text) => useManagerChatStore.getState().enqueue(terminalId, text, [])}
+              agent={agent}
+            />
+            {transcript.questions[0] && (
+              <QuestionForm
+                key={transcript.questions[0].requestId}
+                pending={transcript.questions[0]}
+                agentName={agentName}
+                onSubmit={(answers) => void answerChatQuestion(terminalId, transcript.questions[0].requestId, answers)}
+                onSkip={() => void answerChatQuestion(terminalId, transcript.questions[0].requestId, null)}
+              />
+            )}
+          </>
+        }
       />
     </div>
   );

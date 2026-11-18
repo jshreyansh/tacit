@@ -51,7 +51,7 @@ export function tabKey(node: OpenNode): string {
 /** A node opened full size in the workdesk view's tabs. */
 export interface OpenNode {
   /** `session`: a past session read in a tab, by its file path; `file`: a file, by its path. */
-  kind: "terminal" | "browser" | "task" | "note" | "session" | "file";
+  kind: "terminal" | "browser" | "task" | "note" | "session" | "file" | "tasks";
   id: string;
 }
 
@@ -102,6 +102,10 @@ interface WorkdeskViewStore {
   sessionWentLive: (filePath: string, terminalId: string) => void;
   /** Files opened from Files, Memory or search, each in its own tab. */
   fileTabs: string[];
+  /** All the tasks, as a tab of its own. */
+  tasksTab: boolean;
+  openTasks: () => void;
+  closeTasks: () => void;
   openFile: (filePath: string) => void;
   closeFile: (filePath: string) => void;
 }
@@ -131,6 +135,15 @@ export const useWorkdeskViewStore = create<WorkdeskViewStore>((set, get) => ({
       return { sessionTabs: s.sessionTabs.map((t) => (t.id === filePath ? { ...t, title, agent } : t)) };
     }),
   fileTabs: [],
+  tasksTab: false,
+  openTasks: () => {
+    set({ tasksTab: true });
+    get().setOpenNode({ kind: "tasks", id: "all" });
+  },
+  closeTasks: () => {
+    get().forgetTab({ kind: "tasks", id: "all" });
+    set({ tasksTab: false });
+  },
   openFile: (filePath) => {
     const tabs = get().fileTabs;
     if (!tabs.includes(filePath)) set({ fileTabs: [...tabs, filePath] });

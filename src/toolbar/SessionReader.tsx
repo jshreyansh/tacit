@@ -8,6 +8,7 @@ import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
@@ -725,6 +726,7 @@ export function SessionReader() {
     closeOverlay();
     // Opened beside the list: closing goes back to the manager's chat.
     if (useChatDockStore.getState().face === "sessions") useChatDockStore.getState().setFace("chat");
+    if (useCanvasPageStore.getState().page === "session") useCanvasPageStore.getState().close();
   };
 
   if (liveChatTerminalId) {

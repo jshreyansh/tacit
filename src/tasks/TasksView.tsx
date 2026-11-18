@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dropdown } from "../components/ui/parts";
 import { useT } from "../i18n/useT";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
@@ -24,6 +25,8 @@ export function openPinFull(pin: Pin): void {
     useWorkdeskViewStore.getState().setOpenNode({ kind: pinKind(pin), id: pin.id });
     return;
   }
+  // On the canvas: the tasks page, with this one's detail over it.
+  useCanvasPageStore.getState().open("tasks");
   const store = usePinStore.getState();
   if (store.openProjectPath !== pin.repo) store.openDrawer(pin.repo);
   store.openDetail(pin.id);

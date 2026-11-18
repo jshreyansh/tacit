@@ -62,6 +62,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
 import { TITLE_STRIP_CSS, titleStripHeight } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { CHAT_LIST_WIDTH, chatListFits, useChatDockStore } from "../stores/chatDockStore";
 import { usePanelPresence } from "../utils/usePanelPresence";
 import { PANEL_REVEAL_TRANSITION, PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS, panelContentStyle } from "../utils/panelAnimation";
@@ -638,10 +639,15 @@ export function WorkspaceManagerPill() {
 
   // The pin view beside the chat belongs to the Pins face: leaving it, or
   // closing the chat, closes the project's pins too.
+  // The tasks show in a page on the canvas or a tab in the grid; in the
+  // sheet only where the list can't sit beside the chat. With none of
+  // those open, the folder's tasks (and a task's detail) close.
   const pinsProject = usePinStore((s) => s.openProjectPath);
+  const tasksPage = useCanvasPageStore((s) => s.page === "tasks");
+  const tasksTab = useWorkdeskViewStore((s) => s.mode === "grid" && s.tasksTab);
   useEffect(() => {
-    if (pinsProject && !(dockOpen && view === "pins")) usePinStore.getState().closeDrawer();
-  }, [pinsProject, dockOpen, view]);
+    if (pinsProject && !(dockOpen && view === "pins") && !tasksPage && !tasksTab) usePinStore.getState().closeDrawer();
+  }, [pinsProject, dockOpen, view, tasksPage, tasksTab]);
 
   const tasksWaiting = useTasksNeedingYou().length;
   // The manager's own task, kept with the project, sits above the message box.
@@ -711,7 +717,7 @@ export function WorkspaceManagerPill() {
   }, [listShown]);
   // Where it can't fit, the list is a face of its own, reached from the tabs.
   useEffect(() => {
-    if (listFits && view === "list") setView("chat");
+    if (listFits && (view === "list" || view === "pins" || view === "sessions")) setView("chat");
   }, [listFits, view, setView]);
   const readerTerminalId = useChatDockStore((s) => s.readerTerminalId);
   const { attention } = useLiveTree();
@@ -738,6 +744,7 @@ export function WorkspaceManagerPill() {
             <div className={`w-[min(34rem,calc(100vw-2rem))] rounded-[14px] py-2 ${PILL_GLASS}`}>
               <QuestionForm
                 key={transcript.questions[0].requestId}
+                floating
                 pending={transcript.questions[0]}
                 agentName={agentName(managerTerminal.type)}
                 onSubmit={(answers) => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, answers)}
@@ -1262,26 +1269,8 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {/* The agent's questions, then approvals, then the status line and the composer. */}
-      {view === "chat" && chatMode && managerTerminal && transcript.questions[0] && (
-        <QuestionForm
-          key={transcript.questions[0].requestId}
-          pending={transcript.questions[0]}
-          agentName={agentName(managerTerminal.type)}
-          onSubmit={(answers) => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, answers)}
-          onSkip={() => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, null)}
-        />
-      )}
-      {view === "chat" && chatMode && managerTerminal && (
-        <ApprovalCards
-          approvals={transcript.approvals}
-          onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
-          onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
-          onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(managerTerminal.id, { mode: "auto" }) : undefined}
-          agent={managerTerminal.type}
-        />
-      )}
-
+      {/* The task, plan and limit lines; questions, approvals and queued
+          messages wait behind the message box. */}
       {view === "chat" && !viewing && chatMode && managerTerminal && (
         <div className="shrink-0 pt-1">
           {activeTask ? (
@@ -1300,14 +1289,6 @@ export function WorkspaceManagerPill() {
                     return { label: t.chat_limit_hand_to(agentName(other)), run: () => spawnAndAssignManager(other as TerminalType) };
                   })()
                 : undefined
-            }
-          />
-          <QueuedMessages
-            terminalId={managerTerminal.id}
-            onSendNow={(text, files) =>
-              void sendQueued(text, files).catch((error: unknown) =>
-                useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error)),
-              )
             }
           />
         </div>
@@ -1335,23 +1316,6 @@ export function WorkspaceManagerPill() {
             </button>
           )}
           {running && chatMode && pendingMove === "terminal" && pendingMoveLine}
-          {running && chatMode && pendingMove !== "terminal" && (
-            <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
-              <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
-              <span style={{ color: "var(--cyan)" }}>{t.chat_working}</span>
-              <button
-                type="button"
-                className="tc-rail-btn ml-auto flex h-6 items-center gap-1.5 border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                onClick={() => void interruptManagerChat(managerTerminal.id)}
-                title={t.project_chat_stop}
-              >
-                <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
-                  <rect width="10" height="10" rx="2" fill="currentColor" />
-                </svg>
-                {t.project_chat_stop}
-              </button>
-            </div>
-          )}
           {running && !chatMode && conversation && (
             <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
               <PeekLine conversation={conversation} bare />
@@ -1379,6 +1343,39 @@ export function WorkspaceManagerPill() {
             settings={chatMode ? <ComposerSettings terminalId={managerTerminal.id} transcript={transcript} agent={managerTerminal.type} /> : undefined}
             meter={chatMode ? <UsageMeter transcript={transcript} agent={managerTerminal.type} /> : undefined}
             canSend={(!!draft.trim() || attachments.items.length > 0) && !attachments.busy && !sending}
+            running={running && chatMode && pendingMove !== "terminal"}
+            onStop={() => void interruptManagerChat(managerTerminal.id)}
+            behind={
+              chatMode ? (
+                <>
+                  <QueuedMessages
+                    terminalId={managerTerminal.id}
+                    onSendNow={(text, files) =>
+                      void sendQueued(text, files).catch((error: unknown) =>
+                        useNotificationStore.getState().notify("warn", error instanceof Error ? error.message : String(error)),
+                      )
+                    }
+                  />
+                  <ApprovalCards
+                    approvals={transcript.approvals}
+                    onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}
+                    onPlanMode={(mode) => void configureChat(managerTerminal.id, { mode })}
+                    onSwitchToAuto={canSwitchToAuto(transcript) ? () => void configureChat(managerTerminal.id, { mode: "auto" }) : undefined}
+                    onFollowUp={(text) => useManagerChatStore.getState().enqueue(managerTerminal.id, text, [])}
+                    agent={managerTerminal.type}
+                  />
+                  {transcript.questions[0] && (
+                    <QuestionForm
+                      key={transcript.questions[0].requestId}
+                      pending={transcript.questions[0]}
+                      agentName={agentName(managerTerminal.type)}
+                      onSubmit={(answers) => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, answers)}
+                      onSkip={() => void answerChatQuestion(managerTerminal.id, transcript.questions[0].requestId, null)}
+                    />
+                  )}
+                </>
+              ) : undefined
+            }
           />
         </div>
       )}

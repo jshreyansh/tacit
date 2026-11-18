@@ -11,6 +11,7 @@ import { updatePinInScene } from "../actions/scenePinActions";
 import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
 import type { BrowserCard, NoteCard, TabCard, TaskCard, TerminalCard } from "./workdeskModel";
 import { PastSessionTab } from "../toolbar/SessionReader";
+import { TasksView } from "../tasks/TasksView";
 import { FileEditorDrawer } from "../components/FileEditorDrawer";
 import { SessionChatBody } from "../toolbar/chat/SessionChat";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
@@ -361,6 +362,13 @@ function NoteTab({ card, t }: { card: NoteCard; t: Dict }) {
 export function WorkdeskTab({ card }: { card: TabCard }) {
   const t = useT();
   if (card.kind === "session") return <PastSessionTab key={card.id} filePath={card.id} />;
+  if (card.kind === "tasks") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <TasksView />
+      </div>
+    );
+  }
   if (card.kind === "file") {
     return (
       <FileEditorDrawer
