@@ -4,6 +4,23 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.8] - 2026-11-18
+
+### Changed
+- **The message box is new**: a squircle with +, a coloured mode pill (Plan teal, Accept edits, Auto amber, Full access red), separate model and effort chips, and the context ring from the start. Stop sits where Send is while the agent works.
+- **Questions rise from behind the box.** Several questions come as a stack: answers become receipts you can change, the next ones peek out, a review ends with one Send. Number keys pick; "Let Claude decide" skips one.
+- **Approvals**: Allow, Always… (always allow, or switch to Auto), and Deny… with what to do instead, which the agent hears.
+- **The list beside the chat is a navigator**: Manager, All tasks, a Canvas ◐ Grid switch, then each folder with its Files, Changes, Tasks, Terminal, chats and worktrees. Folders git tracks are marked; plain ones offer to set up git.
+- **The workdesk's name opens every workdesk**, with New workdesk named in place; a new one shows its first step in the list.
+- **The manager's sheet is the manager's.** A live chat flies to its tile; All tasks and a finished session open as a page beside it on the canvas, or as tabs in the grid.
+- **File tiles**: any file in a workdesk folder can sit on the canvas and in the grid. Video plays muted on hover; text and code edit in place.
+- **Browser tiles** show favicons, loading, sound and mute, and a menu with zoom, find, print, open in your browser, downloads and devtools.
+- **Resizing tiles is easy**: whole edges and corners grab, at any zoom; Shift keeps the shape.
+- **Memory's Activity** reads as a timeline with icons and clickable names.
+
+### Fixed
+- A task or note resized from its top or left edge no longer jumps back.
+
 ## [0.44.7] - 2026-11-17
 
 ### Changed
