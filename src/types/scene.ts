@@ -1,6 +1,7 @@
 import type { PersistedProjectData, PersistedStashedTerminal } from "./index";
 import type { BrowserCardData } from "../stores/browserCardStore";
 import type { ConnectionData } from "../stores/connectionStore";
+import type { FileTileData } from "../stores/fileTileStore";
 
 export interface ScenePoint {
   x: number;
@@ -103,6 +104,8 @@ export interface SceneDocument {
   camera: SceneCamera;
   projects: PersistedProjectData[];
   browserCards: Record<string, BrowserCardData>;
+  /** Files from the workdesk's folders shown on its canvas. */
+  fileTiles?: Record<string, FileTileData>;
   connections?: Record<string, ConnectionData>;
   annotations: AnnotationElement[];
   stashedTerminals?: PersistedStashedTerminal[];

@@ -125,6 +125,7 @@ import { timelineToChatEvents } from "../shared/chat-history";
 import { chatLimitStore } from "./manager-chat/chat-limits";
 import { chatModeStore } from "./manager-chat/chat-modes";
 import { ChatAttachments, type AttachmentInfo } from "./manager-chat/chat-attachments";
+import { FileTiles } from "./file-tiles";
 import { attachmentKind } from "../shared/chat-attachments";
 import type { ApprovalDecision } from "../shared/chat-events";
 import {
@@ -390,6 +391,8 @@ const outputBatcher = new OutputBatcher((ptyId, data) => {
 });
 const projectScanner = new ProjectScanner();
 const statePersistence = new StatePersistence();
+/** Files shown as tiles: only inside a workdesk's folders, as last saved. */
+const fileTiles = new FileTiles(() => statePersistence.workdeskFolders());
 const snapshotHistory = new SnapshotHistory();
 const gitWatcher = new GitFileWatcher();
 const fileTreeWatcher = new FileTreeWatcher(
@@ -1266,6 +1269,8 @@ const TITLE_STRIP_HEIGHT = 28;
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      // Chromium's PDF viewer, for a PDF file tile. It only renders PDFs.
+      plugins: true,
     },
     ...(isMac && {
       titleBarStyle: "hiddenInset" as const,
@@ -3420,6 +3425,36 @@ function setupIpc() {
     fs.writeFileSync(filePath, "", "utf-8");
   });
 
+  // A browser node's page in the system's own browser: http(s) only.
+  ipcMain.handle("browser:open-in-default-browser", async (event, url: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("browser:open-in-default-browser is only for the app's window");
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url) || !isSafeExternalUrl(url)) return false;
+    await shell.openExternal(url);
+    return true;
+  });
+  // File tiles: a file inside a workdesk's folders, checked here.
+  ipcMain.handle("file-tile:inspect", (event, filePath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("file-tile:inspect is only for the app's window");
+    return fileTiles.inspect(filePath);
+  });
+  ipcMain.handle("file-tile:open-in-app", async (event, filePath: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("file-tile:open-in-app is only for the app's window");
+    const checked = fileTiles.checked(filePath);
+    if (!checked) throw new Error("not a file in this workdesk's folders");
+    const failed = await shell.openPath(checked);
+    if (failed) throw new Error(failed);
+  });
+  ipcMain.handle("file-tile:quick-look", async (event, filePath: unknown) => {
+    if (!isMainWindowSender(event) || !mainWindow) return;
+    const checked = fileTiles.checked(filePath);
+    if (!checked) throw new Error("not a file in this workdesk's folders");
+    if (process.platform === "darwin") mainWindow.previewFile(checked, path.basename(checked));
+    else {
+      const failed = await shell.openPath(checked);
+      if (failed) throw new Error(failed);
+    }
+  });
+
   ipcMain.handle("fs:reveal", (_event, targetPath: string) => {
     shell.showItemInFolder(targetPath);
   });
@@ -4398,6 +4433,12 @@ app.whenReady().then(async () => {
       const url = new URL(request.url);
       // A chat attachment, by the id main gave it: tc-attachment://chat/<id>.
       // Range requests pass through, so a video can seek.
+      // A file tile's media, by the id file-tile:inspect gave it.
+      if (url.host === "file") {
+        const held = fileTiles.pathFor(decodeURIComponent(url.pathname.slice(1)));
+        if (!held) return new Response("not found", { status: 404 });
+        return await net.fetch(pathToFileURL(held).toString(), { headers: request.headers });
+      }
       if (url.host === "chat") {
         const held = chatAttachments.get(decodeURIComponent(url.pathname.slice(1)));
         if (!held) return new Response("not found", { status: 404 });

@@ -22,6 +22,8 @@ export interface BrowserCardData {
    * which is every card saved before this existed.
    */
   pageZoom?: number;
+  /** The page's icon, as its tab shows it: an https or small data URL. */
+  favicon?: string;
   /**
    * The agent that opened it through spawn_browser, as a node ref. Absent for
    * a browser the person opened; only these count toward the worker cap.

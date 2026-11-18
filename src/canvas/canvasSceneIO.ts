@@ -22,6 +22,7 @@ import {
   restoreConnectionsInScene,
 } from "../actions/sceneConnectionActions";
 import { useBrowserCardStore } from "../stores/browserCardStore";
+import { useFileTileStore } from "../stores/fileTileStore";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useDrawingStore } from "../stores/drawingStore";
@@ -133,6 +134,7 @@ export function captureLiveCanvasScene(): SceneDocument {
     projects,
     drawings: useDrawingStore.getState().elements,
     browserCards: useBrowserCardStore.getState().cards,
+    fileTiles: useFileTileStore.getState().tiles,
     connections: useConnectionStore.getState().connections,
     sidePanelWorktreeId: useProjectStore.getState().panelWorktreeId,
   });
@@ -163,6 +165,7 @@ export function applyCanvasSceneToLive(scene: SceneDocument) {
   });
   useDrawingStore.setState({ elements: restored.drawings });
   restoreBrowserCardsInScene(restored.browserCards);
+  useFileTileStore.getState().restore(scene.fileTiles ?? {});
   restoreConnectionsInScene(restored.connections);
   // Must run after both the projects and the connections are in place: it
   // reads terminals from projectStore and writes into connectionStore.

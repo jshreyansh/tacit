@@ -521,75 +521,42 @@ a.tc-kbd:active {
   padding: 0;
 }
 
-/* Edge resize handles — Figma-style small rectangles at edge midpoints */
-.tc-xyflow .react-flow__resize-control.line {
+/* Resize zones (src/canvas/resizeZones.ts): every side along its whole
+   length and a square at each corner, straddling the border, always there.
+   Only the corner squares are drawn, while the tile is hovered. */
+.tc-xyflow .react-flow__resize-control.tc-resize-edge {
   z-index: 20;
+  border-width: 0;
+  background: transparent;
+}
+.tc-xyflow .react-flow__resize-control.tc-resize-corner {
+  z-index: 21;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.tc-resize-edge {
+  z-index: 20;
+}
+.tc-resize-corner {
+  z-index: 21;
+}
+.tc-resize-corner::after {
+  content: "";
+  position: absolute;
+  inset: 30%;
+  border: calc(1px * var(--tc-inv, 1)) solid var(--border-hover);
+  border-radius: calc(2px * var(--tc-inv, 1));
   background: var(--surface);
-  border-color: var(--border-hover);
-  border-width: 1px;
-  border-style: solid;
-  border-radius: 1px;
+  box-shadow: 0 0 0 calc(1px * var(--tc-inv, 1)) color-mix(in srgb, var(--bg) 60%, transparent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
 }
-.tc-xyflow .react-flow__resize-control.line.top,
-.tc-xyflow .react-flow__resize-control.line.bottom {
-  width: 24px;
-  height: 6px;
-  left: 50%;
-  border-top-width: 1px;
-  border-bottom-width: 1px;
-}
-.tc-xyflow .react-flow__resize-control.line.top {
-  top: 0;
-  transform: translate(-50%, -100%);
-}
-.tc-xyflow .react-flow__resize-control.line.bottom {
-  bottom: 0;
-  top: auto;
-  transform: translate(-50%, 100%);
-}
-.tc-xyflow .react-flow__resize-control.line.left,
-.tc-xyflow .react-flow__resize-control.line.right {
-  width: 6px;
-  height: 24px;
-  top: 50%;
-  border-left-width: 1px;
-  border-right-width: 1px;
-}
-.tc-xyflow .react-flow__resize-control.line.left {
-  left: 0;
-  transform: translate(-100%, -50%);
-}
-.tc-xyflow .react-flow__resize-control.line.right {
-  right: 0;
-  left: auto;
-  transform: translate(100%, -50%);
-}
-
-/* Keep resize hit areas outside the tile so edge selection in xterm
-   does not start a resize gesture first. */
-.tc-xyflow .react-flow__resize-control.handle.left {
-  translate: -100% -50%;
-}
-.tc-xyflow .react-flow__resize-control.handle.right {
-  translate: 0 -50%;
-}
-.tc-xyflow .react-flow__resize-control.handle.top {
-  translate: -50% -100%;
-}
-.tc-xyflow .react-flow__resize-control.handle.bottom {
-  translate: -50% 0;
-}
-.tc-xyflow .react-flow__resize-control.handle.top.left {
-  translate: -100% -100%;
-}
-.tc-xyflow .react-flow__resize-control.handle.top.right {
-  translate: 0 -100%;
-}
-.tc-xyflow .react-flow__resize-control.handle.bottom.left {
-  translate: -100% 0;
-}
-.tc-xyflow .react-flow__resize-control.handle.bottom.right {
-  translate: 0 0;
+.tc-xyflow .react-flow__node:hover .tc-resize-corner::after,
+.tc-resize-host:hover .tc-resize-corner::after,
+.tc-resize-corner:active::after {
+  opacity: 1;
 }
 
 .tc-xyflow .react-flow__viewport {
@@ -1570,6 +1537,61 @@ a.tc-kbd[data-dragover="true"] {
 .tc-segment { border-radius: 10px; corner-shape: squircle; }
 .tc-pill { border-radius: 18px; corner-shape: squircle; }
 .tc-menu { border-radius: 12px; corner-shape: squircle; }
+
+/* The chat's sizes of the same family: containers 24 (the message box),
+   cards 14 (questions, approvals, plans, tool cards), controls 10 (buttons,
+   answer rows, chips), small 8 (badges, icon tiles). Pills and circles stay
+   round. */
+.tc-sq-box { border-radius: 24px; corner-shape: squircle; }
+.tc-sq-card { border-radius: 14px; corner-shape: squircle; }
+.tc-sq-ctl { border-radius: 10px; corner-shape: squircle; }
+.tc-sq-sm { border-radius: 8px; corner-shape: squircle; }
+
+/* What waits behind the message box: a question, an approval, a plan, a
+   queued message. Narrower than the box and tucked under its top edge, so
+   the box stays in front. */
+.tc-behind {
+  position: relative;
+  z-index: 0;
+  margin: 0 14px -22px;
+  padding-bottom: 22px;
+  border: 1px solid var(--border-hover);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  corner-shape: squircle;
+  background: color-mix(in srgb, var(--surface) 88%, var(--text-primary) 4%);
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.22);
+}
+.tc-behind-back {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  corner-shape: squircle;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.tc-behind-back:hover { color: var(--text-secondary); }
+/* Two things behind the box at once: only the last tucks under it. */
+.tc-behind:not(:last-child) {
+  margin-bottom: 8px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--border-hover);
+  border-radius: 20px;
+}
 
 /* ── The seat ────────────────────────────────────────────────────────
    The workspace-manager control is one object that deforms, not a pill

@@ -3,6 +3,7 @@ import type { CaptureEntryView } from "../../../shared/capture";
 import { useMemoryStore, positionKey } from "../../stores/memoryStore";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { useT } from "../../i18n/useT";
+import { ActivityRow } from "./ActivityRow";
 import { useActivityFocusStore } from "../../stores/activityFocusStore";
 import { taskActorName } from "../../utils/taskActor";
 import { TaskControl } from "../../toolbar/TaskControl";
@@ -704,33 +705,6 @@ const ACTIVITY_LIMIT = 300;
 // append-heavy directory fires far more often than this list needs to change.
 const ACTIVITY_POLL_MS = 15_000;
 
-const KIND_TOKEN: Record<string, string> = {
-  prompt: "var(--accent)",
-  spawn: "var(--cyan)",
-  close: "var(--text-faint)",
-  wire: "var(--purple)",
-  unwire: "var(--text-faint)",
-  retype_wire: "var(--purple)",
-  redirect_wire: "var(--purple)",
-  edit_wire: "var(--purple)",
-  tracked_handoff: "var(--purple)",
-  rename: "var(--text-muted)",
-  manager: "var(--amber)",
-  browser_action: "var(--cyan)",
-  journal_write: "var(--purple)",
-  handoff: "var(--accent)",
-  topology: "var(--text-faint)",
-  run_started: "var(--green)",
-  run_named: "var(--green)",
-  run_ended: "var(--green)",
-};
-
-function kindLabel(kind: string, t: ReturnType<typeof useT>): string {
-  const key = `activity_kind_${kind}` as keyof typeof t;
-  const label = t[key];
-  return typeof label === "string" ? label : kind;
-}
-
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
@@ -810,16 +784,40 @@ function TaskHeading({ group, openTaskId }: { group: TaskGroup; openTaskId: stri
   else if (ended.run.reason === "superseded") endText = t.task_group_superseded;
   else endText = ended.run.by === "user" ? t.task_group_ended_by_you : t.task_group_ended_by(taskActorName(ended.run.by, t.task_manager));
 
+  const recording = group.taskId === openTaskId && !ended;
   return (
     <div
-      className="mx-1 mt-3 mb-1 rounded-md px-2 py-1.5"
-      style={{ background: "color-mix(in srgb, var(--green) 8%, transparent)", borderLeft: "2px solid var(--green)" }}
+      className="mx-1 mb-1.5 mt-3 flex items-start gap-2.5 rounded-lg border px-2.5 py-2"
+      style={{
+        background: "color-mix(in srgb, var(--green) 7%, var(--surface))",
+        borderColor: "color-mix(in srgb, var(--green) 28%, var(--border))",
+      }}
     >
-      <div className="truncate text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
-        {name}
-      </div>
-      <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        {[startedText, `${timeLabel(first.at)}–${timeLabel(last.at)} (${minutes}m)`, endText].filter(Boolean).join(" · ")}
+      <span
+        className="mt-[1px] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
+        style={{ background: "color-mix(in srgb, var(--green) 18%, transparent)", color: "var(--green)" }}
+        aria-hidden="true"
+      >
+        {recording ? (
+          <span className="tc-live-pip h-2 w-2 rounded-full" style={{ background: "var(--red)" }} />
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 13.5V2.5M4 3h7.5l-1.5 2.5L11.5 8H4" />
+          </svg>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12.5px] font-medium" style={{ color: "var(--text-primary)" }}>
+          {name}
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10.5px]" style={{ color: "var(--text-muted)" }}>
+          {startedText && <span>{startedText}</span>}
+          {startedText && <span aria-hidden="true">·</span>}
+          <span className="tabular-nums">{`${timeLabel(first.at)}–${timeLabel(last.at)}`}</span>
+          <span className="rounded-full bg-[var(--surface-hover)] px-1.5 tabular-nums">{minutes}m</span>
+          {endText && <span aria-hidden="true">·</span>}
+          {endText && <span style={recording ? { color: "var(--red)" } : undefined}>{endText}</span>}
+        </div>
       </div>
     </div>
   );
@@ -856,55 +854,24 @@ function ActivityList({
         <div key={`${group.taskId ?? "none"}:${group.entries[0].id}`} data-task={group.taskId ?? undefined}>
           <TaskHeading group={group} openTaskId={openTaskId} />
           <div className={group.taskId ? "ml-2" : undefined}>
-      {group.entries.filter((entry) => !SAID_BY_HEADING.has(entry.kind)).map((entry) => {
+      {(() => {
+        const shown = group.entries.filter((entry) => !SAID_BY_HEADING.has(entry.kind));
+        return shown.map((entry, i) => {
         const day = dayLabel(entry.at);
         const newDay = day !== lastDay;
         lastDay = day;
-        const isDecision = entry.intent === "decision";
-
         return (
           <div key={entry.id}>
             {newDay && (
-              <div
-                className="tc-eyebrow px-1 pt-2 pb-1"
-                style={{ color: "var(--text-muted)" }}
-              >
+              <div className="tc-eyebrow sticky top-0 z-[1] -mx-2 bg-[var(--chrome-glass)] px-3 pb-1 pt-2 [backdrop-filter:var(--glass-filter)]" style={{ color: "var(--text-muted)" }}>
                 {day}
               </div>
             )}
-            <div
-              className="flex gap-2 px-1 py-[5px] rounded text-[11px] leading-snug"
-              style={{
-                borderLeft: `2px solid ${
-                  isDecision
-                    ? (KIND_TOKEN[entry.kind] ?? "var(--text-faint)")
-                    : "transparent"
-                }`,
-                paddingLeft: 6,
-              }}
-            >
-              <span
-                className="shrink-0 tabular-nums"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {timeLabel(entry.at)}
-              </span>
-              <span
-                className="shrink-0 font-medium"
-                style={{ color: KIND_TOKEN[entry.kind] ?? "var(--text-muted)" }}
-              >
-                {kindLabel(entry.kind, t)}
-              </span>
-              <span
-                className="min-w-0 break-words"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {entry.summary}
-              </span>
-            </div>
+            <ActivityRow entry={entry} time={timeLabel(entry.at)} isLast={i === shown.length - 1} />
           </div>
         );
-      })}
+        });
+      })()}
           </div>
         </div>
       ))}

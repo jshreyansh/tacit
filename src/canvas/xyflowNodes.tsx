@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { type NodeProps, type NodeTypes, NodeResizer } from "@xyflow/react";
+import { useCallback, useMemo } from "react";
+import { type NodeProps, type NodeTypes } from "@xyflow/react";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
@@ -13,6 +13,8 @@ import {
 import { panToTerminal } from "../utils/panToTerminal";
 import { type TerminalFlowNode, type CanvasFlowNode } from "./nodeProjection";
 import { PinNode } from "./PinNode";
+import { FileTileNode } from "./FileTileNode";
+import { TileResizer } from "./TileResizer";
 import { rectIntersectsCanvasViewport } from "./viewportBounds";
 import { resolveCollisions } from "./collisionResolver";
 
@@ -23,7 +25,6 @@ function snapTo(value: number, grid: number): number {
 }
 
 function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
-  const [hovered, setHovered] = useState(false);
   const viewport = useCanvasStore((state) => state.viewport);
   const rightPanelCollapsed = useCanvasStore(
     (state) => state.rightPanelCollapsed,
@@ -223,19 +224,10 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       className="h-full w-full"
       data-connect-kind="terminal"
       data-connect-id={data.terminalId}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
-      <NodeResizer
-        isVisible={hovered}
+      <TileResizer
         minWidth={300}
         minHeight={200}
-        handleStyle={{
-          width: 8,
-          height: 8,
-          background: "var(--surface)",
-          borderColor: "var(--border-hover)",
-        }}
         onResize={handleResize}
         onResizeEnd={handleResizeEnd}
       />
@@ -256,6 +248,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
   pin: PinNode,
+  file: FileTileNode,
 } satisfies NodeTypes;
 
 export type { CanvasFlowNode };

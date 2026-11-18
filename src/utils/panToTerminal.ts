@@ -28,6 +28,8 @@ interface PanToTerminalOptions {
 export interface FlyToBoundsOptions {
   immediate?: boolean;
   preserveScale?: boolean;
+  /** Exactly this scale, centred on the bounds (1 is 100%). */
+  scale?: number;
   duration?: number;
   easing?: (t: number) => number;
 }
@@ -63,7 +65,9 @@ export function flyToBounds(
   const viewW = window.innerWidth - leftOffset - rightOffset - padding * 2;
   const viewH = window.innerHeight - chromeTop() - CHROME_BOTTOM - padding * 2;
 
-  const scale = opts?.preserveScale
+  const scale = opts?.scale !== undefined
+    ? clampScale(opts.scale)
+    : opts?.preserveScale
     ? clampScale(viewport.scale)
     : clampScale(Math.min(viewW / absW, viewH / absH) * 0.9);
 

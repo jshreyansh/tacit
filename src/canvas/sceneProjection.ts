@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import type { BrowserCardData } from "../stores/browserCardStore";
 import type { ConnectionData } from "../stores/connectionStore";
+import type { FileTileData } from "../stores/fileTileStore";
 import type {
   AnnotationElement,
   AnnotationAnchor,
@@ -37,6 +38,7 @@ interface SceneDocumentState {
   annotations?: AnnotationElement[] | null;
   drawings?: DrawingElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
+  fileTiles?: Record<string, FileTileData> | null;
   connections?: Record<string, ConnectionData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
   sidePanelWorktreeId?: string | null;
@@ -271,6 +273,7 @@ export function buildSceneDocument(
     camera: state.camera ?? viewportToSceneCamera(state.viewport),
     projects: state.projects ?? [],
     browserCards: state.browserCards ?? {},
+    ...(state.fileTiles && Object.keys(state.fileTiles).length > 0 ? { fileTiles: state.fileTiles } : {}),
     connections: state.connections ?? {},
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),

@@ -1701,6 +1701,8 @@ export class ApiServer {
       pinCount: number;
       connectionCount: number;
       statusCounts: Record<string, number>;
+      /** Paths of the files shown on the canvas. */
+      files?: string[];
     };
     const canvasId = (await this.execRenderer(
       "window.__tcApi.getActiveCanvasId()",

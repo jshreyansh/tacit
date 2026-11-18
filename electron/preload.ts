@@ -24,6 +24,7 @@ import type {
 } from "../shared/browser-connection";
 import type { BrowserActionName } from "../shared/browser-controller";
 import type { WatchDirFailure, WatchDirResult } from "../shared/file-watch";
+import type { FileTileInfo } from "../shared/file-tiles";
 
 type SessionTelemetryProvider = Exclude<TelemetryProvider, "unknown">;
 
@@ -929,6 +930,14 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("fs:watch-failed", listener);
     },
   },
+  fileTiles: {
+    inspect: (filePath: string) =>
+      ipcRenderer.invoke("file-tile:inspect", filePath) as Promise<FileTileInfo>,
+    openInApp: (filePath: string) =>
+      ipcRenderer.invoke("file-tile:open-in-app", filePath) as Promise<void>,
+    quickLook: (filePath: string) =>
+      ipcRenderer.invoke("file-tile:quick-look", filePath) as Promise<void>,
+  },
   memory: {
     scan: (worktreePath: string) =>
       ipcRenderer.invoke("memory:scan", worktreePath),
@@ -1325,6 +1334,8 @@ contextBridge.exposeInMainWorld("tacit", {
         ipcRenderer.removeListener("browser:download-event", listener);
     },
     /** Reveal a finished download. The token resolves to a path in main only. */
+    openInDefaultBrowser: (url: string) =>
+      ipcRenderer.invoke("browser:open-in-default-browser", url) as Promise<boolean>,
     revealDownload: (token: string) =>
       ipcRenderer.invoke("browser:reveal-download", token) as Promise<boolean>,
     /**

@@ -1,5 +1,8 @@
+import { MonacoEditor, guessLanguage } from "../files/monacoLazy";
+import { AudioPreview, CantPreview, HoverVideo, PdfPreview } from "../files/FilePreview";
+import { showFileOnCanvasFromAnywhere } from "../files/fileTileActions";
+import { fileTileKindByName, type FileTileInfo } from "../../shared/file-tiles";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -35,170 +38,7 @@ import type * as MonacoNs from "monaco-editor";
  *
  * The left panel is deliberately NOT covered: project navigation stays
  * reachable so switching files doesn't require closing the drawer.
- *
- * Monaco is heavy (~1 MB gzipped) — lazy-loaded via React.lazy so cold
- * start stays light. Until the user opens their first file, Monaco
- * isn't downloaded at all.
  */
-const MonacoEditor = lazy(async () => {
-  // Load monaco core + the React wrapper in parallel, then point the
-  // React wrapper's loader at the local copy (default fetches from
-  // jsdelivr CDN — wrong for Electron: offline-flaky + CSP surface).
-  const [monacoMod, reactMod] = await Promise.all([
-    import("monaco-editor"),
-    import("@monaco-editor/react"),
-  ]);
-  reactMod.loader.config({ monaco: monacoMod });
-
-  // Register app-tinted Monaco themes. vs-dark's #1e1e1e and vs's
-  // white don't match our palette (warm charcoal / warm cream) —
-  // inherit the tokenisation from the base themes and only override
-  // the structural colours (bg / gutter / selection / border). Keeps
-  // syntax highlighting intact, drops the mismatched chrome.
-  monacoMod.editor.defineTheme("tacit-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.background": "#1a1918",
-      "editor.foreground": "#e4e2df",
-      "editorLineNumber.foreground": "#5a5754",
-      "editorLineNumber.activeForeground": "#918e89",
-      "editor.lineHighlightBackground": "#222120",
-      "editor.lineHighlightBorder": "#00000000",
-      "editorCursor.foreground": "#e4e2df",
-      "editor.selectionBackground": "#c4c0b840",
-      "editor.inactiveSelectionBackground": "#c4c0b825",
-      "editor.selectionHighlightBackground": "#c4c0b820",
-      "editor.wordHighlightBackground": "#c4c0b818",
-      "editor.findMatchBackground": "#d4a24e55",
-      "editor.findMatchHighlightBackground": "#d4a24e25",
-      "editorGutter.background": "#1a1918",
-      "editorWidget.background": "#222120",
-      "editorWidget.border": "#333231",
-      "editorIndentGuide.background": "#333231",
-      "editorIndentGuide.activeBackground": "#43423f",
-      "editorBracketMatch.background": "#c4c0b820",
-      "editorBracketMatch.border": "#c4c0b855",
-      "scrollbarSlider.background": "#43423f55",
-      "scrollbarSlider.hoverBackground": "#43423f90",
-      "scrollbarSlider.activeBackground": "#43423fcc",
-    },
-  });
-  monacoMod.editor.defineTheme("tacit-light", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      // vs's default syntax colours are pitched for pure #ffffff.
-      // On our warm cream they read over-saturated and clashy.
-      // Warm them down across the board — these are the tokens
-      // Monaco actually emits in practice for the languages we
-      // care about (ts/js/json/md/py/rs/go/sh).
-      { token: "comment", foreground: "8a857f", fontStyle: "italic" },
-      { token: "keyword", foreground: "7c3aed" },
-      { token: "storage", foreground: "7c3aed" },
-      { token: "string", foreground: "15803d" },
-      { token: "number", foreground: "a16207" },
-      { token: "regexp", foreground: "b45309" },
-      { token: "type", foreground: "0f766e" },
-      { token: "type.identifier", foreground: "0f766e" },
-      { token: "variable", foreground: "1c1917" },
-      { token: "variable.predefined", foreground: "9a3412" },
-      { token: "function", foreground: "1d4ed8" },
-      { token: "constant", foreground: "9a3412" },
-      { token: "tag", foreground: "b91c1c" },
-      { token: "attribute.name", foreground: "7c2d12" },
-      { token: "attribute.value", foreground: "15803d" },
-      { token: "operator", foreground: "44403c" },
-      { token: "delimiter", foreground: "57534e" },
-    ],
-    colors: {
-      // Use --surface (#f3f2ef) for the editor surface — brighter
-      // than --bg so code doesn't feel like it's sitting on a
-      // dirty-cream background, while still clearly part of the
-      // warm palette (not the stock stark white).
-      "editor.background": "#f3f2ef",
-      "editor.foreground": "#1c1917",
-      "editorLineNumber.foreground": "#b2aba3",
-      "editorLineNumber.activeForeground": "#57534e",
-      "editor.lineHighlightBackground": "#eae8e4",
-      "editor.lineHighlightBorder": "#00000000",
-      "editorCursor.foreground": "#1c1917",
-      "editor.selectionBackground": "#44403c25",
-      "editor.inactiveSelectionBackground": "#44403c12",
-      "editor.selectionHighlightBackground": "#44403c10",
-      "editor.wordHighlightBackground": "#44403c10",
-      "editor.findMatchBackground": "#d9770655",
-      "editor.findMatchHighlightBackground": "#d9770625",
-      "editorGutter.background": "#f3f2ef",
-      "editorWidget.background": "#eae8e4",
-      "editorWidget.border": "#dbd8d3",
-      "editorIndentGuide.background": "#e5e3df",
-      "editorIndentGuide.activeBackground": "#c9c5bf",
-      "editorBracketMatch.background": "#44403c15",
-      "editorBracketMatch.border": "#44403c55",
-      "scrollbarSlider.background": "#c9c5bf55",
-      "scrollbarSlider.hoverBackground": "#c9c5bf90",
-      "scrollbarSlider.activeBackground": "#c9c5bfcc",
-    },
-  });
-
-  return { default: reactMod.default };
-});
-
-// Toolbar height above which the drawer starts. Keep in sync with
-// App.tsx's Toolbar.
-
-function guessLanguage(path: string): string {
-  const lower = path.toLowerCase();
-  const ext = lower.slice(lower.lastIndexOf(".") + 1);
-  // Deliberately narrow — the set matches Monaco's built-in language
-  // services we ship via monacoEnvironment.ts. Unknown extensions fall
-  // through to "plaintext" (still syntax-coloured as plain text, no
-  // IntelliSense).
-  const map: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    mjs: "javascript",
-    cjs: "javascript",
-    json: "json",
-    jsonc: "json",
-    css: "css",
-    scss: "scss",
-    less: "less",
-    html: "html",
-    htm: "html",
-    md: "markdown",
-    markdown: "markdown",
-    py: "python",
-    rs: "rust",
-    go: "go",
-    rb: "ruby",
-    sh: "shell",
-    bash: "shell",
-    zsh: "shell",
-    yml: "yaml",
-    yaml: "yaml",
-    toml: "ini",
-    ini: "ini",
-    xml: "xml",
-    sql: "sql",
-    java: "java",
-    kt: "kotlin",
-    swift: "swift",
-    c: "c",
-    h: "c",
-    cpp: "cpp",
-    cc: "cpp",
-    hpp: "cpp",
-    cs: "csharp",
-    php: "php",
-  };
-  return map[ext] ?? "plaintext";
-}
-
 interface FileReadSuccess {
   content: string;
   type?: "text" | "markdown" | "image" | "binary" | string;
@@ -242,6 +82,9 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
   // (editable + savable), image → <img>, binary → placeholder.
   // The IPC returns the label alongside the content.
   const [fileKind, setFileKind] = useState<"text" | "image" | "binary">("text");
+  // Video, audio and PDF stream from main, as a file tile's do; and a file
+  // with no preview, inside the workdesk's folders, says what it is.
+  const [media, setMedia] = useState<FileTileInfo | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
 
   const dirty = content !== originalContent;
@@ -283,6 +126,29 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
+    setMedia(null);
+    const byName = fileTileKindByName(path);
+    if (byName === "video" || byName === "audio" || byName === "pdf") {
+      window.tacit.fileTiles
+        .inspect(path)
+        .then((info) => {
+          if (cancelled) return;
+          if (info.ok) setMedia(info);
+          else setLoadError(info.error === "missing" ? t.file_tile_missing_title : t.file_tile_cant_show(path.split("/").pop() ?? path));
+          setContent("");
+          setOriginalContent("");
+          setFileKind("binary");
+          setLoading(false);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setLoadError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     window.tacit.fs
       .readFile(path)
       .then((result: FileReadResult) => {
@@ -295,8 +161,12 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
           setContent(payload);
           setOriginalContent(payload);
           if (result.type === "image") setFileKind("image");
-          else if (result.type === "binary") setFileKind("binary");
-          else setFileKind("text");
+          else if (result.type === "binary") {
+            setFileKind("binary");
+            void window.tacit.fileTiles.inspect(path).then((info) => {
+              if (!cancelled && info.ok) setMedia(info);
+            });
+          } else setFileKind("text");
         } else {
           setContent("");
           setOriginalContent("");
@@ -322,7 +192,7 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = useCallback(async () => {
     if (!path || !dirty || saving) return;
@@ -450,6 +320,18 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
         </button>
 
         <button
+          className="tc-meta flex items-center gap-1 px-2 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+          onClick={() => showFileOnCanvasFromAnywhere(path)}
+          title={t.file_tile_show_on_canvas_hint}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+            <rect x="2" y="2" width="12" height="12" rx="2" />
+            <path d="M8 5.5v5M5.5 8h5" />
+          </svg>
+          {t.file_tile_canvas}
+        </button>
+
+        <button
           className="flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
           style={{ display: embedded ? "none" : undefined }}
           onClick={toggleExpanded}
@@ -557,7 +439,19 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
             />
           </div>
         )}
-        {!loadError && !loading && fileKind === "binary" && (
+        {!loadError && !loading && media?.ok && media.kind === "video" && (
+          <div className="absolute inset-0"><HoverVideo info={media} /></div>
+        )}
+        {!loadError && !loading && media?.ok && media.kind === "audio" && (
+          <div className="absolute inset-0 mx-auto max-w-[560px]"><AudioPreview info={media} path={path} /></div>
+        )}
+        {!loadError && !loading && media?.ok && media.kind === "pdf" && (
+          <div className="absolute inset-0"><PdfPreview info={media} path={path} /></div>
+        )}
+        {!loadError && !loading && fileKind === "binary" && media?.ok && media.kind === "other" && (
+          <div className="absolute inset-0"><CantPreview path={path} info={media} /></div>
+        )}
+        {!loadError && !loading && fileKind === "binary" && !media && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center">
             <div className="tc-ui tc-mono text-[var(--text-muted)]">
               {t.file_editor_binary_title ?? "Binary file"}

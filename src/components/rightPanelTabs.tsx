@@ -50,6 +50,17 @@ export function IconCode({ size = 14 }: { size?: number }) {
   );
 }
 
+/** The manager's chat: a speech bubble with two lines of text, in the rail's line style. */
+export function IconChat({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.25 2.75h9.5a1.5 1.5 0 0 1 1.5 1.5v5.9a1.5 1.5 0 0 1-1.5 1.5H7.4l-2.9 2.2v-2.2H3.25a1.5 1.5 0 0 1-1.5-1.5v-5.9a1.5 1.5 0 0 1 1.5-1.5z" />
+      <path d="M5 6.1h6M5 8.6h3.5" />
+    </svg>
+  );
+}
+
 export function IconMemory({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"

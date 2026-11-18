@@ -27,6 +27,7 @@ import {
 import type { useProjectStore } from "./stores/projectStore";
 import type { useCanvasStore } from "./stores/canvasStore";
 import type { useDrawingStore } from "./stores/drawingStore";
+import { coerceFileTiles } from "./stores/fileTileStore";
 import type { useBrowserCardStore } from "./stores/browserCardStore";
 import { normalizeProjectsFocus } from "./stores/projectFocus";
 import {
@@ -667,6 +668,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
     : [];
 
   const stashedTerminals = normalizeStashedTerminals(record.stashedTerminals);
+  const fileTiles = coerceFileTiles(record.fileTiles);
 
   return {
     version: 2,
@@ -680,6 +682,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
       record.connections && typeof record.connections === "object"
         ? (record.connections as SceneDocument["connections"])
         : {},
+    ...(Object.keys(fileTiles).length > 0 ? { fileTiles } : {}),
     annotations,
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),
     ...(typeof record.sidePanelWorktreeId === "string"

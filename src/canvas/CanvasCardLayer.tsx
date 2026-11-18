@@ -4,6 +4,11 @@ import { BrowserCard } from "../components/BrowserCard";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
+import { updateBrowserCardInScene } from "../actions/sceneCardActions";
+import { CardResizeZones } from "./CardResizeZones";
+
+/** A browser tile's smallest size: room for its address bar and a page. */
+const BROWSER_MIN = { w: 400, h: 200 };
 
 export function CanvasCardLayer() {
   const viewport = useCanvasStore((state) => state.viewport);
@@ -65,6 +70,8 @@ export function CanvasCardLayer() {
           return (
             <div
               key={card.id}
+              // Hovering the tile shows its resize corners (index.css).
+              className="tc-resize-host"
               style={{
                 pointerEvents: "auto",
                 ...(layout ? { position: "relative", zIndex: 1 } : {}),
@@ -73,6 +80,14 @@ export function CanvasCardLayer() {
               data-record-node={`browser:${card.id}`}
             >
               <BrowserCard card={card} projectedLayout={layout} />
+              {!layout && (
+                <CardResizeZones
+                  rect={{ x: card.x, y: card.y, w: card.w, h: card.h }}
+                  zoom={viewport.scale}
+                  min={BROWSER_MIN}
+                  onResize={(next) => updateBrowserCardInScene(card.id, next)}
+                />
+              )}
             </div>
           );
         })}

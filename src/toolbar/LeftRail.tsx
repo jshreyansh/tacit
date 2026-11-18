@@ -10,7 +10,7 @@ import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
 import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
-import { IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
+import { IconChat, IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
@@ -174,11 +174,28 @@ export function LeftRail() {
         width: LEFT_RAIL_WIDTH,
       }}
     >
-      {/* What you open beside the rail: the Hub first, as the command
-          centre over all of it, then the manager's chat, the code panel
+      {/* What you open beside the rail: the manager's chat first, then the
+          Hub, as the command centre over all of it, then the code panel
           (Files, Diff, Git) and Memory. Always in view, however short the
           window. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
+        {/* The workdesk manager's chat, with its Tasks: first in the bar. */}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          data-on={conversationOpen ? "" : undefined}
+          title={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
+          aria-label={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
+          aria-pressed={conversationOpen}
+          onClick={() => {
+            if (conversationOpen) setChatOpen(false);
+            else showChatFace(chatFace === "list" ? "chat" : chatFace);
+          }}
+        >
+          <IconChat size={18} />
+          {needsYou > 0 && !conversationOpen && (
+            <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
+          )}
+        </button>
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           // The Hub's outside-click handler exempts this attribute so a click
@@ -202,26 +219,6 @@ export function LeftRail() {
             <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
           )}
         </button>
-        {/* The workdesk manager's chat, with its Tasks. */}
-        <button
-          className={`${buttonCls} text-[var(--text-muted)]`}
-          data-on={conversationOpen ? "" : undefined}
-          title={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
-          aria-label={needsYou > 0 ? `${chatLabel} · ${t.chat_sessions_needs_you(needsYou)}` : chatLabel}
-          aria-pressed={conversationOpen}
-          onClick={() => {
-            if (conversationOpen) setChatOpen(false);
-            else showChatFace(chatFace === "list" ? "chat" : chatFace);
-          }}
-        >
-          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
-          </svg>
-          {needsYou > 0 && !conversationOpen && (
-            <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
-          )}
-        </button>
-
         {/* Files, Diff and Git are one button; the panel's tabs switch
             between them, and it opens on the one you were last on. */}
         <button

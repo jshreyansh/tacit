@@ -1,12 +1,15 @@
 import fs from "fs";
 import path from "path";
 import { getTacitDataDir } from "../shared/tacit-instance";
+import { workdeskFolders } from "./file-tiles";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 export const TACIT_DIR = getTacitDataDir(isDev ? "dev" : "prod");
 const STATE_FILE = path.join(TACIT_DIR, "state.json");
 
 export class StatePersistence {
+  private folders: string[] | null = null;
+
   constructor() {
     if (!fs.existsSync(TACIT_DIR)) {
       fs.mkdirSync(TACIT_DIR, { recursive: true });
@@ -30,5 +33,12 @@ export class StatePersistence {
     const tmp = STATE_FILE + ".tmp";
     fs.writeFileSync(tmp, serialized, "utf-8");
     fs.renameSync(tmp, STATE_FILE);
+    this.folders = null;
+  }
+
+  /** Every workdesk's folders as last saved, read again after each save. */
+  workdeskFolders(): string[] {
+    if (!this.folders) this.folders = workdeskFolders(this.load());
+    return this.folders;
   }
 }

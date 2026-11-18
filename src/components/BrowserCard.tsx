@@ -9,6 +9,7 @@ import {
 import { activateCardInScene } from "../actions/sceneSelectionActions";
 import {
   type BrowserCardData,
+  useBrowserCardStore,
 } from "../stores/browserCardStore";
 import { useCardLayoutStore } from "../stores/cardLayoutStore";
 import { useCanvasStore } from "../stores/canvasStore";
@@ -35,6 +36,8 @@ import {
 } from "../browser/pageZoom";
 import { resetBrowserNodeZoom } from "../browser/browserNodeCommands";
 import { useChromeSyncStore } from "../stores/chromeSyncStore";
+import { BrowserNodeMenu, setBrowserNodeMuted } from "../browser/BrowserNodeMenu";
+import { keepableFavicon, useBrowserTabState, useBrowserTabStateStore } from "../stores/browserTabStateStore";
 
 declare global {
   namespace JSX {
@@ -73,12 +76,6 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     origX: number;
     origY: number;
   } | null>(null);
-  const resizeRef = useRef<{
-    startX: number;
-    startY: number;
-    origW: number;
-    origH: number;
-  } | null>(null);
 
   const cardId = `browser:${card.id}`;
   const isSelected = useSelectionStore((state) =>
@@ -98,7 +95,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
   const identities = useIdentityStore((s) => s.identities);
   const currentIdentity = identities[card.identityId];
   const syncingFromChrome = useChromeSyncStore((s) => s.syncing);
-  const hasImportedProfile = Object.values(identities).some((i) => i.provenance?.source === "chrome");
+  const tab = useBrowserTabState(card.id);
   const onGuestProfile = !connectedBinding && isGuestProfile(card.identityId);
   const identitySwatch = profileSwatch(card.identityId);
   const identityChipBorder = connectedBinding || onGuestProfile
@@ -203,7 +200,38 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       browserConsoleError(card.id, `${e.message}${where}`);
     }) as EventListener;
     wv.addEventListener("console-message", onConsole);
+    // What its tab shows, as in a browser: the page's icon, a spinner while
+    // it loads, a speaker while it plays sound.
+    const tabState = useBrowserTabStateStore.getState();
+    const onFavicon = ((e: Event & { favicons: string[] }) => {
+      const icon = e.favicons.map(keepableFavicon).find((f): f is string => !!f);
+      const current = useBrowserCardStore.getState().cards[card.id]?.favicon;
+      if (icon && icon !== current) updateBrowserCardInScene(card.id, { favicon: icon });
+    }) as EventListener;
+    const onStartLoading = () => tabState.set(card.id, { loading: true });
+    const onStopLoading = () => tabState.set(card.id, { loading: false });
+    // Electron says when media starts or pauses; whether it's heard is asked.
+    const onMedia = () => {
+      window.setTimeout(() => {
+        try {
+          tabState.set(card.id, { audible: wv.isCurrentlyAudible(), muted: wv.isAudioMuted() });
+        } catch {
+          // Detached meanwhile.
+        }
+      }, 250);
+    };
+    wv.addEventListener("page-favicon-updated", onFavicon);
+    wv.addEventListener("did-start-loading", onStartLoading);
+    wv.addEventListener("did-stop-loading", onStopLoading);
+    wv.addEventListener("media-started-playing", onMedia);
+    wv.addEventListener("media-paused", onMedia);
     return () => {
+      wv.removeEventListener("page-favicon-updated", onFavicon);
+      wv.removeEventListener("did-start-loading", onStartLoading);
+      wv.removeEventListener("did-stop-loading", onStopLoading);
+      wv.removeEventListener("media-started-playing", onMedia);
+      wv.removeEventListener("media-paused", onMedia);
+      useBrowserTabStateStore.getState().forget(card.id);
       wv.removeEventListener("console-message", onConsole);
       wv.removeEventListener("page-title-updated", onTitle);
       wv.removeEventListener("did-navigate", onNavigate);
@@ -289,35 +317,6 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       window.addEventListener("mouseup", handleUp);
     },
     [card.id, card.x, card.y],
-  );
-
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const scale = useCanvasStore.getState().viewport.scale;
-      resizeRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        origW: card.w,
-        origH: card.h,
-      };
-      const handleMove = (ev: MouseEvent) => {
-        if (!resizeRef.current) return;
-        const nextW = Math.max(400, resizeRef.current.origW + (ev.clientX - resizeRef.current.startX) / scale);
-        const nextH = Math.max(200, resizeRef.current.origH + (ev.clientY - resizeRef.current.startY) / scale);
-        updateBrowserCardInScene(card.id, { w: nextW, h: nextH });
-      };
-      const handleUp = () => {
-        resizeRef.current = null;
-        window.removeEventListener("mousemove", handleMove);
-        window.removeEventListener("mouseup", handleUp);
-      };
-      window.addEventListener("mousemove", handleMove);
-      window.addEventListener("mouseup", handleUp);
-    },
-    [card.id, card.w, card.h],
   );
 
   const runConnectedAction = useCallback(async (
@@ -453,25 +452,59 @@ export function BrowserCard({ card, projectedLayout }: Props) {
             <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <button
-          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          onClick={() => connectedBinding ? void runConnectedAction("reload") : webviewRef.current?.reload()}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M1.5 6a4.5 4.5 0 1 1 1 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M1.5 10.5V6H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        {/* Stop while the page loads, as in a browser; reload otherwise. */}
+        {!connectedBinding && tab.loading ? (
+          <button
+            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title={t.browser_stop}
+            aria-label={t.browser_stop}
+            onClick={() => webviewRef.current?.stop()}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title={t.browser_reload}
+            aria-label={t.browser_reload}
+            onClick={() => connectedBinding ? void runConnectedAction("reload") : webviewRef.current?.reload()}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 6a4.5 4.5 0 1 1 1 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M1.5 10.5V6H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
 
-        <input
-          className="tc-meta tc-mono flex-1 min-w-0 px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-[var(--text-secondary)]"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleUrlSubmit();
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        />
+        {/* The address: the page's icon and whether the connection is
+            private, then the URL. */}
+        <label className="flex flex-1 min-w-0 items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] focus-within:border-[var(--text-secondary)]">
+          <SiteBadge url={card.url} favicon={card.favicon} loading={!connectedBinding && tab.loading} t={t} />
+          <input
+            className="tc-meta tc-mono flex-1 min-w-0 bg-transparent text-[var(--text-primary)] outline-none"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleUrlSubmit();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        </label>
+
+        {!connectedBinding && (tab.audible || tab.muted) && (
+          <button
+            type="button"
+            className="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute}
+            aria-label={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setBrowserNodeMuted(card.id, !tab.muted)}
+          >
+            <SpeakerIcon muted={tab.muted} />
+          </button>
+        )}
 
         {/* Only while zoom is off default — otherwise it is a permanent "100%"
             badge on every node, which is chrome charging rent. Clicking it is
@@ -492,24 +525,14 @@ export function BrowserCard({ card, projectedLayout }: Props) {
         {/* Sync from Chrome: Google signs in only in a real Chrome, so the
             way to a signed-in node is to sign in there and copy the logins
             over again (SHR-132). It syncs every imported profile at once. */}
-        {!connectedBinding && hasImportedProfile && (
-          <button
-            type="button"
-            className="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-60"
-            title={syncingFromChrome ? t.browser_chrome_sync_running : t.browser_chrome_sync}
-            aria-label={t.browser_chrome_sync}
-            disabled={syncingFromChrome}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => void useChromeSyncStore.getState().sync("manual")}
-          >
-            <svg
-              width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden
-              className={syncingFromChrome ? "animate-spin" : undefined}
-            >
+        {/* Sync from Chrome lives in the ⋯ menu now; while it runs, this
+            says so, since it takes a few seconds. */}
+        {!connectedBinding && syncingFromChrome && (
+          <span className="shrink-0 p-0.5 text-[var(--text-muted)]" title={t.browser_chrome_sync_running} aria-label={t.browser_chrome_sync_running}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden className="animate-spin">
               <path d="M10 6a4 4 0 0 1-6.8 2.85M2 6a4 4 0 0 1 6.8-2.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <path d="M8.9 1.4v1.9H7M3.1 10.6V8.7H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </button>
+          </span>
         )}
 
         <div className="relative" ref={identityMenuRef}>
@@ -612,8 +635,12 @@ export function BrowserCard({ card, projectedLayout }: Props) {
           )}
         </div>
 
+        <BrowserNodeMenu cardId={card.id} connected={!!connectedBinding} />
+
         <button
           className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          title={t.close}
+          aria-label={t.close}
           onClick={() => removeBrowserCardFromScene(card.id)}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -671,14 +698,52 @@ export function BrowserCard({ card, projectedLayout }: Props) {
         )}
       </div>
 
-      <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-        onMouseDown={projectedLayout ? undefined : handleResizeStart}
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-[var(--text-muted)]">
-          <path d="M9 1L1 9M9 5L5 9M9 8L8 9" stroke="currentColor" strokeWidth="1" />
-        </svg>
-      </div>
     </div>
+  );
+}
+
+type Dict = ReturnType<typeof useT>;
+
+/**
+ * Before the address: the page's icon (a spinner while it loads), and a
+ * plain "Not secure" for a page that isn't https, as Chrome says it.
+ */
+function SiteBadge({ url, favicon, loading, t }: { url: string; favicon?: string; loading: boolean; t: Dict }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [favicon]);
+  const insecure = /^http:\/\//i.test(url);
+  return (
+    <>
+      {loading ? (
+        <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--text-muted)] border-t-transparent" aria-hidden="true" />
+      ) : favicon && !broken ? (
+        <img src={favicon} alt="" className="h-3 w-3 shrink-0 object-contain" draggable={false} onError={() => setBroken(true)} />
+      ) : (
+        <GlobeGlyph />
+      )}
+      {insecure && (
+        <span className="shrink-0 text-[11px] text-[var(--red)]" title={t.browser_not_secure_hint}>
+          {t.browser_not_secure}
+        </span>
+      )}
+    </>
+  );
+}
+
+function GlobeGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" aria-hidden="true" className="shrink-0">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" />
+    </svg>
+  );
+}
+
+export function SpeakerIcon({ muted, size = 12 }: { muted: boolean; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 6v4h2.5l3.5 3V3L5 6z" fill="currentColor" stroke="none" />
+      {muted ? <path d="M11 6l3.5 4M14.5 6L11 10" /> : <path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" />}
+    </svg>
   );
 }

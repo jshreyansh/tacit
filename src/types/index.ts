@@ -1161,6 +1161,18 @@ export interface TacitAPI {
     /** Main says an automatic sync is due: the Mac woke, hours passed, or Chrome got a new login. */
     onSyncDue: (callback: (due: import("../../shared/browser-profile-sync").ChromeSyncDue) => void) => () => void;
   };
+  /**
+   * Files shown as tiles on the canvas and in the grid. Only files inside
+   * one of the workdesk's folders; main checks each path.
+   */
+  fileTiles: {
+    /** What the file is, its size, and for media the URL it streams from. */
+    inspect: (filePath: string) => Promise<import("../../shared/file-tiles").FileTileInfo>;
+    /** In the app the system picks for it. */
+    openInApp: (filePath: string) => Promise<void>;
+    /** Quick Look on a Mac; elsewhere, in its app. */
+    quickLook: (filePath: string) => Promise<void>;
+  };
   fs: {
     /** One folder's entries, folders first, or why it can't be read. */
     listDir: (
@@ -1453,6 +1465,8 @@ export interface TacitAPI {
       callback: (payload: { url: string; identityId?: string }) => void,
     ) => () => void;
     revealDownload: (token: string) => Promise<boolean>;
+    /** The page in the system's own browser (http and https only). */
+    openInDefaultBrowser: (url: string) => Promise<boolean>;
     observationSummary: () => Promise<BrowserObservationSummary>;
     clearObservations: (identityId?: string) => Promise<{ cleared: number }>;
     onPopupRequested: (

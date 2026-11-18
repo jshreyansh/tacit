@@ -38,6 +38,7 @@ import {
   useCanvasToolStore,
 } from "../src/stores/canvasToolStore.ts";
 import type { ProjectData } from "../src/types/index.ts";
+import { CORNER_ZONE, EDGE_ZONE } from "../src/canvas/resizeZones.ts";
 
 function withPlatform(
   platform: "darwin" | "win32" | "linux",
@@ -263,33 +264,16 @@ test("terminal cursor CSS opts out of canvas pan cursor inheritance", () => {
   );
 });
 
-test("terminal resizer hit areas stay outside tile content", () => {
+test("resize zones reach only a few pixels into a tile's content", () => {
+  // The zones straddle the border (Excalidraw-style), so the outer strip of
+  // a terminal or page resizes instead of selecting. Keep that strip thin.
+  assert.ok(EDGE_ZONE / 2 <= 6, "a side reaches at most 6px inside");
+  assert.ok(CORNER_ZONE / 2 <= 10, "a corner reaches at most 10px inside");
   const css = fs.readFileSync("src/index.css", "utf-8");
-
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.line\.top\s*\{[^}]*translate\(-50%, -100%\)/s,
-  );
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.line\.bottom\s*\{[^}]*translate\(-50%, 100%\)/s,
-  );
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.line\.left\s*\{[^}]*translate\(-100%, -50%\)/s,
-  );
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.line\.right\s*\{[^}]*translate\(100%, -50%\)/s,
-  );
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.handle\.bottom\s*\{[^}]*translate:\s*-50% 0;/s,
-  );
-  assert.match(
-    css,
-    /\.tc-xyflow \.react-flow__resize-control\.handle\.bottom\.right\s*\{[^}]*translate:\s*0 0;/s,
-  );
+  // Edges are invisible; corner squares are drawn only on hover.
+  assert.match(css, /\.tc-xyflow \.react-flow__resize-control\.tc-resize-edge\s*\{[^}]*background:\s*transparent/s);
+  assert.match(css, /\.tc-resize-corner::after\s*\{[^}]*opacity:\s*0/s);
+  assert.match(css, /\.react-flow__node:hover \.tc-resize-corner::after/);
 });
 
 test("select-all shortcut detection only matches the platform primary modifier", () => {

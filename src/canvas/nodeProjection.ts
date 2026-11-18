@@ -1,6 +1,7 @@
 import { pinKind } from "../../shared/pin";
 import type { Node } from "@xyflow/react";
 import type { ProjectData, Pin } from "../types";
+import type { FileTileData } from "../stores/fileTileStore";
 
 export interface TerminalNodeData {
   terminalId: string;
@@ -17,9 +18,29 @@ export interface PinNodeData {
   [key: string]: unknown;
 }
 
+export interface FileNodeData {
+  tileId: string;
+  path: string;
+  [key: string]: unknown;
+}
+
 export type TerminalFlowNode = Node<TerminalNodeData, "terminal">;
 export type PinFlowNode = Node<PinNodeData, "pin">;
-export type CanvasFlowNode = TerminalFlowNode | PinFlowNode;
+export type FileFlowNode = Node<FileNodeData, "file">;
+export type CanvasFlowNode = TerminalFlowNode | PinFlowNode | FileFlowNode;
+
+/** Files shown on the canvas (FileTileNode.tsx): plain DOM, like notes. */
+export function buildFileFlowNodes(tiles: readonly FileTileData[]): FileFlowNode[] {
+  return tiles.map((tile) => ({
+    id: tile.id,
+    type: "file",
+    position: { x: tile.x, y: tile.y },
+    data: { tileId: tile.id, path: tile.path },
+    style: { width: tile.w, height: tile.h },
+    draggable: true,
+    selectable: true,
+  }));
+}
 
 const DEFAULT_PIN_WIDTH = 280;
 const DEFAULT_PIN_HEIGHT = 220;

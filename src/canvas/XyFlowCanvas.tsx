@@ -60,7 +60,9 @@ import {
   updateTerminalRuntime,
 } from "../terminal/terminalRuntimeStore";
 import { fromFlowViewport, toFlowViewport } from "./viewportAdapter";
-import { buildCanvasFlowNodes, buildPinFlowNodes } from "./nodeProjection";
+import { buildCanvasFlowNodes, buildFileFlowNodes, buildPinFlowNodes } from "./nodeProjection";
+import { useFileTileStore } from "../stores/fileTileStore";
+import { showFilesOnCanvas } from "../files/fileTileActions";
 import { xyflowNodeTypes, type CanvasFlowNode } from "./xyflowNodes";
 import {
   getLeftPanelInset,
@@ -347,6 +349,7 @@ function XyFlowCanvasInner() {
     [pinsByProject, projects],
   );
   const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
+  const fileTiles = useFileTileStore((state) => state.tiles);
   const isDrawing = drawingEnabled && drawingTool !== "select";
   const isPanMode = canvasTool === "hand" || spaceHeld;
   const [isPanning, setIsPanning] = useState(false);
@@ -447,8 +450,8 @@ function XyFlowCanvasInner() {
   }, [contextMenu]);
 
   const projectedNodes = useMemo(
-    () => [...buildCanvasFlowNodes(projects), ...buildPinFlowNodes(allPins)],
-    [layoutKey, pinLayoutKey],
+    () => [...buildCanvasFlowNodes(projects), ...buildPinFlowNodes(allPins), ...buildFileFlowNodes(Object.values(fileTiles))],
+    [layoutKey, pinLayoutKey, fileTiles],
   );
   const [nodes, setNodes, onNodesChange] =
     useNodesState<CanvasFlowNode>(projectedNodes);
@@ -675,6 +678,13 @@ function XyFlowCanvasInner() {
 
   const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
     (_event, node) => {
+      if (node.type === "file") {
+        useFileTileStore.getState().update(node.data.tileId, {
+          x: Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0],
+          y: Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1],
+        });
+        return;
+      }
       if (node.type === "pin") {
         const { pinId, projectPath } = node.data;
         const snappedX = Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
@@ -749,13 +759,45 @@ function XyFlowCanvasInner() {
         return;
       }
 
+      // A file from one of this workdesk's folders shows as a tile; a
+      // folder is added to the workdesk.
+      const info = await window.tacit.fileTiles.inspect(dirPath).catch(() => null);
+      if (info?.ok) {
+        const paths = files.map((f) => window.tacit.fs.getFilePath(f)).filter((p): p is string => !!p);
+        await showFilesOnCanvas(paths, reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        return;
+      }
+
       await addProjectFromDirectoryPath(dirPath, t);
     },
-    [t],
+    [t, reactFlow],
   );
 
   const { state: dragOverState, handlers: dragOverHandlers } =
     useCanvasDragOver({ onDrop: handleDrop });
+
+  // A file dragged from the Files panel onto the canvas shows there as a
+  // tile, where it's let go. Over a terminal, the terminal takes it.
+  const isPanelFileDrag = (event: React.DragEvent) =>
+    Array.from(event.dataTransfer.types).includes("application/x-tacit-file") &&
+    !(event.target as Element).closest?.("[data-handoff-terminal-id]");
+  const handleContainerDragOver = (event: React.DragEvent) => {
+    if (isPanelFileDrag(event)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      return;
+    }
+    dragOverHandlers.onDragOver(event);
+  };
+  const handleContainerDrop = (event: React.DragEvent) => {
+    if (isPanelFileDrag(event)) {
+      event.preventDefault();
+      const paths = event.dataTransfer.getData("application/x-tacit-file").split("\n").filter(Boolean);
+      void showFilesOnCanvas(paths, reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+      return;
+    }
+    dragOverHandlers.onDrop(event);
+  };
 
   const handleAddProject = useCallback(async () => {
     await promptAndAddProjectToScene(t);
@@ -980,9 +1022,9 @@ function XyFlowCanvasInner() {
       data-activity-heatmap={activityHeatmapEnabled ? "true" : undefined}
       onMouseDownCapture={handleContainerMouseDown}
       onDragEnter={dragOverHandlers.onDragEnter}
-      onDragOver={dragOverHandlers.onDragOver}
+      onDragOver={handleContainerDragOver}
       onDragLeave={dragOverHandlers.onDragLeave}
-      onDrop={dragOverHandlers.onDrop}
+      onDrop={handleContainerDrop}
     >
       {canvasBackgroundImage && <WallpaperLayers id="canvas-wallpaper" image={canvasBackgroundImage} look={wallpaperLook} />}
       <TerminalRuntimeLayer

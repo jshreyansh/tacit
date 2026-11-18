@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { showFileOnCanvasFromAnywhere } from "../../files/fileTileActions";
 import { createPortal } from "react-dom";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import type {
@@ -415,9 +416,12 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
       onRename: handleRename,
     },
     composition: {
+      // Right-click, or the ⋯ on the row under the pointer, whose first
+      // item for a file is Show on canvas.
       contextMenu: {
         enabled: true,
-        triggerMode: "right-click",
+        triggerMode: "both",
+        buttonVisibility: "when-needed",
       },
     },
     dragAndDrop: {
@@ -711,6 +715,19 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
       };
 
       const items: MenuItem[] = [
+        // A file: shown on the canvas as a tile, beside the work.
+        ...(!isDir && !isRoot
+          ? ([
+              {
+                label: t.file_tile_show_on_canvas,
+                onClick: () => {
+                  context.close();
+                  showFileOnCanvasFromAnywhere(`${wtp}/${itemRelPath}`);
+                },
+              },
+              { type: "separator" },
+            ] as MenuItem[])
+          : []),
         { label: t.ctx_new_file, onClick: () => startCreate("file") },
         { label: t.ctx_new_folder, onClick: () => startCreate("folder") },
       ];

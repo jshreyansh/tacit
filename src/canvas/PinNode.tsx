@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TrackAsTask } from "../tasks/TrackAsTask";
-import { NodeResizer, type NodeProps } from "@xyflow/react";
+import { type NodeProps } from "@xyflow/react";
 import { usePinStore } from "../stores/pinStore";
 import { useSelectionStore } from "../stores/selectionStore";
 import { activatePinInScene } from "../actions/sceneSelectionActions";
 import { updatePinInScene } from "../actions/scenePinActions";
 import type { PinFlowNode } from "./nodeProjection";
+import { TileResizer } from "./TileResizer";
 import type { Pin } from "../types";
 import { useT } from "../i18n/useT";
 import { pinKind } from "../../shared/pin";
@@ -27,7 +28,6 @@ const MIN_HEIGHT = 160;
 const SELECTED_OUTLINE = { outline: "2px solid var(--accent)", outlineOffset: -2 } as const;
 
 export function PinNode({ data }: NodeProps<PinFlowNode>) {
-  const [hovered, setHovered] = useState(false);
   const pin = usePinStore((state) =>
     state.pinsByProject[data.projectPath]?.find((p) => p.id === data.pinId),
   );
@@ -36,9 +36,12 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
   );
 
   const handleResizeEnd = useCallback(
-    (_event: unknown, params: { width: number; height: number }) => {
+    (_event: unknown, params: { x: number; y: number; width: number; height: number }) => {
       if (!pin) return;
+      // From the top or left edge the position moves too.
       updatePinInScene(pin.repo, pin.id, {
+        x: Math.round(params.x),
+        y: Math.round(params.y),
         w: Math.round(params.width),
         h: Math.round(params.height),
       });
@@ -51,6 +54,8 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
   const needs = task && pin.status === "needs_you";
 
   return (
+    <>
+    <TileResizer minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} onResizeEnd={handleResizeEnd} />
     <div
       data-record-node={`note:${pin.id}`}
       // A wire being dragged can end here (src/canvas/ConnectionLayer.tsx).
@@ -82,25 +87,17 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
         if (!isSelected) activatePinInScene(pin.id);
       }}
       onMouseEnter={() => {
-        setHovered(true);
         // Same reason as BrowserCard: a note wired to an agent should light
         // that wire from the note's end too.
         window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: { kind: "note", id: pin.id } }));
       }}
       onMouseLeave={() => {
-        setHovered(false);
         window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: null }));
       }}
     >
-      <NodeResizer
-        isVisible={hovered}
-        minWidth={MIN_WIDTH}
-        minHeight={MIN_HEIGHT}
-        handleStyle={{ width: 8, height: 8, background: "var(--surface)", borderColor: "var(--border-hover)" }}
-        onResizeEnd={handleResizeEnd}
-      />
       {task ? <TaskBody pin={pin} /> : <NoteBody pin={pin} />}
     </div>
+    </>
   );
 }
 
