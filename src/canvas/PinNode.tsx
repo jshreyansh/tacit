@@ -7,6 +7,8 @@ import { activatePinInScene } from "../actions/sceneSelectionActions";
 import { updatePinInScene } from "../actions/scenePinActions";
 import type { PinFlowNode } from "./nodeProjection";
 import { TileResizer } from "./TileResizer";
+import { TileFarLabel, TileMoveSurface, useZoomedOut } from "./TileFarChrome";
+import { flyToBounds } from "../utils/panToTerminal";
 import type { Pin } from "../types";
 import { useT } from "../i18n/useT";
 import { pinKind } from "../../shared/pin";
@@ -27,7 +29,9 @@ const MIN_HEIGHT = 160;
 /** As a selected browser shows. */
 const SELECTED_OUTLINE = { outline: "2px solid var(--accent)", outlineOffset: -2 } as const;
 
-export function PinNode({ data }: NodeProps<PinFlowNode>) {
+export function PinNode({ data, positionAbsoluteX, positionAbsoluteY, width, height }: NodeProps<PinFlowNode>) {
+  const t = useT();
+  const far = useZoomedOut();
   const pin = usePinStore((state) =>
     state.pinsByProject[data.projectPath]?.find((p) => p.id === data.pinId),
   );
@@ -56,6 +60,16 @@ export function PinNode({ data }: NodeProps<PinFlowNode>) {
   return (
     <>
     <TileResizer minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} onResizeEnd={handleResizeEnd} />
+    {far && (
+      <>
+        <TileFarLabel
+          width={width ?? MIN_WIDTH}
+          title={pin.title || t["pin.untitled"]}
+          onOpen={() => flyToBounds(positionAbsoluteX, positionAbsoluteY, width ?? MIN_WIDTH, height ?? MIN_HEIGHT)}
+        />
+        <TileMoveSurface onOpen={() => flyToBounds(positionAbsoluteX, positionAbsoluteY, width ?? MIN_WIDTH, height ?? MIN_HEIGHT)} />
+      </>
+    )}
     <div
       data-record-node={`note:${pin.id}`}
       // A wire being dragged can end here (src/canvas/ConnectionLayer.tsx).

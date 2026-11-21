@@ -15,6 +15,8 @@ import { type TerminalFlowNode, type CanvasFlowNode } from "./nodeProjection";
 import { PinNode } from "./PinNode";
 import { FileTileNode } from "./FileTileNode";
 import { TileResizer } from "./TileResizer";
+import { TileFarLabel, TileMoveSurface, useZoomedOut } from "./TileFarChrome";
+import { agentIcon } from "../toolbar/agentIcons";
 import { rectIntersectsCanvasViewport } from "./viewportBounds";
 import { resolveCollisions } from "./collisionResolver";
 
@@ -25,6 +27,7 @@ function snapTo(value: number, grid: number): number {
 }
 
 function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
+  const far = useZoomedOut();
   const viewport = useCanvasStore((state) => state.viewport);
   const rightPanelCollapsed = useCanvasStore(
     (state) => state.rightPanelCollapsed,
@@ -241,6 +244,17 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
         width={terminal.width}
         height={terminal.height}
       />
+      {far && (
+        <>
+          <TileFarLabel
+            width={terminal.width}
+            icon={agentIcon(terminal.type) ? <img src={agentIcon(terminal.type)} alt="" className="h-4 w-4 shrink-0 object-contain" draggable={false} /> : undefined}
+            title={terminal.customTitle || terminal.title || terminal.type}
+            onOpen={() => panToTerminal(data.terminalId)}
+          />
+          <TileMoveSurface onOpen={() => panToTerminal(data.terminalId)} />
+        </>
+      )}
     </div>
   );
 }

@@ -10,8 +10,11 @@ import {
   type OnMove,
   type NodeMouseHandler,
   type OnNodeDrag,
+  type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
+import { ALIGN_SNAP, alignRect, dropPosition, lockAxis, type AlignGuide } from "./tileMove";
+import { AlignmentGuides } from "./TileFarChrome";
 import {
   addProjectFromDirectoryPath,
   clearSceneFocusAndSelection,
@@ -462,6 +465,68 @@ function XyFlowCanvasInner() {
     setNodes(projectedNodes);
   }, [projectedNodes, setNodes]);
 
+  // Moving a tile (tileMove.ts): it snaps to its neighbours' edges and
+  // centres with a guide (⌘ held: no snapping), and Shift keeps it on one
+  // axis. Applied to React Flow's position changes as the drag goes.
+  const [guides, setGuides] = useState<AlignGuide[]>([]);
+  const modifiersRef = useRef({ shift: false, meta: false });
+  const dragStartRef = useRef(new Map<string, { x: number; y: number }>());
+  const snappedRef = useRef(new Map<string, { x: boolean; y: boolean }>());
+  useEffect(() => {
+    const track = (e: KeyboardEvent) => {
+      modifiersRef.current = { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey };
+    };
+    const reset = () => {
+      modifiersRef.current = { shift: false, meta: false };
+    };
+    window.addEventListener("keydown", track, true);
+    window.addEventListener("keyup", track, true);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", track, true);
+      window.removeEventListener("keyup", track, true);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<CanvasFlowNode>[]) => {
+      let nextGuides: AlignGuide[] | null = null;
+      const adjusted = changes.map((change) => {
+        if (change.type !== "position" || !change.dragging || !change.position) return change;
+        const node = reactFlow.getNode(change.id);
+        if (!node) return change;
+        const { shift, meta } = modifiersRef.current;
+        let { x, y } = change.position;
+        let axes = { x: true, y: true };
+        const start = dragStartRef.current.get(change.id);
+        if (shift && start) {
+          const locked = lockAxis(start, { x, y });
+          x = locked.x;
+          y = locked.y;
+          axes = { x: locked.free === "x", y: locked.free === "y" };
+        }
+        if (meta) {
+          snappedRef.current.delete(change.id);
+          nextGuides = [];
+          return { ...change, position: { x, y } };
+        }
+        const size = (n: { measured?: { width?: number; height?: number }; width?: number; height?: number }) => ({ w: n.measured?.width ?? n.width ?? 0, h: n.measured?.height ?? n.height ?? 0 });
+        const others = reactFlow
+          .getNodes()
+          .filter((n) => n.id !== change.id && !n.hidden)
+          .map((n) => ({ x: n.position.x, y: n.position.y, ...size(n) }))
+          .filter((r) => r.w > 0 && r.h > 0);
+        const aligned = alignRect({ x, y, ...size(node) }, others, ALIGN_SNAP / reactFlow.getViewport().zoom, axes);
+        snappedRef.current.set(change.id, { x: aligned.snappedX, y: aligned.snappedY });
+        nextGuides = aligned.guides;
+        return { ...change, position: { x: aligned.x, y: aligned.y } };
+      });
+      if (nextGuides) setGuides(nextGuides);
+      onNodesChange(adjusted);
+    },
+    [onNodesChange, reactFlow],
+  );
+
   useEffect(
     () => () => {
       useCanvasStore.getState().registerViewportAdapter(null);
@@ -674,33 +739,32 @@ function XyFlowCanvasInner() {
     [spaceHeld],
   );
 
-  const handleNodeDragStart = useCallback<OnNodeDrag<CanvasFlowNode>>(() => {
-    // No-op in flat canvas — no bringToFront needed
+  const handleNodeDragStart = useCallback<OnNodeDrag<CanvasFlowNode>>((_event, node) => {
+    dragStartRef.current.set(node.id, { ...node.position });
+    snappedRef.current.delete(node.id);
   }, []);
 
   const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
     (_event, node) => {
+      // On the grid, except along an axis it snapped to a neighbour.
+      const dropped = dropPosition(node.position, SNAP_GRID[0], snappedRef.current.get(node.id) ?? null);
+      dragStartRef.current.delete(node.id);
+      snappedRef.current.delete(node.id);
+      setGuides([]);
       if (node.type === "file") {
-        useFileTileStore.getState().update(node.data.tileId, {
-          x: Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0],
-          y: Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1],
-        });
+        useFileTileStore.getState().update(node.data.tileId, dropped);
         return;
       }
       if (node.type === "pin") {
         const { pinId, projectPath } = node.data;
-        const snappedX = Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
-        const snappedY = Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
-        updatePinInScene(projectPath, pinId, { x: snappedX, y: snappedY });
+        updatePinInScene(projectPath, pinId, dropped);
         return;
       }
 
       // Write terminal position back to store
       const { projectId, worktreeId, terminalId } = node.data;
-      const snappedX =
-        Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
-      const snappedY =
-        Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
+      const snappedX = dropped.x;
+      const snappedY = dropped.y;
       useProjectStore
         .getState()
         .updateTerminalPosition(
@@ -1043,7 +1107,7 @@ function XyFlowCanvasInner() {
         edges={EMPTY_EDGES}
         nodeTypes={xyflowNodeTypes}
         onInit={handleInit}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onPaneClick={handlePaneClick}
@@ -1076,6 +1140,7 @@ function XyFlowCanvasInner() {
         proOptions={{ hideAttribution: true }}
       >
         {(!canvasBackgroundImage || wallpaperLook.showGrid) && <Background gap={20} size={2} color="var(--border)" />}
+        <AlignmentGuides guides={guides} />
       </ReactFlow>
 
       {contextMenu && (

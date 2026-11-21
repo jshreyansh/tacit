@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type NodeProps } from "@xyflow/react";
 import { TileResizer } from "./TileResizer";
+import { TileFarLabel, TileMoveSurface, useZoomedOut } from "./TileFarChrome";
 import { useT } from "../i18n/useT";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useFileTileStore } from "../stores/fileTileStore";
@@ -30,6 +31,7 @@ import type { FileFlowNode } from "./nodeProjection";
  */
 export function FileTileNode({ data }: NodeProps<FileFlowNode>) {
   const t = useT();
+  const far = useZoomedOut();
   const tile = useFileTileStore((s) => s.tiles[data.tileId]);
   const { info } = useFileInfo(data.path);
   const [text, setText] = useState<TextFileState | null>(null);
@@ -65,6 +67,12 @@ export function FileTileNode({ data }: NodeProps<FileFlowNode>) {
   return (
     <>
     <TileResizer minWidth={FILE_TILE_MIN.w} minHeight={FILE_TILE_MIN.h} onResizeEnd={handleResizeEnd} />
+    {far && (
+      <>
+        <TileFarLabel width={tile.w} icon={<FileKindIcon kind={kind} />} title={fileName(data.path)} onOpen={() => flyToBounds(tile.x, tile.y, tile.w, tile.h)} />
+        <TileMoveSurface onOpen={() => flyToBounds(tile.x, tile.y, tile.w, tile.h)} />
+      </>
+    )}
     <div
       className="flex h-full w-full flex-col overflow-hidden rounded-lg border bg-[var(--surface)]"
       style={{ borderColor: "var(--border)", boxShadow: "var(--shadow-elev-1)" }}

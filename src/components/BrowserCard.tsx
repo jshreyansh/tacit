@@ -13,6 +13,9 @@ import {
 } from "../stores/browserCardStore";
 import { useCardLayoutStore } from "../stores/cardLayoutStore";
 import { useCanvasStore } from "../stores/canvasStore";
+import { TileFarLabelAt, TileMoveSurface } from "../canvas/TileFarChrome";
+import { MOVE_ANYWHERE_BELOW } from "../canvas/tileMove";
+import { flyToBounds } from "../utils/panToTerminal";
 import { useSelectionStore } from "../stores/selectionStore";
 import { useIdentityStore, partitionForIdentity } from "../stores/identityStore";
 import { isAgentAllowed } from "../types/workspace";
@@ -66,6 +69,7 @@ interface Props {
 }
 
 export function BrowserCard({ card, projectedLayout }: Props) {
+  const zoomedOutScale = useCanvasStore((s) => (s.viewport.scale < MOVE_ANYWHERE_BELOW ? s.viewport.scale : 1));
   const connectedBinding = card.backend?.kind === "connected-tab" ? card.backend : null;
   const { register, unregister } = useCardLayoutStore();
   const [urlInput, setUrlInput] = useState(card.url);
@@ -382,7 +386,40 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     });
   };
 
+  // Zoomed out, the whole card moves it and its name shows above it, as
+  // the other tiles do (src/canvas/tileMove.ts). Outside the card, which
+  // clips what overflows it.
+  const farChrome =
+    !projectedLayout && zoomedOutScale < MOVE_ANYWHERE_BELOW ? (
+      <div
+        className="pointer-events-none absolute"
+        data-scene-box-select-block
+        style={{ left: card.x, top: card.y, width: card.w, height: card.h }}
+      >
+        <div className="pointer-events-auto">
+          <TileFarLabelAt
+            zoom={zoomedOutScale}
+            width={card.w}
+            title={card.title || card.url}
+            onPointerDown={(e) => {
+              activateCardInScene(cardId);
+              handleDragStart(e);
+            }}
+            onOpen={() => flyToBounds(card.x, card.y, card.w, card.h)}
+          />
+          <TileMoveSurface
+            onPointerDown={(e) => {
+              activateCardInScene(cardId);
+              handleDragStart(e);
+            }}
+            onOpen={() => flyToBounds(card.x, card.y, card.w, card.h)}
+          />
+        </div>
+      </div>
+    ) : null;
+
   return (
+    <>
     <div
       data-scene-box-select-block
       data-connect-kind="browser"
@@ -699,6 +736,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       </div>
 
     </div>
+    {farChrome}
+    </>
   );
 }
 

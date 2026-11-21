@@ -521,6 +521,21 @@ a.tc-kbd:active {
   padding: 0;
 }
 
+/* Moving tiles (src/canvas/tileMove.ts): zoomed out, the whole tile and its
+   label grab; a tile being dragged lifts. */
+.tc-tile-move { cursor: grab; }
+.tc-xyflow .react-flow__node.dragging,
+.tc-xyflow .react-flow__node.dragging .tc-tile-move,
+.tc-tile-move:active { cursor: grabbing; }
+.tc-xyflow .react-flow__node.dragging { filter: drop-shadow(0 14px 28px rgb(0 0 0 / 0.38)); }
+.tc-tile-far-label {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border), var(--shadow-elev-1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  corner-shape: squircle;
+}
+
 /* Resize zones (src/canvas/resizeZones.ts): every side along its whole
    length and a square at each corner, straddling the border, always there.
    Only the corner squares are drawn, while the tile is hovered. */
