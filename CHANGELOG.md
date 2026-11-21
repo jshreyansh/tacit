@@ -4,6 +4,22 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.9] - 2026-11-21
+
+### Changed
+- **Memory every agent reads**: about you, this workdesk (with the manager's handover), each folder and worktree. Every agent starts with it, whichever CLI, and saves to it as it works. Notes about you, or written after reading the web, wait for your yes.
+- **The Memory panel**: notes waiting for you, the handover, this workdesk, about you, and each folder with its count. Outdated notes can be restored; deleting for good asks first.
+- **What an agent started with**: a tile's "N notes" chip lists it, and marks notes removed or outdated since. A save in the chat is a card with Edit and Undo.
+- **Terminal or Chat on every agent** that has both (Claude, Codex, OpenCode): on its tile, its Grid tab, a right-click, or the manager's ⋯ menu. It stays when you switch Canvas and Grid; mid-turn it waits for the turn to end.
+- **The manager panel can show the manager's live terminal**, and its tile says where it is, with Show here.
+- **Settings › Agents › New agents start as** Terminal or Chat.
+- **The manager's header** keeps full screen; Terminal or Chat and where the chat lives are in its ⋯ menu.
+- **Activity is a row in the navigator** again, with the recording control and a red dot while a task records.
+
+### Fixed
+- An agent started again (a restart, a reload) no longer fails with "Append system prompt file not found".
+- A Codex step that calls several tools shows each one with its own result.
+
 ## [0.44.8] - 2026-11-18
 
 ### Changed
