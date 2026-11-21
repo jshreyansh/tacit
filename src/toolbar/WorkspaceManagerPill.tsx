@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Segmented } from "../components/ui/parts";
+import { useFileTileStore } from "../stores/fileTileStore";
+import { useBrowserCardStore } from "../stores/browserCardStore";
+import { SidebarGlyph } from "./ChatList";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
 import { AssignMenu } from "./AssignMenu";
-import { ChatList, SidebarGlyph } from "./ChatList";
+
 import { TerminalConversation } from "./TerminalConversation";
 import { SessionReader } from "./SessionReader";
 import { findTerminal } from "../actions/terminalLookup";
@@ -21,7 +24,7 @@ import { getLivePtyId } from "../actions/terminalLookup";
 import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
-import { useLiveTree, useNeedsYouCount } from "./LiveSessions";
+import { useLiveTree } from "./LiveSessions";
 import { TasksView } from "../tasks/TasksView";
 import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
 import { TaskBar } from "../tasks/TaskParts";
@@ -49,25 +52,27 @@ import {
   ensureManagerChat,
   hasChatMode,
   interruptManagerChat,
-  cancelManagerMove,
-  moveManagerNow,
   moveManagerToTerminal,
-  requestManagerMove,
   sendToManagerChat,
   answerChatQuestion,
   configureChat,
+  runPendingMove,
 } from "../actions/managerChatMode";
+import { pickAgentMode, PendingSwitchLine } from "../components/AgentModeSwitch";
+import { borrowTerminalView, fitTerminalRuntime, useTerminalViewHolder } from "../terminal/terminalRuntimeStore";
+import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { useSessionStore } from "../stores/sessionStore";
 import { ManagerMark } from "./ManagerMark";
 import { TITLE_STRIP_CSS, titleStripHeight } from "./titleStripHeight";
 import { CHROME_GAP, CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
-import { CHAT_LIST_WIDTH, chatListFits, useChatDockStore } from "../stores/chatDockStore";
+import { useLeftChromeInset } from "../stores/chromeLayout";
+import { CHAT_LIST_MIN_WINDOW, chatDockLeft, fittedChatWidth, useChatDockStore } from "../stores/chatDockStore";
 import { usePanelPresence } from "../utils/usePanelPresence";
-import { PANEL_REVEAL_TRANSITION, PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS, panelContentStyle } from "../utils/panelAnimation";
+import { PANEL_REVEAL_TRANSITION, PANEL_SHIFT_TRANSITION, PANEL_TRANSITION_DURATION_MS, PANEL_TRANSITION_EASING_CSS, panelContentStyle } from "../utils/panelAnimation";
+import { MOTION, prefersReducedMotion } from "../utils/motion";
 import { clampFloatRect, defaultFloatRect, FLOAT_MIN } from "../stores/chatDockStore";
-import { ChatPlacementMenu } from "./chat/ChatPlacementMenu";
+import { ChatFullScreenToggle, ChatPlacementMenu } from "./chat/ChatPlacementMenu";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useWindowSize } from "../utils/useWindowSize";
 import { useShortcutStore, formatShortcut } from "../stores/shortcutStore";
@@ -75,7 +80,7 @@ import { useT } from "../i18n/useT";
 import { agentIcon } from "./agentIcons";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import type { TerminalType } from "../types";
-import { openPastSession } from "../actions/openSession";
+import { openListedLiveChat, openPastSession } from "../actions/openSession";
 
 /** Time for today's rows, date for older ones — a history list reads as "when". */
 function formatWhen(iso: string): string {
@@ -121,16 +126,6 @@ const AGENT_HUE: Record<string, string> = {
  * Phase 1: no inline typing here, clicking the label flies to the assigned
  * terminal's real card instead — see the design doc for why.
  */
-
-/** A tab's name, with an amber dot when something there waits on you. */
-function TabLabel({ text, waiting }: { text: string; waiting: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      {text}
-      {waiting && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--amber)]" />}
-    </span>
-  );
-}
 
 export function WorkspaceManagerPill() {
   const t = useT();
@@ -528,7 +523,8 @@ export function WorkspaceManagerPill() {
         }
         rect = clampFloatRect({ ...rect, x: ev.clientX - offsetX, y: ev.clientY - offsetY }, view);
         store.setFloatRect(rect);
-        setNearDock(ev.clientX < railEdge + 40);
+        // The dock is after the navigator when that's docked.
+        setNearDock(ev.clientX < chatDockLeft(railEdge, store, CHROME_GAP) + 40);
       };
       const up = (ev: PointerEvent) => {
         target.removeEventListener("pointermove", move);
@@ -537,7 +533,7 @@ export function WorkspaceManagerPill() {
         setDragging(false);
         setNearDock(false);
         const store = useChatDockStore.getState();
-        if (moved && floating && ev.clientX < railEdge + 40) store.setPlacement("dock");
+        if (moved && floating && ev.clientX < chatDockLeft(railEdge, store, CHROME_GAP) + 40) store.setPlacement("dock");
         else if (moved) store.commitFloatRect();
       };
       target.addEventListener("pointermove", move);
@@ -635,7 +631,10 @@ export function WorkspaceManagerPill() {
   }, [transcript.messages]);
 
   const faceOpen = view !== "chat";
-  const needsYou = useNeedsYouCount();
+  const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
+  const pageOpen = useCanvasPageStore((s) => s.page !== null);
+  const fileOpen = useCanvasStore((s) => s.fileEditorPath !== null);
+  const leftInset = useLeftChromeInset();
 
   // The pin view beside the chat belongs to the Pins face: leaving it, or
   // closing the chat, closes the project's pins too.
@@ -649,7 +648,6 @@ export function WorkspaceManagerPill() {
     if (pinsProject && !(dockOpen && view === "pins") && !tasksPage && !tasksTab) usePinStore.getState().closeDrawer();
   }, [pinsProject, dockOpen, view, tasksPage, tasksTab]);
 
-  const tasksWaiting = useTasksNeedingYou().length;
   // The manager's own task, kept with the project, sits above the message box.
   const pinsByProject = usePinStore((s) => s.pinsByProject);
   const activeTask = useMemo(
@@ -661,33 +659,12 @@ export function WorkspaceManagerPill() {
   // applies (the manager already moved) is dropped.
   const pendingMove = usePendingManagerMove(managerTerminal?.id ?? null);
   useEffect(() => {
-    if (!managerTerminal || !pendingMove) return;
-    if ((pendingMove === "terminal") !== chatMode) cancelManagerMove(managerTerminal.id);
-    else if (!running) requestManagerMove(managerTerminal.id, pendingMove, false);
+    if (managerTerminal && pendingMove) runPendingMove(managerTerminal.id, running, chatMode);
   }, [pendingMove, running, chatMode, managerTerminal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pendingMoveLine = managerTerminal && pendingMove && (
-    <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
-      <span className="tc-live-pip inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
-      <span className="min-w-0 truncate text-[var(--text-secondary)]">
-        {pendingMove === "terminal" ? t.chat_move_pending_terminal : t.chat_move_pending_chat}
-      </span>
-      <button
-        type="button"
-        className="tc-rail-btn ml-auto h-6 shrink-0 border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-        onClick={() => moveManagerNow(managerTerminal.id)}
-        title={t.chat_move_now_hint}
-      >
-        {t.chat_move_now}
-      </button>
-      <button
-        type="button"
-        className="tc-rail-btn h-6 shrink-0 px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-        onClick={() => cancelManagerMove(managerTerminal.id)}
-      >
-        {t.cancel}
-      </button>
-    </div>
-  );
+  // The manager in its terminal, with a chat mode: the panel shows the
+  // terminal itself (the real one, typed into here), not a reading of it.
+  const showsTerminal = !!managerTerminal && !chatMode && hasChatMode(managerTerminal.type);
+
   const agentLabel = managerTerminal ? agentName(managerTerminal.type) : null;
 
   // The setup card asks who runs a new workdesk; the Assign control waits
@@ -708,32 +685,72 @@ export function WorkspaceManagerPill() {
     if (!showAssign) setAssignOpen(false);
   }, [showAssign]);
 
-  // The list of chats beside the open one: unfolded, and room for it.
-  const listOpen = useChatDockStore((s) => s.listOpen);
-  const listFits = chatListFits(placement, viewSize.width);
-  const listShown = dockOpen && listOpen && listFits;
+  // The navigator is its own panel; docked, the chat starts after it.
+  const listShown = useChatDockStore((s) => s.listShown);
+  const listWidth = useChatDockStore((s) => s.listWidth);
+  // An edge being dragged (the navigator's or the chat's): follow the pointer, no easing.
+  const edgeDragging = useChatDockStore((s) => s.resizing);
+  // Moving between docked, popped out and full screen, the box changes shape
+  // while its contents re-lay out: they fade back in so the text never jumps.
+  const innerRef = useRef<HTMLDivElement>(null);
+  const lastPlacement = useRef(placement);
   useEffect(() => {
-    useChatDockStore.getState().setListShown(listShown);
-  }, [listShown]);
-  // Where it can't fit, the list is a face of its own, reached from the tabs.
+    if (lastPlacement.current === placement) return;
+    lastPlacement.current = placement;
+    innerRef.current?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: prefersReducedMotion() ? MOTION.reduced.ms : MOTION.move.ms, easing: MOTION.enter.ease });
+  }, [placement]);
+  // On a small window it narrows toward its minimum, after the navigator has folded.
+  const shownWidth = fittedChatWidth(dockWidth, viewSize.width - chatDockLeft(railEdge, { listShown, listWidth }, CHROME_GAP) - CHROME_INSET);
   useEffect(() => {
-    if (listFits && (view === "list" || view === "pins" || view === "sessions")) setView("chat");
-  }, [listFits, view, setView]);
+    useChatDockStore.getState().setShownWidth(shownWidth);
+  }, [shownWidth]);
+  // Something new on the workdesk (an agent, terminal, browser or file tile
+  // added from a shortcut or the palette) while full screen: dock, so it shows.
+  const nodeCount = useProjectStore((s) => s.projects.reduce((n, p) => n + p.worktrees.reduce((m, w) => m + w.terminals.length, 0), 0));
+  const cardCount = useBrowserCardStore((s) => Object.keys(s.cards).length);
+  const tileCount = useFileTileStore((s) => Object.keys(s.tiles).length);
+  const lastCount = useRef(nodeCount + cardCount + tileCount);
+  useEffect(() => {
+    const total = nodeCount + cardCount + tileCount;
+    const grew = total > lastCount.current;
+    lastCount.current = total;
+    if (grew && placement === "full" && dockOpen) useChatDockStore.getState().setPlacement("dock");
+  }, [nodeCount, cardCount, tileCount, placement, dockOpen]);
+  // Full screen is the chat alone: opening anything else (a page, a file, a
+  // tab in the grid) brings the docked layout back.
+  const gridOpenNode = useWorkdeskViewStore((s) => (s.mode === "grid" ? s.openNode : null));
+  const lastGridNode = useRef(gridOpenNode);
+  useEffect(() => {
+    const changed = lastGridNode.current !== gridOpenNode;
+    lastGridNode.current = gridOpenNode;
+    if (placement === "full" && dockOpen && (pageOpen || fileOpen || (changed && gridOpenNode))) useChatDockStore.getState().setPlacement("dock");
+  }, [placement, dockOpen, pageOpen, fileOpen, gridOpenNode]);
+  // Tasks and other chats open on the canvas or in the grid, not in the
+  // manager's place: on a window wide enough for the navigator, those faces
+  // go back to the conversation.
+  const wideWindow = viewSize.width >= CHAT_LIST_MIN_WINDOW;
+  useEffect(() => {
+    if (wideWindow && (view === "pins" || view === "sessions")) setView("chat");
+  }, [wideWindow, view, setView]);
   const readerTerminalId = useChatDockStore((s) => s.readerTerminalId);
   const { attention } = useLiveTree();
   const needsYouItem = attention.find((item) => item.terminalId !== managerTerminal?.id) ?? null;
-  const listWidth = listShown ? CHAT_LIST_WIDTH : 0;
+
 
   const iconButton =
     "tc-rail-btn inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]";
 
   // ── Resting: the pill at the bottom, the record button right of it ─────
-  const restingPill = !dockOpen && (
+  // The pill sits on a bare canvas only: not in the grid, and not while a
+  // page or a file is open beside the panels (the Manager row and the rail
+  // say when it needs you there).
+  const restingPill = !dockOpen && !gridMode && !pageOpen && !fileOpen && (
       <div
         // The pill and its record button share one row, centred together, so
         // what is being recorded sits beside who you are talking to.
-        className="tc-enter-fade-up pointer-events-none fixed left-1/2 z-[95] flex -translate-x-1/2 items-end gap-2"
-        style={{ bottom: bottomOffset }}
+        className="tc-enter-fade-up pointer-events-none fixed z-[95] flex -translate-x-1/2 items-end gap-2"
+        // Centred on the canvas you can see, right of the docked panels.
+        style={{ bottom: bottomOffset, left: `calc(${leftInset}px + (100vw - ${leftInset}px) / 2)` }}
       >
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           {/* One line above the pill: what the manager is doing, or the last
@@ -899,6 +916,7 @@ export function WorkspaceManagerPill() {
   const ease = PANEL_TRANSITION_EASING_CSS;
   const shown = dockRevealed;
   let frameStyle: React.CSSProperties;
+  // (innerRef and edgeDragging are set up with the other hooks above.)
   let innerClass = "absolute inset-0 flex flex-col";
   let innerStyle: React.CSSProperties = panelContentStyle(shown);
   if (placement === "dock") {
@@ -907,15 +925,18 @@ export function WorkspaceManagerPill() {
     frameStyle = {
       top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
       bottom: CHROME_INSET,
-      left: railEdge,
-      width: shown ? dockWidth + listWidth : 0,
+      left: chatDockLeft(railEdge, { listShown, listWidth }, CHROME_GAP),
+      width: shown ? shownWidth : 0,
       opacity: shown ? 1 : 0,
       pointerEvents: shown ? undefined : "none",
-      transition: dragging ? undefined : PANEL_REVEAL_TRANSITION,
+      // Its left edge moves with the navigator as that opens or folds, on the
+      // same curve and the same frame, so the two read as one motion; while
+      // an edge is dragged it follows the pointer 1:1.
+      transition: dragging || edgeDragging ? undefined : `${PANEL_REVEAL_TRANSITION}, ${PANEL_SHIFT_TRANSITION}`,
       borderRadius: 20,
     };
     innerClass = "absolute inset-y-0 left-0 flex flex-col";
-    innerStyle = { width: dockWidth + listWidth, ...panelContentStyle(shown) };
+    innerStyle = { width: shownWidth, ...panelContentStyle(shown) };
   } else if (placement === "float") {
     // Rises into place from its corner.
     frameStyle = {
@@ -927,27 +948,28 @@ export function WorkspaceManagerPill() {
       transform: shown ? "none" : "translateY(12px) scale(0.97)",
       transformOrigin: "bottom right",
       pointerEvents: shown ? undefined : "none",
-      transition: dragging ? undefined : `opacity 180ms ease, transform ${PANEL_TRANSITION_DURATION_MS}ms ${ease}`,
+      transition: dragging ? undefined : `opacity 200ms ${ease}, transform ${PANEL_TRANSITION_DURATION_MS}ms ${ease}`,
       borderRadius: 18,
       boxShadow: "0 24px 60px -12px rgba(0,0,0,0.55)",
     };
     innerStyle = {};
   } else if (placement === "full") {
-    // Everything right of the bar, the conversation in one readable column.
+    // The whole window (the rail steps aside), the conversation in one
+    // readable column. Sized by left and width, as docked is, so going
+    // between the two grows or shrinks the same box instead of swapping it.
     frameStyle = {
       top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
       bottom: CHROME_INSET,
-      left: railEdge,
-      right: CHROME_INSET,
+      left: CHROME_INSET,
+      width: `calc(100vw - ${CHROME_INSET * 2}px)`,
       opacity: shown ? 1 : 0,
-      transform: shown ? "none" : "scale(0.985)",
       pointerEvents: shown ? undefined : "none",
-      transition: `opacity 200ms ease, transform ${PANEL_TRANSITION_DURATION_MS}ms ${ease}`,
+      transition: `${PANEL_REVEAL_TRANSITION}, ${PANEL_SHIFT_TRANSITION}`,
       borderRadius: 20,
     };
-    innerClass = `absolute inset-y-0 inset-x-0 mx-auto flex w-full flex-col ${listShown ? "max-w-[1120px]" : "max-w-[880px]"}`;
+    innerClass = "absolute inset-y-0 inset-x-0 mx-auto flex w-full max-w-[880px] flex-col";
   } else {
-    frameStyle = { opacity: shown ? 1 : 0, transition: "opacity 180ms ease" };
+    frameStyle = { opacity: shown ? 1 : 0, transition: `opacity 200ms ${ease}` };
     innerStyle = {};
   }
 
@@ -960,12 +982,12 @@ export function WorkspaceManagerPill() {
       <div
         aria-hidden="true"
         className="pointer-events-none fixed z-[69] rounded-[20px] border-2 border-dashed"
-        style={{ top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`, bottom: CHROME_INSET, left: railEdge, width: dockWidth, borderColor: "color-mix(in srgb, var(--cyan) 60%, transparent)", background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
+        style={{ top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`, bottom: CHROME_INSET, left: chatDockLeft(railEdge, { listShown, listWidth }, CHROME_GAP), width: dockWidth, borderColor: "color-mix(in srgb, var(--cyan) 60%, transparent)", background: "color-mix(in srgb, var(--cyan) 7%, transparent)" }}
       />
     )}
     {dockMounted && (
     <aside
-      className={`tc-float fixed overflow-hidden ${placement === "float" ? "z-[70]" : placement === "full" ? "z-[39]" : "z-[44]"}`}
+      className={`tc-float tc-manager-panel fixed overflow-hidden ${placement === "float" ? "z-[70]" : placement === "full" ? "z-[39]" : "z-[44]"}`}
       aria-label={t.project_chat_title}
       aria-hidden={!dockOpen}
       style={
@@ -982,7 +1004,7 @@ export function WorkspaceManagerPill() {
         }
       }}
     >
-      <div className={innerClass} style={innerStyle}>
+      <div ref={innerRef} className={innerClass} style={innerStyle}>
       {/* The lit edge, in the colour of whoever holds the seat. */}
       <span
         aria-hidden="true"
@@ -990,20 +1012,14 @@ export function WorkspaceManagerPill() {
         style={{ background: `linear-gradient(90deg, transparent, ${speakingHue ?? "var(--accent)"}, transparent)`, opacity: 0.7 }}
       />
 
-      {/* The list of chats on the left, the open one on the right. */}
       <div className="flex min-h-0 flex-1">
-      {listShown && (
-        <div className="shrink-0 border-r border-[var(--border)]" style={{ width: CHAT_LIST_WIDTH }}>
-          <ChatList />
-        </div>
-      )}
       <div className="relative flex min-w-0 flex-1 flex-col">
 
       {/* Header: the mark, who runs this workdesk, and the controls. A chat
           opened from the list draws its own. */}
       {view !== "sessions" && (
       <div
-        className="flex h-[52px] shrink-0 items-center gap-2 pl-3 pr-2"
+        className="flex h-[60px] shrink-0 items-center gap-2.5 pl-3.5 pr-2"
         style={{ cursor: placement === "float" ? (dragging ? "grabbing" : "grab") : undefined }}
         // Drag to move a floating chat, or to pop the docked one out;
         // double-click to swap between the two.
@@ -1013,18 +1029,19 @@ export function WorkspaceManagerPill() {
           if (placement === "dock" || placement === "float") useChatDockStore.getState().setPlacement(placement === "dock" ? "float" : "dock");
         }}
       >
-        {!listShown && listFits && (
+        {/* Full screen has no rail: the way back to the list (and the docked layout) is here. */}
+        {placement === "full" && (
           <button
             type="button"
             className={iconButton}
-            onClick={() => useChatDockStore.getState().setListOpen(true)}
-            title={t.chat_list_unfold}
-            aria-label={t.chat_list_unfold}
+            onClick={() => useChatDockStore.getState().showList()}
+            title={t.chat_full_show_list}
+            aria-label={t.chat_full_show_list}
           >
             <SidebarGlyph />
           </button>
         )}
-        <ManagerMark agent={speakingCli} size={28} working={managerWorking && isLive} />
+        <ManagerMark agent={speakingCli} size={34} working={managerWorking && isLive} />
         <button
           type="button"
           className="tc-rail-btn flex min-w-0 flex-col items-start px-1.5 py-1 text-left"
@@ -1032,7 +1049,7 @@ export function WorkspaceManagerPill() {
           title={t.project_chat_assign}
           aria-haspopup="true"
         >
-          <span className="text-[13px] font-semibold text-[var(--text-primary)]">{t.project_chat_title}</span>
+          <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{t.project_chat_title}</span>
           <span className="flex max-w-full items-center gap-1 truncate text-[11px] text-[var(--text-muted)]">
             <span className="truncate">{agentLabel ? `${agentLabel} · ${managerLabel}` : t.project_chat_empty_seat}</span>
             <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1041,8 +1058,22 @@ export function WorkspaceManagerPill() {
           </span>
         </button>
         <div className="flex-1" />
-        {/* Where the chat lives, and going to the manager's tile. */}
-        <ChatPlacementMenu buttonClass={iconButton} extras={managerTerminal ? [{ label: t.project_chat_go_to, onClick: flyToManager }] : []} />
+        {/* Full screen stays one click away; the rest is in ⋯: Terminal or
+            Chat, where the chat lives, and going to the manager's tile. */}
+        <ChatFullScreenToggle buttonClass={iconButton} />
+        <ChatPlacementMenu
+          buttonClass={iconButton}
+          mode={
+            managerTerminal && view === "chat" && !viewing && hasChatMode(managerTerminal.type)
+              ? {
+                  current: chatMode ? "chat" : "terminal",
+                  pending: pendingMove,
+                  onPick: (to) => void pickAgentMode(managerTerminal.id, to, chatMode, running, pendingMove),
+                }
+              : null
+          }
+          extras={managerTerminal ? [{ label: t.project_chat_go_to, onClick: flyToManager }] : []}
+        />
         <button
           type="button"
           className={iconButton}
@@ -1060,33 +1091,7 @@ export function WorkspaceManagerPill() {
 
       )}
 
-      {/* Where the list can't sit beside the chat (floating, or a narrow
-          window), Chat, Sessions and Tasks are tabs; Sessions is the list. */}
-      {!listFits && view !== "sessions" && (
-      <div className="tc-seg-quiet shrink-0 border-b border-[var(--border)] px-3 pb-2.5">
-        <Segmented
-          fill
-          label={t.project_chat_title}
-          value={view === "list" ? "list" : view === "pins" ? "pins" : "chat"}
-          onChange={(next) => setView(next === "chat" ? (managerTerminal ? "chat" : "roster") : next)}
-          options={[
-            { value: "chat", label: t.workdesk_view_chat },
-            {
-              value: "list",
-              label: <TabLabel text={t.chat_sessions} waiting={needsYou > 0 && view !== "list"} />,
-              title: needsYou > 0 ? t.chat_sessions_needs_you(needsYou) : undefined,
-            },
-            {
-              value: "pins",
-              label: <TabLabel text={t.tasks_title} waiting={tasksWaiting > 0 && view !== "pins"} />,
-              title: tasksWaiting > 0 ? t.tasks_needs_you(tasksWaiting) : undefined,
-            },
-          ]}
-        />
-      </div>
-      )}
-      {/* With the list beside it, the header gets the rule the tabs drew. */}
-      {listFits && view !== "sessions" && <div className="shrink-0 border-b border-[var(--border)]" />}
+      {view !== "sessions" && <div className="shrink-0 border-b border-[var(--border)]" />}
 
       {/* A face (choosing a manager, or past chats) gets a way back. */}
       {view === "roster" && managerTerminal && (
@@ -1150,26 +1155,12 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {view === "chat" && !chatMode && !viewing && managerTerminal && hasChatMode(managerTerminal.type) && (
-        <div className="mx-3 mt-2.5 flex items-center gap-2.5 rounded-xl border border-[var(--border)] px-3 py-2.5">
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] text-[var(--text-primary)]">{t.chat_mode_move_title}</span>
-            <span className="mt-0.5 block text-[12px] leading-relaxed text-[var(--text-muted)]">{t.chat_mode_move_body}</span>
-          </span>
-          <button
-            type="button"
-            className="shrink-0 rounded-[9px] px-3 py-1.5 text-[12px] font-medium"
-            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-            onClick={() => requestManagerMove(managerTerminal.id, "chat", running)}
-            disabled={pendingMove === "chat"}
-          >
-            {t.chat_mode_move}
-          </button>
-        </div>
+      {view === "chat" && !viewing && managerTerminal && pendingMove && (
+        <PendingSwitchLine terminalId={managerTerminal.id} className="mx-3 mt-2 shrink-0" />
       )}
-      {view === "chat" && !chatMode && !viewing && pendingMove === "chat" && <div className="mx-3 mt-1">{pendingMoveLine}</div>}
+      {view === "chat" && !viewing && showsTerminal && managerTerminal && <PanelTerminal terminalId={managerTerminal.id} />}
 
-      {view === "chat" && !chatMode && conversation && (
+      {view === "chat" && !chatMode && conversation && !(showsTerminal && !viewing) && (
         <div className="flex min-h-0 flex-1 flex-col">
           <ConversationBody
             conversation={conversation}
@@ -1190,12 +1181,7 @@ export function WorkspaceManagerPill() {
           {readerTerminalId ? <TerminalConversation terminalId={readerTerminalId} /> : <SessionReader />}
         </div>
       )}
-      {/* No room beside the chat: the list in its place. */}
-      {view === "list" && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <ChatList />
-        </div>
-      )}
+
 
       {/* A project's pins; one opens in the pin view beside the chat. */}
       {view === "pins" && <TasksView />}
@@ -1294,7 +1280,7 @@ export function WorkspaceManagerPill() {
         </div>
       )}
 
-      {view === "chat" && !viewing && managerTerminal && (
+      {view === "chat" && !viewing && managerTerminal && !showsTerminal && (
         <div className="shrink-0 px-3 pb-3">
           {/* Folded away, the list still says when a chat needs you. */}
           {!listShown && needsYouItem && (
@@ -1302,20 +1288,15 @@ export function WorkspaceManagerPill() {
               type="button"
               className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left hover:border-[var(--border-hover)]"
               style={{ fontSize: "var(--text-xs)" }}
-              onClick={() => {
-                const terminal = findTerminal(needsYouItem.terminalId)?.terminal;
-                if (terminal?.chatMode) {
-                  useSessionStore.getState().openLiveChat(needsYouItem.terminalId);
-                  useChatDockStore.getState().showReader(null);
-                } else useChatDockStore.getState().showReader(needsYouItem.terminalId);
-              }}
+              // Live things are tiles: it flies there (or opens its tab in the
+              // grid); the panel stays the manager's.
+              onClick={() => openListedLiveChat(needsYouItem.terminalId)}
             >
               <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--amber)]" />
               <span className="min-w-0 flex-1 truncate text-[var(--text-secondary)]">{t.chat_list_needs_you(needsYouItem.title)}</span>
               <span className="shrink-0 text-[var(--text-primary)]">{t.chat_list_open}</span>
             </button>
           )}
-          {running && chatMode && pendingMove === "terminal" && pendingMoveLine}
           {running && !chatMode && conversation && (
             <div className="flex items-center gap-2 px-1 py-1.5" style={{ fontSize: "var(--text-xs)" }}>
               <PeekLine conversation={conversation} bare />
@@ -1333,6 +1314,7 @@ export function WorkspaceManagerPill() {
             </div>
           )}
           <ComposerBox
+            agent={managerTerminal?.type}
             inputRef={inputRef}
             value={draft}
             onChange={setDraft}
@@ -1420,5 +1402,52 @@ export function WorkspaceManagerPill() {
     </aside>
     )}
     </>
+  );
+}
+
+
+/**
+ * The manager's live terminal in the panel: the same one its tile and Grid
+ * tab show, drawn here while the panel is open. One place draws it at a
+ * time; where it isn't, a line says where it is, with Show here.
+ */
+function PanelTerminal({ terminalId }: { terminalId: string }) {
+  const t = useT();
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const [borrowed, setBorrowed] = useState(true);
+  const [reborrow, setReborrow] = useState(0);
+  const holder = useTerminalViewHolder(terminalId);
+  const runtimeEpoch = useTerminalRuntimeStore((s) => s.terminals[terminalId]?.epoch ?? 0);
+  useLayoutEffect(() => {
+    if (!container) return;
+    const preferred = usePreferencesStore.getState().terminalFontSize;
+    const giveBack = borrowTerminalView(terminalId, container, Math.min(preferred, 12), "panel");
+    setBorrowed(giveBack !== null);
+    if (!giveBack) return;
+    const observer = new ResizeObserver(() => fitTerminalRuntime(terminalId));
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      giveBack();
+    };
+  }, [container, terminalId, runtimeEpoch, reborrow]);
+  return (
+    <div className="relative mx-2 mb-2 mt-2 min-h-0 flex-1 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]" style={{ cornerShape: "round" } as React.CSSProperties}>
+      <div ref={setContainer} className="absolute inset-0 m-1.5" />
+      {(!borrowed || holder !== "panel") && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-[var(--bg)] px-6 text-center">
+          <div className="text-[13px] text-[var(--text-primary)]">{borrowed ? t.term_shown_elsewhere : t.workdesk_terminal_canvas_only}</div>
+          {borrowed && (
+            <button
+              type="button"
+              className="tc-rail-btn h-7 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              onClick={() => setReborrow((n) => n + 1)}
+            >
+              {t.term_show_here}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

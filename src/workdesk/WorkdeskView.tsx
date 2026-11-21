@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
+import { FolderToolView, folderToolTitle } from "../components/FolderToolView";
+import { parseFolderToolId } from "../actions/folderTools";
 import { useProjectStore } from "../stores/projectStore";
 import { CanvasEmptyState } from "../components/CanvasEmptyState";
 import { FolderBar } from "./FolderBar";
@@ -315,6 +317,7 @@ export function WorkdeskView() {
   const [closing, setClosing] = useState<WorkdeskCard | null>(null);
   const sessionTabs = useWorkdeskViewStore((s) => s.sessionTabs);
   const fileTabs = useWorkdeskViewStore((s) => s.fileTabs);
+  const toolTabs = useWorkdeskViewStore((s) => s.toolTabs);
   const tasksTab = useWorkdeskViewStore((s) => s.tasksTab);
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
@@ -361,8 +364,9 @@ export function WorkdeskView() {
       ...(tasksTab ? [{ kind: "tasks", id: "all", title: t.nav_all_tasks } as TabCard] : []),
       ...sessionTabs.map((s): TabCard => ({ kind: "session", id: s.id, title: s.title ?? t.reader_loading, agent: s.agent })),
       ...fileTabs.map((p): TabCard => ({ kind: "file", id: p, title: p.split("/").pop() ?? p })),
+      ...toolTabs.map((id): TabCard => ({ kind: "tool", id, title: folderToolTitle(parseFolderToolId(id), t) })),
     ],
-    [sessionTabs, fileTabs, tasksTab, t],
+    [sessionTabs, fileTabs, toolTabs, tasksTab, t],
   );
   const openCard: TabCard | null = openNode
     ? ([...allCards, ...extraCards].find((c) => c.kind === openNode.kind && c.id === openNode.id) ?? null)
@@ -421,10 +425,11 @@ export function WorkdeskView() {
   };
   const closeTab = (card: TabCard) => {
     // A session or file tab just closes; reading or editing it is all it was.
-    if (card.kind === "session" || card.kind === "file" || card.kind === "tasks") {
+    if (card.kind === "session" || card.kind === "file" || card.kind === "tasks" || card.kind === "tool") {
       const next = nextAfter(card);
       if (card.kind === "session") useWorkdeskViewStore.getState().closeSession(card.id);
       else if (card.kind === "tasks") useWorkdeskViewStore.getState().closeTasks();
+      else if (card.kind === "tool") useWorkdeskViewStore.getState().closeTool(card.id);
       else useWorkdeskViewStore.getState().closeFile(card.id);
       setOpenNode(next);
       return;
@@ -456,7 +461,7 @@ export function WorkdeskView() {
 
   return (
     <section
-      className="tc-float tc-enter-fade fixed z-[30] flex flex-col overflow-hidden"
+      className="tc-float tc-view-in fixed z-[30] flex flex-col overflow-hidden"
       style={{
         left,
         right: CHROME_INSET,
@@ -527,7 +532,7 @@ export function WorkdeskView() {
                         <NoteIcon />
                       ) : card.kind === "task" || card.kind === "tasks" ? (
                         <TaskIcon />
-                      ) : card.kind === "file" ? (
+                      ) : card.kind === "file" || card.kind === "tool" ? (
                         <FileIcon />
                       ) : card.kind === "session" ? (
                         <HistoryIcon />

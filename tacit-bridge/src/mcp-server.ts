@@ -1,7 +1,28 @@
+import fs from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiRequest, getTerminalId } from "./client.ts";
-import { listAgentAdapters } from "../../shared/agent-adapters.ts";
+import { listAgentAdapters, MEMORY_BRIEF_ENV } from "../../shared/agent-adapters.ts";
+import { MEMORY_HOW_TO } from "../../shared/memory.ts";
+
+/**
+ * What the server tells the agent as it connects. For a CLI that took no
+ * memory brief at launch (Antigravity, or Codex with its own developer
+ * instructions), the brief comes this way; for the rest, just how to use
+ * memory, since the brief is already in their instructions.
+ */
+function serverInstructions(): string {
+  const file = process.env[MEMORY_BRIEF_ENV];
+  if (file) {
+    try {
+      const brief = fs.readFileSync(file, "utf-8").trim();
+      if (brief) return brief;
+    } catch {
+      // The file went with its terminal; the how-to still helps.
+    }
+  }
+  return `Tacit memory is shared by every agent on this workdesk, whichever CLI it runs.\n${MEMORY_HOW_TO}`;
+}
 
 /**
  * Every agent Tacit offers for new terminals, plus the two plain types.
@@ -60,7 +81,7 @@ async function driveBrowser(action: string, params: Record<string, unknown>) {
 }
 
 export function createTacitBridgeServer(): McpServer {
-  const server = new McpServer({ name: "tacit", version: "0.1.0" });
+  const server = new McpServer({ name: "tacit", version: "0.1.0" }, { instructions: serverInstructions() });
 
   server.registerTool(
     "browser_navigate",
@@ -473,30 +494,35 @@ export function createTacitBridgeServer(): McpServer {
     },
   );
 
+  const memoryScope = z
+    .enum(["you", "workdesk", "folder", "worktree"])
+    .describe(
+      "Who it's for. you: the person's preferences and corrections, in every workdesk (waits for their approval). workdesk: goals, decisions, who's on what. folder: facts and how-tos about this repository, for every worktree and agent. worktree: notes about this branch only.",
+    );
+
   server.registerTool(
     "remember",
     {
-      title: "Save a durable note for this project",
+      title: "Save to Tacit memory",
       description:
-        "Writes a durable note to this project's shared memory — readable by any other agent working on this project later, even without a live connection, and by future Claude sessions (it shows up in Tacit's own Memory tab). Use this for findings/decisions worth keeping, not transient status — use emit_event for that. Re-using the same `name` updates the note in place instead of creating a duplicate.",
+        "Saves a note to Tacit's memory, which every agent on this workdesk gets at start whichever CLI it runs (Claude, Codex, OpenCode…), so the next agent doesn't start cold. Save in the same turn you learn it, without being asked: when the person corrects you or says the repo is out of date, states a decision, rule or preference, or you find a gotcha. Save what someone would otherwise have to re-learn: decisions and why, the person's corrections and preferences, how to run or release things, gotchas. Not transient status, and not what the code or git history already says. The same `name` updates that note instead of adding another; pass `replaces` when this note makes another one wrong. Notes written after reading web content wait for the person's approval.",
       inputSchema: {
-        name: z
-          .string()
-          .describe(
-            "kebab-case slug, e.g. 'auth-flow-decision' — used as the filename, and to update this note later",
-          ),
-        description: z
-          .string()
-          .describe("One-line summary shown in the Memory tab graph"),
+        name: z.string().describe("kebab-case slug, e.g. 'release-steps'; the same name updates the note"),
+        description: z.string().describe("One line: what this note is"),
+        body: z.string().describe("The note (markdown). For a decision or preference, say why."),
+        scope: memoryScope.optional().describe("Defaults to folder"),
+        kind: z
+          .enum(["preference", "decision", "howto", "fact", "reference"])
+          .optional()
+          .describe("What it is; defaults to fact"),
         type: z
           .enum(["project", "feedback", "reference"])
-          .describe(
-            "project: a fact/decision about the work. feedback: a correction or preference learned. reference: a pointer to an external resource.",
-          ),
-        body: z.string().describe("The note content (markdown)"),
+          .optional()
+          .describe("Older name for kind: project = fact, feedback = preference"),
+        replaces: z.string().optional().describe("Name of a note in the same scope this one makes wrong; it's marked outdated"),
       },
     },
-    async ({ name, description, type, body }) => {
+    async ({ name, description, body, scope, kind, type, replaces }) => {
       const terminalId = getTerminalId();
       if (!terminalId) {
         return textResult("Not running inside a Tacit terminal.");
@@ -504,9 +530,48 @@ export function createTacitBridgeServer(): McpServer {
       const result = await apiRequest(
         "POST",
         `/terminal/${encodeURIComponent(terminalId)}/remember`,
-        { name, description, type, body },
+        { name, description, body, scope, kind, type, replaces },
       );
       return textResult(JSON.stringify(result, null, 2));
+    },
+  );
+
+  server.registerTool(
+    "forget",
+    {
+      title: "Mark a memory note outdated",
+      description:
+        "Marks a note in Tacit's memory outdated, when it's no longer true. It stops reaching agents but is kept, so what changed can still be traced. To correct a note rather than retire it, call remember with the same name.",
+      inputSchema: {
+        name: z.string().describe("The note's name"),
+        scope: memoryScope,
+      },
+    },
+    async ({ name, scope }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
+      return textResult(
+        JSON.stringify(await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/forget`, { name, scope }), null, 2),
+      );
+    },
+  );
+
+  server.registerTool(
+    "update_handover",
+    {
+      title: "Rewrite the workdesk handover (workdesk manager only)",
+      description:
+        "Rewrites the workdesk's handover: the short brief every agent here gets first, and what the next manager (on any CLI) picks up from. Rewrite it whole, don't append: the goal, what's decided, who's working on what, what's waiting on the person, what to do next. Fold in notes other agents saved to the workdesk, and mark wrong ones outdated with forget. Keep it under about 40 lines. Only the workdesk manager can call this.",
+      inputSchema: {
+        body: z.string().describe("The whole handover (markdown)"),
+      },
+    },
+    async ({ body }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
+      return textResult(
+        JSON.stringify(await apiRequest("POST", `/terminal/${encodeURIComponent(terminalId)}/handover`, { body }), null, 2),
+      );
     },
   );
 
@@ -557,9 +622,9 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "recall",
     {
-      title: "Search what has already been decided on this canvas",
+      title: "Search memory and what has already happened here",
       description:
-        "Searches the decision record and the workdesk journal together — what the user asked for, what got spawned and wired, what was tried and abandoned, and the notes past holders of the manager role wrote. Use it before starting something that might have been done already, and when the user refers to earlier work without saying which. Filters are exact and narrow the search rather than merely ranking it: pass `node` to see everything that ever happened to one terminal or browser, `kinds` to restrict to particular events, `since` to bound the time. Text that the app or the CLI injected is excluded unless asked for, so results are what a person actually said and did. Open to any terminal.",
+        "Searches Tacit's memory (the notes every agent shares: about the person, this workdesk, this folder and worktree, and what each CLI's own memory holds) together with the decision record — what the user asked for, what got spawned and wired, what was tried and abandoned, and the notes past holders of the manager role wrote. Use it before starting something that might have been done already, and when the user refers to earlier work without saying which. Filters are exact and narrow the search rather than merely ranking it: pass `node` to see everything that ever happened to one terminal or browser, `kinds` to restrict to particular events, `since` to bound the time. Text that the app or the CLI injected is excluded unless asked for, so results are what a person actually said and did. Open to any terminal.",
       inputSchema: {
         query: z
           .string()
@@ -598,28 +663,22 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "query_memory",
     {
-      title: "Search durable memory",
+      title: "List memory notes",
       description:
-        "Searches durable memory notes by keyword. Defaults to the workdesk-wide memory scope (the workdesk manager's own continuity journal, shared across every agent that ever holds the role) — pass scope='worktree' with a worktree path to search a specific project's per-worktree memory instead (the scope the plain `remember` tool writes to). Open to any terminal.",
+        "Lists the notes in Tacit's memory that you can see — about the person, this workdesk, this folder and this worktree — optionally narrowed to one scope and to notes containing every word of `query`. Use recall to search memory and the record together by relevance. Open to any terminal.",
       inputSchema: {
-        query: z.string().describe("Keyword to search for; empty string lists everything in scope"),
-        scope: z
-          .enum(["workspace", "worktree"])
-          .optional()
-          .describe("Defaults to 'workspace'"),
-        worktree: z
-          .string()
-          .optional()
-          .describe("Required when scope is 'worktree' — absolute worktree path"),
+        query: z.string().describe("Words every note must contain; empty lists everything"),
+        scope: z.enum(["you", "workdesk", "folder", "worktree", "workspace"]).optional().describe("One scope only ('workspace' is the older name for workdesk)"),
       },
     },
-    async ({ query, scope, worktree }) => {
+    async ({ query, scope }) => {
+      const terminalId = getTerminalId();
+      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
       const params = new URLSearchParams({ q: query });
-      if (scope) params.set("scope", scope);
-      if (worktree) params.set("worktree", worktree);
+      if (scope) params.set("scope", scope === "workspace" ? "workdesk" : scope);
       const result = await apiRequest(
         "GET",
-        `/workspace/memory-query?${params.toString()}`,
+        `/terminal/${encodeURIComponent(terminalId)}/memory?${params.toString()}`,
       );
       return textResult(JSON.stringify(result, null, 2));
     },
@@ -812,7 +871,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Journal an action (workdesk manager only)",
       description:
-        "Appends an entry to the workdesk manager's continuity journal — call this after spawning/wiring nodes or making a decision, so a freshly-assigned or reassigned agent can pick up real context via get_workspace_summary or query_memory instead of starting cold. Distinct from the `remember` tool: this is append-only (no name to dedupe against) and scoped to the whole workspace, not one project. Only the workdesk manager can call this.",
+        "Adds a line to the workdesk's recent activity (what was spawned, wired, tried), which the next manager sees. Decisions and goals belong in remember (scope workdesk) or the handover (update_handover), which every agent gets; this is only the running log. Only the workdesk manager can call this.",
       inputSchema: {
         event: z.string().describe("Short label, e.g. 'spawned browser for docs research'"),
         detail: z.string().optional().describe("Longer context, markdown"),

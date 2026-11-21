@@ -34,17 +34,48 @@ export async function searchFileContents(
 ): Promise<FileContentMatch[]> {
   if (!query || !worktreePath) return [];
 
-  // Try ripgrep first
-  try {
-    return await searchWithRipgrep(worktreePath, query, maxResults);
-  } catch {
-    // Fallback to grep
+  // ripgrep when it's installed, else git's own grep in a git folder (fast,
+  // and it skips what git ignores), else plain grep. Each says "no match"
+  // with exit code 1, which is an answer, not a reason to try the next.
+  for (const run of [searchWithRipgrep, searchWithGitGrep, searchWithGrep]) {
     try {
-      return await searchWithGrep(worktreePath, query, maxResults);
-    } catch {
-      return [];
+      return await run(worktreePath, query, maxResults);
+    } catch (err) {
+      if (noMatch(err)) return [];
     }
   }
+  return [];
+}
+
+function noMatch(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === 1;
+}
+
+async function searchWithGitGrep(
+  cwd: string,
+  query: string,
+  maxResults: number,
+): Promise<FileContentMatch[]> {
+  const args = [
+    "grep",
+    "--untracked", // new files too; still skips what .gitignore names
+    "-I", // no binary files
+    "-n",
+    "-i",
+    "-F",
+    "--max-count", String(maxResults),
+    "-e", query,
+    "--",
+    ".",
+    ...EXCLUDE_DIRS.map((d) => `:(exclude,glob)**/${d}/**`),
+  ];
+  const { stdout } = await execFileAsync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    maxBuffer: 5 * 1024 * 1024,
+    timeout: SEARCH_TIMEOUT,
+  });
+  return parseGrepOutput(stdout, cwd).slice(0, maxResults);
 }
 
 async function searchWithRipgrep(
@@ -58,6 +89,7 @@ async function searchWithRipgrep(
     "--max-count", String(maxResults),
     "--max-filesize", "1M",
     "-i", // case insensitive
+    "-F", // the text as typed, not a pattern
   ];
   for (const d of EXCLUDE_DIRS) args.push("--glob", `!${d}/`);
   args.push("--", query);
@@ -81,6 +113,8 @@ async function searchWithGrep(
   const args = [
     "-rn",
     "-i",
+    "-F",
+    "-I", // no binary files
     "-m", String(maxResults),
     ...excludeArgs,
     "--", query, ".",

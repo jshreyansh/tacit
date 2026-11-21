@@ -316,8 +316,9 @@ export type CaptureEvent =
        */
       kind: "journal_write";
       by: CaptureNodeRef;
-      tool: "log_activity" | "remember";
-      scope: "workspace" | "project";
+      tool: "log_activity" | "remember" | "forget" | "update_handover";
+      /** "workspace" and "project" are older names for workdesk and folder. */
+      scope: "workspace" | "project" | "you" | "workdesk" | "folder" | "worktree";
       /** The note's title: log_activity's `event`, remember's `name`. */
       title: string;
       /** The note's file name in its memory directory. */

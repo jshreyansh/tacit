@@ -2,8 +2,10 @@ import type { ApprovalDecision, ChatAttachResult, ChatAttachmentInfo } from "../
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
+import { usePreferencesStore } from "../stores/preferencesStore";
 import { resolveTerminalRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { findTerminal } from "./terminalLookup";
+import { folderIsThere, isMissingFolderError, noteMissingFolder } from "./missingFolders";
 
 /**
  * Moving the workdesk manager between its terminal tile and the docked chat
@@ -45,6 +47,10 @@ export function hasChatMode(type: string | null | undefined): type is "claude" |
 export async function startTerminalChat(terminalId: string): Promise<boolean> {
   const found = findTerminal(terminalId);
   if (!found || !hasChatMode(found.terminal.type)) return false;
+  if (!(await folderIsThere(found.worktree.path))) {
+    noteMissingFolder(found.worktree.path, terminalId);
+    return false;
+  }
   const result = await window.tacit.chat.start({
     terminalId,
     agent: found.terminal.type,
@@ -52,6 +58,10 @@ export async function startTerminalChat(terminalId: string): Promise<boolean> {
     sessionId: currentSessionId(found.terminal),
   });
   if (!result.ok) {
+    if (result.error && isMissingFolderError(result.error)) {
+      noteMissingFolder(found.worktree.path, terminalId);
+      return false;
+    }
     useNotificationStore.getState().notify("warn", result.error ?? "The chat couldn't start the agent.");
     return false;
   }
@@ -60,6 +70,36 @@ export async function startTerminalChat(terminalId: string): Promise<boolean> {
   const snapshot = await window.tacit.chat.snapshot(terminalId);
   useManagerChatStore.getState().hydrate(terminalId, snapshot.events);
   return true;
+}
+
+/**
+ * An agent you just started opens the way Settings says: in its terminal
+ * (the default) or as a chat. Called right after it's created, before its
+ * tile starts a terminal; one given a first prompt opens in its terminal,
+ * which is what types the prompt in.
+ */
+export function openNewAgentAsSet(terminalId: string): void {
+  if (usePreferencesStore.getState().newAgentMode !== "chat") return;
+  const found = findTerminal(terminalId);
+  if (!found || !hasChatMode(found.terminal.type) || found.terminal.initialPrompt || found.terminal.sessionId) return;
+  void moveManagerToChat(terminalId);
+}
+
+/**
+ * Carries out a switch that was waiting for the turn to end, once it has.
+ * Read and cleared in one go, so the places showing the agent (its tile,
+ * its tab, the manager panel) can all watch for the turn's end and still
+ * switch it once.
+ */
+export function runPendingMove(terminalId: string, busy: boolean, chatMode: boolean): void {
+  const to = useManagerChatStore.getState().pendingMoves[terminalId];
+  if (!to) return;
+  if ((to === "terminal") !== chatMode) {
+    // Already there.
+    useManagerChatStore.getState().setPendingMove(terminalId, null);
+    return;
+  }
+  if (!busy) requestManagerMove(terminalId, to, false);
 }
 
 /** Moves the manager out of its tile and into the chat. */
@@ -135,6 +175,11 @@ export function attachmentUrl(id: string): string {
 /** Opens an attached file in Quick Look; rejects when it's gone. */
 export function quickLookAttachment(id: string): Promise<void> {
   return window.tacit.chat.quickLook(id);
+}
+
+/** Part of Tacit's window (a tile, or an area), as an image for the message. */
+export function attachChatScreenshot(rect: { x: number; y: number; width: number; height: number }): Promise<ChatAttachResult> {
+  return window.tacit.chat.attachScreenshot(rect);
 }
 
 /** Files dropped or pasted on the message box; paths when they come from the Files panel. */

@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import * as xtermModule from "@xterm/xterm";
 import type { Terminal as XtermTerminal, ILink, ILinkProvider } from "@xterm/xterm";
@@ -45,6 +46,7 @@ import { useCodexQuotaStore } from "../stores/codexQuotaStore";
 import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import type { TerminalData, TerminalStatus, TerminalType } from "../types";
 import { getTerminalLaunchOptions, getTerminalPromptArgs, hasBypassArgs } from "./cliConfig";
+import { folderIsThere, isMissingFolderError, noteMissingFolder } from "../actions/missingFolders";
 import { launchApproval, type AgentApprovalChoice } from "./agentApprovals";
 import { requestAgentApproval } from "../stores/agentApprovalStore";
 import { buildFontFamily } from "./fontRegistry";
@@ -113,6 +115,8 @@ interface AttachOptions {
 
 interface TerminalViewBorrow {
   container: HTMLDivElement;
+  /** Who has it: "tab" (the Grid tab) or "panel" (the manager panel). */
+  holder: TerminalViewHolder;
   /** Where the view goes back to: the tile's container, the latest one to ask. */
   home: HTMLDivElement | null;
   homeOptions: AttachOptions;
@@ -1845,6 +1849,13 @@ async function spawnPty(
   runtime: ManagedTerminalRuntime,
   resumeSessionId?: string,
 ) {
+  // A folder that's gone gets one notice for all its agents, not an error each.
+  if (!(await folderIsThere(runtime.meta.worktreePath))) {
+    if (runtime.disposed) return;
+    holdForMissingFolder(runtime);
+    return;
+  }
+  if (runtime.disposed) return;
   const launch = getTerminalLaunchOptions(
     runtime.meta.terminal.type,
     resumeSessionId,
@@ -2017,6 +2028,10 @@ async function spawnPty(
       runtime.hookFallbackTimer = null;
     }
     const message = error instanceof Error ? error.message : String(error);
+    if (isMissingFolderError(message)) {
+      holdForMissingFolder(runtime);
+      return;
+    }
     const t = getT();
     notify(
       "error",
@@ -2031,6 +2046,12 @@ async function spawnPty(
       `\r\n\x1b[31m[Error] Failed to create terminal: ${message}\x1b[0m\r\n`,
     );
   }
+}
+
+function holdForMissingFolder(runtime: ManagedTerminalRuntime) {
+  setStatus(runtime, "error");
+  appendPreview(runtime, `\r\n\x1b[33m${getT().folder_missing_preview(runtime.meta.worktreePath)}\x1b[0m\r\n`);
+  noteMissingFolder(runtime.meta.worktreePath, runtime.meta.terminal.id);
 }
 
 let renderRecoveryInstalled = false;
@@ -2470,10 +2491,51 @@ export function detachTerminalContainer(
  * back to). Null for a terminal with no runtime, or one drawn by the agent
  * renderer, which has no xterm to move.
  */
+export type TerminalViewHolder = "tab" | "panel";
+
+const viewHolderListeners = new Set<() => void>();
+function viewHolderChanged(): void {
+  for (const listener of viewHolderListeners) listener();
+}
+
+/** Where a terminal's live view is shown away from its tile, or null when it's in its tile. */
+export function terminalViewHolder(terminalId: string): TerminalViewHolder | null {
+  return runtimeRegistry.get(terminalId)?.borrow?.holder ?? null;
+}
+
+/** The same, kept current: each place showing a terminal says so where it isn't drawn. */
+export function useTerminalViewHolder(terminalId: string | null): TerminalViewHolder | null {
+  return useSyncExternalStore(
+    (listener) => {
+      viewHolderListeners.add(listener);
+      return () => viewHolderListeners.delete(listener);
+    },
+    () => (terminalId ? terminalViewHolder(terminalId) : null),
+    () => null,
+  );
+}
+
+/** Brings a terminal's view back to its tile from wherever it's borrowed ("Show here" on the tile). */
+export function reclaimTerminalView(terminalId: string): void {
+  const runtime = runtimeRegistry.get(terminalId);
+  if (!runtime || runtime.disposed || !runtime.borrow) return;
+  const { home, homeOptions } = runtime.borrow;
+  runtime.borrow = null;
+  setViewFontSize(runtime, null);
+  if (home?.isConnected) {
+    attachTerminalContainer(terminalId, home, homeOptions);
+    fitTerminalRuntime(terminalId);
+  } else {
+    detachTerminalContainer(terminalId, { caller: "reclaimTerminalView", reason: "borrowed_view_returned" });
+  }
+  viewHolderChanged();
+}
+
 export function borrowTerminalView(
   terminalId: string,
   container: HTMLDivElement,
   fontSize?: number,
+  holder: TerminalViewHolder = "tab",
 ): (() => void) | null {
   const runtime = runtimeRegistry.get(terminalId);
   if (!runtime || runtime.disposed || runtime.usesAgentRenderer) {
@@ -2486,9 +2548,10 @@ export function borrowTerminalView(
   setViewFontSize(runtime, fontSize ?? null);
   runtime.borrow = null;
   attachTerminalContainer(terminalId, container, homeOptions);
-  const borrow: TerminalViewBorrow = { container, home, homeOptions };
+  const borrow: TerminalViewBorrow = { container, holder, home, homeOptions };
   runtime.borrow = borrow;
   fitTerminalRuntime(terminalId);
+  viewHolderChanged();
   return () => {
     // Rebuilt, or borrowed by another view meanwhile: theirs now.
     if (runtimeRegistry.get(terminalId) !== runtime || runtime.disposed || runtime.borrow !== borrow) {
@@ -2496,6 +2559,7 @@ export function borrowTerminalView(
     }
     runtime.borrow = null;
     setViewFontSize(runtime, null);
+    viewHolderChanged();
     if (borrow.home?.isConnected) {
       attachTerminalContainer(terminalId, borrow.home, borrow.homeOptions);
       fitTerminalRuntime(terminalId);

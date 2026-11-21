@@ -21,6 +21,8 @@ function ToastItem({
     message: string;
     action?: { label: string; run: () => void };
     label?: string;
+    actions?: Array<{ label: string; run: () => void }>;
+    sticky?: boolean;
   };
   dismiss: (id: string) => void;
 }) {
@@ -30,11 +32,12 @@ function ToastItem({
   const startRef = useRef(Date.now());
 
   const startTimer = useCallback(() => {
+    if (n.sticky) return;
     startRef.current = Date.now();
     timerRef.current = setTimeout(() => {
       dismiss(n.id);
     }, remainingRef.current);
-  }, [dismiss, n.id]);
+  }, [dismiss, n.id, n.sticky]);
 
   const pauseTimer = useCallback(() => {
     if (timerRef.current) {
@@ -91,6 +94,28 @@ function ToastItem({
             </>
           )}
         </span>
+        {n.actions && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {n.actions.map((a, i) => (
+              <button
+                key={a.label}
+                type="button"
+                className={`tc-sq-ctl h-7 px-2.5 text-[12px] font-medium ${
+                  i === 0
+                    ? "bg-[var(--text-primary)] text-[var(--surface)] hover:opacity-90"
+                    : "text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                }`}
+                style={i === 0 ? undefined : { boxShadow: "inset 0 0 0 1px var(--border-hover)" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  a.run();
+                }}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <button
         className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-0.5"

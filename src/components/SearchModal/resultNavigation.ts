@@ -1,3 +1,4 @@
+import { openFolderPlace } from "../../actions/folderTools";
 import type { SearchResult } from "../../stores/searchStore";
 import { useSearchStore } from "../../stores/searchStore";
 import { useCanvasStore } from "../../stores/canvasStore";
@@ -23,16 +24,13 @@ export function executeResult(result: SearchResult): void {
       break;
 
     case "git-commit":
-      useCanvasStore.getState().setRightPanelCollapsed(false);
-      useCanvasStore.getState().setRightPanelActiveTab("git");
-      window.dispatchEvent(
-        new CustomEvent("tacit:select-git-commit", { detail: data.hash }),
-      );
+      openFolderPlace("git");
+      // The history mounts first; then it can pick the commit.
+      setTimeout(() => window.dispatchEvent(new CustomEvent("tacit:select-git-commit", { detail: data.hash })), 120);
       break;
 
     case "git-branch":
-      useCanvasStore.getState().setRightPanelCollapsed(false);
-      useCanvasStore.getState().setRightPanelActiveTab("git");
+      openFolderPlace("git");
       break;
 
     case "session":
@@ -43,8 +41,7 @@ export function executeResult(result: SearchResult): void {
       break;
 
     case "memory":
-      useCanvasStore.getState().setRightPanelCollapsed(false);
-      useCanvasStore.getState().setRightPanelActiveTab("memory");
+      openFolderPlace("memory");
       break;
   }
 

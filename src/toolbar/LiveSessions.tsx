@@ -5,6 +5,8 @@ import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
 import { buildCanvasTerminalSections, buildProjectTree } from "../components/sessionPanelModel";
 import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { useMemoryPendingCount } from "../components/MemoryView";
+import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 
 /**
  * What is on this workdesk now: whoever needs you, then every project,
@@ -33,10 +35,12 @@ export function useNeedsYouCount(): number {
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const tasks = useTasksNeedingYou().length;
+  // Notes waiting for approval count too: nothing waits for you unseen.
+  const notes = useMemoryPendingCount(useCanvasRegistryStore((s) => s.activeCanvasId));
   const terminals = useMemo(() => {
     const telemetry = new Map<string, (typeof runtimeTerminals)[string]["telemetry"]>();
     for (const [id, runtime] of Object.entries(runtimeTerminals)) telemetry.set(id, runtime.telemetry);
     return buildCanvasTerminalSections(projects, telemetry, new Map()).attention.length;
   }, [projects, runtimeTerminals]);
-  return terminals + tasks;
+  return terminals + tasks + notes;
 }

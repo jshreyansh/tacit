@@ -92,6 +92,8 @@ import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
 import { getAgentShimDir, getTerminalExtraPathEntries } from "./agent-shims";
 import { prepareBridgeLaunch } from "./agent-launch";
+import { MemoryStore } from "./memory-store";
+import { registerMemoryIpc } from "./memory-ipc";
 import { detectAgents, locateCommand, runVersion } from "./agent-detect";
 import { writeShellIntegrationFiles } from "./shell-integration";
 import { applyLaunchPlan, findAgentAdapter } from "../shared/agent-adapters";
@@ -561,6 +563,7 @@ const chatEngine = new ChatEngine({
       serverPath: getTacitBridgeCliPath(),
       portFile: PORT_FILE,
       inheritedEnv: await getLoginShellEnv(),
+      memoryBrief: await memoryBriefText(terminalId, agent, cwd),
     });
     const spec = await buildLaunchSpec({
       cwd,
@@ -855,7 +858,33 @@ taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
 // them next to itself, where they aren't, unless told.
 process.env.HYDRA_BUILTIN_ROLES_DIR = path.join(getCliDir(), "roles", "builtin");
 
+/**
+ * Tacit's memory, shared by every agent whichever CLI it runs (shared/memory.ts).
+ * Kept with the rest of this instance's data, so the dev app never writes
+ * into the installed app's memory.
+ */
+const memoryStore = new MemoryStore(path.join(TACIT_DIR, "memory"));
+
+/**
+ * The memory brief an agent starts with, or null. Never holds up a launch
+ * for long, and never stops one: an agent without its brief still works.
+ */
+async function memoryBriefText(terminalId: string, harness: string | undefined, cwd: string | undefined): Promise<string | null> {
+  try {
+    const brief = await apiServer.memoryBriefFor(terminalId, harness ?? null, cwd ?? null);
+    if (brief) {
+      sendToWindow(mainWindow, "memory:launch-brief-changed", terminalId);
+      dbg(`memory-brief terminalId=${terminalId} harness=${harness} included=${brief.included.length} listed=${brief.listed.length} omitted=${brief.omitted} chars=${brief.text.length}`);
+    }
+    return brief?.text ?? null;
+  } catch (error) {
+    dbg(`memory-brief failed terminalId=${terminalId}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
 const apiServer = new ApiServer({
+  memoryStore,
   wireStatePath: path.join(TACIT_DIR, "wire-state.json"),
   getWindow: () => mainWindow,
   ptyManager,
@@ -1520,6 +1549,9 @@ function setupIpc() {
             portFile: PORT_FILE,
             inheritedEnv: await getLoginShellEnv(),
             command: options.shell,
+            memoryBrief: findAgentAdapter(options.terminalType)
+              ? await memoryBriefText(options.terminalId, options.terminalType, options.cwd)
+              : null,
           });
           if (plan) {
             const launch = applyLaunchPlan(options.args ?? [], plan);
@@ -1772,6 +1804,26 @@ function setupIpc() {
     });
     if (result.canceled) return [];
     return result.filePaths;
+  });
+
+  // Which of a workdesk's folders are gone (deleted, moved, or on a drive
+  // that isn't mounted). Says only whether each is a folder; never lists or
+  // reads anything inside it.
+  ipcMain.handle("project:missing-folders", async (event, paths: unknown) => {
+    if (!isMainWindowSender(event) || !Array.isArray(paths) || paths.length > 500) return [];
+    const missing: string[] = [];
+    for (const p of paths) {
+      if (typeof p !== "string" || !path.isAbsolute(p)) continue;
+      try {
+        if (!fs.statSync(p).isDirectory()) missing.push(p);
+      } catch (err) {
+        // Gone, or a file now stands where the folder was. Anything else
+        // (no permission, say) isn't "gone"; starting the agent will say why.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" || code === "ENOTDIR") missing.push(p);
+      }
+    }
+    return missing;
   });
 
   ipcMain.handle("project:select-directory", async () => {
@@ -2298,9 +2350,14 @@ function setupIpc() {
 
   ipcMain.handle(
     "search:file-contents",
-    async (_event, query: string, worktreePath?: string) => {
+    async (event, query: unknown, worktreePath?: unknown) => {
+      // Only the app's window, with some text and a folder that exists.
+      if (!isMainWindowSender(event)) return [];
+      if (typeof query !== "string" || !query.trim() || query.length > 200) return [];
+      if (typeof worktreePath !== "string" || !path.isAbsolute(worktreePath)) return [];
       try {
-        return await searchFileContents(worktreePath ?? "", query);
+        if (!fs.statSync(worktreePath).isDirectory()) return [];
+        return await searchFileContents(worktreePath, query);
       } catch {
         return [];
       }
@@ -2622,7 +2679,12 @@ function setupIpc() {
     if (!telemetryService.getTerminalSnapshot(terminalId)) {
       telemetryService.registerTerminal({ terminalId, worktreePath: cwd, provider: agent as ChatAgent });
     }
-    await chatEngine.start({ terminalId, agent: agent as ChatAgent, cwd, sessionId: (sessionId as string | null | undefined) ?? null });
+    // A session the terminal started but never wrote (nothing was said in it
+    // yet) can't be resumed: the agent answers "No conversation found". The
+    // chat starts a fresh one instead.
+    let resume = (sessionId as string | null | undefined) ?? null;
+    if (resume && (agent === "claude" || agent === "codex") && !findSessionFile(agent, resume, os.homedir())) resume = null;
+    await chatEngine.start({ terminalId, agent: agent as ChatAgent, cwd, sessionId: resume });
     return { ok: true };
   });
   // A message names its files by the ids they got when attached; an unknown
@@ -2665,6 +2727,24 @@ function setupIpc() {
   ipcMain.handle("chat:attach-image", (event, name: unknown, bytes: unknown) => {
     if (!isMainWindowSender(event)) return { attachments: [], errors: [] };
     return attachEach([bytes], (b) => chatAttachments.addImage(name, b));
+  });
+  // A screenshot for the message: part of Tacit's own window (a tile, or an
+  // area dragged out), never another app's. The rect is in the window's CSS
+  // pixels and is clamped to its content.
+  ipcMain.handle("chat:attach-screenshot", async (event, rect: unknown) => {
+    if (!isMainWindowSender(event) || !mainWindow) return { attachments: [], errors: [] };
+    const r = rect as { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null;
+    const nums = r ? [r.x, r.y, r.width, r.height] : [];
+    if (nums.length !== 4 || !nums.every((n) => typeof n === "number" && Number.isFinite(n))) return { attachments: [], errors: ["invalid area"] };
+    const [cw, ch] = mainWindow.getContentSize();
+    const x = Math.max(0, Math.min(Math.round(r!.x as number), cw));
+    const y = Math.max(0, Math.min(Math.round(r!.y as number), ch));
+    const width = Math.min(Math.round(r!.width as number), cw - x);
+    const height = Math.min(Math.round(r!.height as number), ch - y);
+    if (width < 4 || height < 4) return { attachments: [], errors: ["that area is too small to capture"] };
+    const image = await mainWindow.webContents.capturePage({ x, y, width, height });
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, ".");
+    return attachEach([new Uint8Array(image.toPNG())], (b) => chatAttachments.addImage(`Screenshot ${stamp}.png`, b));
   });
   // Opens an attached file in the Mac's Quick Look (PDFs, slides,
   // documents); elsewhere, in the app the system picks for it.
@@ -2922,81 +3002,18 @@ function setupIpc() {
     },
   );
 
-  ipcMain.handle("memory:scan", async (_event, worktreePath: string) => {
-    const { getMemoryDirForWorktree, scanMemoryDir } =
-      await import("./memory-service.js");
-    const memDir = getMemoryDirForWorktree(worktreePath);
-    return scanMemoryDir(memDir);
+  registerMemoryIpc({
+    ipcMain,
+    store: memoryStore,
+    isAppSender: isMainWindowSender,
+    notifyChanged: () => sendToWindow(mainWindow, "memory:store-changed", null),
   });
 
-  ipcMain.handle("memory:watch", async (_event, worktreePath: string) => {
-    const { getMemoryDirForWorktree, watchMemoryDir, scanMemoryDir } =
-      await import("./memory-service.js");
-    const { generateEnhancedIndex, MemoryIndexCache } =
-      await import("./memory-index-generator.js");
-    const memDir = getMemoryDirForWorktree(worktreePath);
-    const cache = new MemoryIndexCache(TACIT_DIR);
-
-    const initialGraph = scanMemoryDir(memDir);
-    cache.update(generateEnhancedIndex(initialGraph.nodes));
-
-    watchMemoryDir(memDir, () => {
-      try {
-        const graph = scanMemoryDir(memDir);
-        sendToWindow(mainWindow, "memory:changed", graph);
-        cache.update(generateEnhancedIndex(graph.nodes));
-      } catch {}
-    });
+  // What an agent was told at launch: its "Started with memory" chip.
+  ipcMain.handle("memory:launch-brief", (event, terminalId: unknown) => {
+    if (!isMainWindowSender(event) || typeof terminalId !== "string" || terminalId.length > 128) return null;
+    return apiServer.launchBrief(terminalId);
   });
-
-  ipcMain.handle("memory:unwatch", async (_event, worktreePath: string) => {
-    const { getMemoryDirForWorktree, unwatchMemoryDir } =
-      await import("./memory-service.js");
-    const memDir = getMemoryDirForWorktree(worktreePath);
-    unwatchMemoryDir(memDir);
-  });
-
-  // Parallel to the memory:scan/watch/unwatch trio above, but for the
-  // workspace-manager's own continuity journal (see
-  // docs/workspace_project_manager.md) — a canvas-wide scope, not tied to
-  // any one worktree. Kept as separate channels rather than overloading
-  // the existing ones so no existing call site needs to change.
-  ipcMain.handle("memory:scanWorkspace", async (_event, canvasId: string) => {
-    const { getMemoryDirForWorkspace, scanMemoryDir } =
-      await import("./memory-service.js");
-    const memDir = getMemoryDirForWorkspace(canvasId);
-    return scanMemoryDir(memDir);
-  });
-
-  ipcMain.handle("memory:watchWorkspace", async (_event, canvasId: string) => {
-    const { getMemoryDirForWorkspace, watchMemoryDir, scanMemoryDir } =
-      await import("./memory-service.js");
-    const { generateEnhancedIndex, MemoryIndexCache } =
-      await import("./memory-index-generator.js");
-    const memDir = getMemoryDirForWorkspace(canvasId);
-    const cache = new MemoryIndexCache(TACIT_DIR);
-
-    const initialGraph = scanMemoryDir(memDir);
-    cache.update(generateEnhancedIndex(initialGraph.nodes));
-
-    watchMemoryDir(memDir, () => {
-      try {
-        const graph = scanMemoryDir(memDir);
-        sendToWindow(mainWindow, "memory:changed", graph);
-        cache.update(generateEnhancedIndex(graph.nodes));
-      } catch {}
-    });
-  });
-
-  ipcMain.handle(
-    "memory:unwatchWorkspace",
-    async (_event, canvasId: string) => {
-      const { getMemoryDirForWorkspace, unwatchMemoryDir } =
-        await import("./memory-service.js");
-      const memDir = getMemoryDirForWorkspace(canvasId);
-      unwatchMemoryDir(memDir);
-    },
-  );
 
   /**
    * The decision record, for the Activity tab.

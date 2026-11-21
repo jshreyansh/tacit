@@ -1,4 +1,6 @@
 import test from "node:test";
+
+const CLAUDE_MEMORY_ALLOW = "--allowedTools=mcp__tacit__recall,mcp__tacit__remember,mcp__tacit__forget,mcp__tacit__update_handover,mcp__tacit__query_memory";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -57,7 +59,7 @@ test("claude writes one config file and names it with --mcp-config", () => {
   assert.ok(claude);
   const result = planBridgeLaunch(claude, bridge, context);
 
-  assert.deepEqual(result.args, ["--mcp-config", "/tmp/tacit-mcp-term-1.json"]);
+  assert.deepEqual(result.args, ["--mcp-config", "/tmp/tacit-mcp-term-1.json", CLAUDE_MEMORY_ALLOW]);
   assert.equal(result.placement, "before-double-dash");
   assert.deepEqual(result.env, {});
   assert.equal(result.files.length, 1);
@@ -150,7 +152,7 @@ test("prepareBridgeLaunch writes the plan's files and returns the plan", () => {
     writeFile: (file, contents) => written.set(file, contents),
   });
   assert.ok(result);
-  assert.deepEqual(result.args, ["--mcp-config", "/tmp/tacit-mcp-term-1.json"]);
+  assert.deepEqual(result.args, ["--mcp-config", "/tmp/tacit-mcp-term-1.json", CLAUDE_MEMORY_ALLOW]);
   assert.deepEqual([...written.keys()], ["/tmp/tacit-mcp-term-1.json"]);
   assert.equal(
     JSON.parse(written.get("/tmp/tacit-mcp-term-1.json")!).mcpServers.tacit.command,

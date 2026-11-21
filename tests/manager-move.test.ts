@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { useManagerChatStore } from "../src/stores/managerChatStore";
-import { cancelManagerMove, moveManagerNow, requestManagerMove } from "../src/actions/managerChatMode";
+import { cancelManagerMove, moveManagerNow, requestManagerMove, runPendingMove } from "../src/actions/managerChatMode";
 
 const pending = (id: string) => useManagerChatStore.getState().pendingMoves[id] ?? null;
 
@@ -24,6 +24,26 @@ test("Move now carries out the waiting move; Cancel drops it", () => {
   assert.equal(pending("t3"), null);
   moveManagerNow("t3");
   assert.equal(pending("t3"), null);
+});
+
+test("a waiting switch happens once when the turn ends, however many places watch for it", () => {
+  requestManagerMove("t5", "chat", true);
+  // Still mid-turn: every place (tile, tab, panel) leaves it waiting.
+  runPendingMove("t5", true, false);
+  runPendingMove("t5", true, false);
+  assert.equal(pending("t5"), "chat");
+  // The turn ended: the first place to see it switches, and the rest find nothing waiting.
+  runPendingMove("t5", false, false);
+  assert.equal(pending("t5"), null);
+  runPendingMove("t5", false, false);
+  assert.equal(pending("t5"), null);
+});
+
+test("a waiting switch to where the agent already is gets dropped", () => {
+  requestManagerMove("t6", "terminal", true);
+  // It's in its terminal already (chat mode off).
+  runPendingMove("t6", true, false);
+  assert.equal(pending("t6"), null);
 });
 
 test("a closed manager's waiting move goes with its chat", () => {

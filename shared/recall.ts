@@ -43,7 +43,8 @@ export interface RecallQuery {
   limit?: number;
 }
 
-export type RecallOrigin = "record" | "journal";
+/** "memory" is a note from Tacit's memory (shared/memory.ts), searched alongside. */
+export type RecallOrigin = "record" | "journal" | "memory";
 
 export interface RecallDoc {
   id: string;
@@ -157,10 +158,12 @@ export function recall(docs: RecallDoc[], query: RecallQuery, now = Date.now()):
     // precisely should still beat a vague recent one.
     const ageMs = Math.max(0, now - new Date(doc.at).getTime());
     const recency = Math.pow(0.5, ageMs / RECENCY_HALF_LIFE_MS);
+    // A memory note was written to be found again; the record wasn't.
+    const curated = doc.origin === "memory" ? 1.5 : 1;
     hits.push({
       doc,
-      score: score * (1 + 0.35 * recency),
-      why: [`matched ${matched.join(", ")}`],
+      score: score * (1 + 0.35 * recency) * curated,
+      why: [`matched ${matched.join(", ")}`, ...(doc.origin === "memory" ? ["memory note"] : [])],
     });
   }
 

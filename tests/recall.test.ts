@@ -137,3 +137,9 @@ test("a query matching nothing returns nothing rather than everything", () => {
   const hits = recall([doc({ text: "post it to instagram" })], { text: "kubernetes" }, NOW);
   assert.equal(hits.length, 0);
 });
+
+test("the digest's asks leave out greetings and nudges, and say a repeat once", async () => {
+  const { isSubstantiveAsk } = await import("../electron/recall-service.ts");
+  for (const noise of ["hey", "HEY", "EHY", "het", "stop it", "ok", "go ahead", "thanks!"]) assert.equal(isSubstantiveAsk(noise), false, noise);
+  for (const real of ["add a testimonials strip under the hero", "fix the login bug", "why is CI red?"]) assert.equal(isSubstantiveAsk(real), true, real);
+});

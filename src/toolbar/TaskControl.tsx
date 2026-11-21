@@ -1,3 +1,5 @@
+import { openFolderTool, workdeskActivityTool } from "../actions/folderTools";
+import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunChange, RunInfo } from "../../shared/capture";
 import { RUN_GOAL_MAX_LENGTH } from "../../shared/capture";
@@ -170,9 +172,8 @@ function TaskPanel({
   };
 
   const showInActivity = (taskId: string) => {
-    const canvas = useCanvasStore.getState();
-    canvas.setRightPanelCollapsed(false);
-    canvas.setRightPanelActiveTab("memory");
+    const workdeskId = useCanvasRegistryStore.getState().activeCanvasId;
+    if (workdeskId) openFolderTool(workdeskActivityTool(workdeskId));
     useActivityFocusStore.getState().focusTask(taskId);
     onDone();
   };

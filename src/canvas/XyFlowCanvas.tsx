@@ -78,6 +78,7 @@ import {
   type FocusableNode,
 } from "./focusableNodes";
 import { flyToBounds } from "../utils/panToTerminal";
+import { openNewAgentAsSet } from "../actions/managerChatMode";
 import { createSwipeDetector } from "./swipeDetector";
 import { resolveCollisions } from "./collisionResolver";
 import { WorktreeLabelLayer } from "./WorktreeLabelLayer";
@@ -406,12 +407,13 @@ function XyFlowCanvasInner() {
         projectId = fallbackProject.id;
         worktreeId = fallbackWorktree.id;
       }
-      createTerminalInScene({
+      const created = createTerminalInScene({
         projectId,
         worktreeId,
         type,
         position: { x: contextMenu.flowX, y: contextMenu.flowY },
       });
+      openNewAgentAsSet(created.id);
     },
     [contextMenu],
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useEditorItems } from "../../editors/useEditorItems";
 import { useWorktreeDiff } from "../../hooks/useWorktreeDiff";
@@ -10,6 +10,8 @@ import { toggleExpandedFiles } from "../diffCardExpansion";
 interface Props {
   worktreePath: string | null;
   isGitRepo: boolean;
+  /** A file (relative to the folder) to open, and bring into view, first. */
+  focusFile?: string;
 }
 
 function ChangeBar({
@@ -44,12 +46,20 @@ function ChangeBar({
   );
 }
 
-export function DiffContent({ worktreePath, isGitRepo }: Props) {
+export function DiffContent({ worktreePath, isGitRepo, focusFile }: Props) {
   const t = useT();
   // A folder without git has no diff to ask for; asking only fails, and the
   // failure used to read as "No changes".
   const { fileDiffs, loading, refreshing } = useWorktreeDiff(isGitRepo ? worktreePath : null);
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(() => new Set(focusFile ? [focusFile] : []));
+  // The file it was opened on scrolls into view once the diff has loaded.
+  const focusRef = useRef<HTMLDivElement | null>(null);
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusFile || scrolledTo.current === focusFile || !focusRef.current) return;
+    scrolledTo.current = focusFile;
+    focusRef.current.scrollIntoView({ block: "start" });
+  });
   const editorItems = useEditorItems();
   const [menu, setMenu] = useState<{
     x: number;
@@ -123,7 +133,7 @@ export function DiffContent({ worktreePath, isGitRepo }: Props) {
       </div>
       <div className="flex-1 overflow-auto min-h-0">
         {fileDiffs.map((fd) => (
-          <div key={fd.file.name}>
+          <div key={fd.file.name} ref={fd.file.name === focusFile ? focusRef : undefined}>
             <button
               className="tc-row-icon w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--surface-hover)] text-left"
               onClick={() =>

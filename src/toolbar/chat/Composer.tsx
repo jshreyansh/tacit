@@ -1,17 +1,21 @@
 import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useT } from "../../i18n/useT";
 import type { ChatAttachResult, ChatAttachmentInfo } from "../../../shared/chat-events";
-import { attachChatFiles, pickChatAttachments } from "../../actions/managerChatMode";
+import { attachChatFiles, attachChatScreenshot, pickChatAttachments } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { useAutoGrow } from "../../hooks/useAutoGrow";
 import { AttachmentTray } from "./Attachments";
+import { AddMenu, SuggestList, useWorkdeskRefs } from "./ComposerAssist";
+import { chatCommands, filterRefs, replaceTrigger, triggerAt, type WorkdeskRef } from "./composerRefs";
+import type { SlashCommand } from "../../terminal/slashCommands";
 
 /**
  * The message box both chats share: the files going with the message, the
- * text, and a row under it of attach, the chat's chips, the usage ring and
- * send. Files come from the attach button (the open dialog, in the chat's
- * folder), dropped on the box (from Finder or Tacit's Files panel), or a
- * pasted image.
+ * text, and a row under it of +, the chat's chips, the usage ring and send.
+ * The + adds files or folders (the open dialog) or something from the
+ * workdesk; typing @ points at a chat, page, file or task; / at the start
+ * offers the agent's commands. Files can also be dropped on the box (from
+ * Finder or the navigator) or an image pasted.
  */
 
 const MAX_ATTACHMENTS = 20;
@@ -22,6 +26,8 @@ export interface Attachments {
   pick: () => void;
   addFiles: (files: File[]) => void;
   addPaths: (paths: string[]) => void;
+  /** Part of the window, captured as an image. */
+  addScreenshot: (rect: { x: number; y: number; width: number; height: number }) => void;
   remove: (id: string) => void;
   clear: () => void;
 }
@@ -51,6 +57,7 @@ export function useAttachments(terminalId: string | null): Attachments {
     addPaths: (paths) => {
       if (paths.length) run(attachChatFiles({ paths }));
     },
+    addScreenshot: (rect) => run(attachChatScreenshot(rect)),
     remove: (id) => setItems((prev) => prev.filter((a) => a.id !== id)),
     clear: () => setItems([]),
   };
@@ -75,6 +82,7 @@ export function ComposerBox({
   place,
   running = false,
   onStop,
+  agent,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -103,6 +111,8 @@ export function ComposerBox({
   /** A turn is running: with nothing typed, Send becomes Stop. */
   running?: boolean;
   onStop?: () => void;
+  /** Whose chat it is, for the / commands it takes. */
+  agent?: string;
 }) {
   const t = useT();
   const [dragging, setDragging] = useState(false);
@@ -112,6 +122,53 @@ export function ComposerBox({
   const takesDrop = (e: React.DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-tacit-file");
   // Running with nothing typed: the send button stops the turn instead.
   const stopping = running && !!onStop && !canSend;
+
+  // @ and /: what's being typed at the caret opens a list above the box.
+  const refs = useWorkdeskRefs();
+  const [trigger, setTrigger] = useState<ReturnType<typeof triggerAt>>(null);
+  const [active, setActive] = useState(0);
+  const mentionHits = trigger?.kind === "mention" ? filterRefs(refs, trigger.query) : [];
+  const commandHits = trigger?.kind === "command" ? chatCommands(agent ?? "", trigger.query) : [];
+  const hitCount = trigger?.kind === "mention" ? mentionHits.length : commandHits.length;
+  // A / with nothing this agent takes stays plain text, with no list.
+  const suggesting = !!trigger && (trigger.kind === "mention" || commandHits.length > 0);
+  const readTrigger = (text: string, caret: number | null) => {
+    const next = caret === null ? null : triggerAt(text, caret);
+    setTrigger(next);
+    setActive(0);
+  };
+  const putCaret = (at: number) =>
+    requestAnimationFrame(() => {
+      const el = textRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(at, at);
+    });
+  const insertAtTrigger = (text: string) => {
+    if (!trigger) return;
+    const caret = textRef.current?.selectionStart ?? value.length;
+    const next = replaceTrigger(value, trigger.start, caret, text);
+    onChange(next.text);
+    setTrigger(null);
+    putCaret(next.caret);
+  };
+  /** From @ or the +: a file goes with the message; anything else is written in. */
+  const pickRef = (ref: WorkdeskRef, fromTrigger: boolean) => {
+    if ("path" in ref.insert) {
+      attachments.addPaths([ref.insert.path]);
+      if (fromTrigger) insertAtTrigger("");
+      return;
+    }
+    const text = `${ref.insert.text} `;
+    if (fromTrigger) return insertAtTrigger(text);
+    const el = textRef.current;
+    const at = el?.selectionStart ?? value.length;
+    const before = value.slice(0, at);
+    const spaced = before && !/\s$/.test(before) ? ` ${text}` : text;
+    onChange(before + spaced + value.slice(at));
+    putCaret(at + spaced.length);
+  };
+  const pickCommand = (command: SlashCommand) => insertAtTrigger(`${command.command} `);
   return (
     <div className="flex min-w-0 flex-col">
     {behind && <div className="flex flex-col">{behind}</div>}
@@ -146,6 +203,17 @@ export function ComposerBox({
         else attachments.addFiles(Array.from(e.dataTransfer.files));
       }}
     >
+      {suggesting && trigger && (
+        <SuggestList
+          kind={trigger.kind}
+          refs={mentionHits}
+          commands={commandHits}
+          active={active}
+          onActive={setActive}
+          onPickRef={(ref) => pickRef(ref, true)}
+          onPickCommand={pickCommand}
+        />
+      )}
       <AttachmentTray items={attachments.items} onRemove={attachments.remove} />
       <label className="min-w-0">
         <span className="sr-only">{placeholder}</span>
@@ -155,7 +223,12 @@ export function ComposerBox({
           value={value}
           disabled={disabled}
           placeholder={dragging ? t.chat_attach_drop : placeholder}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            readTrigger(e.target.value, e.target.selectionStart);
+          }}
+          onClick={(e) => readTrigger(value, e.currentTarget.selectionStart)}
+          onBlur={() => setTrigger(null)}
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.files);
             if (files.length === 0) return;
@@ -165,6 +238,24 @@ export function ComposerBox({
           onKeyDown={(e) => {
             // The canvas listens globally for single-key shortcuts.
             e.stopPropagation();
+            if (suggesting && hitCount > 0) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setActive((i) => (i + (e.key === "ArrowDown" ? 1 : hitCount - 1)) % hitCount);
+                return;
+              }
+              if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (trigger?.kind === "mention") pickRef(mentionHits[active] ?? mentionHits[0], true);
+                else pickCommand(commandHits[active] ?? commandHits[0]);
+                return;
+              }
+            }
+            if (suggesting && e.key === "Escape") {
+              e.preventDefault();
+              setTrigger(null);
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onSubmit();
@@ -174,22 +265,7 @@ export function ComposerBox({
         />
       </label>
       <div className="flex min-w-0 items-center gap-0.5">
-        <button
-          type="button"
-          className="tc-sq-ctl -ml-1 flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
-          onClick={attachments.pick}
-          disabled={attachments.busy}
-          aria-label={t.chat_attach}
-          title={t.chat_attach_hint}
-        >
-          {attachments.busy ? (
-            <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-          )}
-        </button>
+        <AddMenu busy={attachments.busy} onPickFiles={attachments.pick} onPickRef={(ref) => pickRef(ref, false)} onScreenshot={attachments.addScreenshot} />
         <span className="flex min-w-0 flex-1 items-center">{settings}</span>
         {meter && <span className="flex shrink-0 items-center">{meter}</span>}
         {trailing}

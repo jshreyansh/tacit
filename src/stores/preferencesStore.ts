@@ -22,6 +22,8 @@ export interface CliCommandConfig {
   args: string[];
 }
 
+export type NewAgentMode = "terminal" | "chat";
+
 export interface StoredTerminalSize {
   w: number;
   h: number;
@@ -92,6 +94,9 @@ interface PreferencesStore {
   lastManagerAgent: string | null;
   setDefaultEditor: (editorId: string) => void;
   setLastManagerAgent: (agent: string) => void;
+  /** How an agent you start opens: in its terminal, or as a chat (Claude, Codex, OpenCode). */
+  newAgentMode: NewAgentMode;
+  setNewAgentMode: (mode: NewAgentMode) => void;
   setWallpaperLook: (change: Partial<WallpaperLook>) => void;
   setAttentionPrefs: (change: Partial<AttentionPrefs>) => void;
   setCanvasBackgroundImage: (url: string | null) => void;
@@ -158,6 +163,7 @@ interface SavedPrefs {
   defaultEditor: string | null;
   /** The agent last chosen as a workdesk manager, offered first next time. */
   lastManagerAgent: string | null;
+  newAgentMode: NewAgentMode;
 }
 
 function sanitizeAgentApprovals(value: unknown): Record<string, AgentApprovalChoice> {
@@ -362,6 +368,7 @@ function loadPreferences(): SavedPrefs {
         attentionPrefs: sanitizeAttentionPrefs(parsed.attentionPrefs),
         defaultEditor: typeof parsed.defaultEditor === "string" ? parsed.defaultEditor : null,
         lastManagerAgent: typeof parsed.lastManagerAgent === "string" ? parsed.lastManagerAgent : null,
+        newAgentMode: parsed.newAgentMode === "chat" ? "chat" : "terminal",
       };
     }
   } catch {
@@ -396,6 +403,7 @@ function loadPreferences(): SavedPrefs {
     attentionPrefs: DEFAULT_ATTENTION_PREFS,
     defaultEditor: null,
     lastManagerAgent: null,
+    newAgentMode: "terminal",
   };
 }
 
@@ -510,6 +518,7 @@ function getSaveState(state: PreferencesStore): SavedPrefs {
     attentionPrefs: state.attentionPrefs,
     defaultEditor: state.defaultEditor,
     lastManagerAgent: state.lastManagerAgent,
+    newAgentMode: state.newAgentMode,
   };
 }
 
@@ -550,6 +559,11 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
     if (get().lastManagerAgent === lastManagerAgent) return;
     set({ lastManagerAgent });
     savePreferences(getSaveState({ ...get(), lastManagerAgent }));
+  },
+  newAgentMode: initialPrefs.newAgentMode,
+  setNewAgentMode: (newAgentMode) => {
+    set({ newAgentMode });
+    savePreferences(getSaveState({ ...get(), newAgentMode }));
   },
   setDefaultEditor: (defaultEditor) => {
     set({ defaultEditor });

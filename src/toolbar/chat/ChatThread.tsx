@@ -1,4 +1,5 @@
 import { Children, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type PropsWithChildren } from "react";
+import type { MemoryNote } from "../../../shared/memory";
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
@@ -15,7 +16,9 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { createdTaskId, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type TaskToolView } from "./threadMessages";
+import { createdTaskId, memoryTool, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type MemoryToolView, type TaskToolView } from "./threadMessages";
+import { currentFolderPath, openFolderTool, workdeskMemoryTool } from "../../actions/folderTools";
+import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { askedView, isAskedTool, type AskedView } from "./askedModel";
 import { usePinStore } from "../../stores/pinStore";
 import { openPinFull } from "../../tasks/TasksView";
@@ -306,6 +309,131 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
   );
 }
 
+const memoryIcon = (color?: string) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={color ?? "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 2.5 13.5 8 8 13.5 2.5 8z" />
+  </svg>
+);
+
+/** Opens Memory where a note of this scope lives. */
+function openMemoryFor(scope: string): void {
+  if (scope === "folder" || scope === "worktree") {
+    const folder = currentFolderPath();
+    if (folder) {
+      openFolderTool({ kind: "memory", path: folder });
+      return;
+    }
+  }
+  const workdesk = useCanvasRegistryStore.getState().activeCanvasId;
+  if (workdesk) openFolderTool(workdeskMemoryTool(workdesk));
+}
+
+/**
+ * A note an agent saved, as its own line: what it says and where it went,
+ * with Undo for a new one and Approve / Discard for one that waits for you.
+ */
+function MemoryToolCard({ props, view, t }: { props: ToolCardProps; view: MemoryToolView; t: Dict }) {
+  const status = statusOf(props);
+  const [done, setDone] = useState<null | "undone" | "approved" | "discarded">(null);
+  const [busy, setBusy] = useState(false);
+  // The note as it is now (undefined until asked): undone, approved or
+  // marked outdated since, here or in Memory, even before a restart.
+  const [now, setNow] = useState<MemoryNote["status"] | null | undefined>(undefined);
+  const filePath = view.kind === "remember" ? view.filePath : null;
+  useEffect(() => {
+    const api = window.tacit?.memory;
+    if (!filePath || !api?.noteStatus) return;
+    let alive = true;
+    const load = () =>
+      void api
+        .noteStatus(filePath)
+        .then((s) => alive && setNow(s))
+        .catch((err: unknown) => console.error("[chat] note status", err));
+    load();
+    const off = api.onStoreChanged?.(load);
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, [filePath]);
+  const act = (action: "approve" | "delete", outcome: "undone" | "approved" | "discarded") => {
+    if (view.kind !== "remember" || !view.filePath || !window.tacit?.memory?.act) return;
+    setBusy(true);
+    void window.tacit.memory
+      .act({ action, filePath: view.filePath })
+      .then((res) => {
+        if (res.ok) setDone(outcome);
+        else console.error("[chat] memory action refused", res.reason);
+      })
+      .catch((err: unknown) => console.error("[chat] memory action failed", err))
+      .finally(() => setBusy(false));
+  };
+  if (view.kind !== "remember" || status !== "done" || view.action === null) {
+    const label =
+      view.kind === "forget" ? t.mem_chat_forgot : view.kind === "handover" ? t.mem_chat_handover : view.kind === "recall" ? t.mem_chat_recall : t.mem_chat_saved(view.scope);
+    const detail = view.kind === "forget" ? view.name : view.kind === "recall" ? view.query : view.kind === "remember" ? view.description : "";
+    return (
+      <div className="my-0.5 flex items-center gap-1.5 py-0.5 text-[12px]">
+        <span className="text-[var(--text-muted)]">{memoryIcon()}</span>
+        <span className="text-[var(--text-secondary)]">{label}</span>
+        {detail && <span className="min-w-0 truncate text-[var(--text-muted)]">· {detail}</span>}
+        {view.kind === "handover" && status === "done" && (
+          <button type="button" className="text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)]" onClick={() => openMemoryFor("workdesk")}>
+            {t.mem_edit}
+          </button>
+        )}
+        <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
+      </div>
+    );
+  }
+  if (view.action === "skip") {
+    return (
+      <div className="my-0.5 flex items-center gap-1.5 py-0.5 text-[12px]">
+        <span className="text-[var(--text-muted)]">{memoryIcon()}</span>
+        <span className="text-[var(--text-secondary)]">{t.mem_chat_repeat}</span>
+        <span className="min-w-0 truncate text-[var(--text-muted)]">· {view.description}</span>
+      </div>
+    );
+  }
+  const gone = done === null && now === null;
+  const outdatedNow = done === null && now === "outdated";
+  const waiting = (now ?? view.status) === "pending" && done === null;
+  const btn = "tc-rail-btn shrink-0 border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50";
+  return (
+    <div
+      className="my-1 flex flex-col gap-1 tc-sq-card border px-3 py-2.5"
+      style={{ borderColor: waiting ? "color-mix(in srgb, var(--amber) 40%, transparent)" : "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
+    >
+      <span className="flex items-center gap-2 text-[13px]">
+        <span className="text-[var(--text-muted)]">{memoryIcon(waiting ? "var(--amber)" : undefined)}</span>
+        <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">
+          {waiting ? t.mem_chat_waiting : view.action === "update" ? t.mem_chat_updated(view.scope) : t.mem_chat_saved(view.scope)}
+          <span className="text-[var(--text-secondary)]"> · {view.description}</span>
+        </span>
+        {done ? (
+          <span className="shrink-0 text-[12px] text-[var(--text-muted)]">{done === "undone" ? t.mem_chat_undone : done === "approved" ? t.mem_chat_approved : t.mem_chat_discarded}</span>
+        ) : gone || outdatedNow ? (
+          <span className="shrink-0 text-[12px] text-[var(--text-muted)]">{gone ? t.mem_chat_gone : t.mem_chat_outdated}</span>
+        ) : waiting ? (
+          <>
+            <button type="button" disabled={busy} className={btn} onClick={() => act("approve", "approved")}>{t.mem_approve}</button>
+            <button type="button" disabled={busy} className={btn} onClick={() => act("delete", "discarded")}>{t.mem_discard}</button>
+          </>
+        ) : (
+          <>
+            <button type="button" className={btn} onClick={() => openMemoryFor(view.scope)}>{t.mem_edit}</button>
+            {view.action === "add" && (
+              <button type="button" disabled={busy} className={btn} onClick={() => act("delete", "undone")}>{t.mem_chat_undo}</button>
+            )}
+          </>
+        )}
+      </span>
+      {waiting && <span className="pl-[22px] text-[12px] leading-snug text-[var(--text-muted)]">{view.scope === "you" ? t.mem_chat_waiting_you : t.mem_chat_waiting_web}</span>}
+      {!waiting && view.replaces && done === null && <span className="pl-[22px] text-[12px] leading-snug text-[var(--text-muted)]">{t.mem_chat_replaces(view.replaces)}</span>}
+    </div>
+  );
+}
+
 const ToolCard: FC<ToolCardProps> = (props) => {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -313,6 +441,8 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   if (spawn) return <WorkerCard props={props} spawn={spawn} t={t} />;
   const taskView = taskTool(props.toolName, props.args);
   if (taskView) return <TaskToolCard props={props} view={taskView} t={t} />;
+  const memoryView = memoryTool(props.toolName, props.args, props.result);
+  if (memoryView) return <MemoryToolCard props={props} view={memoryView} t={t} />;
   const asked = askedView(props.toolName, props.args, props.result);
   if (asked) return <AskedCard props={props} view={asked} t={t} />;
   // Claude's todo list reads as its plan, as it does live.
@@ -392,6 +522,7 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
     if (!p?.toolName) return false;
     if (workerSpawn(p.toolName, p.args ?? {}) !== null || isAskedTool(p.toolName)) return true;
     const view = taskTool(p.toolName, p.args ?? {});
+    if (memoryTool(p.toolName, p.args ?? {})?.kind === "remember") return true;
     return view?.kind === "create" || view?.kind === "ask";
   };
   const plain = run.filter((p) => !isWorker(p));

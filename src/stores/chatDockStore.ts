@@ -3,20 +3,38 @@ import { create } from "zustand";
 /**
  * Whether the workdesk manager's chat is docked on the left, and how wide.
  *
- * The chat docks full height beside the left bar (SHR-127), where Files and
- * Memory open; while it is open those panels open to its right and the
- * canvas starts after it. The width is the person's, set by dragging the
+ * The chat docks full height beside the left bar (SHR-127), after the
+ * navigator when that is docked; panels open to its right. The canvas stays
+ * the whole window behind them. The width is the person's, set by dragging the
  * chat's edge, and kept across restarts in its own localStorage entry.
  */
 
 export const CHAT_DOCK_MIN_WIDTH = 360;
 export const CHAT_DOCK_MAX_WIDTH = 680;
 export const CHAT_DOCK_DEFAULT_WIDTH = 440;
-/** The list of chats beside the open one, when it's unfolded. */
-export const CHAT_LIST_WIDTH = 240;
+/** The navigator (the list of the workdesk's chats, folders and tasks), docked beside the rail: its default width. */
+export const CHAT_LIST_WIDTH = 248;
+/** How narrow and wide its edge can drag it: wide enough for deep file paths. */
+export const CHAT_LIST_MIN_WIDTH = 220;
+export const CHAT_LIST_MAX_WIDTH = 520;
+const LIST_WIDTH_KEY = "tacit.navigator.width.v1";
 
-/** Below this window width the list folds by itself, leaving room for the canvas. */
-export const CHAT_LIST_MIN_WINDOW = 1100;
+export function clampListWidth(width: number): number {
+  if (!Number.isFinite(width)) return CHAT_LIST_WIDTH;
+  return Math.round(Math.min(CHAT_LIST_MAX_WIDTH, Math.max(CHAT_LIST_MIN_WIDTH, width)));
+}
+
+function loadListWidth(): number {
+  try {
+    const raw = storage()?.getItem(LIST_WIDTH_KEY);
+    return raw == null ? CHAT_LIST_WIDTH : clampListWidth(Number(raw));
+  } catch {
+    return CHAT_LIST_WIDTH;
+  }
+}
+
+/** Below this window width the navigator folds into the rail, and opens over the rest when asked. */
+export const CHAT_LIST_MIN_WINDOW = 1180;
 
 const LIST_KEY = "tacit.chatDock.list.v1";
 
@@ -119,11 +137,15 @@ function loadFloatRect(): FloatRect | null {
  * the chat so other places can open it on a face: a project's pin badge,
  * a terminal's pin chip, a first project added to an empty canvas.
  */
-export type ChatFace = "chat" | "sessions" | "pins" | "roster" | "list";
+export type ChatFace = "chat" | "sessions" | "pins" | "roster";
 
-/** Whether the list fits beside the chat: docked or full screen, on a wide enough window. */
-export function chatListFits(placement: ChatPlacement, windowWidth: number): boolean {
-  return placement !== "float" && windowWidth >= CHAT_LIST_MIN_WINDOW;
+/**
+ * Whether the navigator docks beside the rail: the window is wide enough,
+ * and the manager's chat isn't full screen (full screen is the rail and the
+ * chat alone). It is its own panel, so a popped-out chat leaves it docked.
+ */
+export function chatListFits(windowWidth: number, chat: { open: boolean; placement: ChatPlacement }): boolean {
+  return windowWidth >= CHAT_LIST_MIN_WINDOW && !(chat.open && chat.placement === "full");
 }
 
 interface ChatDockStore {
@@ -138,12 +160,22 @@ interface ChatDockStore {
   /** At the end of a move or resize: keeps it for next time. */
   commitFloatRect: () => void;
   face: ChatFace;
-  /** The list of chats is unfolded (your choice, kept). */
+  /** The navigator is unfolded (your choice, kept). */
   listOpen: boolean;
+  /** Its width: yours, dragged from its right edge and kept. */
+  listWidth: number;
+  setListWidth: (width: number) => void;
+  commitListWidth: () => void;
   setListOpen: (open: boolean) => void;
-  /** It is on screen now: unfolded, docked or full screen, and the window wide enough. Set by the panel. */
+  /** It is docked on screen now: unfolded, and room for it. Set by the navigator. */
   listShown: boolean;
   setListShown: (shown: boolean) => void;
+  /** Where it can't dock (a narrow window), opened over the rest from the rail; closes after a pick. */
+  listOverlay: boolean;
+  setListOverlay: (open: boolean) => void;
+  /** Asks the navigator to unfold a folder's files or changes (it takes it, once). */
+  navRequest: { path: string; kind: "files" | "changes" } | null;
+  requestNavSection: (request: { path: string; kind: "files" | "changes" } | null) => void;
   /**
    * The "sessions" face reads one chat beside the list: a past session or
    * a chat-mode agent (the session store says which), or, set here, an
@@ -152,9 +184,9 @@ interface ChatDockStore {
   readerTerminalId: string | null;
   /** Opens a chat on the right: a terminal agent's, or (null) whatever the session store holds. */
   showReader: (terminalId?: string | null) => void;
-  /** Opens the panel with the list of chats: beside the chat, or in its place where it doesn't fit. */
+  /** Shows the navigator: docked where it fits (leaving a full-screen chat), else over the rest. */
   showList: () => void;
-  /** Sessions on the rail and ⌘⇧H: shows the list, or hides the panel if it's showing. */
+  /** The rail's first button and ⌘⇧H: shows the navigator, or folds it if it's showing. */
   toggleList: () => void;
   setOpen: (open: boolean) => void;
   setFace: (face: ChatFace) => void;
@@ -170,6 +202,9 @@ interface ChatDockStore {
   toggle: () => void;
   /** While dragging: moves the edge without saving on every frame. */
   setWidth: (width: number) => void;
+  /** The width it shows at now: yours, narrowed toward its minimum on a small window. Set by the panel. */
+  shownWidth: number | null;
+  setShownWidth: (width: number) => void;
   /** Its edge is being dragged: what sits beside it follows 1:1, unanimated. */
   resizing: boolean;
   setResizing: (resizing: boolean) => void;
@@ -211,21 +246,37 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
     }
     set({ listOpen });
   },
+  listWidth: loadListWidth(),
+  setListWidth: (width) => set({ listWidth: clampListWidth(width) }),
+  commitListWidth: () => {
+    try {
+      storage()?.setItem(LIST_WIDTH_KEY, String(get().listWidth));
+    } catch {
+      // Storage blocked: the width still holds for this session.
+    }
+  },
   listShown: false,
   setListShown: (listShown) => {
-    if (get().listShown !== listShown) set({ listShown });
+    if (get().listShown !== listShown) set(listShown ? { listShown, listOverlay: false } : { listShown });
   },
+  listOverlay: false,
+  setListOverlay: (listOverlay) => set({ listOverlay }),
+  navRequest: null,
+  requestNavSection: (navRequest) => set({ navRequest }),
   readerTerminalId: null,
   showReader: (terminalId = null) => set({ open: true, face: "sessions", readerTerminalId: terminalId }),
   toggleList: () => {
     const state = get();
-    if (state.open && (state.listShown || state.face === "list")) set({ open: false });
+    if (state.listShown) state.setListOpen(false);
+    else if (state.listOverlay) set({ listOverlay: false });
     else state.showList();
   },
   showList: () => {
-    get().setListOpen(true);
-    // Where it doesn't fit beside the chat, it shows in the chat's place.
-    set(get().listShown || chatListFits(get().placement, globalThis.innerWidth ?? 0) ? { open: true } : { open: true, face: "list" });
+    const state = get();
+    // Full screen is the rail and the chat alone: asking for the list leaves it.
+    if (state.open && state.placement === "full") state.setPlacement("dock");
+    state.setListOpen(true);
+    if (!chatListFits(globalThis.innerWidth ?? 0, get())) set({ listOverlay: true });
   },
   setOpen: (open) => set({ open }),
   setFace: (face) => set({ face }),
@@ -239,6 +290,10 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   },
   toggle: () => set({ open: !get().open }),
   setWidth: (width) => set({ width: clampChatWidth(width) }),
+  shownWidth: null,
+  setShownWidth: (shownWidth) => {
+    if (get().shownWidth !== shownWidth) set({ shownWidth });
+  },
   commitWidth: () => {
     try {
       storage()?.setItem(WIDTH_KEY, String(get().width));
@@ -248,12 +303,30 @@ export const useChatDockStore = create<ChatDockStore>((set, get) => ({
   },
 }));
 
-/** How far the chat pushes whatever opens after it: its width and a gap, or nothing. */
-/** The room the chat takes beside the bar: only docked does. */
+/**
+ * The room the panels beside the rail take, each with its gap: the docked
+ * navigator, then the docked chat. A popped-out or full-screen chat takes
+ * none (full screen covers everything right of the rail).
+ */
 export function chatDockOffset(
-  state: { open: boolean; width: number; placement?: ChatPlacement; listShown?: boolean },
+  state: { open: boolean; width: number; shownWidth?: number | null; placement?: ChatPlacement; listShown?: boolean; listWidth?: number },
   gap: number,
 ): number {
-  if (!state.open || (state.placement ?? "dock") !== "dock") return 0;
-  return state.width + (state.listShown ? CHAT_LIST_WIDTH : 0) + gap;
+  const list = state.listShown ? (state.listWidth ?? CHAT_LIST_WIDTH) + gap : 0;
+  const chat = state.open && (state.placement ?? "dock") === "dock" ? (state.shownWidth ?? state.width) + gap : 0;
+  return list + chat;
+}
+
+/**
+ * As the window narrows, the canvas gives way first, then the navigator
+ * folds into the rail, then the chat narrows toward its minimum, so some
+ * canvas (`keep`) still shows beside it.
+ */
+export function fittedChatWidth(width: number, room: number, keep = 480): number {
+  return Math.round(Math.max(CHAT_DOCK_MIN_WIDTH, Math.min(width, room - keep)));
+}
+
+/** Where the docked chat starts: after the navigator when it's docked. */
+export function chatDockLeft(railEdge: number, state: { listShown?: boolean; listWidth?: number }, gap: number): number {
+  return railEdge + (state.listShown ? (state.listWidth ?? CHAT_LIST_WIDTH) + gap : 0);
 }

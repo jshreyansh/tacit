@@ -1,3 +1,4 @@
+import { openFolderPlace } from "../../actions/folderTools";
 import { toggleWorkdeskMode } from "../../workdesk/workdeskModeSwitch";
 import { useChatDockStore } from "../../stores/chatDockStore";
 /**
@@ -214,9 +215,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       title: t.search_action_tab_files,
       keywords: ["explorer", "tree"],
       perform: () => {
-        const c = useCanvasStore.getState();
-        c.setRightPanelCollapsed(false);
-        c.setRightPanelActiveTab("files");
+        openFolderPlace("files");
       },
     },
     {
@@ -225,9 +224,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       title: t.search_action_tab_git,
       keywords: ["source control", "branches", "commits"],
       perform: () => {
-        const c = useCanvasStore.getState();
-        c.setRightPanelCollapsed(false);
-        c.setRightPanelActiveTab("git");
+        openFolderPlace("git");
       },
     },
     {
@@ -236,9 +233,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       title: t.search_action_tab_diff,
       keywords: ["changes", "patch"],
       perform: () => {
-        const c = useCanvasStore.getState();
-        c.setRightPanelCollapsed(false);
-        c.setRightPanelActiveTab("diff");
+        openFolderPlace("diff");
       },
     },
     {
@@ -247,15 +242,13 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
       title: t.search_action_tab_memory,
       keywords: ["context", "claude.md"],
       perform: () => {
-        const c = useCanvasStore.getState();
-        c.setRightPanelCollapsed(false);
-        c.setRightPanelActiveTab("memory");
+        openFolderPlace("memory");
       },
     },
     {
       id: "toggle-sessions-overlay",
       section: "action",
-      title: useChatDockStore.getState().open && useChatDockStore.getState().listShown
+      title: useChatDockStore.getState().listShown || useChatDockStore.getState().listOverlay
         ? t["palette.cmd.close_sessions"]
         : t["palette.cmd.open_sessions"],
       keywords: ["history", "replay"],

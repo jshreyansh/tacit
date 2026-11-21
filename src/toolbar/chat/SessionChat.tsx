@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { StartedWithMemory } from "../../components/StartedWithMemory";
 import { useT } from "../../i18n/useT";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { useManagerTranscript } from "../../stores/managerChatStore";
@@ -40,6 +41,7 @@ export function ChatComposer({
   meter,
   behind,
   place,
+  agent,
 }: {
   terminalId: string;
   running: boolean;
@@ -55,6 +57,8 @@ export function ChatComposer({
   behind?: React.ReactNode;
   /** Where it works, under the box. */
   place?: React.ReactNode;
+  /** Whose chat it is, for its / commands. */
+  agent?: string;
 }) {
   const [draft, setDraft] = useState("");
   useTakeChatNote(terminalId, setDraft);
@@ -92,6 +96,7 @@ export function ChatComposer({
         onStop={onStop}
         behind={behind}
         place={place}
+        agent={agent}
       />
     </div>
   );
@@ -127,6 +132,9 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
   useQueueSender(terminalId, transcript, sendNow);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 justify-end px-3 pt-1.5 empty:hidden">
+        <StartedWithMemory terminalId={terminalId} variant="chat" />
+      </div>
       <ChatThread
         transcript={transcript}
         agent={agent}
@@ -149,6 +157,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         onSend={send}
         onStop={() => void interruptManagerChat(terminalId)}
         compact={compact}
+        agent={agent}
         settings={<ComposerSettings terminalId={terminalId} transcript={transcript} agent={agent} />}
         meter={<UsageMeter transcript={transcript} agent={agent} />}
         behind={

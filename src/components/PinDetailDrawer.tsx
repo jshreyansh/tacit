@@ -1,3 +1,7 @@
+import { useLeftChromeInset } from "../stores/chromeLayout";
+import { useWindowSize } from "../utils/useWindowSize";
+import { paneLayout, usePaneStore } from "../stores/paneStore";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrackAsTask } from "../tasks/TrackAsTask";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
@@ -8,7 +12,6 @@ import {
   PIN_DRAWER_WIDTH,
 } from "../stores/canvasStore";
 import {
-  getLeftPanelInset,
   getRightPanelInset,
 } from "../canvas/viewportBounds";
 import { usePinStore } from "../stores/pinStore";
@@ -358,13 +361,17 @@ export function PinDetailDrawer() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [isOpen]);
 
-  // Opens to the right of the docked chat, whose Pins view lists the
-  // pins (and of the code panel when it is open).
-  const effectiveLeftInset = getLeftPanelInset(
-    rightPanelCollapsed,
-    rightPanelWidth,
-  );
+  const leftChromeInset = useLeftChromeInset();
+  const { width: windowWidth } = useWindowSize();
+  const paneWidth = usePaneStore((s) => s.width);
+  const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
+  // On the canvas a task opens in the pane, where All tasks is: same left
+  // edge, same width, over it, so there is only ever one pane. In the grid
+  // it fills the room beside the panels.
+  const effectiveLeftInset = leftChromeInset;
   const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
+  const room = windowWidth - effectiveLeftInset - rightInset;
+  const detailWidth = gridMode ? `${room}px` : `${paneLayout(room, paneWidth, false).width}px`;
 
   // Memoize markdown parse so editing-buffer re-renders or unrelated parent
   // updates don't re-parse a multi-KB body and re-construct a Marked
@@ -390,11 +397,11 @@ export function PinDetailDrawer() {
       <div
         className="tc-float fixed flex flex-col overflow-hidden"
         style={{
-          zIndex: 45,
+          zIndex: 51,
           top: CHROME_TOP,
           left: effectiveLeftInset,
           height: CHROME_HEIGHT,
-          width: `calc(100vw - ${effectiveLeftInset}px - ${rightInset}px)`,
+          width: detailWidth,
           opacity: isOpen ? 1 : 0,
           // Opacity rides the role-based motion tokens; left/width stay on
           // PANEL_TRANSITION because they must track LeftPanel's width tween.

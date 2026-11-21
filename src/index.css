@@ -6,7 +6,7 @@
 @theme {
   --duration-instant: 80ms;
   --duration-quick: 140ms;
-  --duration-natural: 220ms;
+  --duration-natural: 240ms;
   --duration-deliberate: 320ms;
 }
 
@@ -267,7 +267,7 @@
      deliberate makes the UI feel sluggish, not premium. */
   --duration-instant: 80ms;
   --duration-quick: 140ms;
-  --duration-natural: 220ms;
+  --duration-natural: 240ms;
   --duration-deliberate: 320ms;
 
   /* Easings. --ease-out-soft is the workhorse: arrives confident, settles
@@ -276,8 +276,8 @@
      the user to *notice* (a pin engaging, a save confirming). --ease-in-soft
      is for exits — the user shouldn't track something that's leaving.
      --ease-in-out-soft is for in-place state shifts (a value updating). */
-  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-out-snap: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-out-snap: cubic-bezier(0.05, 0.7, 0.1, 1); /* no overshoot: UI motion never bounces (utils/motion.ts) */
   --ease-in-soft: cubic-bezier(0.4, 0, 0.6, 0.2);
   --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
 
@@ -634,6 +634,13 @@ a.tc-kbd:active {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* A chat tile waiting on you (a question or an approval): an amber edge,
+   the same amber as its row in the list. */
+.terminal-tile[data-needs-you="true"]:not([data-drag-over="true"], [data-task-flash="true"], [data-receptive="true"]) {
+  border-color: color-mix(in srgb, var(--amber) 60%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent);
 }
 
 /* Focus, overview mode: a stronger ring still readable when the
@@ -1524,6 +1531,113 @@ a.tc-kbd[data-dragover="true"] {
   border-radius: 26px;
   corner-shape: squircle;
   box-shadow: var(--chrome-shadow), var(--chrome-highlight);
+}
+
+/* The manager's chat stands out from the other panels: a lit top in the
+   accent, an edge tinted with it, and a soft glow around the frame. The
+   navigator beside it stays quiet, and lifts only when it opens over the
+   rest on a narrow window. */
+.tc-manager-panel {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--chrome-edge));
+  background-image: radial-gradient(130% 44% at 50% -8%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%);
+  box-shadow:
+    var(--chrome-shadow),
+    var(--chrome-highlight),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
+    0 0 52px -10px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.tc-navigator { box-shadow: var(--chrome-highlight), 0 10px 30px -14px rgba(0, 0, 0, 0.35); }
+.tc-navigator.tc-navigator-over { box-shadow: var(--chrome-shadow), var(--chrome-highlight), 0 30px 70px -10px rgba(0, 0, 0, 0.55); }
+
+/* The pane (All tasks, a finished chat, a file): it fades in from a few
+   pixels to the right and settles, and glows softly for a moment when
+   something new opens in it. Its right edge resizes it. */
+@keyframes tc-pane-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+.tc-pane-enter { animation: tc-pane-in 240ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+@keyframes tc-afterglow {
+  from { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 36px color-mix(in srgb, var(--accent) 18%, transparent); }
+  to { box-shadow: inset 0 0 0 1.5px transparent, 0 0 0 3px transparent, 0 0 36px transparent; }
+}
+.tc-afterglow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  corner-shape: inherit;
+  pointer-events: none;
+  z-index: 5;
+  animation: tc-afterglow 1100ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+.tc-pane-edge {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  right: -2px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 6;
+}
+.tc-pane-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+.tc-pane-edge:hover::after,
+.tc-pane-edge:active::after { opacity: 0.45; }
+
+/* In the navigator: a folder's name stays on top while its files or changes
+   are unfolded, and its file tree sits in a quiet well of its own. */
+.tc-nav-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.tc-nav-tree {
+  border-radius: 12px;
+  corner-shape: squircle;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* A tile you just flew to: a soft ring in the accent, fading over a second. */
+@keyframes tc-node-glow {
+  from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent), 0 0 40px color-mix(in srgb, var(--accent) 22%, transparent); }
+  to { box-shadow: 0 0 0 2px transparent, 0 0 40px transparent; }
+}
+.tc-node-glow { animation: tc-node-glow 1100ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+/* Canvas ◐ Grid: the view coming in fades up; no sliding. */
+@keyframes tc-view-in { from { opacity: 0; } to { opacity: 1; } }
+.tc-view-in { animation: tc-view-in 200ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+/* Reduce Motion: what normally slides in only crossfades, briefly (Apple's
+   guidance); the afterglows stay, since they don't move. These come after
+   the blanket rule above and are more specific, so they win. */
+@keyframes tc-fade-in-only { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .tc-pane-enter,
+  .tc-view-in,
+  .tc-enter-fade,
+  .tc-enter-fade-quick,
+  .tc-enter-fade-up,
+  .tc-enter-fade-up-quick,
+  .tc-enter-fade-down,
+  .tc-enter-pop,
+  .tc-enter-slide-right { animation: tc-fade-in-only 150ms linear both !important; }
+  .tc-afterglow,
+  .tc-node-glow { animation-duration: 1100ms !important; }
 }
 
 /* A rail button, and the chip that marks the open one.

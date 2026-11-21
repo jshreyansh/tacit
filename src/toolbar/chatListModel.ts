@@ -1,5 +1,5 @@
 import type { CanvasTerminalItem } from "../components/sessionPanelModel";
-import { filterChatHistory, type ChatHistoryEntry } from "./chatHistoryModel";
+import { filterChatHistory, typedText, type ChatHistoryEntry } from "./chatHistoryModel";
 import { filterLiveTerminals } from "./liveSessionsModel";
 
 /**
@@ -107,4 +107,70 @@ export function liveDot(state: CanvasTerminalItem["state"]): "run" | "need" | nu
   if (state === "attention") return "need";
   if (state === "active") return "run";
   return null;
+}
+
+/** One search result: a chat on this workdesk, live or finished, with where it lives. */
+export type ChatSearchHit =
+  | { kind: "live"; item: CanvasTerminalItem; title: string; folder: string }
+  | { kind: "past"; entry: ChatHistoryEntry; title: string; folder: string };
+
+function queryWords(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Searching the list: one flat list of chats, live ones first (needing
+ * you, then running), then finished ones newest first. A chat matches on
+ * what the row shows (its title) and the first message someone typed;
+ * never its folder or agent name, nor a manager's briefing.
+ */
+export function searchChats(
+  folders: readonly ChatListSource[],
+  live: readonly CanvasTerminalItem[],
+  past: readonly ChatHistoryEntry[],
+  options: { query: string; hidden?: ReadonlySet<string>; pastTitle: (entry: ChatHistoryEntry) => string },
+): ChatSearchHit[] {
+  const words = queryWords(options.query);
+  if (words.length === 0) return [];
+  const matches = (...texts: string[]) => {
+    const hay = texts.join(" ").toLowerCase();
+    return words.every((w) => hay.includes(w));
+  };
+  const byDir = new Map<string, string>();
+  for (const f of folders) {
+    byDir.set(f.path, f.name);
+    for (const dir of f.worktreePaths) byDir.set(dir, f.name);
+  }
+  const running = new Set(live.map((item) => item.sessionId).filter(Boolean));
+
+  const liveHits: ChatSearchHit[] = orderLive(live.filter((item) => !options.hidden?.has(item.terminalId) && matches(item.title))).map((item) => ({
+    kind: "live",
+    item,
+    title: item.title,
+    folder: item.projectName,
+  }));
+  const pastHits: ChatSearchHit[] = past
+    .filter((entry) => !running.has(entry.sessionId))
+    .map((entry) => ({ entry, title: options.pastTitle(entry) }))
+    .filter(({ entry, title }) => matches(title, typedText(entry.firstPrompt)))
+    .sort((a, b) => Date.parse(b.entry.lastActivityAt) - Date.parse(a.entry.lastActivityAt))
+    .map(({ entry, title }) => ({ kind: "past", entry, title, folder: byDir.get(entry.projectDir) ?? baseName(entry.projectDir) }));
+  return [...liveHits, ...pastHits];
+}
+
+/** Where the query's words fall in a title, merged and in order, to highlight them. */
+export function matchRanges(text: string, query: string): [number, number][] {
+  const lower = text.toLowerCase();
+  const ranges: [number, number][] = [];
+  for (const word of queryWords(query)) {
+    for (let i = lower.indexOf(word); i !== -1; i = lower.indexOf(word, i + word.length)) ranges.push([i, i + word.length]);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  return merged;
 }

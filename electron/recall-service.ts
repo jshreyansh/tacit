@@ -37,8 +37,9 @@ export class RecallService {
     private readonly journalDir: () => string | null,
   ) {}
 
-  query(q: RecallQuery, now = Date.now()): RecallHit[] {
-    return recall(this.load(), q, now);
+  /** `extra`: more documents to search with these, such as memory notes. */
+  query(q: RecallQuery, now = Date.now(), extra: readonly RecallDoc[] = []): RecallHit[] {
+    return recall(extra.length ? [...this.load(), ...extra] : this.load(), q, now);
   }
 
   /**
@@ -53,10 +54,19 @@ export class RecallService {
     const docs = this.load();
     const lines: string[] = [];
 
+    // Only asks that say something: "hey", "ok", "stop it" tell the next
+    // manager nothing, and repeats say it once.
+    const seen = new Set<string>();
     const asks = docs
-      .filter((d) => d.origin === "record" && d.kind === "prompt" && !d.source)
-      .slice(-limits.asks)
-      .reverse();
+      .filter((d) => d.origin === "record" && d.kind === "prompt" && !d.source && isSubstantiveAsk(d.summary))
+      .reverse()
+      .filter((d) => {
+        const key = d.summary.toLowerCase().replace(/\s+/g, " ").slice(0, 120);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, limits.asks);
     if (asks.length) {
       lines.push("What the user has been asking for (most recent first):");
       for (const a of asks) lines.push(`  - ${a.summary}`);
@@ -68,7 +78,8 @@ export class RecallService {
       for (const a of abandoned) lines.push(`  - ${a}`);
     }
 
-    const notes = docs.filter((d) => d.origin === "journal").slice(-limits.notes).reverse();
+    // "Took over the manager role" is every holder's first line, not news.
+    const notes = docs.filter((d) => d.origin === "journal" && !ROLE_TAKEOVER.test(d.summary)).slice(-limits.notes).reverse();
     if (notes.length) {
       lines.push("", "Recent journal notes:");
       for (const n of notes) lines.push(`  - ${n.summary}`);
@@ -221,6 +232,16 @@ export class RecallService {
   }
 }
 
+const ROLE_TAKEOVER = /\b(took over|assumed|taking over|picked up)\b.*\b(manager|workspace|workdesk)\b.*\brole\b|\brole assumed\b/i;
+const CHATTER = /^(hi|hey+|hello|yo|ok(ay)?|k|thanks?|thank you|ty|yes|no|yep|nope|sure|cool|nice|great|stop( it)?|wait|continue|go( ahead| on)?|test(ing)?|ping)[\s.!?]*$/i;
+
+/** An ask with something in it: not a greeting, a one-word nudge or a typo-length line. */
+export function isSubstantiveAsk(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 12 && t.split(/\s+/).length < 3) return false;
+  return !CHATTER.test(t);
+}
+
 /** One line of prose describing an entry, for a reader rather than a parser. */
 const WORKER_STATE_WORDS = {
   turn_completed: "finished its turn",
@@ -299,7 +320,7 @@ export function summarize(entry: CaptureEntry): string {
     case "session":
       return `${entry.node} is running ${entry.provider} session ${entry.session_id}`;
     case "journal_write":
-      return `${entry.by} wrote to the ${entry.scope === "workspace" ? "workdesk journal" : "project memory"} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
+      return `${entry.by} ${entry.tool === "forget" ? "marked outdated in" : "wrote to"} the ${entry.scope === "workspace" ? "workdesk journal" : entry.scope === "project" ? "project memory" : `${entry.scope} memory`} — ${entry.title.replace(/\s+/g, " ").slice(0, 160)}${entry.tainted ? ` (after reading web content: ${entry.taint_sources.map((read) => read.url ?? read.source).join(", ")})` : ""}`;
     case "handoff":
       return `${entry.via === "paste" ? "pasted" : "dropped"} ${handoffWhat(entry)} into ${entry.to} from ${entry.from === "external" ? "outside Tacit" : entry.from === "app" ? "Tacit's panels" : entry.from}${entry.attribution === "inferred" ? " (inferred)" : ""}`;
     case "run_started":

@@ -5,6 +5,7 @@ import { createTerminalInScene } from "./terminalSceneActions";
 import { addBrowserCardToScene } from "./sceneCardActions";
 import { createNoteInScene, createTaskInScene } from "./scenePinActions";
 import type { TerminalType } from "../types";
+import { openNewAgentAsSet } from "./managerChatMode";
 
 /**
  * The "add something to the canvas" actions, separated from the control that
@@ -48,12 +49,14 @@ export function addTerminal(
     projectId = fallbackProject.id;
     worktreeId = fallbackWorktree.id;
   }
-  return createTerminalInScene({
+  const id = createTerminalInScene({
     projectId,
     worktreeId,
     type,
     position: visibleCanvasCenter(),
   }).id;
+  openNewAgentAsSet(id);
+  return id;
 }
 
 /** Adds a browser, in the given profile or the default one; its id. */

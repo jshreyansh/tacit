@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "../src/toolbar/chat/threadMessages";
+import { memoryTool, spawnedTerminalId, toolRunSummary, toThreadMessages, workerSpawn } from "../src/toolbar/chat/threadMessages";
 import { replayChat } from "../shared/chat-transcript";
 
 test("a conversation maps to assistant-ui messages with roles, parts and status", () => {
@@ -102,4 +102,24 @@ test("the manager briefing reads as a line, not as a reply", async () => {
   const [m] = toThreadMessages([{ role: "note", id: "b", kind: "briefing", text: "You are the manager" }]);
   assert.deepEqual(m.content, [{ type: "data-briefing", data: { text: "You are the manager" } }]);
   assert.equal(m.metadata?.custom.note, true);
+});
+
+test("a saved note reads its result: what was saved, where, and whether it waits for the person", () => {
+  const result = { content: [{ type: "text", text: JSON.stringify({ ok: true, action: "add", scope: "folder", name: "release-branch", status: "active", filePath: "/m/folders/x/release-branch.md" }) }] };
+  assert.deepEqual(memoryTool("mcp__tacit__remember", { name: "Release branch", description: "Releases go out from ship", scope: "folder" }, result), {
+    kind: "remember",
+    name: "release-branch",
+    description: "Releases go out from ship",
+    scope: "folder",
+    action: "add",
+    status: "active",
+    filePath: "/m/folders/x/release-branch.md",
+    replaces: null,
+  });
+  const pending = memoryTool("mcp__tacit__remember", { name: "n", description: "d" }, '{"ok":true,"action":"add","scope":"workdesk","name":"n","status":"pending","filePath":"/f.md"}');
+  assert.equal(pending?.kind === "remember" && pending.status, "pending");
+  const running = memoryTool("mcp__tacit__remember", { name: "n", description: "d", scope: "you" });
+  assert.equal(running?.kind === "remember" && running.action, null);
+  assert.deepEqual(memoryTool("mcp__tacit__forget", { name: "old", scope: "folder" }), { kind: "forget", name: "old", scope: "folder" });
+  assert.equal(memoryTool("mcp__tacit__update_task", {}), null);
 });

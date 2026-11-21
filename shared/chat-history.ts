@@ -31,22 +31,37 @@ function toolInput(preview: string): Record<string, unknown> {
 
 /**
  * Codex models that call tools from code write `tools.<name>({...})` inside
- * one `exec` call; the chat shows the tool it called, as it did live, with
+ * one `exec` call; the chat shows each tool it called, as it did live, with
  * the string fields of its (JavaScript, not JSON) argument.
  */
-function unwrapCodeCall(preview: string): { name: string; input: Record<string, unknown> } | null {
-  const call = /\btools\.([A-Za-z0-9_]+)\(\s*(\{[\s\S]*?\})?/.exec(preview);
-  if (!call) return null;
-  const input: Record<string, unknown> = {};
-  for (const field of (call[2] ?? "").matchAll(/["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
-    try {
-      input[field[1]] = JSON.parse(`"${field[2]}"`);
-    } catch {
-      input[field[1]] = field[2];
+function unwrapCodeCalls(preview: string): Array<{ name: string; input: Record<string, unknown> }> {
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  for (const call of preview.matchAll(/\btools\.([A-Za-z0-9_]+)\(\s*(\{[\s\S]*?\})?/g)) {
+    const input: Record<string, unknown> = {};
+    for (const field of (call[2] ?? "").matchAll(/["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
+      try {
+        input[field[1]] = JSON.parse(`"${field[2]}"`);
+      } catch {
+        input[field[1]] = field[2];
+      }
     }
+    if (call[1] === "exec_command") calls.push({ name: "Shell", input: { command: input.cmd ?? input.command ?? "" } });
+    else calls.push({ name: call[1], input });
   }
-  if (call[1] === "exec_command") return { name: "Shell", input: { command: input.cmd ?? input.command ?? "" } };
-  return { name: call[1], input };
+  return calls;
+}
+
+/**
+ * An `exec` script's output, shared out among the tools it called: when it
+ * printed one line per call (`text(await tools.x(...))` for each), each call
+ * gets its own line; otherwise the last call gets all of it.
+ */
+export function splitCodeOutput(output: string, calls: number): string[] {
+  const header = /^Script completed[^\n]*\n(?:Wall time[^\n]*\n)?Output:\n?/.exec(output);
+  const body = header ? output.slice(header[0].length) : output;
+  const lines = body.split("\n").filter((l) => l.trim());
+  if (calls > 1 && lines.length === calls) return lines;
+  return Array.from({ length: calls }, (_, i) => (i === calls - 1 ? output : ""));
 }
 
 const INTERRUPT_MARKER = /^\[Request interrupted by user( for tool use)?\]$/;
@@ -117,7 +132,8 @@ export function splitCarriedTools(text: string): CarriedPart[] {
 
 export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefix = "h"): ChatEvent[] {
   const out: ChatEvent[] = [];
-  const openCalls: string[] = [];
+  // One entry per call in the record; an `exec` that called several tools holds them all.
+  const openCalls: Array<string | string[]> = [];
   // Codex's request_user_input_async questions, answered by a later message.
   let asked: { callId: string; questions: ChatQuestion[]; answers: ChatAnswers } | null = null;
   let inTurn = false;
@@ -125,7 +141,7 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
   const endTurn = (outcome: "success" | "interrupted" = "success") => {
     if (!inTurn) return;
     // A call the record never answered (the turn was stopped) closes with it.
-    for (const callId of openCalls.splice(0)) out.push({ kind: "tool_result", toolCallId: callId, isError: false, output: "" });
+    for (const callId of openCalls.splice(0).flat()) out.push({ kind: "tool_result", toolCallId: callId, isError: false, output: "" });
     out.push({ kind: "turn_ended", outcome });
     inTurn = false;
   };
@@ -177,7 +193,7 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
             out.push({ kind: "block_start", key: partKey, block: "tool", toolCallId: callId, toolName: part.name }, { kind: "block_done", key: partKey, input: part.input });
           } else {
             const callId = openCalls.shift();
-            if (callId) out.push({ kind: "tool_result", toolCallId: callId, isError: part.isError, output: part.output });
+            for (const id of [callId ?? []].flat()) out.push({ kind: "tool_result", toolCallId: id, isError: part.isError, output: part.output });
           }
         });
         break;
@@ -190,13 +206,25 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
         break;
       case "tool_use": {
         inTurn = true;
+        const unwrapped = ev.toolName === "exec" ? unwrapCodeCalls(ev.textPreview) : [];
+        if (unwrapped.length > 1) {
+          const ids = unwrapped.map((call, i) => {
+            block += 1;
+            const callKey = `${idPrefix}${block}`;
+            const callId = `${idPrefix}c${ev.index}-${i}`;
+            out.push({ kind: "block_start", key: callKey, block: "tool", toolCallId: callId, toolName: call.name }, { kind: "block_done", key: callKey, input: call.input });
+            return callId;
+          });
+          openCalls.push(ids);
+          break;
+        }
         block += 1;
         const callId = `${idPrefix}c${ev.index}`;
         openCalls.push(callId);
-        const unwrapped = ev.toolName === "exec" ? unwrapCodeCall(ev.textPreview) : null;
-        const input = unwrapped?.input ?? (ev.filePath && !ev.textPreview ? { file_path: ev.filePath } : toolInput(ev.textPreview));
+        const single = unwrapped[0] ?? null;
+        const input = single?.input ?? (ev.filePath && !ev.textPreview ? { file_path: ev.filePath } : toolInput(ev.textPreview));
         out.push(
-          { kind: "block_start", key, block: "tool", toolCallId: callId, toolName: unwrapped?.name ?? ev.toolName ?? "tool" },
+          { kind: "block_start", key, block: "tool", toolCallId: callId, toolName: single?.name ?? ev.toolName ?? "tool" },
           { kind: "block_done", key, input },
         );
         if (ev.toolName === CODEX_ASK_ASYNC_TOOL) asked = { callId, questions: codexAsyncQuestions(input.questions), answers: {} };
@@ -204,7 +232,10 @@ export function timelineToChatEvents(timeline: readonly TimelineEvent[], idPrefi
       }
       case "tool_result": {
         const callId = openCalls.shift();
-        if (callId) out.push({ kind: "tool_result", toolCallId: callId, isError: !!ev.isError, output: ev.textPreview });
+        if (Array.isArray(callId)) {
+          const outputs = splitCodeOutput(ev.textPreview, callId.length);
+          callId.forEach((id, i) => out.push({ kind: "tool_result", toolCallId: id, isError: !!ev.isError, output: outputs[i] }));
+        } else if (callId) out.push({ kind: "tool_result", toolCallId: callId, isError: !!ev.isError, output: ev.textPreview });
         break;
       }
       case "turn_complete":

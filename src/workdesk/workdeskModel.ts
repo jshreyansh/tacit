@@ -95,8 +95,15 @@ export interface TasksTabCard {
   title: string;
 }
 
-/** What a tab in the workdesk view can hold: any node, a past session, a file, or all the tasks. */
-export type TabCard = WorkdeskCard | SessionTabCard | FileTabCard | TasksTabCard;
+/** A folder's changes, history or memory, in a tab of the workdesk view, by tool id. */
+export interface ToolTabCard {
+  kind: "tool";
+  id: string;
+  title: string;
+}
+
+/** What a tab in the workdesk view can hold: any node, a past session, a file, all the tasks, or a folder's view. */
+export type TabCard = WorkdeskCard | SessionTabCard | FileTabCard | TasksTabCard | ToolTabCard;
 
 export interface BrowserGroup {
   identityId: string;

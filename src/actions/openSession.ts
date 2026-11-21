@@ -1,3 +1,4 @@
+import { usePinStore } from "../stores/pinStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useChatDockStore } from "../stores/chatDockStore";
@@ -5,12 +6,15 @@ import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { panToTerminal } from "../utils/panToTerminal";
 import { terminalHoldingSession } from "./sessionResume";
+import { findTerminal } from "./terminalLookup";
+import { flyToChatTile } from "./chatTileFocus";
+import { glowNode } from "../utils/motion";
 
 /**
  * Opening a session from history, search or the session list. In the
  * workdesk view's grid it opens as a tab of its own, so several can be
- * read and continued side by side; on the canvas, in the reader beside the
- * docked chat.
+ * read and continued side by side; on the canvas, in the pane beside the
+ * panels, never in the manager's place.
  */
 export function openPastSession(filePath: string): void {
   const view = useWorkdeskViewStore.getState();
@@ -18,9 +22,8 @@ export function openPastSession(filePath: string): void {
     view.openSession(filePath);
     return;
   }
-  // On the canvas it opens in the Manager panel, beside the list of chats.
   void useSessionStore.getState().loadReplay(filePath);
-  useChatDockStore.getState().showReader(null);
+  useCanvasPageStore.getState().open("session");
 }
 
 /** A file from Files, Memory or search: a tab in the grid, the editor drawer on the canvas. */
@@ -33,29 +36,24 @@ export function openFileInView(filePath: string): void {
   useCanvasStore.getState().openFileEditor(filePath);
 }
 
-/** A session continued in chat: its terminal's tab in the grid, the reader on the canvas. */
-export function openLiveChatSession(terminalId: string): void {
-  const view = useWorkdeskViewStore.getState();
-  if (view.mode === "grid") {
-    view.setOpenNode({ kind: "terminal", id: terminalId });
-    return;
-  }
-  useSessionStore.getState().openLiveChat(terminalId);
-  useChatDockStore.getState().showReader(null);
-}
-
 /**
  * A live chat picked in the list beside the manager's chat. That panel is
  * the manager's alone: on the canvas the chat's tile is flown to and
  * focused; in the grid it opens as its tab.
  */
 export function openListedLiveChat(terminalId: string): void {
+  // Full screen is the chat alone: going to something else docks it again.
+  const dock = useChatDockStore.getState();
+  if (dock.open && dock.placement === "full") dock.setPlacement("dock");
   const view = useWorkdeskViewStore.getState();
   if (view.mode === "grid") {
     view.setOpenNode({ kind: "terminal", id: terminalId });
     return;
   }
-  panToTerminal(terminalId);
+  if (findTerminal(terminalId)?.terminal.chatMode) flyToChatTile(terminalId);
+  else panToTerminal(terminalId);
+  // Once there, it glows for a moment, so your eye lands on it.
+  glowNode(`terminal:${terminalId}`, 380);
 }
 
 /**
@@ -80,6 +78,12 @@ export function openListedPastSession(entry: { filePath: string; sessionId: stri
 }
 
 /** All the tasks: a tab in the grid, a page beside the sheet on the canvas. */
+/** One folder's tasks: the task list, on that folder (the pane on the canvas, a tab in the grid). */
+export function openFolderTasks(projectPath: string): void {
+  usePinStore.getState().openDrawer(projectPath);
+  openAllTasks();
+}
+
 export function openAllTasks(): void {
   const view = useWorkdeskViewStore.getState();
   if (view.mode === "grid") {

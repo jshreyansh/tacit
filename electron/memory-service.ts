@@ -1,7 +1,9 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import type { FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeProjectDirName } from "../shared/memory";
 
 export interface MemoryNode {
   fileName: string;
@@ -153,10 +155,40 @@ export function scanMemoryDir(dirPath: string): MemoryGraph {
   return { nodes, edges, dirPath };
 }
 
+/**
+ * Claude Code's own memory for the folder a worktree belongs to. Claude keeps
+ * one memory per repository, under the main folder, shared by every worktree
+ * (code.claude.com/docs/en/memory), and names the folder by turning every
+ * character that isn't a letter or digit into "-". This used to use the
+ * worktree's own path and leave "." alone, so a worktree's memory always
+ * showed empty.
+ */
 export function getMemoryDirForWorktree(worktreePath: string): string {
   const homeDir = os.homedir();
-  const projectId = worktreePath.replace(/[\\/:]/g, "-");
-  return path.join(homeDir, ".claude", "projects", projectId, "memory");
+  return path.join(homeDir, ".claude", "projects", claudeProjectDirName(repositoryFolder(worktreePath)), "memory");
+}
+
+const repositoryFolders = new Map<string, string>();
+
+/** The main folder of the repository `dir` is in (itself when it isn't in git). */
+export function repositoryFolder(dir: string): string {
+  const cached = repositoryFolders.get(dir);
+  if (cached) return cached;
+  let folder = dir;
+  try {
+    const common = execFileSync("git", ["rev-parse", "--git-common-dir"], {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 5_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const resolved = path.resolve(dir, common);
+    if (path.basename(resolved) === ".git") folder = path.dirname(resolved);
+  } catch {
+    folder = dir;
+  }
+  repositoryFolders.set(dir, folder);
+  return folder;
 }
 
 /** Workspace-level memory scope for the workspace-manager role — distinct

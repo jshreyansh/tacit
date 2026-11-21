@@ -6,6 +6,7 @@ import { StatusChip } from "../components/ui/parts";
 import { useManagerTranscript } from "../stores/managerChatStore";
 import { useT } from "../i18n/useT";
 import { useSessionStore } from "../stores/sessionStore";
+import { openListedLiveChat } from "../actions/openSession";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
@@ -257,7 +258,7 @@ function MoreMenu({ timeline, agent, t, onHidden }: { timeline: ReplayTimeline; 
  * a terminal opens that terminal's tab; the tab's own × closes it.
  */
 
-function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; onClose: () => void; onLive?: (terminalId: string) => void }) {
+function PastSession({ timeline, onClose, onLive, headerExtra }: { timeline: ReplayTimeline; onClose: () => void; onLive?: (terminalId: string) => void; headerExtra?: React.ReactNode }) {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const canvases = useCanvasRegistryStore((s) => s.canvases);
@@ -383,7 +384,15 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
     );
   } else if (holding && holdingTerminal?.chatMode) {
     actions = (
-      <button type="button" className={primary} onClick={() => (onLive ? onLive(holding) : useSessionStore.getState().openLiveChat(holding))}>
+      <button
+        type="button"
+        className={primary}
+        onClick={() => {
+          if (onLive) return onLive(holding);
+          onClose();
+          openListedLiveChat(holding);
+        }}
+      >
         {t.reader_open_chat}
       </button>
     );
@@ -557,6 +566,7 @@ function PastSession({ timeline, onClose, onLive }: { timeline: ReplayTimeline; 
           </button>
         )}
         <MoreMenu timeline={timeline} agent={agent} t={t} onHidden={onClose} />
+        {headerExtra}
         {!onLive && <CloseButton onClose={onClose} t={t} />}
       </div>
 
@@ -714,7 +724,8 @@ export function PastSessionTab({ filePath }: { filePath: string }) {
   );
 }
 
-export function SessionReader() {
+/** `headerExtra`: a control the place it's shown in adds beside Close (the pane's "Canvas ›"). */
+export function SessionReader({ headerExtra }: { headerExtra?: React.ReactNode } = {}) {
   const t = useT();
   const timeline = useSessionStore((s) => s.replayTimeline);
   const replayError = useSessionStore((s) => s.replayError);
@@ -733,7 +744,7 @@ export function SessionReader() {
     return <LiveSession terminalId={liveChatTerminalId} onClose={close} />;
   }
   if (timeline) {
-    return <PastSession timeline={timeline} onClose={close} />;
+    return <PastSession timeline={timeline} onClose={close} headerExtra={headerExtra} />;
   }
   return (
     <div className="flex h-full flex-col">

@@ -51,6 +51,11 @@ interface ProjectStore {
 
   addProject: (project: ProjectData) => void;
   removeProject: (projectId: string) => void;
+  /**
+   * Points a folder whose files moved at where they are now: the folder and
+   * every worktree inside it. Worktrees kept elsewhere stay as they were.
+   */
+  relocateProject: (projectId: string, newPath: string) => void;
 
   removeWorktree: (projectId: string, worktreeId: string) => void;
   syncWorktrees: (
@@ -529,6 +534,24 @@ function expandFocusedWorktreeAncestors(
   return projects;
 }
 
+/** A folder moved to `newPath`, with the worktrees inside it moved along. */
+export function relocatedProject(project: ProjectData, newPath: string): ProjectData {
+  const from = project.path.replace(/[\\/]+$/, "");
+  const to = newPath.replace(/[\\/]+$/, "");
+  const move = (p: string) => (p === from ? to : p.startsWith(`${from}/`) || p.startsWith(`${from}\\`) ? to + p.slice(from.length) : p);
+  const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+  return {
+    ...project,
+    path: to,
+    // Named after its folder unless someone renamed it.
+    name: project.name === baseName(from) ? baseName(to) : project.name,
+    worktrees: project.worktrees.map((w) => {
+      const path = move(w.path);
+      return { ...w, path, name: w.isPrimary && w.name === baseName(from) ? baseName(to) : w.name };
+    }),
+  };
+}
+
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   projects: [],
   focusedProjectId: null,
@@ -538,6 +561,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   addProject: (project) => {
     set((state) => ({
       projects: [...state.projects, project],
+    }));
+    markDirty();
+  },
+
+  relocateProject: (projectId, newPath) => {
+    set((state) => ({
+      projects: state.projects.map((project) => (project.id === projectId ? relocatedProject(project, newPath) : project)),
     }));
     markDirty();
   },

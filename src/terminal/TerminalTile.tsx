@@ -1,4 +1,6 @@
-﻿import { lazy, Suspense, useEffect, useRef, useCallback, useState } from "react";
+﻿import { openFolderPlace } from "../actions/folderTools";
+import { StartedWithMemory } from "../components/StartedWithMemory";
+import { lazy, Suspense, useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search, Undo2 } from "lucide-react";
 import type { TerminalData } from "../types";
@@ -56,6 +58,8 @@ import { useTurnUndo } from "./useTurnUndo";
 import { BypassBadge } from "./BypassBadge";
 import { hasBypassArgs } from "./cliConfig";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
+import { useManagerChatStore } from "../stores/managerChatStore";
+import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { TERMINAL_TYPE_CONFIG } from "./terminalTypeConfig";
 import { AgentRenderer } from "../components/agent/AgentRenderer";
 import { ActivitySparkline } from "./ActivitySparkline";
@@ -64,6 +68,9 @@ import { useTerminalFindStore } from "../stores/terminalFindStore";
 import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
 import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
+import { AgentModeSwitch, PendingSwitchLine, useAgentBusy, usePendingSwitch } from "../components/AgentModeSwitch";
+import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
+import { reclaimTerminalView, useTerminalViewHolder } from "./terminalRuntimeStore";
 
 // Only a manager in chat mode needs this; loaded on demand, it keeps the
 // tile's own module free of image imports (and testable in Node).
@@ -218,6 +225,13 @@ export function TerminalTile({
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   // Undoing this agent's turns (T10).
   const turnUndo = useTurnUndo(terminal.id, !!terminal.chatMode);
+  // Terminal or Chat: the agent's own, switched here, in its Grid tab or
+  // in the manager panel.
+  const switchable = hasChatMode(terminal.type);
+  const agentBusy = useAgentBusy(terminal.id, !!terminal.chatMode);
+  const pendingSwitch = usePendingSwitch(terminal.id, !!terminal.chatMode, agentBusy);
+  // The manager's terminal, shown in the manager panel for now.
+  const viewHolder = useTerminalViewHolder(terminal.chatMode ? null : terminal.id);
   const undoState = turnUndo.undoState;
   const editorItems = useEditorItems();
   // Whether agents started for you here may skip approvals (T15.1).
@@ -278,6 +292,15 @@ export function TerminalTile({
   const composerAdapter = getComposerAdapter(terminal.type);
   const acceptsTaskDrop = composerAdapter !== null;
   const viewportScale = useCanvasStore((s) => s.viewport.scale);
+  // A past session continued in chat: the tile is the chat (the manager's
+  // own chat lives in the panel instead).
+  const isManagerTile = useCanvasRegistryStore((s) => s.canvases.some((c) => c.workspaceManagerTerminalId === terminal.id));
+  const chatSession = !!terminal.chatMode && !isManagerTile;
+  const chatNeedsYou = useManagerChatStore((s) => {
+    if (!terminal.chatMode) return false;
+    const transcript = s.transcripts[terminal.id];
+    return !!transcript && (transcript.approvals.length > 0 || transcript.questions.length > 0);
+  });
   const zoomedOutTerminalId = useViewportFocusStore(
     (s) => s.zoomedOutTerminalId,
   );
@@ -947,6 +970,7 @@ export function TerminalTile({
           : undefined
       }
       data-overview={isOverviewMode ? "true" : undefined}
+      data-needs-you={chatNeedsYou ? "true" : undefined}
       data-handoff-terminal-id={terminal.id}
       data-handoff-source={isHandoffSource ? "true" : undefined}
       data-handoff-target={isHandoffTarget ? "true" : undefined}
@@ -1028,9 +1052,8 @@ export function TerminalTile({
             e.stopPropagation();
             focusWorktreeInScene(projectId, worktreeId);
             panToWorktree(projectId, worktreeId, { enterOverview: true });
-            const canvas = useCanvasStore.getState();
-            canvas.setRightPanelCollapsed(false);
-            canvas.setRightPanelActiveTab("files");
+            // Its folder's files, unfolded in the navigator.
+            openFolderPlace("files", worktreePath);
           }}
         >
           {headerContextLabel}
@@ -1154,6 +1177,10 @@ export function TerminalTile({
           <ActivitySparkline terminalId={terminal.id} />
         )}
         <div className="flex items-center gap-0.5">
+          {!terminal.chatMode && !terminal.minimized && <StartedWithMemory terminalId={terminal.id} variant="tile" />}
+          {switchable && !terminal.minimized && (
+            <AgentModeSwitch terminalId={terminal.id} type={terminal.type} chatMode={!!terminal.chatMode} busy={agentBusy} size="tile" />
+          )}
           {(undoState.kind === "ready" || undoState.kind === "running") && !terminal.minimized && (
             <button
               type="button"
@@ -1183,6 +1210,28 @@ export function TerminalTile({
               }}
             >
               <Search size={10} strokeWidth={1.6} aria-hidden="true" />
+            </button>
+          )}
+          {chatSession && (
+            <button
+              type="button"
+              className="tc-tile-action text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--border)]"
+              data-visible="always"
+              title={t.chat_tile_more}
+              aria-label={t.chat_tile_more}
+              aria-haspopup="menu"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+                <circle cx="1.8" cy="5" r="0.95" />
+                <circle cx="5" cy="5" r="0.95" />
+                <circle cx="8.2" cy="5" r="0.95" />
+              </svg>
             </button>
           )}
           <button
@@ -1268,11 +1317,16 @@ export function TerminalTile({
         </div>
       )}
 
+      {pendingSwitch && !terminal.minimized && (
+        <PendingSwitchLine terminalId={terminal.id} className="shrink-0 border-b border-[var(--border)] px-2.5 py-1 nopan" />
+      )}
+
       {terminal.chatMode ? (
-        // The manager runs in the docked chat; this tile starts no process.
+        // Chat mode starts no process: the manager's tile points to the
+        // docked chat; a continued session's tile is the chat itself.
         !terminal.minimized && (
           <Suspense fallback={null}>
-            <ChatModeBody terminalId={terminal.id} agent={terminal.type} />
+            <ChatModeBody terminalId={terminal.id} agent={terminal.type} title={terminal.customTitle?.trim() || terminal.title} place={headerContextLabel} />
           </Suspense>
         )
       ) : useAgentRenderer ? (
@@ -1371,6 +1425,23 @@ export function TerminalTile({
             }}
           />
           <TerminalFindOverlay terminalId={terminal.id} />
+          {viewHolder === "panel" && !terminal.minimized && (
+            // Its live terminal is in the manager panel; one place draws it at a time.
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2.5 bg-[var(--bg)] px-6 text-center">
+              <div className="text-[13px] text-[var(--text-primary)]">{t.term_shown_in_panel}</div>
+              <button
+                type="button"
+                className="nodrag tc-rail-btn h-7 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  reclaimTerminalView(terminal.id);
+                }}
+              >
+                {t.term_show_here}
+              </button>
+            </div>
+          )}
         </div>
         )
       ) : (
@@ -1399,6 +1470,28 @@ export function TerminalTile({
             x={contextMenu.x}
             y={contextMenu.y}
             items={[
+              ...(switchable
+                ? [
+                    terminal.chatMode
+                      ? { label: t.agent_switch_to_terminal, onClick: () => requestManagerMove(terminal.id, "terminal", agentBusy) }
+                      : { label: t.agent_switch_to_chat, onClick: () => requestManagerMove(terminal.id, "chat", agentBusy) },
+                    ...(chatSession ? [] : [{ type: "separator" as const }]),
+                  ]
+                : []),
+              ...(chatSession
+                ? [
+
+                    {
+                      label: t.chat_tile_open_grid,
+                      onClick: () => {
+                        activateTerminalInScene(projectId, worktreeId, terminal.id, { focusInput: false });
+                        void import("../workdesk/workdeskModeSwitch").then((m) => m.showGridOnFocusedNode());
+                      },
+                    },
+                    { label: t.chat_tile_close, onClick: handleClose },
+                    { type: "separator" as const },
+                  ]
+                : []),
               {
                 label: t.stash_terminal,
                 onClick: () =>

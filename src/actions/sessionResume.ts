@@ -6,6 +6,8 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { panToTerminal } from "../utils/panToTerminal";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
+import { flyToChatTile } from "./chatTileFocus";
 import type { ResumableAgent } from "../toolbar/sessionReaderModel";
 
 /**
@@ -57,18 +59,19 @@ function newTerminal(target: ResumeTarget, sessionId: string, chatMode: boolean)
 }
 
 /**
- * Continues the session as its own chat: a chat node on the canvas, shown
- * live in the reader. The tile starts no process; the chat agent resumes
- * the session.
- */
-/**
+ * Continues the session as its own chat: a tile on the canvas that is the
+ * chat, flown to with the cursor in its box; the reader it was read in
+ * closes. The tile starts no process; the chat agent resumes the session.
  * `onOpened`: the session was read in a tab of the workdesk view, which
- * becomes the live agent's tab instead of the reader showing it.
+ * becomes the live agent's tab instead.
  */
 export async function continueSessionInChat(target: ResumeTarget, onOpened?: (terminalId: string) => void): Promise<void> {
   const created = newTerminal(target, target.sessionId, true);
   if (onOpened) onOpened(created.id);
-  else useSessionStore.getState().openLiveChat(created.id);
+  else {
+    closeReader();
+    flyToChatTile(created.id);
+  }
   const ok = await startTerminalChat(created.id);
   if (!ok) {
     // It couldn't start: the node goes back to being a terminal that resumes it.
@@ -125,6 +128,7 @@ export async function forkSessionAt(
 function closeReader(): void {
   useSessionStore.getState().exitReplay();
   useCanvasStore.getState().closeSessionsOverlay();
+  if (useCanvasPageStore.getState().page === "session") useCanvasPageStore.getState().close();
 }
 
 /**

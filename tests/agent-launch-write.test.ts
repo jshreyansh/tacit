@@ -37,3 +37,16 @@ test("a config Tacit creates is private, and no staging file is left", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("two launches of one terminal get their own temp files, so the first one's exit can't remove the second's", async () => {
+  const { launchTempFile } = await import("../electron/agent-launch.ts");
+  const first = launchTempFile("/tmp");
+  const second = launchTempFile("/tmp");
+  const a = first("tacit-memory-t-1.md");
+  const b = second("tacit-memory-t-1.md");
+  assert.notEqual(a, b);
+  assert.match(a, /^\/tmp\/tacit-memory-t-1-[0-9a-f]{8}\.md$/);
+  // Within one launch, a name always maps to the same file.
+  assert.equal(first("tacit-memory-t-1.md"), a);
+  assert.equal(launchTempFile("/tmp", "ab12cd34")("tacit-mcp-t-1.json"), "/tmp/tacit-mcp-t-1-ab12cd34.json");
+});

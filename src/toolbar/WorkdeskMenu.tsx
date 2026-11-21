@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
@@ -12,6 +12,9 @@ import { useNeedsYouOnOtherWorkdesks, useTasksNeedingYou } from "../tasks/useTas
  * workdesks… for renaming, reordering and deleting. The same workdesks and
  * order as the Hub; ⌘⇧[ ⌘⇧] still cycle.
  */
+const MENU_WIDTH = 268;
+const MENU_MIN_WIDTH = 180;
+
 export function WorkdeskMenu({ name }: { name: string }) {
   const t = useT();
   const canvases = useCanvasRegistryStore((s) => s.canvases);
@@ -35,6 +38,22 @@ export function WorkdeskMenu({ name }: { name: string }) {
   }, [open]);
   useEffect(() => {
     if (!open) setNaming(false);
+  }, [open]);
+  // The menu stays inside the panel that holds it: a narrow list shrinks it
+  // rather than cutting it off at the panel's edge.
+  const [popWidth, setPopWidth] = useState(MENU_WIDTH);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    const own = ref.current.getBoundingClientRect();
+    let edge = window.innerWidth;
+    for (let el = ref.current.parentElement; el; el = el.parentElement) {
+      const overflowX = getComputedStyle(el).overflowX;
+      if (overflowX !== "visible") {
+        edge = el.getBoundingClientRect().right;
+        break;
+      }
+    }
+    setPopWidth(Math.max(MENU_MIN_WIDTH, Math.min(MENU_WIDTH, edge - own.left - 8)));
   }, [open]);
   useEffect(() => {
     if (naming) inputRef.current?.select();
@@ -72,7 +91,8 @@ export function WorkdeskMenu({ name }: { name: string }) {
         <div
           role={naming ? "dialog" : "menu"}
           aria-label={naming ? t["canvas.new.title"] : t.nav_workdesks}
-          className="tc-menu-pop !absolute left-0 top-10 z-30 w-[268px] !max-h-[min(460px,70vh)]"
+          className="tc-menu-pop !absolute left-0 top-10 z-30 !max-h-[min(460px,70vh)]"
+          style={{ width: popWidth }}
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === "Escape") {

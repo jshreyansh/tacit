@@ -19,6 +19,7 @@ import type {
   WorktreeGroup,
   CanvasTerminalItem,
 } from "./sessionPanelModel";
+import { openNewAgentAsSet } from "../actions/managerChatMode";
 
 function PlusIcon() {
   return (
@@ -172,11 +173,12 @@ function WorktreeRow({
       p.worktrees.some((w) => w.id === group.worktreeId),
     );
     if (!project) return;
-    createTerminalInScene({
+    const created = createTerminalInScene({
       projectId: project.id,
       worktreeId: group.worktreeId,
       type,
     });
+    openNewAgentAsSet(created.id);
   };
 
   // Activate the worktree so subsequent actions like cmd+t (which reads

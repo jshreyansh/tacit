@@ -4,6 +4,8 @@ import { useBrowserCardStore } from "../stores/browserCardStore";
 import { usePinStore } from "../stores/pinStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
+import { useCanvasStore } from "../stores/canvasStore";
+import { useSessionStore } from "../stores/sessionStore";
 import { showPinOnCanvas } from "../tasks/showPinOnCanvas";
 import { flyToBounds, panToTerminal } from "../utils/panToTerminal";
 import { canvasFocusedNode } from "./canvasFocus";
@@ -18,13 +20,35 @@ import { canvasFocusedNode } from "./canvasFocus";
 
 /** The grid, on the node you're on in the canvas; with none, the overview. */
 export function showGridOnFocusedNode(): void {
-  // All the tasks open on the canvas: their tab in the grid.
+  // What's open in the pane comes along as the grid's tab: All tasks, a
+  // finished chat, or a file.
   const page = useCanvasPageStore.getState();
+  const view = useWorkdeskViewStore.getState();
   if (page.page === "tasks") {
     page.close();
-    const view = useWorkdeskViewStore.getState();
     view.setMode("grid");
     view.openTasks();
+    return;
+  }
+  if (page.page === "tool" && page.toolId) {
+    const toolId = page.toolId;
+    page.close();
+    view.setMode("grid");
+    view.openTool(toolId);
+    return;
+  }
+  const sessionFile = page.page === "session" ? useSessionStore.getState().replayTimeline?.filePath : undefined;
+  if (sessionFile) {
+    page.close();
+    view.setMode("grid");
+    view.openSession(sessionFile);
+    return;
+  }
+  const filePath = useCanvasStore.getState().fileEditorPath;
+  if (filePath) {
+    useCanvasStore.getState().closeFileEditor();
+    view.setMode("grid");
+    view.openFile(filePath);
     return;
   }
   useWorkdeskViewStore.getState().showGrid(canvasFocusedNode());
@@ -48,6 +72,11 @@ export async function showOpenNodeOnCanvas(): Promise<void> {
     case "file":
       view.setMode("canvas");
       openFileInView(node.id);
+      return;
+    // A folder's changes, history or memory: the pane.
+    case "tool":
+      view.setMode("canvas");
+      useCanvasPageStore.getState().openTool(node.id);
       return;
     // All the tasks: their page beside the sheet.
     case "tasks":

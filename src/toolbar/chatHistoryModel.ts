@@ -121,3 +121,17 @@ export function duration(startedAt: string, lastActivityAt: string): string | nu
   if (hours < 24) return `${hours}h ${mins % 60}m`;
   return `${Math.floor(hours / 24)}d`;
 }
+
+/**
+ * What a person typed to open the session, for search: the first message
+ * without pasted blocks. Empty when the manager wrote it (its briefing), so
+ * a search never matches words nobody sees.
+ */
+export function typedText(firstPrompt: string | null | undefined): string {
+  const title = chatTitle(firstPrompt);
+  if (title.kind !== "text") return "";
+  const raw = (firstPrompt ?? "").trim();
+  const firstLine = raw.replace(PASTED_BLOCK, " ").split("\n").map((l) => l.replace(QUOTE_MARKERS, "").trim()).find(Boolean) ?? "";
+  if (briefingTitle(firstLine.replace(/\s+/g, " "))) return "";
+  return raw.replace(PASTED_BLOCK, " ").replace(/\s+/g, " ").trim();
+}

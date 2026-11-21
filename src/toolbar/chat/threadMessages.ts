@@ -224,3 +224,72 @@ export function isAwaitingReply(t: Pick<ChatTranscript, "messages" | "running" |
   const last = t.messages[t.messages.length - 1];
   return t.running && !t.failure && (last?.role === "user" || (last?.role === "note" && last.kind === "briefing"));
 }
+
+/** A Tacit memory tool, and what to show for it. */
+export type MemoryToolView =
+  | {
+      kind: "remember";
+      name: string;
+      description: string;
+      scope: string;
+      /** Known once it ran: added, updated, or skipped as a repeat. */
+      action: "add" | "update" | "skip" | null;
+      status: "active" | "pending" | null;
+      filePath: string | null;
+      replaces: string | null;
+    }
+  | { kind: "forget"; name: string; scope: string }
+  | { kind: "handover" }
+  | { kind: "recall"; query: string };
+
+function resultObject(result: unknown): Record<string, unknown> | null {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    const r = result as Record<string, unknown>;
+    // MCP results come as content blocks; the JSON is in the first text one.
+    if (Array.isArray(r.content)) {
+      const text = (r.content as Array<{ type?: unknown; text?: unknown }>).find((c) => c?.type === "text" && typeof c.text === "string")?.text;
+      return typeof text === "string" ? resultObject(text) : null;
+    }
+    return r;
+  }
+  if (typeof result !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(result);
+    return parsed && typeof parsed === "object" ? resultObject(parsed) : null;
+  } catch {
+    const json = /\{[\s\S]*\}/.exec(result)?.[0];
+    if (!json || json === result) return null;
+    return resultObject(json);
+  }
+}
+
+export function memoryTool(toolName: string, args: JsonObject, result?: unknown): MemoryToolView | null {
+  const tool = /^mcp__tacit__(.+)$/.exec(toolName)?.[1];
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  switch (tool) {
+    case "remember": {
+      const r = resultObject(result);
+      const action = r?.action === "add" || r?.action === "update" || r?.action === "skip" ? r.action : null;
+      const status = r?.status === "active" || r?.status === "pending" ? r.status : null;
+      return {
+        kind: "remember",
+        name: str(r?.name) || str(args.name),
+        description: str(args.description) || str(args.name),
+        scope: str(r?.scope) || str(args.scope) || "folder",
+        action,
+        status,
+        filePath: typeof r?.filePath === "string" ? r.filePath : null,
+        replaces: str(args.replaces) || null,
+      };
+    }
+    case "forget":
+      return { kind: "forget", name: str(args.name), scope: str(args.scope) || "folder" };
+    case "update_handover":
+      return { kind: "handover" };
+    case "recall":
+    case "query_memory":
+      return { kind: "recall", query: str(args.query) };
+    default:
+      return null;
+  }
+}

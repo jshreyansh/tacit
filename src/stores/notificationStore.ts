@@ -17,6 +17,15 @@ export interface Notification {
   action?: NotificationAction;
   /** The line above the message, in place of the type's "Error", "Warning" or "Info". */
   label?: string;
+  /** Choices shown as buttons under the message, for a notice that asks for one. */
+  actions?: NotificationAction[];
+  /** Stays until it's dismissed or one of its actions is taken. */
+  sticky?: boolean;
+}
+
+export interface NotifyOptions {
+  actions?: NotificationAction[];
+  sticky?: boolean;
 }
 
 interface NotificationStore {
@@ -27,6 +36,7 @@ interface NotificationStore {
     message: string,
     action?: NotificationAction,
     label?: string,
+    options?: NotifyOptions,
   ) => string;
   dismiss: (id: string) => void;
 }
@@ -36,7 +46,7 @@ let notifyId = 0;
 export const useNotificationStore = create<NotificationStore>((set) => ({
   notifications: [],
 
-  notify: (type, message, action, label) => {
+  notify: (type, message, action, label, options) => {
     const id = `notif-${++notifyId}`;
     const notification: Notification = {
       id,
@@ -45,6 +55,8 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       timestamp: Date.now(),
       ...(action ? { action } : {}),
       ...(label ? { label } : {}),
+      ...(options?.actions?.length ? { actions: options.actions } : {}),
+      ...(options?.sticky ? { sticky: true } : {}),
     };
 
     const logFn =

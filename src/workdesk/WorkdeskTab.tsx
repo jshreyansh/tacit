@@ -1,21 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { StartedWithMemory } from "../components/StartedWithMemory";
+import { findAgentAdapter } from "../../shared/agent-adapters";
 import { TrackAsTask } from "../tasks/TrackAsTask";
 import { Undo2 } from "lucide-react";
 import { useT } from "../i18n/useT";
-import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
+import { FolderToolView } from "../components/FolderToolView";
+import { borrowTerminalView, fitTerminalRuntime, useTerminalRuntimeStore, useTerminalViewHolder } from "../terminal/terminalRuntimeStore";
+import { AgentModeSwitch, PendingSwitchLine, usePendingSwitch } from "../components/AgentModeSwitch";
 import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { updatePinInScene } from "../actions/scenePinActions";
-import { hasChatMode, requestManagerMove } from "../actions/managerChatMode";
+import { hasChatMode } from "../actions/managerChatMode";
 import type { BrowserCard, NoteCard, TabCard, TaskCard, TerminalCard } from "./workdeskModel";
 import { PastSessionTab } from "../toolbar/SessionReader";
 import { TasksView } from "../tasks/TasksView";
 import { FileEditorDrawer } from "../components/FileEditorDrawer";
 import { SessionChatBody } from "../toolbar/chat/SessionChat";
 import { useManagerTranscript, usePendingManagerMove } from "../stores/managerChatStore";
-import { cancelManagerMove, moveManagerNow } from "../actions/managerChatMode";
 import type { Pin } from "../types";
 import { TaskSections } from "../tasks/TaskParts";
 import { deleteTask, handTaskToManager, makeNote, makeTask, updateTask } from "../tasks/taskActions";
@@ -48,55 +51,31 @@ const footButton =
   "tc-rail-btn h-7 shrink-0 border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
 
 /**
- * Terminal or Chat, for an agent that has a chat mode (Claude, Codex):
- * moving stops the process the turn runs in, so mid-turn it waits for the
- * turn to end, with Switch now and Cancel.
+ * The tab's top line: the agent's Terminal | Chat (its own, the same as on
+ * its canvas tile), and a switch waiting for the turn to end.
  */
 function ViewSwitch({ card, busy, t, extra }: { card: TerminalCard; busy: boolean; t: Dict; extra?: React.ReactNode }) {
   const pending = usePendingManagerMove(card.id);
   const openChat = useChatDockStore((s) => s.setOpen);
-  const pick = (to: "terminal" | "chat") => {
-    if ((to === "chat") === card.chatMode) return;
-    requestManagerMove(card.id, to, busy);
-    // The manager's chat lives in the dock.
-    if (to === "chat" && card.isManager) openChat(true);
-  };
-  const segment = (to: "terminal" | "chat", label: string) => {
-    const on = (to === "chat") === card.chatMode;
-    return (
-      <button
-        type="button"
-        role="tab"
-        aria-selected={on}
-        className="h-6 rounded-[6px] px-2.5 text-[12px] transition-colors duration-quick"
-        style={{ background: on ? "var(--surface-hover)" : "transparent", color: on ? "var(--text-primary)" : "var(--text-muted)", fontWeight: on ? 600 : 500 }}
-        onClick={() => pick(to)}
-      >
-        {label}
-      </button>
-    );
-  };
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
-      <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-muted)]">
-        {pending ? (pending === "terminal" ? t.chat_move_pending_terminal : t.chat_move_pending_chat) : card.subtitle}
-      </span>
-      {pending && (
-        <>
-          <button type="button" className={footButton} onClick={() => moveManagerNow(card.id)} title={t.chat_move_now_hint}>
-            {t.chat_move_now}
-          </button>
-          <button type="button" className={footButton} onClick={() => cancelManagerMove(card.id)}>
-            {t.cancel}
-          </button>
-        </>
+      {pending ? (
+        <PendingSwitchLine terminalId={card.id} className="min-w-0 flex-1" />
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-muted)]">{card.subtitle}</span>
       )}
       <BypassBadge terminal={card.launch} />
       {extra}
-      <div role="tablist" aria-label={t.workdesk_view_as} className="flex gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
-        {segment("terminal", t.workdesk_view_terminal)}
-        {segment("chat", t.workdesk_view_chat)}
-      </div>
+      <AgentModeSwitch
+        terminalId={card.id}
+        type={card.type}
+        chatMode={card.chatMode}
+        busy={busy}
+        // The manager's chat lives in the panel.
+        onPicked={(to) => {
+          if (to === "chat" && card.isManager) openChat(true);
+        }}
+      />
     </div>
   );
 }
@@ -128,14 +107,11 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
       {t["turnUndo.button"]}
     </button>
   );
-  // A move asked for mid-turn happens when the turn ends (the pill does
-  // this for the manager); one that no longer applies is dropped.
-  const pending = usePendingManagerMove(card.id);
-  useEffect(() => {
-    if (card.isManager || !pending) return;
-    if ((pending === "terminal") !== card.chatMode) cancelManagerMove(card.id);
-    else if (!busy) requestManagerMove(card.id, pending, false);
-  }, [pending, busy, card.chatMode, card.isManager, card.id]);
+  // A switch asked for mid-turn happens when the turn ends.
+  usePendingSwitch(card.id, card.chatMode, busy);
+  // The manager's terminal, shown in the manager panel for now.
+  const holder = useTerminalViewHolder(card.chatMode ? null : card.id);
+  const [reborrow, setReborrow] = useState(0);
 
   // A runtime built after the tab opened (a terminal just added), or rebuilt
   // under it, is borrowed again, as the tile re-attaches (TerminalTile).
@@ -143,7 +119,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
   useLayoutEffect(() => {
     if (!container || card.chatMode) return;
     const preferred = usePreferencesStore.getState().terminalFontSize;
-    const giveBack = borrowTerminalView(card.id, container, Math.min(preferred, TAB_FONT_SIZE));
+    const giveBack = borrowTerminalView(card.id, container, Math.min(preferred, TAB_FONT_SIZE), "tab");
     setBorrowed(giveBack !== null);
     if (!giveBack) return;
     const fit = () => fitTerminalRuntime(card.id);
@@ -153,16 +129,27 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
       observer.disconnect();
       giveBack();
     };
-  }, [container, card.id, card.chatMode, runtimeEpoch]);
+  }, [container, card.id, card.chatMode, runtimeEpoch, reborrow]);
 
   return (
     <>
       {switchable ? (
-        <ViewSwitch card={card} busy={busy} t={t} extra={undoButton} />
+        <ViewSwitch
+          card={card}
+          busy={busy}
+          t={t}
+          extra={
+            <>
+              {!card.chatMode && <StartedWithMemory terminalId={card.id} variant="tile" />}
+              {undoButton}
+            </>
+          }
+        />
       ) : (
-        undoButton && (
+        (undoButton || findAgentAdapter(card.type)) && (
           <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
             <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-muted)]">{card.subtitle}</span>
+            <StartedWithMemory terminalId={card.id} variant="tile" />
             {undoButton}
           </div>
         )
@@ -188,6 +175,15 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
           {!borrowed && (
             <div className="absolute inset-0 flex items-center justify-center text-[13px] text-[var(--text-muted)]">
               {t.workdesk_terminal_canvas_only}
+            </div>
+          )}
+          {borrowed && holder === "panel" && (
+            // Its live terminal is in the manager panel; one place draws it at a time.
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-[var(--bg)] text-center">
+              <div className="text-[13px] text-[var(--text-primary)]">{t.term_shown_in_panel}</div>
+              <button type="button" className={footButton} onClick={() => setReborrow((n) => n + 1)}>
+                {t.term_show_here}
+              </button>
             </div>
           )}
         </div>
@@ -366,6 +362,13 @@ export function WorkdeskTab({ card }: { card: TabCard }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <TasksView />
+      </div>
+    );
+  }
+  if (card.kind === "tool") {
+    return (
+      <div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
+        <FolderToolView key={card.id} toolId={card.id} />
       </div>
     );
   }

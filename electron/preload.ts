@@ -311,6 +311,9 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("chat:send", terminalId, text, attachmentIds ?? []) as Promise<boolean>,
     pickAttachments: (terminalId: string) => ipcRenderer.invoke("chat:attach-pick", terminalId) as Promise<ChatAttachResult>,
     attachPaths: (paths: string[]) => ipcRenderer.invoke("chat:attach-paths", paths) as Promise<ChatAttachResult>,
+    /** Part of Tacit's own window, as an image for the message (CSS px). */
+    attachScreenshot: (rect: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke("chat:attach-screenshot", rect) as Promise<ChatAttachResult>,
     quickLook: (attachmentId: string) => ipcRenderer.invoke("chat:quick-look", attachmentId) as Promise<void>,
     // A dropped file goes by its path; a pasted image has none, so its bytes go.
     attachFiles: async (files: File[]): Promise<ChatAttachResult> => {
@@ -420,6 +423,8 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   project: {
     selectDirectory: () => ipcRenderer.invoke("project:select-directory"),
+    missingFolders: (paths: string[]) =>
+      ipcRenderer.invoke("project:missing-folders", paths) as Promise<string[]>,
     selectDirectories: () => ipcRenderer.invoke("project:select-directories"),
     createDirectory: () =>
       ipcRenderer.invoke("project:create-directory") as Promise<string | null>,
@@ -939,23 +944,28 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("file-tile:quick-look", filePath) as Promise<void>,
   },
   memory: {
-    scan: (worktreePath: string) =>
-      ipcRenderer.invoke("memory:scan", worktreePath),
-    watch: (worktreePath: string) =>
-      ipcRenderer.invoke("memory:watch", worktreePath),
-    unwatch: (worktreePath: string) =>
-      ipcRenderer.invoke("memory:unwatch", worktreePath),
-    scanWorkspace: (canvasId: string) =>
-      ipcRenderer.invoke("memory:scanWorkspace", canvasId),
-    watchWorkspace: (canvasId: string) =>
-      ipcRenderer.invoke("memory:watchWorkspace", canvasId),
-    unwatchWorkspace: (canvasId: string) =>
-      ipcRenderer.invoke("memory:unwatchWorkspace", canvasId),
-    onChanged: (callback: (graph: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, graph: unknown) =>
-        callback(graph);
-      ipcRenderer.on("memory:changed", listener);
-      return () => ipcRenderer.removeListener("memory:changed", listener);
+    /** Tacit's memory for a workdesk or a folder (shared/memory.ts). */
+    view: (request: import("../shared/memory").MemoryViewRequest) =>
+      ipcRenderer.invoke("memory:view", request) as Promise<import("../shared/memory").MemoryViewData | null>,
+    /** A saved note's status now, or null when it's gone. */
+    noteStatus: (filePath: string) =>
+      ipcRenderer.invoke("memory:note-status", filePath) as Promise<import("../shared/memory").MemoryNote["status"] | null>,
+    /** The person's approve, edit, forget or new note. */
+    act: (action: import("../shared/memory").MemoryAction) =>
+      ipcRenderer.invoke("memory:act", action) as Promise<{ ok: boolean; reason?: string }>,
+    /** What an agent was told at its latest launch. */
+    launchBrief: (terminalId: string) =>
+      ipcRenderer.invoke("memory:launch-brief", terminalId) as Promise<import("../shared/memory").LaunchBrief | null>,
+    onLaunchBrief: (callback: (terminalId: string) => void) => {
+      const listener = (_event: unknown, terminalId: string) => callback(terminalId);
+      ipcRenderer.on("memory:launch-brief-changed", listener);
+      return () => ipcRenderer.removeListener("memory:launch-brief-changed", listener);
+    },
+    /** Anything in Tacit's memory changed. */
+    onStoreChanged: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on("memory:store-changed", listener);
+      return () => ipcRenderer.removeListener("memory:store-changed", listener);
     },
   },
   agents: {

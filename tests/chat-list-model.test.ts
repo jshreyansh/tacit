@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildChatList, liveDot } from "../src/toolbar/chatListModel";
+import { buildChatList, liveDot, matchRanges, searchChats } from "../src/toolbar/chatListModel";
 import type { CanvasTerminalItem } from "../src/components/sessionPanelModel";
 import type { ChatHistoryEntry } from "../src/toolbar/chatHistoryModel";
 
@@ -86,4 +86,46 @@ test("a live row's dot: running, needs you, or none", () => {
 test("history recorded with a bare folder name joins the folder of that name", () => {
   const list = buildChatList(folders, [], [past({ projectDir: "tacit" })]);
   assert.deepEqual(list.map((f) => [f.key, f.past.length]), [["p2", 1]]);
+});
+
+const sources = [{ id: "p1", name: "tacit", path: "/code/tacit", worktreePaths: ["/code/tacit"] }];
+const titleOf = (e: ChatHistoryEntry) => (e.firstPrompt.startsWith("You've been assigned") ? "Manager session" : e.firstPrompt.split("\n")[0]);
+
+test("search matches what the row shows and what was typed, never the folder, agent or a briefing", () => {
+  const entries = [
+    past({ sessionId: "a", projectDir: "/code/tacit", firstPrompt: "hey" }),
+    past({ sessionId: "b", projectDir: "/code/tacit", firstPrompt: "You've been assigned the workdesk manager role. Help the user." }),
+    past({ sessionId: "c", projectDir: "/code/tacit", provider: "claude", firstPrompt: "Fix the footer\nthen ship the header too" }),
+  ];
+  const ids = (q: string) => searchChats(sources, [], entries, { query: q, pastTitle: titleOf }).map((h) => (h.kind === "past" ? h.entry.sessionId : h.item.terminalId));
+  assert.deepEqual(ids("he").sort(), ["a", "c"]);
+  assert.deepEqual(ids("tacit"), []);
+  assert.deepEqual(ids("claude"), []);
+  assert.deepEqual(ids("help"), []);
+  assert.deepEqual(ids("manager"), ["b"]);
+  assert.deepEqual(ids("header"), ["c"]);
+  assert.deepEqual(ids("   "), []);
+});
+
+test("search results: live first, needing you on top, then finished newest first, each with its folder", () => {
+  const hits = searchChats(
+    sources,
+    [live({ terminalId: "t1", title: "Hero copy", state: "idle", sessionId: "s-live" }), live({ terminalId: "t2", title: "Hero image", state: "attention", projectName: "tacit" }), live({ terminalId: "m", title: "Hero manager" })],
+    [
+      past({ sessionId: "old", projectDir: "/code/tacit", firstPrompt: "hero old", lastActivityAt: "2026-11-01T00:00:00Z" }),
+      past({ sessionId: "new", projectDir: "/elsewhere/site", firstPrompt: "hero new", lastActivityAt: "2026-11-10T00:00:00Z" }),
+      past({ sessionId: "s-live", projectDir: "/code/tacit", firstPrompt: "hero again" }),
+    ],
+    { query: "hero", hidden: new Set(["m"]), pastTitle: titleOf },
+  );
+  assert.deepEqual(
+    hits.map((h) => (h.kind === "live" ? `live:${h.item.terminalId}` : `past:${h.entry.sessionId}:${h.folder}`)),
+    ["live:t2", "live:t1", "past:new:site", "past:old:tacit"],
+  );
+});
+
+test("matched words are found in the title, any case, overlaps merged", () => {
+  assert.deepEqual(matchRanges("Hello there", "he"), [[0, 2], [7, 9]]);
+  assert.deepEqual(matchRanges("Manager session", "man ager"), [[0, 7]]);
+  assert.deepEqual(matchRanges("abc", "zz"), []);
 });

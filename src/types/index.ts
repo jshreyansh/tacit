@@ -800,6 +800,8 @@ export interface TacitAPI {
     quickLook: (attachmentId: string) => Promise<void>;
     /** Files dropped or pasted on the message box. */
     attachFiles: (files: File[]) => Promise<import("../../shared/chat-events").ChatAttachResult>;
+    /** Part of Tacit's own window, as an image for the message (CSS px, clamped to the window). */
+    attachScreenshot: (rect: { x: number; y: number; width: number; height: number }) => Promise<import("../../shared/chat-events").ChatAttachResult>;
     interrupt: (terminalId: string) => Promise<void>;
     /** `note`: what the person said with a deny; keeping on planning, what they'd change. */
     answer: (terminalId: string, requestId: string, decision: ApprovalDecision, note?: string) => Promise<void>;
@@ -874,6 +876,8 @@ export interface TacitAPI {
   };
   project: {
     selectDirectory: () => Promise<string | null>;
+    /** Those of these folders that no longer exist (or aren't folders). */
+    missingFolders: (paths: string[]) => Promise<string[]>;
     /** Multi-select sibling of `selectDirectory`; `[]` when the sheet is
      * cancelled. Used by first-run setup, which asks for folders plural. */
     selectDirectories: () => Promise<string[]>;
@@ -1247,66 +1251,16 @@ export interface TacitAPI {
     }) => Promise<CaptureEntryView[]>;
   };
   memory: {
-    scan: (worktreePath: string) => Promise<{
-      nodes: Array<{
-        fileName: string;
-        filePath: string;
-        name: string;
-        description: string;
-        type: string;
-        body: string;
-        mtime: number;
-        ctime: number;
-      }>;
-      edges: Array<{
-        source: string;
-        target: string;
-        label: string;
-      }>;
-      dirPath: string;
-    }>;
-    watch: (worktreePath: string) => Promise<void>;
-    unwatch: (worktreePath: string) => Promise<void>;
-    scanWorkspace: (canvasId: string) => Promise<{
-      nodes: Array<{
-        fileName: string;
-        filePath: string;
-        name: string;
-        description: string;
-        type: string;
-        body: string;
-        mtime: number;
-        ctime: number;
-      }>;
-      edges: Array<{
-        source: string;
-        target: string;
-        label: string;
-      }>;
-      dirPath: string;
-    }>;
-    watchWorkspace: (canvasId: string) => Promise<void>;
-    unwatchWorkspace: (canvasId: string) => Promise<void>;
-    onChanged: (
-      callback: (graph: {
-        nodes: Array<{
-          fileName: string;
-          filePath: string;
-          name: string;
-          description: string;
-          type: string;
-          body: string;
-          mtime: number;
-          ctime: number;
-        }>;
-        edges: Array<{
-          source: string;
-          target: string;
-          label: string;
-        }>;
-        dirPath: string;
-      }) => void,
-    ) => () => void;
+    /** Tacit's memory for a workdesk or a folder (shared/memory.ts). */
+    view: (request: import("../../shared/memory").MemoryViewRequest) => Promise<import("../../shared/memory").MemoryViewData | null>;
+    /** A saved note's status now, or null when it's gone. */
+    noteStatus: (filePath: string) => Promise<import("../../shared/memory").MemoryNote["status"] | null>;
+    /** The person's approve, edit, forget or new note. */
+    act: (action: import("../../shared/memory").MemoryAction) => Promise<{ ok: boolean; reason?: string }>;
+    launchBrief: (terminalId: string) => Promise<import("../../shared/memory").LaunchBrief | null>;
+    onLaunchBrief: (callback: (terminalId: string) => void) => () => void;
+    /** Anything in Tacit's memory changed. */
+    onStoreChanged: (callback: () => void) => () => void;
   };
   fonts: {
     listDownloaded: () => Promise<string[]>;

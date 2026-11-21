@@ -843,6 +843,8 @@ export function SettingsModal({ onClose }: Props) {
     agentConfig,
     patchAgentConfig,
     setAgentConfig,
+    newAgentMode,
+    setNewAgentMode,
   } = usePreferencesStore();
   const [fontSizeDraft, setFontSizeDraft] = useState(terminalFontSize);
   const { shortcuts, setShortcut, resetAll } = useShortcutStore();
@@ -1679,6 +1681,18 @@ export function SettingsModal({ onClose }: Props) {
               <section>
                 <SectionHeader title={t.settings_agent} />
                 <div className="flex flex-col gap-8">
+                  <div className="flex flex-col gap-5">
+                    <SettingsRow label={t.settings_new_agent_mode} description={t.settings_new_agent_mode_desc}>
+                      <ChoiceSegment
+                        value={newAgentMode}
+                        options={[
+                          { value: "terminal", label: t.workdesk_view_terminal },
+                          { value: "chat", label: t.workdesk_view_chat },
+                        ]}
+                        onChange={(v) => setNewAgentMode(v)}
+                      />
+                    </SettingsRow>
+                  </div>
                   <div className="flex flex-col gap-5">
                     <Eyebrow>{t.settings_section_agent_api}</Eyebrow>
                     <SettingsRow label={t.agent_provider}>

@@ -420,8 +420,12 @@ export class SessionScanner {
           tokenDelta: ev.token_total,
           // Only meaningful on results; a tool_use hasn't succeeded or failed
           // yet, and flagging one on the way in would paint every call red.
+          // A code-mode script says itself whether it finished; what the
+          // tools it called printed (a recall hit about "errors") isn't a failure.
           ...(timelineType === "tool_result" &&
-          isFailedToolResult({ text: textPreview })
+          (textPreview.startsWith("Script completed\n")
+            ? false
+            : isFailedToolResult({ text: textPreview }))
             ? { isError: true as const }
             : {}),
         });
@@ -611,6 +615,20 @@ export class SessionScanner {
       typeof payload.output === "string"
     ) {
       return payload.output.slice(0, REPLAY_TEXT_MAX_CHARS);
+    }
+
+    // Code-mode `exec` output comes as text blocks, one per `text()` the
+    // script printed; kept one per line so each call's result can be told apart.
+    if (
+      (payload.type === "function_call_output" ||
+        payload.type === "custom_tool_call_output") &&
+      Array.isArray(payload.output)
+    ) {
+      return payload.output
+        .map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : ""))
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, REPLAY_TEXT_MAX_CHARS);
     }
 
     return "";

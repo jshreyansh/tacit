@@ -10,6 +10,7 @@ import { NodeTray } from "./toolbar/NodeTray";
 import { LeftRail } from "./toolbar/LeftRail";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { ManagerSetupCard } from "./components/ManagerSetupCard";
+import { Navigator } from "./toolbar/Navigator";
 import { WorkspaceManagerPill } from "./toolbar/WorkspaceManagerPill";
 import { NotificationToast } from "./components/NotificationToast";
 import { useAttention } from "./attention/useAttention";
@@ -18,7 +19,6 @@ import { useNotificationStore } from "./stores/notificationStore";
 import { startAgentAvailability } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
 import { useIdentityManagerStore } from "./stores/identityManagerStore";
-import { RightPanel } from "./components/RightPanel";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
 import { PinDetailDrawer } from "./components/PinDetailDrawer";
 import { initUpdaterListeners } from "./stores/updaterStore";
@@ -770,10 +770,8 @@ export function App() {
 
       // Backs the remember MCP tool (tacit-bridge/src/mcp-server.ts via
       // electron/api-server.ts's /terminal/:id/remember route). Returns the
-      // exact same worktree.path string src/components/RightPanel/
-      // MemoryContent.tsx already uses to call window.tacit.memory.*
-      // — not a re-derived path — so a note written for this terminal lands
-      // in the same memory directory the Memory tab is already watching.
+      // terminal's own worktree.path, not a re-derived path, so a note
+      // written for this terminal lands in that folder's memory.
       getWorktreePathForTerminal: (terminalId: string) => {
         const found = findTerminal(terminalId);
         return { worktreePath: found?.worktree.path ?? null };
@@ -1270,9 +1268,9 @@ export function App() {
       <LeftRail />
       <WorkdeskView />
       <NodeTray />
-      <RightPanel />
       <CanvasRoot />
       <OnboardingModal />
+      <Navigator />
       <WorkspaceManagerPill />
       <ManagerSetupCard />
       {drawingEnabled && <DrawingPanel />}

@@ -9,19 +9,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
-import {
-  useCanvasStore,
-} from "../stores/canvasStore";
-import {
-  getRightPanelInset,
-} from "../canvas/viewportBounds";
-import { usePinStore } from "../stores/pinStore";
-import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
-import {
-  PANEL_TRANSITION_DURATION_MS,
-  PANEL_TRANSITION_EASING_CSS,
-} from "../utils/panelAnimation";
+import { useCanvasStore } from "../stores/canvasStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
+import { useFileRevealStore } from "../stores/fileRevealStore";
+import { PaneAsideButton, PaneFrame } from "./PaneFrame";
 import { useThemeStore } from "../stores/themeStore";
 import { useT } from "../i18n/useT";
 import { confirmAsync } from "./ui/confirmAsync";
@@ -62,15 +53,10 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
   const t = useT();
   const drawerPath = useCanvasStore((s) => s.fileEditorPath);
   const path = embedded ? embedded.path : drawerPath;
-  const expanded = useCanvasStore((s) => s.fileEditorExpanded);
   const closeDrawer = useCanvasStore((s) => s.closeFileEditor);
   const close = embedded ? embedded.onClose : closeDrawer;
-  const toggleExpanded = useCanvasStore((s) => s.toggleFileEditorExpanded);
-  const rightPanelCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
-  const rightPanelWidth = useCanvasStore((s) => s.rightPanelWidth);
-  const taskDrawerOpen = usePinStore((s) => s.openProjectPath !== null);
-  const chromeLeft = useLeftChromeInset();
-  const leftShift = useLeftChromeShift();
+  // The pane holds one thing: All tasks or a finished chat opening replaces the file.
+  const page = useCanvasPageStore((s) => s.page);
   const theme = useThemeStore((s) => s.theme);
 
   const [content, setContent] = useState("");
@@ -86,34 +72,25 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
   // with no preview, inside the workdesk's folders, says what it is.
   const [media, setMedia] = useState<FileTileInfo | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
+  const [editorReady, setEditorReady] = useState(false);
+  // "Search inside files" opened this file at a line: show it once the text is in.
+  const revealFor = useFileRevealStore((s) => (s.pending && s.pending.path === path ? s.pending.line : null));
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (revealFor === null || !path || loading || !editorReady || !editor) return;
+    const model = editor.getModel();
+    if (!model || model.getValue() !== content) return;
+    const line = useFileRevealStore.getState().take(path);
+    if (line === null) return;
+    const at = Math.min(Math.max(1, line), model.getLineCount());
+    editor.revealLineInCenter(at);
+    editor.setPosition({ lineNumber: at, column: 1 });
+    editor.setSelection({ startLineNumber: at, startColumn: 1, endLineNumber: at, endColumn: model.getLineMaxColumn(at) });
+  }, [revealFor, path, loading, editorReady, content]);
 
   const dirty = content !== originalContent;
   const open = path !== null;
 
-  // Only animate width/right during the brief window after the user
-  // toggles maximize/restore OR opens/closes the task drawer (which
-  // narrows the canvas-gap by 320 px). Continuous geometry changes
-  // (window resize, side-panel drag) would otherwise queue a 180ms
-  // transition every frame and make the drawer chase the pointer.
-  const [animateLayout, setAnimateLayout] = useState(false);
-  const prevExpandedRef = useRef(expanded);
-  const prevTaskDrawerOpenRef = useRef(taskDrawerOpen);
-  useEffect(() => {
-    if (
-      prevExpandedRef.current === expanded &&
-      prevTaskDrawerOpenRef.current === taskDrawerOpen
-    ) {
-      return;
-    }
-    prevExpandedRef.current = expanded;
-    prevTaskDrawerOpenRef.current = taskDrawerOpen;
-    setAnimateLayout(true);
-    const timer = setTimeout(
-      () => setAnimateLayout(false),
-      PANEL_TRANSITION_DURATION_MS + 40,
-    );
-    return () => clearTimeout(timer);
-  }, [expanded, taskDrawerOpen]);
 
   // Load file when path changes.
   useEffect(() => {
@@ -219,6 +196,12 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
     close();
   }, [dirty, close, t]);
 
+  // All tasks or a finished chat opened in the pane: the file gives way
+  // (asking first if it has unsaved changes).
+  useEffect(() => {
+    if (page && !embedded && path) void handleClose();
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cmd/Ctrl+S to save, Esc to close — bound at window level while
   // the drawer is open. Capture phase so Monaco's internal shortcut
   // binding doesn't eat Cmd+S first.
@@ -244,43 +227,11 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
 
   if (!open || !path) return null;
 
-  const leftInset = chromeLeft;
-  const rightInset = getRightPanelInset(rightPanelCollapsed, rightPanelWidth);
-  // The drawer hinges on whatever is open on the left (the docked chat,
-  // the Files / Diff / Git / Memory panel, the Hub), so it follows that
-  // edge as any of them opens, closes or is dragged wider.
-  //
-  // Level-1 width: 55% of viewport width, but never wider than the
-  // actual canvas gap (leftInset + rightInset subtracted). On tight
-  // layouts this naturally shrinks.
-  // Level-2 width: fills the entire gap between the two panels.
-  const gapMax = `calc(100vw - ${leftInset}px - ${rightInset}px)`;
-  const widthStyle = expanded ? gapMax : `min(55vw, ${gapMax})`;
-
   const fileName = path.split("/").pop() ?? path;
   const relPath = path;
 
-  return (
-    <div
-      className={embedded ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "tc-enter-fade-up tc-float fixed z-50 flex flex-col overflow-hidden"}
-      style={
-        embedded
-          ? undefined
-          : {
-              top: CHROME_TOP,
-              left: leftInset,
-              height: CHROME_HEIGHT,
-              width: widthStyle,
-              // Its left edge follows the chrome beside it; its width animates on maximize.
-              transition: animateLayout || leftShift
-                ? `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, left ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}`
-                : undefined,
-            }
-      }
-      role="dialog"
-      aria-modal="false"
-      aria-label={fileName}
-    >
+  const inner = (
+    <>
       {/* Header */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="min-w-0 flex-1 flex items-center gap-2">
@@ -331,54 +282,7 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
           {t.file_tile_canvas}
         </button>
 
-        <button
-          className="flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
-          style={{ display: embedded ? "none" : undefined }}
-          onClick={toggleExpanded}
-          title={
-            expanded
-              ? (t.file_editor_restore ?? "Restore")
-              : (t.file_editor_maximize ?? "Maximize")
-          }
-        >
-          {expanded ? (
-            // "Restore" glyph — two offset rectangles
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect
-                x="3.5"
-                y="1.5"
-                width="6"
-                height="6"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
-              <rect
-                x="1.5"
-                y="4.5"
-                width="6"
-                height="6"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-                fill="var(--surface)"
-              />
-            </svg>
-          ) : (
-            // "Maximize" glyph — single rectangle
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect
-                x="1.5"
-                y="1.5"
-                width="9"
-                height="9"
-                rx="0.5"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
-            </svg>
-          )}
-        </button>
+        {!embedded && <PaneAsideButton />}
 
         <button
           className="flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
@@ -478,6 +382,7 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
               onChange={(v) => setContent(v ?? "")}
               onMount={(editor, monaco) => {
                 editorRef.current = editor;
+                setEditorReady(true);
                 // Re-register Cmd+S inside Monaco so the editor's
                 // default "show keybindings" shortcut (Cmd+K-chain)
                 // doesn't intercept save-style chords.
@@ -505,6 +410,13 @@ export function FileEditorDrawer({ embedded }: { embedded?: { path: string; onCl
           </Suspense>
         )}
       </div>
-    </div>
+    </>
+  );
+
+  if (embedded) return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{inner}</div>;
+  return (
+    <PaneFrame label={fileName} title={fileName} glowKey={path}>
+      {inner}
+    </PaneFrame>
   );
 }

@@ -58,9 +58,10 @@ test("only a docked chat takes room beside the bar; floating and full screen tak
   assert.equal(chatDockOffset({ open: true, width: 440 }, 8), 448);
   for (const placement of ["float", "full"] as const) assert.equal(chatDockOffset({ open: true, width: 440, placement }, 8), 0);
   assert.equal(chatDockOffset({ open: false, width: 440, placement: "dock" }, 8), 0);
-  // The list of chats beside it widens what it takes.
-  assert.equal(chatDockOffset({ open: true, width: 440, placement: "dock", listShown: true }, 8), 688);
-  assert.equal(chatDockOffset({ open: true, width: 440, placement: "full", listShown: true }, 8), 0);
+  // The navigator is its own panel: it takes its room before the chat, open chat or not.
+  assert.equal(chatDockOffset({ open: true, width: 440, placement: "dock", listShown: true }, 8), 248 + 8 + 440 + 8);
+  assert.equal(chatDockOffset({ open: false, width: 440, placement: "dock", listShown: true }, 8), 256);
+  assert.equal(chatDockOffset({ open: true, width: 440, placement: "float", listShown: true }, 8), 256);
 });
 
 test("a floating chat opens bottom right and always stays on screen, header in reach", async () => {
@@ -73,4 +74,25 @@ test("a floating chat opens bottom right and always stays on screen, header in r
   assert.deepEqual(clampFloatRect({ x: 100, y: 100, w: 10, h: 10 }, view), { x: 100, y: 100, w: FLOAT_MIN.w, h: FLOAT_MIN.h });
   const small = clampFloatRect({ x: 0, y: 0, w: 900, h: 900 }, { width: 600, height: 500 });
   assert.ok(small.x >= 8 && small.y >= 8 && small.x + small.w <= 592 && small.y + small.h <= 492);
+});
+
+test("the navigator docks only on a wide window, and never beside a full-screen chat", async () => {
+  const { chatListFits, chatDockLeft } = await import("../src/stores/chatDockStore");
+  assert.equal(chatListFits(1440, { open: true, placement: "dock" }), true);
+  assert.equal(chatListFits(1440, { open: true, placement: "float" }), true);
+  assert.equal(chatListFits(1440, { open: true, placement: "full" }), false);
+  assert.equal(chatListFits(1440, { open: false, placement: "full" }), true);
+  assert.equal(chatListFits(1100, { open: false, placement: "dock" }), false);
+  // The docked chat starts after it.
+  assert.equal(chatDockLeft(70, { listShown: true }, 8), 70 + 248 + 8);
+  assert.equal(chatDockLeft(70, { listShown: false }, 8), 70);
+});
+
+test("the navigator's width is yours within its range, and the chat docks after it", async () => {
+  const { clampListWidth, chatDockOffset, chatDockLeft, CHAT_LIST_MIN_WIDTH, CHAT_LIST_MAX_WIDTH, CHAT_LIST_WIDTH } = await import("../src/stores/chatDockStore");
+  assert.equal(clampListWidth(100), CHAT_LIST_MIN_WIDTH);
+  assert.equal(clampListWidth(9999), CHAT_LIST_MAX_WIDTH);
+  assert.equal(clampListWidth(Number.NaN), CHAT_LIST_WIDTH);
+  assert.equal(chatDockOffset({ open: false, width: 440, listShown: true, listWidth: 360 }, 8), 368);
+  assert.equal(chatDockLeft(70, { listShown: true, listWidth: 360 }, 8), 70 + 360 + 8);
 });

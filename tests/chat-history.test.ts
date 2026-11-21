@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { timelineToChatEvents } from "../shared/chat-history";
+import { splitCodeOutput, timelineToChatEvents } from "../shared/chat-history";
+import { memoryTool } from "../src/toolbar/chat/threadMessages.ts";
 import { replayChat } from "../shared/chat-transcript";
 import type { TimelineEvent } from "../shared/sessions";
 import { extractUserPromptText } from "../electron/session-scanner.ts";
@@ -66,6 +67,49 @@ test("Codex's code-mode calls show as the tool they called, and its encrypted re
       ["Shell", { command: "test -f a.txt" }],
     ],
   );
+});
+
+test("a Codex script that calls several tools shows each, each with its own result", () => {
+  const recall = JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ results: [{ summary: "no errors" }] }) }] });
+  const saved = JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ ok: true, action: "add", scope: "folder", name: "deploys-require-vpn", status: "active", filePath: "/m/folders/x/deploys-require-vpn.md" }) }] });
+  const t = replayChat(
+    timelineToChatEvents([
+      ev("user_prompt", "FYI, deploys need the VPN on first."),
+      ev(
+        "tool_use",
+        'text(await tools.mcp__tacit__recall({query:"deploy VPN",limit:3}));\ntext(await tools.mcp__tacit__remember({name:"deploys-require-vpn",description:"Deploys require the VPN to be on first",kind:"howto",scope:"folder"}));\n',
+        { toolName: "exec" },
+      ),
+      ev("tool_result", `Script completed\nWall time 0.4 seconds\nOutput:\n\n${recall}\n${saved}`),
+    ]),
+  );
+  const reply = t.messages[1];
+  assert.ok(reply.role === "assistant");
+  assert.deepEqual(
+    reply.parts.map((p) => p.type === "tool" && [p.name, p.input.name ?? p.input.query, p.status, p.output]),
+    [
+      ["mcp__tacit__recall", "deploy VPN", "done", recall],
+      ["mcp__tacit__remember", "deploys-require-vpn", "done", saved],
+    ],
+  );
+  // The save reads as one the person can undo.
+  const part = reply.parts[1];
+  assert.ok(part.type === "tool");
+  assert.deepEqual(memoryTool(part.name, part.input as never, part.output), {
+    kind: "remember",
+    name: "deploys-require-vpn",
+    description: "Deploys require the VPN to be on first",
+    scope: "folder",
+    action: "add",
+    status: "active",
+    filePath: "/m/folders/x/deploys-require-vpn.md",
+    replaces: null,
+  });
+});
+
+test("output that doesn't come one line per call goes to the script's last call", () => {
+  assert.deepEqual(splitCodeOutput("Script completed\nOutput:\na\nb\nc", 2), ["", "Script completed\nOutput:\na\nb\nc"]);
+  assert.deepEqual(splitCodeOutput("Script completed\nOutput:\n{1}\n{2}", 2), ["{1}", "{2}"]);
 });
 
 test("a call the record never answered closes with its turn instead of spinning", () => {

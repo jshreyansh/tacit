@@ -64,7 +64,12 @@ export function writeJournalEntry(
 /** The record's entry for a note just written. */
 export function journalWriteEvent(
   provenance: JournalProvenance,
-  note: { tool: "log_activity" | "remember"; scope: "workspace" | "project"; title: string; file: string },
+  note: {
+    tool: "log_activity" | "remember" | "forget" | "update_handover";
+    scope: "workspace" | "project" | "you" | "workdesk" | "folder" | "worktree";
+    title: string;
+    file: string;
+  },
 ): CaptureEvent {
   return {
     kind: "journal_write",

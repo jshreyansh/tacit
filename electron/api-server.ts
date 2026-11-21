@@ -25,7 +25,7 @@ import {
 } from "./composer-submit";
 import type { ComposerSubmitRequest, TrackedHandoffStatus } from "../src/types";
 import type { RecallService } from "./recall-service";
-import type { RecallQuery } from "../shared/recall";
+import type { RecallDoc, RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
@@ -56,7 +56,21 @@ import type { NodeEventLog } from "./node-events";
 import { holdConnectionOpen, WAIT_IDLE_TIMEOUT_MS, waitForNodes } from "./node-wait";
 import type { CaptureEvent, CaptureNodeRef } from "../shared/capture";
 import type { WebReadTracker } from "./web-read-tracker";
-import { journalWriteEvent, writeJournalEntry, writeProjectNote, type JournalProvenance } from "./memory-notes";
+import { journalWriteEvent, type JournalProvenance } from "./memory-notes";
+import type { MemoryPlace, MemoryStore } from "./memory-store";
+import {
+  BRIEF_BUDGET_WITH_NATIVE,
+  MEMORY_SCOPES,
+  buildBrief,
+  kindFromLegacyType,
+  searchNotes,
+  slugify,
+  type Brief,
+  type LaunchBrief,
+  type MemoryKind,
+  type MemoryNote,
+  type MemoryScope,
+} from "../shared/memory";
 import type { WorkerCaps } from "../shared/worker-cap";
 
 interface ApiServerDeps {
@@ -96,6 +110,8 @@ interface ApiServerDeps {
    * (electron/wire-state.ts).
    */
   wireStatePath: string;
+  /** Tacit's memory (shared/memory.ts, electron/memory-store.ts). */
+  memoryStore: MemoryStore;
 }
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
@@ -554,6 +570,15 @@ export class ApiServer {
     if (method === "GET" && pathname === "/workspace/summary") {
       return this.workspaceSummary();
     }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/forget$/)) {
+      return this.terminalForget(pathname.split("/")[2], body);
+    }
+    if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/handover$/)) {
+      return this.terminalHandover(pathname.split("/")[2], body);
+    }
+    if (method === "GET" && pathname.match(/^\/terminal\/[^/]+\/memory$/)) {
+      return this.terminalMemory(pathname.split("/")[2], url.searchParams.get("q") ?? "", url.searchParams.get("scope"));
+    }
     if (method === "GET" && pathname === "/workspace/memory-query") {
       const scope = url.searchParams.get("scope") ?? "workspace";
       const query = url.searchParams.get("q") ?? "";
@@ -618,7 +643,7 @@ export class ApiServer {
       return this.spawnNote(id, body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/recall$/)) {
-      return this.recall(body);
+      return this.recall(pathname.split("/")[2], body);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/connect-nodes$/)) {
       const id = pathname.split("/")[2];
@@ -1589,53 +1614,205 @@ export class ApiServer {
   }
 
   /**
-   * Backs the remember MCP tool: writes a durable note into this terminal's
-   * project's shared memory directory — the same folder/format
-   * electron/memory-service.ts's Memory tab already reads, so the note
-   * shows up there for free (its fs.watch picks up any write regardless of
-   * which process made it). Deliberately separate from nodeEmit above:
-   * this has nothing to do with connections, it's readable by any agent on
-   * this project whether or not anything is wired right now.
+   * Where a terminal's memory lives: its workdesk, and the repository (and
+   * linked worktree) of the folder it works in.
+   */
+  private async memoryPlaceFor(terminalId: string): Promise<MemoryPlace> {
+    const [{ worktreePath }, workdeskId] = await Promise.all([
+      this.execRenderer(`window.__tcApi.getWorktreePathForTerminal(${JSON.stringify(terminalId)})`) as Promise<{ worktreePath: string | null }>,
+      this.execRenderer("window.__tcApi.getActiveCanvasId()") as Promise<string | null>,
+    ]);
+    const place = worktreePath ? this.deps.memoryStore.placeOf(worktreePath) : { folder: null, worktree: null };
+    return { workdeskId: workdeskId ?? null, ...place };
+  }
+
+  /**
+   * Backs the remember MCP tool: a note in Tacit's memory, in the scope the
+   * agent picks (folder by default), updated in place when the name is
+   * reused. Who wrote it and whether web content reached them first go on
+   * the note and in the record; a note shaped by the web, or an agent's
+   * note about the person, waits for their approval.
    */
   private async terminalRemember(terminalId: string, body: any) {
     const name = body?.name;
     const description = body?.description;
-    const noteType = body?.type;
     const noteBody = body?.body;
-    if (
-      typeof name !== "string" ||
-      typeof description !== "string" ||
-      typeof noteBody !== "string" ||
-      (noteType !== "project" && noteType !== "feedback" && noteType !== "reference")
-    ) {
-      throw Object.assign(
-        new Error("name, description, body (all strings) and type ('project'|'feedback'|'reference') are required"),
-        { status: 400 },
-      );
+    if (typeof name !== "string" || !name.trim() || typeof description !== "string" || typeof noteBody !== "string" || !noteBody.trim()) {
+      throw Object.assign(new Error("name, description and body (non-empty strings) are required"), { status: 400 });
+    }
+    const requested = body?.scope;
+    if (requested !== undefined && !(MEMORY_SCOPES as readonly string[]).includes(requested)) {
+      throw Object.assign(new Error(`scope must be one of ${MEMORY_SCOPES.join(", ")}`), { status: 400 });
+    }
+    const kind: MemoryKind | null =
+      typeof body?.kind === "string" ? kindFromLegacyType(body.kind) : kindFromLegacyType(typeof body?.type === "string" ? body.type : "fact");
+    if (!kind || kind === "handover" || kind === "event") {
+      throw Object.assign(new Error("kind must be preference, decision, howto, fact or reference"), { status: 400 });
     }
 
-    const { worktreePath } = (await this.execRenderer(
-      `window.__tcApi.getWorktreePathForTerminal(${JSON.stringify(terminalId)})`,
-    )) as { worktreePath: string | null };
-    if (!worktreePath) {
-      return { ok: false, reason: "no worktree found for this terminal" };
+    const place = await this.memoryPlaceFor(terminalId);
+    let scope: MemoryScope = (requested as MemoryScope | undefined) ?? "folder";
+    // A terminal with no folder (the manager at home) keeps folder notes on its workdesk.
+    if (scope === "folder" && !place.folder) scope = "workdesk";
+    if (scope === "worktree" && !place.worktree) {
+      return { ok: false, reason: "this terminal isn't in a linked worktree; use scope folder for the repository" };
     }
-
-    const { getMemoryDirForWorktree } = await import("./memory-service.js");
-    const memoryDir = getMemoryDirForWorktree(worktreePath);
-    fs.mkdirSync(memoryDir, { recursive: true });
 
     const provenance = this.journalProvenance(terminalId);
-    const { filePath, fileName } = writeProjectNote(
-      memoryDir,
-      { name, description, type: noteType, body: noteBody },
-      provenance,
-    );
-    this.deps.recordDecision(
-      journalWriteEvent(provenance, { tool: "remember", scope: "project", title: name, file: fileName }),
-    );
+    const result = this.deps.memoryStore.write(scope, place, {
+      name,
+      kind,
+      description,
+      body: noteBody,
+      author: provenance.node,
+      harness: provenance.harness,
+      tainted: provenance.tainted,
+      sources: provenance.session ? [`session:${provenance.session}`] : [],
+      replaces: typeof body?.replaces === "string" ? body.replaces : null,
+    });
+    if (result.action !== "skip") {
+      this.deps.recordDecision(
+        journalWriteEvent(provenance, { tool: "remember", scope, title: result.name, file: result.filePath ? path.basename(result.filePath) : result.name }),
+      );
+    }
+    return {
+      ok: result.action !== "skip" || result.reason === "unchanged",
+      ...result,
+      ...(result.status === "pending"
+        ? { note: result.scope === "you" ? "Saved; it waits for the person's approval before agents see it." : "Saved; web content reached you this turn, so it waits for the person's approval." }
+        : {}),
+      ...(result.reason === "duplicate" ? { note: `Already remembered as "${result.name}"; update that one instead.` } : {}),
+    };
+  }
 
-    return { ok: true, filePath };
+  /** Backs the forget MCP tool: marks a note outdated. The person's notes about themselves are theirs to retire. */
+  private async terminalForget(terminalId: string, body: any) {
+    const name = body?.name;
+    const scope = body?.scope;
+    if (typeof name !== "string" || !(MEMORY_SCOPES as readonly string[]).includes(scope)) {
+      throw Object.assign(new Error(`name and scope (${MEMORY_SCOPES.join(", ")}) are required`), { status: 400 });
+    }
+    if (scope === "you") {
+      return { ok: false, reason: "Notes about the person are theirs to retire; tell them what's wrong instead, or remember a correction (it waits for their approval)." };
+    }
+    const place = await this.memoryPlaceFor(terminalId);
+    const done = this.deps.memoryStore.forget(scope, place, name);
+    if (done) {
+      const provenance = this.journalProvenance(terminalId);
+      this.deps.recordDecision(journalWriteEvent(provenance, { tool: "forget", scope, title: slugify(name), file: slugify(name) }));
+    }
+    return done ? { ok: true } : { ok: false, reason: `no ${scope} note named ${slugify(name)}` };
+  }
+
+  /** Backs update_handover: the workdesk's handover, rewritten whole by its manager. */
+  private async terminalHandover(terminalId: string, body: any) {
+    await this.requireWorkspaceManager(terminalId);
+    const text = body?.body;
+    if (typeof text !== "string" || !text.trim()) {
+      throw Object.assign(new Error("body is required"), { status: 400 });
+    }
+    const place = await this.memoryPlaceFor(terminalId);
+    if (!place.workdeskId) return { ok: false, reason: "no workdesk is open" };
+    const provenance = this.journalProvenance(terminalId);
+    const result = this.deps.memoryStore.write("workdesk", place, {
+      name: "handover",
+      kind: "handover",
+      description: "Workdesk handover",
+      body: text,
+      author: provenance.node,
+      harness: provenance.harness,
+      tainted: provenance.tainted,
+      sources: provenance.session ? [`session:${provenance.session}`] : [],
+    });
+    if (result.action !== "skip") {
+      this.deps.recordDecision(journalWriteEvent(provenance, { tool: "update_handover", scope: "workdesk", title: "handover", file: "handover.md" }));
+    }
+    return { ok: true, ...result };
+  }
+
+  /** Every live note a terminal can see: about the person, its workdesk, folder and worktree, and its folder's CLI memories. */
+  private memoryNotesAt(place: MemoryPlace): MemoryNote[] {
+    const store = this.deps.memoryStore;
+    return [
+      ...store.list("you", place),
+      ...store.list("workdesk", place),
+      ...store.list("folder", place),
+      ...store.list("worktree", place),
+      ...(place.folder ? store.claudeMemory(place.folder) : []),
+    ];
+  }
+
+  /** Backs query_memory: the notes a terminal can see, narrowed by scope and words. */
+  private async terminalMemory(terminalId: string, query: string, scope: string | null) {
+    const place = await this.memoryPlaceFor(terminalId);
+    const notes = this.memoryNotesAt(place).filter((n) => !scope || n.scope === scope);
+    return {
+      results: searchNotes(notes, query, { limit: 30 }).map(({ note }) => compactNote(note)),
+    };
+  }
+
+  /**
+   * The memory brief for an agent about to start (shared/memory.ts
+   * buildBrief): what it should know from every scope it is in, with its own
+   * CLI's memory left out (it loads that itself) and other CLIs' memory in.
+   * Best effort: a renderer that can't answer yet gives a brief from the
+   * folder alone.
+   */
+  /** What each agent was told at its latest launch. */
+  private readonly launchBriefs = new Map<string, LaunchBrief>();
+
+  launchBrief(terminalId: string): LaunchBrief | null {
+    return this.launchBriefs.get(terminalId) ?? null;
+  }
+
+  async memoryBriefFor(terminalId: string, harness: string | null, cwd: string | null): Promise<Brief | null> {
+    const store = this.deps.memoryStore;
+    let place: MemoryPlace = { workdeskId: null, folder: null, worktree: null };
+    let manager = false;
+    try {
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("renderer timeout")), 1500));
+      place = await Promise.race([this.memoryPlaceFor(terminalId), timeout]);
+      manager = (await Promise.race([
+        this.execRenderer(`window.__tcApi.isWorkspaceManager(${JSON.stringify(terminalId)})`) as Promise<boolean>,
+        timeout,
+      ])) === true;
+    } catch {
+      // The terminal may not be on the canvas yet; its folder still counts.
+    }
+    if (!place.folder && cwd) place = { ...place, ...store.placeOf(cwd) };
+    const native: Record<string, MemoryNote[]> = place.folder ? { "claude-memory": store.claudeMemory(place.folder) } : {};
+    const brief = buildBrief({
+      harness,
+      role: manager ? "manager" : "worker",
+      you: store.list("you", place),
+      workdesk: store.list("workdesk", place),
+      folder: store.list("folder", place),
+      worktree: store.list("worktree", place),
+      native,
+      folderLabel: place.folder ? path.basename(place.folder) : null,
+      worktreeLabel: place.worktree ? path.basename(place.worktree) : null,
+      digest: manager ? this.deps.recallService.digest() : null,
+      budget: harness === "claude" && (native["claude-memory"]?.length ?? 0) > 0 ? BRIEF_BUDGET_WITH_NATIVE : undefined,
+    });
+    const byKey = new Map<string, MemoryNote>();
+    for (const list of [store.list("you", place), store.list("workdesk", place), store.list("worktree", place), ...Object.values(native), store.list("folder", place)]) {
+      for (const note of list) byKey.set(`${note.scope}/${note.name}`, note);
+    }
+    const item = (key: string, listed: boolean) => {
+      const note = byKey.get(key);
+      const [scope, ...rest] = key.split("/");
+      return { scope: (note?.scope ?? scope) as MemoryScope, name: note?.name ?? rest.join("/"), description: note?.description ?? rest.join("/"), native: note?.native ?? null, listed };
+    };
+    this.launchBriefs.set(terminalId, {
+      at: new Date().toISOString(),
+      harness,
+      words: brief.text.split(/\s+/).filter(Boolean).length,
+      items: [...brief.included.map((k) => item(k, false)), ...brief.listed.map((k) => item(k, true))],
+      omitted: brief.omitted,
+    });
+    // Always, even with nothing saved yet: the how-to is what gets the first
+    // notes written.
+    return brief;
   }
 
   /**
@@ -1736,7 +1913,17 @@ export class ApiServer {
     // The digest is what turns this from "what is on the canvas" into "what has
     // been going on here" — what the user keeps asking for, and what was tried
     // and dropped. A fresh holder needs that before it needs a node count.
-    return { ...liveSummary, recentJournal, digest: this.deps.recallService.digest() };
+    const desk = this.deps.memoryStore.list("workdesk", { workdeskId: canvasId });
+    const handover = desk.find((n) => n.kind === "handover" && n.status === "active")?.body ?? null;
+    const recentActivity = desk
+      .filter((n) => n.kind === "event" && n.status === "active")
+      .sort((a, b) => b.updated.localeCompare(a.updated))
+      .slice(0, 10)
+      .map((n) => ({ name: n.name, description: n.description, at: n.updated }));
+    const workdeskNotes = desk
+      .filter((n) => n.kind !== "event" && n.kind !== "handover" && n.status === "active")
+      .map(compactNote);
+    return { ...liveSummary, handover, workdeskNotes, recentActivity, recentJournal, digest: this.deps.recallService.digest() };
   }
 
   /**
@@ -1745,7 +1932,7 @@ export class ApiServer {
    * check whether an approach was already abandoned is strictly better than
    * one that repeats it.
    */
-  private async recall(body: any) {
+  private async recall(terminalId: string, body: any) {
     const query: RecallQuery = {
       text: typeof body?.query === "string" ? body.query : undefined,
       kinds: Array.isArray(body?.kinds) ? body.kinds : undefined,
@@ -1754,7 +1941,16 @@ export class ApiServer {
       includeInjected: body?.include_injected === true,
       limit: typeof body?.limit === "number" ? Math.min(body.limit, 50) : 12,
     };
-    const hits = this.deps.recallService.query(query);
+    // Memory notes are searched with the record, unless only record kinds were asked for.
+    let notes: MemoryNote[] = [];
+    if (!query.kinds || (query.kinds as readonly string[]).includes("note")) {
+      try {
+        notes = this.memoryNotesAt(await this.memoryPlaceFor(terminalId)).filter((n) => n.status === "active");
+      } catch {
+        notes = [];
+      }
+    }
+    const hits = this.deps.recallService.query(query, Date.now(), notes.map(noteRecallDoc));
     return {
       results: hits.map((h) => ({
         at: h.doc.at,
@@ -2426,26 +2622,31 @@ export class ApiServer {
   private async logActivity(terminalId: string, body: any) {
     await this.requireWorkspaceManager(terminalId);
     const event = body?.event;
-    const detail = body?.detail ?? "";
+    const detail = typeof body?.detail === "string" ? body.detail : "";
     if (typeof event !== "string" || event.length === 0) {
       throw Object.assign(new Error("event is required"), { status: 400 });
     }
-
-    const canvasId = (await this.execRenderer(
-      "window.__tcApi.getActiveCanvasId()",
-    )) as string;
-
-    const { getMemoryDirForWorkspace } = await import("./memory-service.js");
-    const memoryDir = getMemoryDirForWorkspace(canvasId);
-    fs.mkdirSync(memoryDir, { recursive: true });
-
+    const canvasId = (await this.execRenderer("window.__tcApi.getActiveCanvasId()")) as string;
     const provenance = this.journalProvenance(terminalId);
-    const { filePath, fileName } = writeJournalEntry(memoryDir, { event, detail }, provenance);
-    this.deps.recordDecision(
-      journalWriteEvent(provenance, { tool: "log_activity", scope: "workspace", title: event, file: fileName }),
+    const now = new Date();
+    const result = this.deps.memoryStore.write(
+      "workdesk",
+      { workdeskId: canvasId },
+      {
+        name: `activity-${now.toISOString().replace(/[:.]/g, "-")}`,
+        kind: "event",
+        description: event,
+        body: detail || event,
+        author: provenance.node,
+        harness: provenance.harness,
+        tainted: provenance.tainted,
+      },
+      now.toISOString(),
     );
-
-    return { ok: true, filePath };
+    this.deps.recordDecision(
+      journalWriteEvent(provenance, { tool: "log_activity", scope: "workdesk", title: event, file: result.filePath ? path.basename(result.filePath) : result.name }),
+    );
+    return { ok: true, filePath: result.filePath };
   }
 
   /**
@@ -2493,4 +2694,32 @@ function rethrowPinStoreError(err: unknown): Error {
     return Object.assign(new Error(err.message), { status: err.status });
   }
   return err instanceof Error ? err : new Error(String(err));
+}
+
+/** A note as an agent reads it in a list. */
+function compactNote(note: MemoryNote) {
+  return {
+    name: note.name,
+    scope: note.scope,
+    kind: note.kind,
+    description: note.description,
+    body: note.body,
+    updated: note.updated,
+    author: note.author,
+    ...(note.native ? { from: note.native } : {}),
+  };
+}
+
+/** A memory note as a recall document, searched with the record. */
+function noteRecallDoc(note: MemoryNote): RecallDoc {
+  return {
+    id: `memory:${note.scope}/${note.native ? `${note.native}/` : ""}${note.name}`,
+    at: note.updated,
+    kind: "note",
+    origin: "memory",
+    text: `${note.name} ${note.description} ${note.body}`,
+    nodes: /^terminal:/.test(note.author) ? [note.author] : [],
+    actor: note.author,
+    summary: `[${note.scope}${note.native ? `, from ${note.native}` : ""}] ${note.description}: ${note.body.replace(/\s+/g, " ").slice(0, 300)}`,
+  };
 }

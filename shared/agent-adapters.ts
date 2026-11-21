@@ -32,6 +32,15 @@
  */
 export const TACIT_MCP_SERVER_NAME = "tacit";
 
+/**
+ * Tacit's memory tools, which a Claude agent may use without asking, as
+ * Codex, OpenCode and Antigravity already do: they only read and write
+ * Tacit's own notes, and web-sourced notes still wait for the person.
+ * Allowed per launch (--allowedTools); the person's Claude settings are
+ * never written.
+ */
+export const TACIT_MEMORY_TOOLS: readonly string[] = ["recall", "remember", "forget", "update_handover", "query_memory"];
+
 /** One MCP server as every agent format needs it: what to run, with what. */
 export interface BridgeDescriptor {
   command: string;
@@ -159,6 +168,11 @@ export interface LaunchContext {
   homeDir?: string;
   /** The version of the CLI being launched, for an adapter with `launchDependsOnVersion`. */
   version?: string;
+  /**
+   * Tacit's memory brief for this agent (shared/memory.ts), given to it the
+   * strongest way its CLI allows, so every CLI starts knowing the same things.
+   */
+  memoryBrief?: string | null;
 }
 
 /** A request for something an agent cannot do. Never swallowed. */
@@ -197,7 +211,7 @@ const claude: AgentAdapter = {
       },
     };
     return {
-      args: ["--mcp-config", configPath],
+      args: ["--mcp-config", configPath, `--allowedTools=${TACIT_MEMORY_TOOLS.map((tool) => `mcp__${TACIT_MCP_SERVER_NAME}__${tool}`).join(",")}`],
       // --mcp-config is variadic and consumes whatever positional value
       // follows it, including a `--`-separated initial prompt (see
       // getTerminalPromptArgs in src/terminal/cliConfig.ts), so it must land
@@ -630,7 +644,86 @@ export function planBridgeLaunch(
       `${adapter.displayName} has no way to receive Tacit's workspace tools at launch.`,
     );
   }
-  return adapter.planBridgeLaunch(bridge, context);
+  return withMemoryBrief(adapter, adapter.planBridgeLaunch(bridge, context), context);
+}
+
+/**
+ * Where an agent with no way to take extra instructions at launch finds its
+ * memory brief: the bridge reads it and gives it as its MCP server
+ * instructions (tacit-bridge/src/mcp-server.ts).
+ */
+export const MEMORY_BRIEF_ENV = "TACIT_MEMORY_BRIEF_FILE";
+
+/** A Codex config's settings outside any [table], where developer_instructions would be set. */
+function codexTopLevel(config: string): string {
+  return config.split(/^[ \t]*\[/m)[0] ?? "";
+}
+
+/** OpenCode's config JSON with one more instructions file. */
+function withOpenCodeInstructions(content: string | undefined, file: string): string {
+  let config: Record<string, unknown> = {};
+  if (content?.trim()) {
+    config = parseExistingConfig(content, "opencode", "OPENCODE_CONFIG_CONTENT");
+  }
+  const existing = Array.isArray(config.instructions) ? config.instructions.filter((i): i is string => typeof i === "string") : [];
+  return JSON.stringify({ ...config, instructions: [...existing.filter((i) => i !== file), file] });
+}
+
+/**
+ * The plan with the memory brief added, the strongest way each CLI takes it:
+ * - Claude Code: appended to its system prompt (--append-system-prompt-file).
+ * - Codex: as developer instructions for this run (-c developer_instructions),
+ *   unless the person set their own in config.toml, which this would replace;
+ *   then, like the rest, through the bridge.
+ * - OpenCode: one more instructions file in its config.
+ * - Anything else: the bridge's MCP server instructions.
+ * The agent's own memory is untouched in every case.
+ */
+export function withMemoryBrief(adapter: AgentAdapter, plan: AgentLaunchPlan, context: LaunchContext): AgentLaunchPlan {
+  const text = context.memoryBrief?.trim();
+  if (!text) return plan;
+  const safeId = context.terminalId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const file = context.tempFile(`tacit-memory-${safeId}.md`);
+  const files = [...plan.files, { path: file, contents: `${text}\n` }];
+  const viaBridge = (): AgentLaunchPlan => {
+    const env = { ...plan.env, [MEMORY_BRIEF_ENV]: file };
+    const adaptLaunch = plan.adaptLaunch;
+    return {
+      ...plan,
+      env,
+      files,
+      ...(adaptLaunch ? { adaptLaunch: (args: string[]) => { const l = adaptLaunch(args); return { ...l, env: { ...l.env, [MEMORY_BRIEF_ENV]: file } }; } } : {}),
+    };
+  };
+
+  switch (adapter.id) {
+    case "claude":
+      return { ...plan, args: [...plan.args, "--append-system-prompt-file", file], files };
+    case "codex": {
+      const config = context.homeDir ? context.readFile?.(`${context.homeDir}/.codex/config.toml`) ?? null : null;
+      if (config && /^[ \t]*developer_instructions[ \t]*=/m.test(codexTopLevel(config))) return viaBridge();
+      return { ...plan, args: [...plan.args, "-c", `developer_instructions=${tomlString(text)}`] };
+    }
+    case "opencode": {
+      const env = { ...plan.env, OPENCODE_CONFIG_CONTENT: withOpenCodeInstructions(plan.env.OPENCODE_CONFIG_CONTENT ?? context.inheritedEnv?.OPENCODE_CONFIG_CONTENT, file) };
+      const adaptLaunch = plan.adaptLaunch;
+      return {
+        ...plan,
+        env,
+        files,
+        ...(adaptLaunch
+          ? {
+              adaptLaunch: (args: string[]) => {
+                const l = adaptLaunch(args);
+                return { ...l, env: { ...l.env, OPENCODE_CONFIG_CONTENT: withOpenCodeInstructions(l.env.OPENCODE_CONFIG_CONTENT ?? context.inheritedEnv?.OPENCODE_CONFIG_CONTENT, file) } };
+              },
+            }
+          : {}),
+      };
+    }
+    default:
+      return viaBridge();
+  }
 }
 
 /** The agent's arguments with the plan's folded in where it says, and the environment to add. */

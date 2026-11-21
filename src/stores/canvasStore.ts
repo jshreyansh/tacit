@@ -1,3 +1,4 @@
+import { prefersReducedMotion, TRACK_EASING, trackDuration } from "../utils/motion";
 import { create } from "zustand";
 import type { Viewport } from "../types";
 import { useWorkspaceStore } from "./workspaceStore";
@@ -155,7 +156,6 @@ function refuseNonFiniteViewport(source: string, viewport: Partial<Viewport>): b
   );
   return true;
 }
-const ANIM_DURATION = 400;
 
 let animationId = 0;
 let activeViewportAdapter: CanvasViewportAdapter | null = null;
@@ -395,15 +395,24 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       return;
     }
 
+    // With Reduce Motion the canvas jumps; whatever it flew to glows instead.
+    if (prefersReducedMotion() && !opts?.duration) {
+      const next = { x: targetX, y: targetY, scale: endScale };
+      set({ viewport: next });
+      activeViewportAdapter?.setViewport(next);
+      return;
+    }
+
     clearAnimationResetTimer();
     const startTime = performance.now();
     const myId = ++animationId;
 
     set({ isAnimating: true });
 
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-    const duration = opts?.duration ?? ANIM_DURATION;
-    const easing = opts?.easing ?? easeOutCubic;
+    // Even slow-in/slow-out, longer for longer flights (see utils/motion).
+    const distance = Math.hypot(targetX - startX, targetY - startY) + Math.abs(Math.log(endScale / startScale)) * 400;
+    const duration = opts?.duration ?? trackDuration(distance);
+    const easing = opts?.easing ?? TRACK_EASING;
 
     const tick = (now: number) => {
       if (myId !== animationId) return; // superseded by a newer animation

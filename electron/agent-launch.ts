@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -50,6 +51,8 @@ export interface BridgeLaunchOptions {
   command?: string;
   /** The output of `command` run with these arguments; throws when it can't run. */
   runVersion?: (command: string, args: readonly string[], env: Record<string, string | undefined>) => string;
+  /** Tacit's memory brief for this agent (shared/memory.ts), or null for none. */
+  memoryBrief?: string | null;
 }
 
 const VERSION_TIMEOUT_MS = 5_000;
@@ -95,6 +98,21 @@ export function writeFileAtomically(file: string, contents: string): void {
     fs.rmSync(staging, { force: true });
     throw error;
   }
+}
+
+/**
+ * Temp files for one launch, named apart from any other launch of the same
+ * terminal. They're removed when that launch's process exits, and a
+ * terminal started again (a reload, a restart, Terminal from Chat) can
+ * launch before the old process's exit lands; with the terminal's id alone
+ * in the name, that exit deleted the new launch's files, and Claude failed
+ * with "Append system prompt file not found".
+ */
+export function launchTempFile(dir = os.tmpdir(), tag = randomBytes(4).toString("hex")): (name: string) => string {
+  return (name) => {
+    const dot = name.lastIndexOf(".");
+    return path.join(dir, dot > 0 ? `${name.slice(0, dot)}-${tag}${name.slice(dot)}` : `${name}-${tag}`);
+  };
 }
 
 /**
@@ -145,12 +163,13 @@ export function prepareBridgeLaunch(
 
   const plan = planBridgeLaunch(adapter, bridge, {
     terminalId: options.terminalId,
-    tempFile: options.tempFile ?? ((name) => path.join(os.tmpdir(), name)),
+    tempFile: options.tempFile ?? launchTempFile(),
     inheritedEnv: options.inheritedEnv,
     platform: options.platform ?? process.platform,
     readFile: options.readFile ?? readFileIfPresent,
     homeDir: options.homeDir ?? os.homedir(),
     version,
+    memoryBrief: options.memoryBrief ?? null,
   });
 
   const writeFile = options.writeFile ?? writeFileAtomically;

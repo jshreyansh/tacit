@@ -1,21 +1,17 @@
-import {
-  useCanvasStore,
-  CHROME_INSET,
-  LEFT_RAIL_WIDTH,
-  type RightPanelTab,
-} from "../stores/canvasStore";
+import { SidebarGlyph } from "./ChatList";
+import { CHROME_INSET, LEFT_RAIL_WIDTH } from "../stores/canvasStore";
 import { TITLE_STRIP_CSS } from "./titleStripHeight";
 import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
 import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
-import { IconChat, IconCode, isCodeTab, RIGHT_TAB_CONFIG } from "../components/rightPanelTabs";
+import { IconChat } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
 import { useT } from "../i18n/useT";
 import tacitMark from "../assets/tacit-mark.png";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useDockStore } from "../stores/dockStore";
 import { useUpdaterStore } from "../stores/updaterStore";
 import { UpdateModal } from "../components/UpdateModal";
@@ -133,21 +129,16 @@ export function LeftRail() {
   const chatFace = useChatDockStore((s) => s.face);
   const setChatOpen = useChatDockStore((s) => s.setOpen);
   const showChatFace = useChatDockStore((s) => s.showFace);
-  // The chat's list of chats replaced a Sessions button here; the chat
-  // button carries its "something needs you" dot.
+  // The navigator first, then the manager's chat, which carries the
+  // "something needs you" dot.
   const conversationOpen = chatOpen;
+  const navShown = useChatDockStore((s) => s.listShown || s.listOverlay);
+  const fullScreen = useChatDockStore((s) => s.open && s.placement === "full");
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
   const waitingElsewhere = Object.values(useNeedsYouOnOtherWorkdesks()).reduce((sum, n) => sum + n, 0);
 
-  const codeCollapsed = useCanvasStore((s) => s.rightPanelCollapsed);
-  const setCodeCollapsed = useCanvasStore((s) => s.setRightPanelCollapsed);
-  const codeTab = useCanvasStore((s) => s.rightPanelActiveTab);
-  const setCodeTab = useCanvasStore((s) => s.setRightPanelActiveTab);
-  const codeOpen = !codeCollapsed && isCodeTab(codeTab);
-  const lastCodeTab = useRef<RightPanelTab>(isCodeTab(codeTab) ? codeTab : "files");
-  if (isCodeTab(codeTab)) lastCodeTab.current = codeTab;
 
   const openSettings = useSettingsModalStore((s) => s.openSettings);
   const hubOpen = useHubStore((s) => s.open);
@@ -167,19 +158,41 @@ export function LeftRail() {
       // A welded rail cannot start below the title strip without leaving a
       // corner nothing paints — which on a transparent window is the desktop.
       className="tc-float fixed z-50 flex flex-col items-center py-2"
+      // Full screen is the manager's chat alone: the rail steps aside (a short
+      // fade and a few pixels left) and comes back when the chat docks.
+      aria-hidden={fullScreen || undefined}
       style={{
         left: CHROME_INSET,
         top: `calc(${TITLE_STRIP_CSS} + ${CHROME_INSET}px)`,
         bottom: CHROME_INSET,
         width: LEFT_RAIL_WIDTH,
+        opacity: fullScreen ? 0 : 1,
+        transform: fullScreen ? "translateX(-8px)" : "none",
+        pointerEvents: fullScreen ? "none" : undefined,
+        transition: fullScreen
+          ? "opacity 150ms cubic-bezier(0.3, 0, 0.8, 0.15), transform 150ms cubic-bezier(0.3, 0, 0.8, 0.15)"
+          : "opacity 240ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 240ms cubic-bezier(0.05, 0.7, 0.1, 1)",
       }}
     >
-      {/* What you open beside the rail: the manager's chat first, then the
-          Hub, as the command centre over all of it, then the code panel
-          (Files, Diff, Git) and Memory. Always in view, however short the
-          window. */}
+      {/* What you open beside the rail: the navigator (with each folder's
+          files, changes, history and memory), the manager's chat, then the
+          Hub, the command centre over all of it. Always in view, however
+          short the window. */}
       <div className="relative flex shrink-0 flex-col items-center gap-0.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[color-mix(in_srgb,var(--border)_70%,transparent)]">
-        {/* The workdesk manager's chat, with its Tasks: first in the bar. */}
+        {/* The navigator: chats, folders and tasks. Folded into the rail on
+            a narrow window, where this opens it over the rest. */}
+        <button
+          className={`${buttonCls} text-[var(--text-muted)]`}
+          data-nav-toggle=""
+          data-on={navShown ? "" : undefined}
+          title={t.rail_navigator}
+          aria-label={t.rail_navigator}
+          aria-pressed={navShown}
+          onClick={() => useChatDockStore.getState().toggleList()}
+        >
+          <SidebarGlyph />
+        </button>
+        {/* The workdesk manager's chat. */}
         <button
           className={`${buttonCls} text-[var(--text-muted)]`}
           data-on={conversationOpen ? "" : undefined}
@@ -188,7 +201,7 @@ export function LeftRail() {
           aria-pressed={conversationOpen}
           onClick={() => {
             if (conversationOpen) setChatOpen(false);
-            else showChatFace(chatFace === "list" ? "chat" : chatFace);
+            else showChatFace(chatFace);
           }}
         >
           <IconChat size={18} />
@@ -202,13 +215,7 @@ export function LeftRail() {
           // on its own trigger toggles instead of closing-then-reopening.
           data-hub-trigger="true"
           data-on={hubOpen ? "" : undefined}
-          onClick={() => {
-            // The other half of the exclusivity canvasStore enforces: opening
-            // a panel closes the Hub, so opening the Hub closes the panels.
-            // Without this the Hub simply paints over whichever was open.
-            if (!hubOpen) setCodeCollapsed(true);
-            toggleHub();
-          }}
+          onClick={() => toggleHub()}
           title={waitingElsewhere > 0 ? `${hubLabel} · ${t["hub.needsYouElsewhere"](waitingElsewhere)}` : hubLabel}
           aria-label={waitingElsewhere > 0 ? `${hubLabel} · ${t["hub.needsYouElsewhere"](waitingElsewhere)}` : hubLabel}
           aria-pressed={hubOpen}
@@ -219,48 +226,6 @@ export function LeftRail() {
             <span aria-hidden="true" className="absolute right-[9px] top-[9px] h-[6px] w-[6px] rounded-full bg-[var(--amber)]" />
           )}
         </button>
-        {/* Files, Diff and Git are one button; the panel's tabs switch
-            between them, and it opens on the one you were last on. */}
-        <button
-          className={`${buttonCls} text-[var(--text-muted)]`}
-          data-on={codeOpen ? "" : undefined}
-          title={t.left_panel_code}
-          aria-label={t.left_panel_code}
-          aria-pressed={codeOpen}
-          onClick={() => {
-            if (codeOpen) {
-              setCodeCollapsed(true);
-              return;
-            }
-            setCodeTab(lastCodeTab.current);
-            setCodeCollapsed(false);
-          }}
-        >
-          <IconCode size={18} />
-        </button>
-        {RIGHT_TAB_CONFIG.filter(({ id }) => !isCodeTab(id)).map(({ id, icon: Icon, labelKey }) => {
-          const open = !codeCollapsed && codeTab === id;
-          return (
-            <button
-              key={id}
-              className={`${buttonCls} text-[var(--text-muted)]`}
-              data-on={open ? "" : undefined}
-              title={t[labelKey]}
-              aria-label={t[labelKey]}
-              aria-pressed={open}
-              onClick={() => {
-                if (open) {
-                  setCodeCollapsed(true);
-                  return;
-                }
-                setCodeTab(id);
-                setCodeCollapsed(false);
-              }}
-            >
-              <Icon size={17} />
-            </button>
-          );
-        })}
 
       </div>
 

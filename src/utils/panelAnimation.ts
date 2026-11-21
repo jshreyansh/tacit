@@ -20,11 +20,13 @@ import type { CSSProperties } from "react";
 // already does for right-panel toggles); the user only sees the
 // "shrink / grow" part of the animation.
 
-export const PANEL_TRANSITION_DURATION_MS = 240;
+// The panel move from Tacit's motion rules (utils/motion.ts): 260ms on a
+// decelerating curve with no overshoot.
+export const PANEL_TRANSITION_DURATION_MS = 260;
 
-const PANEL_BEZIER_P1X = 0.22;
-const PANEL_BEZIER_P1Y = 0.61;
-const PANEL_BEZIER_P2X = 0.36;
+const PANEL_BEZIER_P1X = 0.2;
+const PANEL_BEZIER_P1Y = 0;
+const PANEL_BEZIER_P2X = 0;
 const PANEL_BEZIER_P2Y = 1;
 
 export const PANEL_TRANSITION_EASING_CSS = `cubic-bezier(${PANEL_BEZIER_P1X}, ${PANEL_BEZIER_P1Y}, ${PANEL_BEZIER_P2X}, ${PANEL_BEZIER_P2Y})`;
@@ -85,7 +87,7 @@ export const PANEL_TRANSITION_EASING_FN = makeCubicBezierEasing(
  * to the edge the panel hinges from, so content does not reflow mid-animation.
  */
 export const PANEL_REVEAL_TRANSITION =
-  `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, opacity 180ms ease`;
+  `width ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS}, opacity 200ms cubic-bezier(0.2, 0, 0, 1)`;
 
 /**
  * Where a surface beside the rail starts moves when something before it
@@ -109,8 +111,9 @@ export function panelContentStyle(revealed: boolean): CSSProperties {
   return {
     opacity: revealed ? 1 : 0,
     transform: revealed ? "translateX(0)" : "translateX(-10px)",
+    // In: decelerating, a beat behind the box. Out: quicker, accelerating out of the way.
     transition: revealed
-      ? `opacity 200ms ease 60ms, transform ${PANEL_TRANSITION_DURATION_MS}ms ${PANEL_TRANSITION_EASING_CSS} 40ms`
-      : "opacity 120ms ease, transform 160ms ease",
+      ? `opacity 240ms cubic-bezier(0.05, 0.7, 0.1, 1) 40ms, transform 240ms cubic-bezier(0.05, 0.7, 0.1, 1) 40ms`
+      : "opacity 150ms cubic-bezier(0.3, 0, 0.8, 0.15), transform 150ms cubic-bezier(0.3, 0, 0.8, 0.15)",
   };
 }
