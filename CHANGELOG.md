@@ -4,6 +4,19 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.10] - 2026-11-24
+
+### Changed
+- **The workdesk board**: text, stickies, sections, shapes, arrows and pen, from a rail on the right. Each tool's options slide in beside it, and tools go back to Select after one use (Q keeps one). It replaces the drawing panel; your drawings come across.
+- **Arrows and sections**: arrows attach to drawings and tiles and follow them. Sections hold drawings and tiles and move as one. Hover a shape for arrows that add a linked copy. A sticky can become a task.
+- **Select several things at once**: drag a box, or ⌘ or Shift + click, across drawings, terminals, tasks, notes, files and browsers. Drag any one to move them all; one ⌘Z puts them back. ⌫ deletes the drawings; browsers close only when nothing but browsers is selected.
+- **Any file on the canvas**: the File tool (F), paste, or drop. A file from outside is saved in the workdesk's folder under `.tacit/media`, where agents can open it.
+- **Zoom and Fit** are at the bottom right.
+- **Zoomed out, a tile moves from anywhere on it**, and lines up with its neighbours as it goes.
+
+### Fixed
+- A selection box no longer lets go of everything when you release it.
+
 ## [0.44.9] - 2026-11-21
 
 ### Changed
