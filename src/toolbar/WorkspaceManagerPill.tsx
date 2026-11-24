@@ -25,12 +25,10 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { useLiveTree } from "./LiveSessions";
-import { TasksView } from "../tasks/TasksView";
-import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
-import { TaskBar } from "../tasks/TaskParts";
-import { managerTask } from "../tasks/taskModel";
-import { openPinFull } from "../tasks/TasksView";
-import { usePinStore } from "../stores/pinStore";
+import { useTasksNeedingYou } from "../tasks/taskStore";
+import { TaskBar } from "../tasks/TaskBar";
+import { openTask } from "../tasks/taskActions";
+import { useTaskOfTerminal } from "../tasks/taskStore";
 import { LimitCard, PlanCard, QueuedMessages, UsageMeter, useQueue, useQueueSender } from "./chat/LongRunning";
 import { ComposerBox, useAttachments } from "./chat/Composer";
 import { useAutoGrow } from "../hooks/useAutoGrow";
@@ -164,8 +162,8 @@ export function WorkspaceManagerPill() {
    * bottom of the screen, so anything hanging below it is clipped by
    * construction. They are faces now: one shell, contents swapped, a back
    * button to return. Nothing can be positioned off-screen because nothing is
-   * positioned at all. Held in the dock's store, so a pin badge or a
-   * terminal's pin chip can open the chat on Pins.
+   * positioned at all. Held in the dock's store, so other places can
+   * open the chat on one.
    */
   const view = useChatDockStore((s) => s.face);
   const setView = useChatDockStore((s) => s.setFace);
@@ -636,24 +634,8 @@ export function WorkspaceManagerPill() {
   const fileOpen = useCanvasStore((s) => s.fileEditorPath !== null);
   const leftInset = useLeftChromeInset();
 
-  // The pin view beside the chat belongs to the Pins face: leaving it, or
-  // closing the chat, closes the project's pins too.
-  // The tasks show in a page on the canvas or a tab in the grid; in the
-  // sheet only where the list can't sit beside the chat. With none of
-  // those open, the folder's tasks (and a task's detail) close.
-  const pinsProject = usePinStore((s) => s.openProjectPath);
-  const tasksPage = useCanvasPageStore((s) => s.page === "tasks");
-  const tasksTab = useWorkdeskViewStore((s) => s.mode === "grid" && s.tasksTab);
-  useEffect(() => {
-    if (pinsProject && !(dockOpen && view === "pins") && !tasksPage && !tasksTab) usePinStore.getState().closeDrawer();
-  }, [pinsProject, dockOpen, view, tasksPage, tasksTab]);
-
-  // The manager's own task, kept with the project, sits above the message box.
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
-  const activeTask = useMemo(
-    () => managerTask(pinsByProject, projects.map((p) => p.path), managerTerminal?.id ?? null),
-    [pinsByProject, projects, managerTerminal?.id],
-  );
+  // The manager's own task sits above the message box.
+  const activeTask = useTaskOfTerminal(managerTerminal?.id ?? "");
   const running = chatMode ? transcript.running : conversation?.telemetry?.turn_state === "in_turn";
   // A move asked for mid-turn happens when the turn ends. One that no longer
   // applies (the manager already moved) is dropped.
@@ -730,7 +712,7 @@ export function WorkspaceManagerPill() {
   // go back to the conversation.
   const wideWindow = viewSize.width >= CHAT_LIST_MIN_WINDOW;
   useEffect(() => {
-    if (wideWindow && (view === "pins" || view === "sessions")) setView("chat");
+    if (wideWindow && view === "sessions") setView("chat");
   }, [wideWindow, view, setView]);
   const readerTerminalId = useChatDockStore((s) => s.readerTerminalId);
   const { attention } = useLiveTree();
@@ -1183,9 +1165,6 @@ export function WorkspaceManagerPill() {
       )}
 
 
-      {/* A project's pins; one opens in the pin view beside the chat. */}
-      {view === "pins" && <TasksView />}
-
       {view === "roster" && (
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {!managerTerminal && (
@@ -1260,7 +1239,7 @@ export function WorkspaceManagerPill() {
       {view === "chat" && !viewing && chatMode && managerTerminal && (
         <div className="shrink-0 pt-1">
           {activeTask ? (
-            <TaskBar task={activeTask} onOpen={() => openPinFull(activeTask)} />
+            <TaskBar task={activeTask} onOpen={() => openTask(activeTask.id)} />
           ) : (
             <PlanCard transcript={transcript} />
           )}

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { makeTask, parseNewTask } from "../shared/task-ops";
+import { askPerson, dropTask, handOver, type Ctx, type Task } from "../shared/task";
 import { buildWorkdeskSections, minutesSince, type WorkdeskInputs } from "../src/workdesk/workdeskModel";
 import { cleanTailLines } from "../src/workdesk/terminalTail";
 import type { TerminalTelemetrySnapshot } from "../shared/telemetry";
@@ -35,49 +37,38 @@ function inputs(over: Partial<WorkdeskInputs> = {}): WorkdeskInputs {
     telemetry: new Map(),
     browsers: [],
     identityNames: {},
-    pins: [],
+    tasks: [],
+    notes: [],
     managerTerminalId: "mgr",
     ...over,
   };
 }
 
+let at = 0;
+const ctx = (): Ctx => ({ at: new Date(1_800_000_000_000 + at++ * 1000).toISOString(), by: "user", newId: () => `i${at++}` });
+const task = (id: string, over: (t: Task) => Task = (t) => t, parts: string[] = []) => over(makeTask(parseNewTask({ title: id, parts }), { id, n: 1, workdesk: "w" }, ctx()));
+
 test("agents, terminals, tasks and notes go to their groups; minimized and stashed tiles don't show", () => {
   const s = buildWorkdeskSections(
     inputs({
-      pins: [
-        { id: "n1", repo: "/repo", title: "Release checklist", body: "- bump", status: "open", x: 10, y: 20 },
-        { id: "n2", repo: "/repo", title: "not on the canvas", body: "", status: "open" },
-        { id: "t1", repo: "/repo", kind: "task", title: "Ship it", body: "", status: "needs_you", ask: { reason: "0.9 or 1.0?", at: "2026-10-18T10:00:00Z" }, updated: "2026-10-18T10:00:00Z" },
-        { id: "t2", repo: "/repo", kind: "task", title: "Dropped one", body: "", status: "dropped" },
-        { id: "n3", repo: "/repo", kind: "note", title: "A note off the canvas", body: "", status: "open" },
-      ] as unknown as WorkdeskInputs["pins"],
+      tasks: [
+        task("next"),
+        task("doing", (t) => handOver(t, ctx(), { terminal: "codex-1", name: "Codex" }), ["One", "Two"]),
+        task("asks", (t) => askPerson(t, ctx(), { kind: "decide", byName: "Codex", text: "0.9 or 1.0?" })),
+        task("gone", (t) => dropTask(t, ctx())),
+      ],
+      notes: [{ id: "n1", title: "Release checklist", text: "Release checklist\n- bump" }],
     }),
   );
   assert.deepEqual(s.agents.map((a) => a.id), ["mgr", "claude-1", "codex-1"]);
   assert.equal(s.agents[0].isManager && s.agents[0].chatMode, true);
   assert.equal(s.agents[1].title, "lint-job");
-  // A pin from before kinds sat on the canvas (a note) or only in the list (a task).
   assert.deepEqual(s.terminals.map((c) => c.id), ["shell-1"]);
-  assert.deepEqual(s.notes.map((c) => c.id), ["n1", "n3"]);
-  // Whoever needs you first; dropped ones aren't shown.
-  assert.deepEqual(s.tasks.map((c) => c.id), ["t1", "n2"]);
-  assert.equal(s.tasks[0].current, "0.9 or 1.0?");
-  assert.deepEqual(s.counts, { all: 8, agents: 3, terminals: 1, browsers: 0, tasks: 2, notes: 2 });
-});
-
-test("only this workdesk's folders' tasks and notes show, not those of folders another workdesk loaded", () => {
-  const s = buildWorkdeskSections(
-    inputs({
-      pins: [
-        { id: "mine", repo: "/repo", kind: "task", title: "Here", body: "", status: "open" },
-        { id: "theirs", repo: "/other-repo", kind: "task", title: "Another workdesk's", body: "", status: "open" },
-        { id: "their-note", repo: "/other-repo", kind: "note", title: "Theirs too", body: "", status: "open" },
-      ] as unknown as WorkdeskInputs["pins"],
-    }),
-  );
-  assert.deepEqual(s.tasks.map((c) => c.id), ["mine"]);
-  assert.deepEqual(s.notes, []);
-  assert.equal(s.counts.tasks + s.counts.notes, 1);
+  assert.deepEqual(s.notes.map((c) => c.id), ["n1"]);
+  // What needs you, then what's being worked on; the rest are on the board.
+  assert.deepEqual(s.tasks.map((c) => c.id), ["asks", "doing"]);
+  assert.deepEqual([s.tasks[0].note, s.tasks[1].progress], ["0.9 or 1.0?", "0/2"]);
+  assert.deepEqual(s.counts, { all: 7, agents: 3, terminals: 1, browsers: 0, tasks: 2, notes: 1 });
 });
 
 test("an agent that needs you comes first, then the working ones; the running turn's start is kept", () => {
@@ -114,33 +105,30 @@ test("an agent's tab says its name, else its first prompt, else what it is", () 
   const label = (id: string) => [...s.agents, ...s.terminals].find((c) => c.id === id)?.label;
   assert.equal(label("claude-1"), "lint-job");
   assert.equal(label("codex-1"), "list the tasks in the workdesk");
-  assert.equal(label("mgr"), "claude", "a manager's first prompt is Tacit's briefing");
+  assert.equal(label("mgr"), "Claude Code 2", "a manager's first prompt is Tacit's briefing");
   assert.equal(label("shell-1"), "shell", "not sent anything");
+  const briefed = buildWorkdeskSections(inputs({ telemetry: new Map([["codex-1", snap({ first_user_prompt: "Tacit task T-9 (count-4b1), try 1. Count slowly" })]]) }));
+  assert.equal(briefed.agents.find((c) => c.id === "codex-1")?.label, "Codex", "a task's brief isn't its name");
 });
 
-test("the tabs keep their order while agents change state, switch to chat, and tasks move on", () => {
+test("the tabs keep their order while agents change state and switch to chat; a note isn't one until it's open", () => {
   const snap = (over: Partial<TerminalTelemetrySnapshot>) => over as TerminalTelemetrySnapshot;
-  const pins = (status: string) =>
-    [
-      { id: "t-old", repo: "/repo", kind: "task", title: "First", body: "", status: "open", created: "2026-10-17T09:00:00Z", updated: "2026-10-17T09:00:00Z" },
-      { id: "t-new", repo: "/repo", kind: "task", title: "Second", body: "", status, created: "2026-10-18T09:00:00Z", updated: "2026-10-18T09:00:00Z" },
-    ] as unknown as WorkdeskInputs["pins"];
-  const before = buildWorkdeskSections(inputs({ managerTerminalId: null, pins: pins("open") }));
-  const order = ["claude-1", "codex-1", "mgr", "shell-1", "t-old", "t-new"];
+  const notes = [{ id: "n1", title: "N", text: "N" }];
+  const before = buildWorkdeskSections(inputs({ managerTerminalId: null, notes }));
+  const order = ["claude-1", "codex-1", "mgr", "shell-1"];
   assert.deepEqual(before.tabs.map((c) => c.id), order);
-  // codex-1 now waits on you, and the second task needs you: the grid moves them up, the tabs don't.
+  // codex-1 now waits on you: the grid moves it up, the tabs don't.
   const after = buildWorkdeskSections(
     inputs({
       managerTerminalId: null,
+      notes,
       telemetry: new Map([["codex-1", snap({ derived_status: "progressing", turn_state: "awaiting_input", pty_alive: true })]]),
-      pins: pins("needs_you"),
     }),
   );
   assert.equal(after.agents[0].id, "codex-1");
-  assert.equal(after.tasks[0].id, "t-new");
   assert.deepEqual(after.tabs.map((c) => c.id), order);
   // The same cards as the grid's, so the open one is found by identity.
-  assert.ok(after.tabs.includes(after.tasks[0]) && after.tabs.includes(after.agents[0]));
+  assert.ok(after.tabs.includes(after.agents[0]));
 });
 
 test("browsers group by the profile they're signed in as", () => {

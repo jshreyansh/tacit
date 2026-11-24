@@ -44,7 +44,7 @@ export function sanitizeAttentionPrefs(value: unknown): AttentionPrefs {
 /** What a notification opens when clicked. */
 export type AttentionTarget =
   | { kind: "terminal"; terminalId: string }
-  | { kind: "task"; repo: string; taskId: string };
+  | { kind: "task"; workdesk: string; taskId: string };
 
 /**
  * A notification main has decided to show, sent to the window for its

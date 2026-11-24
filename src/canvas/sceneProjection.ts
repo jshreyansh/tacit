@@ -41,6 +41,7 @@ interface SceneDocumentState {
   board?: BoardElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
   fileTiles?: Record<string, FileTileData> | null;
+  recordPlaces?: SceneDocument["recordPlaces"] | null;
   connections?: Record<string, ConnectionData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
   sidePanelWorktreeId?: string | null;
@@ -235,8 +236,8 @@ export function selectionToSceneSelection(
       case "annotation":
         selection.annotationIds.push(item.annotationId);
         break;
-      // A pin or a file isn't a scene element: nothing for scene commands to act on.
-      case "pin":
+      // A task or a file isn't a scene element: nothing for scene commands to act on.
+      case "task":
       case "file":
         break;
     }
@@ -277,6 +278,7 @@ export function buildSceneDocument(
     projects: state.projects ?? [],
     browserCards: state.browserCards ?? {},
     ...(state.fileTiles && Object.keys(state.fileTiles).length > 0 ? { fileTiles: state.fileTiles } : {}),
+    ...(state.recordPlaces && Object.keys(state.recordPlaces).length > 0 ? { recordPlaces: state.recordPlaces } : {}),
     connections: state.connections ?? {},
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),

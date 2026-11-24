@@ -1,116 +1,130 @@
-import type { Pin, UpdatePinInput } from "../types";
-import { usePinStore } from "../stores/pinStore";
+import type { Task, TaskResult } from "../types";
+import type { NewTask, TaskOp } from "../../shared/task-ops";
+import { findTerminal } from "../actions/terminalLookup";
+import { panToTerminal } from "../utils/panToTerminal";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { useChatDockStore } from "../stores/chatDockStore";
-import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
-import { sendToManagerChat } from "../actions/managerChatMode";
-import { pinHandoffText } from "../../shared/pin";
-import { answerMessage, noteBodyFromTask } from "./taskModel";
+import { useRecordPlaceStore } from "../stores/recordPlaceStore";
+import { useSelectionStore } from "../stores/selectionStore";
+import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
+import { flyToBounds } from "../utils/panToTerminal";
+import { visibleCanvasCenter } from "../actions/dockActions";
+import { tileDropped } from "../board/boardMembership";
+import { activeWorkdesk, useTaskStore } from "./taskStore";
+import { TASK_TILE } from "./taskWords";
+import { notes } from "../board/noteStore";
+import { tileRects } from "../board/boardTargets";
+import { freeSpot } from "../board/boardModel";
 
-/**
- * Changing tasks and notes from the app. Every change goes through
- * `window.tacit.pins` (recorded as the person's), and the store's pin
- * events bring it back to every view.
- */
+/** What you do to tasks. A refusal is shown in its own words; nothing is assumed to have worked. */
 
-export const NEW_TASK_TITLE = "Untitled task";
-export const NEW_NOTE_TITLE = "Untitled note";
+const complain = (error: string) => useNotificationStore.getState().notify("warn", error);
 
-function report(error: unknown): void {
-  useNotificationStore.getState().notify("error", error instanceof Error ? error.message : String(error));
+async function settle<X>(call: Promise<TaskResult<X>>): Promise<X | null> {
+  const result = await call.catch((err): TaskResult<X> => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  if (result.ok) return result.value;
+  complain(result.error);
+  return null;
+}
+async function settleTask(call: Promise<TaskResult<Task>>): Promise<Task | null> {
+  const task = await settle(call);
+  if (task) useTaskStore.getState().put(task);
+  return task;
 }
 
-/** Saves a change and puts the saved task in the store at once. */
-export async function updateTask(task: Pick<Pin, "repo" | "id">, patch: UpdatePinInput): Promise<Pin | null> {
-  try {
-    const saved = await window.tacit.pins.update(task.repo, task.id, patch);
-    usePinStore.getState().upsertPin(saved.repo, saved);
-    return saved;
-  } catch (error) {
-    report(error);
-    return null;
+type Ref = Pick<Task, "workdesk" | "id">;
+
+export const createTask = (input: NewTask): Promise<Task | null> => settleTask(window.tacit.tasks.create(activeWorkdesk(), input));
+/** One narrow change, made once even if it's sent twice. */
+export const changeTask = (task: Ref, op: TaskOp): Promise<Task | null> => settleTask(window.tacit.tasks.change(task.workdesk, task.id, op, crypto.randomUUID()));
+export const answerTask = (task: Ref, request: string, text: string) => settleTask(window.tacit.tasks.answer(task.workdesk, task.id, request, text));
+export const sayOnTask = (task: Ref, text: string, tryId?: string) => settleTask(window.tacit.tasks.say(task.workdesk, task.id, text, tryId));
+export const stopTask = (task: Ref, tryId: string) => settleTask(window.tacit.tasks.stop(task.workdesk, task.id, tryId));
+export const sendTaskNow = (task: Ref, tryId: string) => settleTask(window.tacit.tasks.sendNow(task.workdesk, task.id, tryId));
+export async function deleteTask(task: Ref): Promise<boolean> {
+  return (await settle(window.tacit.tasks.remove(task.workdesk, task.id).then((r) => (r.ok ? { ok: true as const, value: true } : r)))) === true;
+}
+
+export interface HandOverOptions {
+  part?: string | null;
+  how?: "queue" | "interrupt";
+  allowed?: string;
+  note?: string;
+}
+/** "busy" when it's doing something else: the person chooses to queue or interrupt. */
+export async function handOver(task: Ref, terminal: string, options: HandOverOptions = {}): Promise<"done" | "busy" | "refused"> {
+  const result = await window.tacit.tasks
+    .handOver({ workdesk: task.workdesk, id: task.id, terminal, ...options })
+    .catch((err): TaskResult<never> => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  if (result.ok) {
+    useTaskStore.getState().put(result.value.task);
+    return "done";
   }
+  if (result.code === "busy") return "busy";
+  complain(result.error);
+  return "refused";
 }
 
-export async function createTask(repo: string, options: { title?: string; position?: { x: number; y: number } } = {}): Promise<Pin | null> {
-  try {
-    const pin = await window.tacit.pins.create({
-      title: options.title?.trim() || NEW_TASK_TITLE,
-      repo,
-      kind: "task",
-      ...(options.position ? { x: options.position.x, y: options.position.y } : {}),
-    });
-    usePinStore.getState().upsertPin(pin.repo, pin);
-    return pin;
-  } catch (error) {
-    report(error);
-    return null;
-  }
+/** A picture or file for the description; its Markdown, or null. */
+export async function attachToTask(task: Ref, file: File): Promise<string | null> {
+  const saved = await settle(window.tacit.tasks.attach(task.workdesk, task.id, file.name || "picture.png", await file.arrayBuffer()));
+  return saved ? `![${file.name.replace(/[[\]()]/g, "") || "picture"}](${saved.relativePath})` : null;
 }
 
-export async function deleteTask(task: Pick<Pin, "repo" | "id">): Promise<void> {
-  try {
-    await window.tacit.pins.remove(task.repo, task.id);
-    usePinStore.getState().removePin(task.repo, task.id);
-  } catch (error) {
-    report(error);
-  }
+/* ---------- going places ---------- */
+
+/** The board: the pane on the canvas, a tab in the grid. */
+export function openBoard(): void {
+  const grid = useWorkdeskViewStore.getState();
+  if (grid.mode === "grid") grid.openTasks();
+  else useCanvasPageStore.getState().open("tasks");
+}
+export function openTask(id: string): void {
+  useTaskStore.getState().open(id);
+  openBoard();
+}
+export function newTask(from: Partial<NewTask> = {}): void {
+  useTaskStore.getState().compose(from);
+  openBoard();
+}
+/** Started from a place on the canvas: its tile goes there. */
+export function newTaskAt(at: { x: number; y: number }): void {
+  useTaskStore.getState().compose({}, { x: Math.round(at.x), y: Math.round(at.y) });
+  openBoard();
 }
 
-export function makeNote(task: Pin): Promise<Pin | null> {
-  return updateTask(task, { kind: "note", body: noteBodyFromTask(task) });
-}
-
-export function makeTask(note: Pin): Promise<Pin | null> {
-  return updateTask(note, { kind: "task", status: "open" });
-}
-
-export function removeFromCanvas(task: Pick<Pin, "repo" | "id">): Promise<Pin | null> {
-  return updateTask(task, { x: null, y: null });
-}
-
-/**
- * Answers an agent's question on a task: recorded on the task (which goes
- * back in progress) and sent into the asking agent's terminal as a message,
- * or its chat when it runs as one.
- */
-export async function answerTask(task: Pin, answer: string): Promise<void> {
-  const text = answer.trim();
-  if (!text) return;
-  const asker = task.ask?.by ?? null;
-  await updateTask(task, { answer: text });
-  if (!asker) return;
-  const found = findTerminal(asker);
-  const notify = useNotificationStore.getState().notify;
+/** Takes you to the agent: its tile, or its tab. */
+export function goToTerminal(terminalId: string): void {
+  const found = findTerminal(terminalId);
   if (!found) {
-    notify("warn", `The agent that asked has closed; your answer is on the task.`);
+    complain("That terminal isn't on this workdesk any more.");
     return;
   }
-  const message = answerMessage(task, text);
-  if (found.terminal.chatMode) {
-    if (!(await sendToManagerChat(asker, message))) notify("warn", `${found.terminal.title} isn't running; your answer is on the task.`);
-    return;
+  if (useWorkdeskViewStore.getState().mode === "grid") useWorkdeskViewStore.getState().setOpenNode({ kind: "terminal", id: terminalId });
+  else {
+    useCanvasPageStore.getState().close();
+    panToTerminal(terminalId);
   }
-  const ptyId = getLivePtyId(asker);
-  if (ptyId == null) {
-    notify("warn", `${found.terminal.title} isn't running; your answer is on the task.`);
-    return;
-  }
-  const result = await window.tacit.composer.submit({
-    terminalId: asker,
-    ptyId,
-    terminalType: found.terminal.type as never,
-    worktreePath: found.worktree.path,
-    text: message,
-    images: [],
-    submit: true,
-  });
-  if (!result.ok) notify("warn", result.detail ?? result.error ?? `Couldn't send your answer to ${found.terminal.title}.`);
 }
 
-/** Hands a task to the manager: it goes on the task, and into the manager's message box. */
-export async function handTaskToManager(task: Pin): Promise<void> {
-  const owners = task.owners ?? [];
-  await updateTask(task, { owners: owners.includes("manager") ? owners : [...owners, "manager"] });
-  useChatDockStore.getState().insertIntoDraft(`${pinHandoffText(task)}\n\n(Tacit task ${task.id})`);
+/** Puts a task's tile on the canvas, in view, or flies to it. */
+export function showTaskOnCanvas(id: string): void {
+  useWorkdeskViewStore.getState().setMode("canvas");
+  useCanvasPageStore.getState().close();
+  const places = useRecordPlaceStore.getState();
+  const had = places.places[id];
+  // What was selected is most likely out of view now, and its options would be over this.
+  useSelectionStore.getState().clearSelection();
+  if (had) return void flyToBounds(had.x, had.y, had.w ?? TASK_TILE.w, had.h ?? TASK_TILE.h, { scale: 1 });
+  const c = visibleCanvasCenter();
+  const at = freeSpot({ x: c.x - TASK_TILE.w / 2, y: c.y - TASK_TILE.h / 2, ...TASK_TILE }, [...tileRects(), ...notes()]);
+  placeTask(id, at);
+  flyToBounds(at.x, at.y, TASK_TILE.w, TASK_TILE.h, { scale: 1 });
+}
+export function placeTask(id: string, at: { x: number; y: number }): void {
+  useRecordPlaceStore.getState().place(id, at);
+  tileDropped(id, { ...at, ...TASK_TILE });
+}
+export function takeOffCanvas(id: string): void {
+  useRecordPlaceStore.getState().forget(id);
 }

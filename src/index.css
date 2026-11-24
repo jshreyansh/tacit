@@ -536,6 +536,9 @@ a.tc-kbd:active {
   corner-shape: squircle;
 }
 
+/* A drag crossing a browser keeps the pointer (canvas/canvasDrag.ts). */
+body.tc-canvas-dragging webview { pointer-events: none !important; }
+
 /* Resize zones (src/canvas/resizeZones.ts): every side along its whole
    length and a square at each corner, straddling the border, always there.
    Only the corner squares are drawn, while the tile is hovered. */

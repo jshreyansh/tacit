@@ -3,8 +3,9 @@ import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { getTranslations } from "../i18n/useT";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
-import { usePinStore } from "../stores/pinStore";
+import { placedTasks } from "../canvas/noteEnds";
 import { useProjectStore } from "../stores/projectStore";
+import { tileDropped, tileGone } from "../board/boardMembership";
 import { placeRow, type Rect } from "./fileTilePlacement";
 import { useFileTileStore } from "../stores/fileTileStore";
 import { useNotificationStore } from "../stores/notificationStore";
@@ -65,7 +66,7 @@ export async function showFilesOnCanvas(paths: readonly string[], at?: { x: numb
     const rowHeight = Math.max(...fresh.map((f) => f.size.h));
     const start = at ?? centerOfView({ w: rowWidth, h: rowHeight });
     const rects = placeRow(fresh.map((f) => f.size), start, takenRects());
-    fresh.forEach((f, i) => store.add(f.path, rects[i]));
+    fresh.forEach((f, i) => tileDropped(store.add(f.path, rects[i]), rects[i]));
     last = rects[rects.length - 1];
     shown += fresh.length;
   }
@@ -93,12 +94,7 @@ function takenRects(): Rect[] {
     }
   }
   for (const card of Object.values(useBrowserCardStore.getState().cards)) rects.push({ x: card.x, y: card.y, w: card.w, h: card.h });
-  const pinsByProject = usePinStore.getState().pinsByProject;
-  for (const project of projects) {
-    for (const pin of pinsByProject[project.path] ?? []) {
-      if (pin.x != null && pin.y != null) rects.push({ x: pin.x, y: pin.y, w: pin.w ?? 320, h: pin.h ?? 280 });
-    }
-  }
+  for (const { rect } of placedTasks()) rects.push(rect);
   for (const tile of Object.values(useFileTileStore.getState().tiles)) rects.push(tile);
   return rects;
 }
@@ -113,6 +109,7 @@ export function showFileOnCanvasFromAnywhere(path: string): void {
 
 export function removeFileTile(id: string): void {
   useFileTileStore.getState().remove(id);
+  tileGone(id);
 }
 
 function centerOfView(size: { w: number; h: number }): { x: number; y: number } {

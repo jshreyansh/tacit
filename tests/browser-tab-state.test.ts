@@ -37,7 +37,8 @@ test("a browser card in the grid carries its page's icon", () => {
     telemetry: new Map(),
     browsers: [{ id: "b1", url: "https://youtube.com", title: "YouTube", identityId: "i1", favicon: "https://youtube.com/favicon.ico" }],
     identityNames: {},
-    pins: [],
+    tasks: [],
+    notes: [],
     managerTerminalId: null,
   });
   assert.equal(sections.browserGroups[0].cards[0].favicon, "https://youtube.com/favicon.ico");

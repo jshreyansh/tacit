@@ -1,16 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import type { ProjectData } from "../types";
 import { useProjectStore } from "../stores/projectStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { createTask } from "../tasks/taskActions";
-import { openFolderTasks } from "../actions/openSession";
-import { DOCK_ENTRIES, DockIcon, dockEntry, startWorker, useDockAvailability, type DockEntry, type WorkerFolder } from "./dockEntries";
+import { NewAgentTiles, PickerHeading, PickerPopover } from "../agents/AgentPicker";
+import { DockIcon, dockEntry, startWorker, type WorkerFolder } from "./dockEntries";
 
 /**
  * A folder's +: start things where they belong. A new chat with one of the
- * agents, a terminal, a worktree (for a git folder), or a task; whatever
+ * agents, a terminal, or a worktree (for a git folder); whatever
  * starts opens in that folder, on the canvas and in the navigator.
  */
 export function FolderAddMenu({ project, git }: { project: ProjectData; git: boolean }) {
@@ -20,26 +18,17 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const primary = project.worktrees.find((w) => w.isPrimary) ?? project.worktrees[0];
   const where: WorkerFolder | null = primary ? { projectId: project.id, worktreeId: primary.id, label: project.name } : null;
 
-  useEffect(() => {
-    if (!open) {
-      setNaming(false);
-      setBranch("");
-      return;
-    }
-    const close = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!buttonRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    window.addEventListener("mousedown", close, true);
-    return () => window.removeEventListener("mousedown", close, true);
-  }, [open]);
+  const close = () => {
+    setOpen(false);
+    setNaming(false);
+    setBranch("");
+  };
 
   const run = (fn: () => void) => {
-    setOpen(false);
+    close();
     fn();
   };
   const createWorktree = async () => {
@@ -51,7 +40,7 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
       if (result.ok) {
         useProjectStore.getState().syncWorktrees(project.path, result.worktrees);
         useNotificationStore.getState().notify("info", t.panel_worktree_created(name));
-        setOpen(false);
+        close();
       } else {
         useNotificationStore.getState().notify("error", t.panel_worktree_create_failed(result.error));
       }
@@ -62,7 +51,6 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
     }
   };
 
-  const rect = open ? buttonRef.current?.getBoundingClientRect() : undefined;
   return (
     <>
       <button
@@ -73,30 +61,27 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
         aria-expanded={open}
         title={t.nav_folder_add(project.name)}
         aria-label={t.nav_folder_add(project.name)}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? close() : setOpen(true))}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
           <path d="M8 3v10M3 8h10" />
         </svg>
       </button>
-      {open &&
-        rect &&
-        where &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role={naming ? "dialog" : "menu"}
-            aria-label={t.nav_folder_add(project.name)}
-            className="tc-menu-pop !fixed z-[1000] w-[248px]"
-            style={{ top: Math.min(rect.bottom + 6, window.innerHeight - 320), left: Math.min(rect.left - 8, window.innerWidth - 260) }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                if (naming) setNaming(false);
-                else setOpen(false);
-              }
-            }}
-          >
+      {open && where && buttonRef.current && (
+        <PickerPopover
+          anchor={buttonRef.current}
+          role={naming ? "dialog" : "menu"}
+          label={t.nav_folder_add(project.name)}
+          width={336}
+          onClose={(refocus) => {
+            close();
+            if (refocus) buttonRef.current?.focus();
+          }}
+          onEscape={() => {
+            if (naming) setNaming(false);
+            return naming;
+          }}
+        >
             {naming ? (
               <div className="flex flex-col gap-2 p-1.5">
                 <label className="flex flex-col gap-1.5 px-1">
@@ -136,18 +121,18 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
               </div>
             ) : (
               <>
-                <div className="tc-eyebrow px-2.5 pb-1 pt-0.5">{t.nav_start_in(project.name)}</div>
-                {DOCK_ENTRIES.filter((e) => e.group === "agents").map((entry) => (
-                  <AgentItem key={entry.id} entry={entry} onPick={() => run(() => startWorker(entry, where))} />
-                ))}
-                <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
-                <button type="button" role="menuitem" className="tc-menu-option !items-center" onClick={() => run(() => startWorker(dockEntry("shell"), where))}>
-                  <DockIcon art={dockEntry("shell").art} scale={0.62} />
-                  <span className="flex-1 text-[13px]">{t.nav_new_terminal}</span>
+                <PickerHeading>{t.nav_start_in(project.name)}</PickerHeading>
+                <NewAgentTiles role="menuitem" actionLabel={t.nav_new_chat_with} onPick={(entry) => run(() => startWorker(entry, where))} />
+                <div className="tc-ap-rule" />
+                <button type="button" role="menuitem" data-pick="" className="tc-ap-row" onClick={() => run(() => startWorker(dockEntry("shell"), where))}>
+                  <span className="tc-ap-mark">
+                    <DockIcon art={dockEntry("shell").art} scale={0.62} />
+                  </span>
+                  <span className="flex-1">{t.nav_new_terminal}</span>
                 </button>
                 {git && (
-                  <button type="button" role="menuitem" className="tc-menu-option !items-center" onClick={() => setNaming(true)}>
-                    <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center text-[var(--text-secondary)]">
+                  <button type="button" role="menuitem" data-pick="" className="tc-ap-row" onClick={() => setNaming(true)}>
+                    <span className="tc-ap-mark text-[var(--text-secondary)]">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
                         <circle cx="5" cy="3.5" r="1.5" />
                         <circle cx="5" cy="12.5" r="1.5" />
@@ -155,48 +140,13 @@ export function FolderAddMenu({ project, git }: { project: ProjectData; git: boo
                         <path d="M5 5v6M11 7c0 2.5-6 2-6 4" />
                       </svg>
                     </span>
-                    <span className="flex-1 text-[13px]">{t.nav_new_worktree}</span>
+                    <span className="flex-1">{t.nav_new_worktree}</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="tc-menu-option !items-center"
-                  onClick={() =>
-                    run(() =>
-                      void createTask(project.path).then((made) => {
-                        if (made) openFolderTasks(project.path);
-                      }),
-                    )
-                  }
-                >
-                  <DockIcon art={dockEntry("task").art} scale={0.62} />
-                  <span className="flex-1 text-[13px]">{t.nav_new_task_here}</span>
-                </button>
               </>
             )}
-          </div>,
-          document.body,
-        )}
+        </PickerPopover>
+      )}
     </>
-  );
-}
-
-/** One agent to start a chat with; says so, instead of failing, when it isn't installed. */
-function AgentItem({ entry, onPick }: { entry: DockEntry; onPick: () => void }) {
-  const t = useT();
-  const { missing, title } = useDockAvailability(entry);
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="tc-menu-option !items-center disabled:opacity-45"
-      disabled={missing}
-      title={missing ? (title ?? undefined) : undefined}
-      onClick={onPick}
-    >
-      <DockIcon art={entry.art} scale={0.62} />
-      <span className="flex-1 text-[13px]">{t.nav_new_chat_with(entry.label(t))}</span>
-    </button>
   );
 }

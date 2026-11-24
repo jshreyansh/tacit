@@ -1,13 +1,13 @@
 import { MAX_ENVELOPE_LENGTH, envelopePreview } from "../../shared/wire-envelope";
 import { payloadsOver, type PayloadKind } from "../../shared/node-contracts";
 import { useBrowserCardStore } from "../stores/browserCardStore";
-import { usePinStore } from "../stores/pinStore";
 import { useBridgeActivityStore } from "../stores/bridgeActivityStore";
 import type { ConnectionData, ConnectionEndpoint } from "../stores/connectionStore";
 import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
 import { updateBrowserCardInScene } from "../actions/sceneCardActions";
 import { driveBrowserCard } from "../browser/driveBrowserCard";
 import { appendToNote } from "../browser/chatReplyDelivery";
+import { logToTask, noteEnd } from "./noteEnds";
 import { endpointRole, nodeTitle } from "./wireEnds";
 
 /**
@@ -52,9 +52,9 @@ async function bodyFor(from: ConnectionEndpoint, payload: PayloadKind): Promise<
     return [data.title, data.url, "", data.text ?? ""].filter((line) => line !== undefined).join("\n").trim();
   }
   if (from.kind === "note") {
-    const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === from.id);
-    if (!pin) throw new Error("That note is gone.");
-    return [pin.title, pin.body].filter(Boolean).join("\n\n").trim();
+    const note = noteEnd(from.id);
+    if (!note) throw new Error("That note is gone.");
+    return note.text.trim();
   }
   throw new Error("A terminal sends with its own tools.");
 }
@@ -103,6 +103,10 @@ async function deliver(
   if (to.kind === "browser") {
     updateBrowserCardInScene(to.id, { url: body.trim() });
     return { ok: true };
+  }
+  if (to.kind === "note" && endpointRole(to) === "task") {
+    const ok = await logToTask(to.id, body, from.kind === "terminal" ? { terminal: from.id, name: title } : null);
+    return ok ? { ok: true } : { ok: false, detail: "That task couldn't take it." };
   }
   if (to.kind === "note") {
     const appended = await appendToNote(to.id, title, body);

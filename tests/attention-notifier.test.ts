@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { askPerson } from "../shared/task";
+import { makeTask, parseNewTask } from "../shared/task-ops";
 
 import { AttentionNotifier } from "../electron/attention-notifier.ts";
 import { DEFAULT_ATTENTION_PREFS, sanitizeAttentionPrefs, type AttentionNotice } from "../shared/attention.ts";
@@ -25,6 +27,9 @@ function setup(options: { focused?: boolean; workers?: string[]; harness?: Recor
 const alive = { pty_alive: true };
 const waitingSnap = { pty_alive: true, turn_state: "awaiting_input" };
 
+const ctx = { at: "2026-11-24T10:00:00Z", by: "user", newId: () => "q1" };
+const asking = (text: string) => askPerson(makeTask(parseNewTask({ title: "Launch" }), { id: "launch-1", n: 1, workdesk: "w" }, ctx), ctx, { kind: "decide", byName: "A", text });
+
 test("an agent waiting, finishing or failing notifies while Tacit isn't focused", () => {
   const { notifier, requested } = setup();
   notifier.observeTerminal("a", waitingSnap, [{ kind: "turn_started" }, { kind: "waiting_for_human" }]);
@@ -45,7 +50,7 @@ test("while Tacit is focused it's a toast, which can't become a system notificat
   const { notifier, requested, shown } = setup({ focused: true });
   notifier.observeTerminal("a", waitingSnap, [{ kind: "waiting_for_human" }]);
   notifier.observeTerminal("a", alive, [{ kind: "turn_completed" }]);
-  notifier.observeTask("/repo", { id: "t1", title: "T", kind: "task", status: "needs_you", ask: { reason: "?", at: "1" } });
+  notifier.observeTask(asking("?"), null);
   assert.deepEqual(requested.map((n) => [n.kind, n.surface]), [
     ["waiting", "toast"],
     ["finished", "toast"],
@@ -118,7 +123,7 @@ test("settings turn each kind off, and workers' finished turns are off by defaul
   notifier.observeTerminal("a", waitingSnap, [{ kind: "turn_started" }, { kind: "waiting_for_human" }]);
   notifier.observeTerminal("a", alive, [{ kind: "turn_completed" }]);
   notifier.observeTerminal("a", alive, [{ kind: "turn_started" }, { kind: "errored", detail: "x" }]);
-  notifier.observeTask("/repo", { id: "t1", title: "T", kind: "task", status: "needs_you", ask: { reason: "?", at: "1" } });
+  notifier.observeTask(asking("?"), null);
   assert.equal(requested.length, 2);
 });
 
@@ -133,23 +138,22 @@ test("one notification per kind per turn; a new turn can notify again", () => {
   assert.deepEqual(requested.map((n) => n.kind), ["waiting", "finished", "waiting"]);
 });
 
-test("a task notifies once per question when it moves to Needs you", () => {
+test("a task notifies once for each thing it needs, and not for a permission its terminal tells of", () => {
   const { notifier, requested } = setup();
-  const ask = { reason: "Which plan is Most popular?", choices: ["Regular"], at: "2026-11-03T10:00:00Z" };
-  const task = { id: "launch-1", title: "Launch", kind: "task", status: "needs_you", ask };
-  notifier.observeTask("/repo", task);
-  notifier.observeTask("/repo", { ...task, title: "Launch!" });
+  const task = asking("Which plan is Most popular?");
+  notifier.observeTask(task, null);
+  notifier.observeTask({ ...task, title: "Launch!" }, task);
   assert.equal(requested.length, 1);
-  assert.deepEqual(requested[0].target, { kind: "task", repo: "/repo", taskId: "launch-1" });
+  assert.deepEqual(requested[0].target, { kind: "task", workdesk: "w", taskId: "launch-1" });
   assert.equal(requested[0].question, "Which plan is Most popular?");
-  assert.equal(requested[0].detail, "Launch");
+  assert.equal(requested[0].detail, "T-1 Launch");
 
-  notifier.observeTask("/repo", { ...task, status: "in_progress", ask: undefined });
-  notifier.observeTask("/repo", { ...task, ask: { ...ask, at: "2026-11-03T11:00:00Z" } });
+  const answered = { ...task, requests: [] };
+  notifier.observeTask(answered, task);
+  const again = { ...task, requests: [{ ...task.requests[0], id: "q2" }] };
+  notifier.observeTask(again, answered);
   assert.equal(requested.length, 2, "a new question after an answer notifies again");
-
-  notifier.observeTask("/repo", { id: "note-1", title: "N", kind: "note", status: "needs_you", ask });
-  notifier.observeTask("/repo", null);
+  notifier.observeTask({ ...again, requests: [...again.requests, { ...task.requests[0], id: "q3", kind: "allow" }] }, again);
   assert.equal(requested.length, 2);
 });
 
@@ -217,7 +221,7 @@ test("a notification says who, what happened and where, in the person's language
   });
   assert.equal(attentionText({ id: "2", kind: "failed", surface: "banner" as const, target: terminal, detail: "API error" }, place, en).body, "API error · brewline · Launch");
   assert.equal(attentionText({ id: "3", kind: "finished", surface: "banner" as const, target: terminal }, { name: null }, en).title, "An agent finished");
-  const task = { kind: "task" as const, repo: "/r", taskId: "t" };
+  const task = { kind: "task" as const, workdesk: "w", taskId: "t" };
   assert.deepEqual(attentionText({ id: "4", kind: "needs_you", surface: "banner" as const, target: task, detail: "Launch", question: "Which plan?" }, { name: null }, en), {
     title: "Needs you: Launch",
     body: "Which plan?",

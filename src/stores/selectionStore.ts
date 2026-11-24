@@ -7,7 +7,7 @@ export type SelectedItem =
   | { type: "card"; cardId: string }
   | { type: "annotation"; annotationId: string }
   /** A task or note on the canvas, clicked: the node you're on, for the grid to open. */
-  | { type: "pin"; pinId: string }
+  | { type: "task"; taskId: string }
   /** A file tile. */
   | { type: "file"; tileId: string };
 
@@ -25,7 +25,7 @@ interface SelectionStore {
   setSelectedItems: (items: SelectedItem[]) => void;
   selectAnnotation: (annotationId: string) => void;
   selectCard: (cardId: string) => void;
-  selectPin: (pinId: string) => void;
+  selectTask: (taskId: string) => void;
   selectProject: (projectId: string) => void;
   selectTerminal: (
     projectId: string,
@@ -51,9 +51,9 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       selectedItems: [{ type: "card", cardId }],
       selectionRect: null,
     }),
-  selectPin: (pinId) =>
+  selectTask: (taskId) =>
     set({
-      selectedItems: [{ type: "pin", pinId }],
+      selectedItems: [{ type: "task", taskId }],
       selectionRect: null,
     }),
   selectProject: (projectId) =>

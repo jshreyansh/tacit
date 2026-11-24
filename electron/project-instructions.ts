@@ -18,7 +18,7 @@ import type {
   SetUpProjectInstructionsResult,
 } from "../shared/project-instructions";
 import { HYDRA_INSTRUCTIONS } from "../hydra/src/init";
-import { PIN_INSTRUCTIONS } from "./pin-instructions";
+import { TASK_INSTRUCTIONS } from "./task-instructions";
 
 const execFileAsync = promisify(execFile);
 
@@ -93,8 +93,8 @@ async function sectionsFor(dir: string): Promise<{
 }> {
   const inGit = await isInGitRepo(dir);
   return inGit
-    ? { sections: [HYDRA_INSTRUCTIONS, PIN_INSTRUCTIONS], withdrawn: [], inGit }
-    : { sections: [PIN_INSTRUCTIONS], withdrawn: [HYDRA_INSTRUCTIONS], inGit };
+    ? { sections: [HYDRA_INSTRUCTIONS, TASK_INSTRUCTIONS], withdrawn: [], inGit }
+    : { sections: [TASK_INSTRUCTIONS], withdrawn: [HYDRA_INSTRUCTIONS], inGit };
 }
 
 export async function checkProjectInstructions(

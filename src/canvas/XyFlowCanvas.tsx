@@ -26,7 +26,11 @@ import { useCanvasDragOver } from "./useCanvasDragOver";
 import { getStashedTerminalIds } from "./sceneState";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { usePinStore } from "../stores/pinStore";
+import { useRecordPlaceStore } from "../stores/recordPlaceStore";
+import { useTasks } from "../tasks/taskStore";
+import { newTaskAt } from "../tasks/taskActions";
+import { placeSticky } from "../board/boardActions";
+import { placedTasks } from "./noteEnds";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { WallpaperLayers } from "./WallpaperLayers";
@@ -40,6 +44,7 @@ import { FocusCaretOverlay } from "../components/FocusCaretOverlay";
 import { BoxSelectOverlay } from "./BoxSelectOverlay";
 import { SelectionRings } from "./SelectionRings";
 import { hasItem, itemForTile } from "./canvasSelection";
+import { beginCanvasDrag } from "./canvasDrag";
 import { placeTile, registerLiveTiles, startGroupMove, type GroupMove } from "./groupMove";
 import { useSelectionStore } from "../stores/selectionStore";
 import { LayerErrorBoundary } from "../components/LayerErrorBoundary";
@@ -48,7 +53,9 @@ import { BoardLayer, boardElementAt } from "../board/BoardLayer";
 import { BoardDrawOverlay } from "../board/BoardDrawOverlay";
 import { BoardChrome } from "../board/BoardChrome";
 import { useBoardKeys } from "../board/useBoardKeys";
-import { createText, tileDropped } from "../board/boardActions";
+import { createText } from "../board/boardActions";
+import { tileDropped } from "../board/boardMembership";
+import { tileRects } from "../board/boardTargets";
 import { mediaFiles, placeMediaFiles } from "../board/boardMedia";
 import { useBoardStore } from "../stores/boardStore";
 import { PetOverlay } from "../pet/PetOverlay";
@@ -72,7 +79,7 @@ import {
   updateTerminalRuntime,
 } from "../terminal/terminalRuntimeStore";
 import { fromFlowViewport, toFlowViewport } from "./viewportAdapter";
-import { buildCanvasFlowNodes, buildFileFlowNodes, buildPinFlowNodes } from "./nodeProjection";
+import { buildCanvasFlowNodes, buildFileFlowNodes, buildTaskFlowNodes } from "./nodeProjection";
 import { useFileTileStore } from "../stores/fileTileStore";
 import { showFilesOnCanvas } from "../files/fileTileActions";
 import { xyflowNodeTypes, type CanvasFlowNode } from "./xyflowNodes";
@@ -99,8 +106,7 @@ import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
 import { ContextMenu } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { addBrowserCardToScene } from "../actions/sceneCardActions";
-import { createNoteInScene, createTaskInScene } from "../actions/scenePinActions";
-import type { TerminalType, Pin } from "../types";
+import type { TerminalType } from "../types";
 
 const EMPTY_EDGES: never[] = [];
 const WHEEL_ZOOM_SENSITIVITY = 0.005;
@@ -156,15 +162,6 @@ function buildLayoutKey(
     .join("||");
 }
 
-/** Same rebuild-avoidance idea as buildLayoutKey, for note (pin) nodes:
- * only x/y/w/h changes should force the node array to rebuild — a body/title
- * edit changes the Pin object's identity in the store but shouldn't. */
-function buildPinLayoutKey(pins: Pin[]): string {
-  return pins
-    .filter((pin) => pin.x != null && pin.y != null)
-    .map((pin) => `${pin.id}:${pin.x},${pin.y},${pin.w ?? ""}x${pin.h ?? ""}`)
-    .join(",");
-}
 
 function TerminalRuntimeLayer({
   projects,
@@ -339,7 +336,6 @@ function XyFlowCanvasInner() {
     (state) => state.rightPanelCollapsed,
   );
   const rightPanelWidth = useCanvasStore((state) => state.rightPanelWidth);
-  const pinsByProject = usePinStore((state) => state.pinsByProject);
   const projects = useProjectStore((state) => state.projects);
   const petEnabled = usePreferencesStore((state) => state.petEnabled);
   const activityHeatmapEnabled = usePreferencesStore(
@@ -353,13 +349,10 @@ function XyFlowCanvasInner() {
   const spaceHeld = useCanvasToolStore((state) => state.spaceHeld);
   const { handleMouseDown: handleBoxSelectMouseDown } = useBoxSelect();
   const layoutKey = useMemo(() => buildLayoutKey(projects), [projects]);
-  // This workdesk's folders' pins only. The pin store keeps every folder it
-  // has loaded, other workdesks' too, so a new workdesk showed their notes.
-  const allPins = useMemo(
-    () => projects.flatMap((project) => pinsByProject[project.path] ?? []),
-    [pinsByProject, projects],
-  );
-  const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
+  const tasks = useTasks();
+  const places = useRecordPlaceStore((state) => state.places);
+  const onCanvas = useMemo(() => placedTasks(tasks, places), [tasks, places]);
+  const taskLayoutKey = useMemo(() => onCanvas.map(({ task, rect }) => `${task.id}:${rect.x},${rect.y},${rect.w}x${rect.h}`).join("|"), [onCanvas]);
   const fileTiles = useFileTileStore((state) => state.tiles);
   const boardTool = useBoardStore((state) => state.tool);
   const isDrawing = !!boardTool;
@@ -436,36 +429,16 @@ function XyFlowCanvasInner() {
   }, [contextMenu]);
 
   const handleAddTaskFromMenu = useCallback(() => {
-    if (!contextMenu) return;
-    const { focusedProjectId, projects: currentProjects } =
-      useProjectStore.getState();
-    const project =
-      currentProjects.find((p) => p.id === focusedProjectId) ??
-      currentProjects[0];
-    if (!project) return;
-    void createTaskInScene(project.path, {
-      x: contextMenu.flowX,
-      y: contextMenu.flowY,
-    });
+    if (contextMenu) newTaskAt({ x: contextMenu.flowX, y: contextMenu.flowY });
   }, [contextMenu]);
 
   const handleAddNoteFromMenu = useCallback(() => {
-    if (!contextMenu) return;
-    const { focusedProjectId, projects: currentProjects } =
-      useProjectStore.getState();
-    const project =
-      currentProjects.find((p) => p.id === focusedProjectId) ??
-      currentProjects[0];
-    if (!project) return;
-    void createNoteInScene(project.path, {
-      x: contextMenu.flowX,
-      y: contextMenu.flowY,
-    });
+    if (contextMenu) placeSticky({ x: contextMenu.flowX, y: contextMenu.flowY });
   }, [contextMenu]);
 
   const projectedNodes = useMemo(
-    () => [...buildCanvasFlowNodes(projects), ...buildPinFlowNodes(allPins), ...buildFileFlowNodes(Object.values(fileTiles))],
-    [layoutKey, pinLayoutKey, fileTiles],
+    () => [...buildCanvasFlowNodes(projects), ...buildTaskFlowNodes(onCanvas), ...buildFileFlowNodes(Object.values(fileTiles))],
+    [layoutKey, taskLayoutKey, fileTiles],
   );
   const [nodes, setNodes, onNodesChange] =
     useNodesState<CanvasFlowNode>(projectedNodes);
@@ -483,6 +456,7 @@ function XyFlowCanvasInner() {
   const snappedRef = useRef(new Map<string, { x: boolean; y: boolean }>());
   // Several selected, moved by dragging this one of them (groupMove.ts).
   const groupRef = useRef<{ leader: string; at: { x: number; y: number }; move: GroupMove } | null>(null);
+  const endDragRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     registerLiveTiles((places) => reactFlow.setNodes((ns) => ns.map((n) => (places.has(n.id) ? { ...n, position: places.get(n.id)! } : n))));
     return () => registerLiveTiles(null);
@@ -531,6 +505,8 @@ function XyFlowCanvasInner() {
           .getNodes()
           .filter((n) => n.id !== change.id && !n.hidden && !group?.move.moving.tiles.has(n.id))
           .map((n) => ({ x: n.position.x, y: n.position.y, ...size(n) }))
+          // Browsers aren't React Flow's, and are lined up with all the same.
+          .concat(tileRects().filter((r) => r.kind === "card" && !group?.move.moving.tiles.has(r.id)).map(({ x, y, w, h }) => ({ x, y, w, h })))
           .filter((r) => r.w > 0 && r.h > 0);
         const aligned = alignRect({ x, y, ...size(node) }, others, ALIGN_SNAP / reactFlow.getViewport().zoom, axes);
         snappedRef.current.set(change.id, { x: aligned.snappedX, y: aligned.snappedY });
@@ -765,6 +741,8 @@ function XyFlowCanvasInner() {
 
   const handleNodeDragStart = useCallback<OnNodeDrag<CanvasFlowNode>>((_event, node) => {
     dragStartRef.current.set(node.id, { ...node.position });
+    endDragRef.current?.();
+    endDragRef.current = beginCanvasDrag();
     snappedRef.current.delete(node.id);
     const item = itemForTile(node.id);
     const items = useSelectionStore.getState().selectedItems;
@@ -775,6 +753,8 @@ function XyFlowCanvasInner() {
 
   const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
     (_event, node) => {
+      endDragRef.current?.();
+      endDragRef.current = null;
       const group = groupRef.current;
       if (group && group.leader === node.id) {
         const start = dragStartRef.current.get(node.id) ?? group.at;
@@ -802,7 +782,7 @@ function XyFlowCanvasInner() {
         w: node.measured?.width ?? node.width ?? 0,
         h: node.measured?.height ?? node.height ?? 0,
       });
-      if (node.type === "file" || node.type === "pin") {
+      if (node.type === "file" || node.type === "task") {
         placeTile(node.id, dropped);
         return;
       }

@@ -77,9 +77,9 @@ export function filterValidSelectedItems(
         return cardIds.size > 0 ? cardIds.has(item.cardId) : true;
       case "annotation":
         return annotationIds ? annotationIds.has(item.annotationId) : true;
-      // Pins live in the pin store, not the scene: one removed is simply
+      // Tasks live in the task store, not the scene: one removed is simply
       // not found when the selection is read.
-      case "pin":
+      case "task":
         return true;
       // File tiles too: a removed one drops itself (fileTileStore).
       case "file":
@@ -125,8 +125,8 @@ export function sameSelectedItems(
           other.type === "annotation" &&
           item.annotationId === other.annotationId
         );
-      case "pin":
-        return other.type === "pin" && item.pinId === other.pinId;
+      case "task":
+        return other.type === "task" && item.taskId === other.taskId;
       case "file":
         return other.type === "file" && item.tileId === other.tileId;
     }

@@ -79,8 +79,7 @@ export async function closeNode(
     fail(404, "not_found", `No node with id "${id}" on this canvas; it may already be closed. Call list_nodes for current ids.`);
   }
   if (node.kind !== kind) {
-    const actual = node.kind === "pin" ? "note" : node.kind;
-    fail(400, "wrong_kind", `"${id}" is a ${actual}, not a ${kind}.`);
+    fail(400, "wrong_kind", `"${id}" is a ${node.kind}, not a ${kind}.`);
   }
 
   // What the person opened is theirs to close, whatever its state; force

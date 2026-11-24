@@ -9,6 +9,7 @@ const STATE_FILE = path.join(TACIT_DIR, "state.json");
 
 export class StatePersistence {
   private folders: string[] | null = null;
+  private ids: string[] | null = null;
 
   constructor() {
     if (!fs.existsSync(TACIT_DIR)) {
@@ -34,11 +35,21 @@ export class StatePersistence {
     fs.writeFileSync(tmp, serialized, "utf-8");
     fs.renameSync(tmp, STATE_FILE);
     this.folders = null;
+    this.ids = null;
   }
 
   /** Every workdesk's folders as last saved, read again after each save. */
   workdeskFolders(): string[] {
     if (!this.folders) this.folders = workdeskFolders(this.load());
     return this.folders;
+  }
+
+  /** Every workdesk's id as last saved, read again after each save. */
+  workdeskIds(): string[] {
+    if (!this.ids) {
+      const canvases = (this.load() as { workspace?: { canvases?: unknown } } | null)?.workspace?.canvases;
+      this.ids = Array.isArray(canvases) ? canvases.flatMap((c) => (c && typeof c.id === "string" ? [c.id] : [])) : [];
+    }
+    return this.ids;
   }
 }

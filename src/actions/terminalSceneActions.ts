@@ -12,6 +12,7 @@ import { recordRenderDiagnostic } from "../terminal/renderDiagnostics";
 import { pickPlacement } from "../canvas/terminalPlacement";
 import { useCanvasStore } from "../stores/canvasStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
+import { tileDropped, tileGone } from "../board/boardMembership";
 import { createConnectionInScene } from "./sceneConnectionActions";
 import { recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
@@ -182,6 +183,8 @@ export function createTerminalInScene({
   }
 
   const created = addTerminalToScene(projectId, worktreeId, placedTerminal);
+  // In the board section it opened in, if any.
+  tileDropped(created.id, { x: placement.x, y: placement.y, w: placedTerminal.width, h: placedTerminal.height });
 
   // Spawn lineage is a real connection now, not a separately-drawn overlay
   // derived from parentTerminalId — so the line an agent's sub-agent gets is
@@ -242,6 +245,7 @@ export function closeTerminalInScene(
     reason: "close_terminal",
   });
   useProjectStore.getState().removeTerminal(projectId, worktreeId, terminalId);
+  tileGone(terminalId);
   removeConnectionsInvolving("terminal", terminalId);
   // A closed agent is a decision — often the abandoned half of a delegation
   // whose spawn entry is already in the record. `closedBy` keeps a manager's

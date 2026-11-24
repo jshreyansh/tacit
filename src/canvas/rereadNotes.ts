@@ -1,9 +1,11 @@
-import { usePinStore } from "../stores/pinStore";
+import { useBoardStore } from "../stores/boardStore";
+import { useTaskStore } from "../tasks/taskStore";
 import { useConnectionStore, type ConnectionData } from "../stores/connectionStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { resolveConnectionType } from "../../shared/connection-types";
 import { endpointRole } from "./wireEnds";
 import { sendOverWire } from "./wireSend";
+import { noteEnd } from "./noteEnds";
 
 /**
  * Reread: a note wired into an agent as standing context.
@@ -34,9 +36,8 @@ function isRereadWire(connection: ConnectionData): boolean {
   );
 }
 
-function noteText(pinId: string): string | null {
-  const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === pinId);
-  return pin ? `${pin.title}\n${pin.body}` : null;
+function noteText(id: string): string | null {
+  return noteEnd(id)?.text ?? null;
 }
 
 const lastSent = new Map<string, string>();
@@ -83,9 +84,15 @@ export function installRereadNotes(): () => void {
       );
     }
   };
-  const offPins = usePinStore.subscribe(check);
+  const offNotes = useBoardStore.subscribe((now, was) => {
+    if (now.elements !== was.elements) check();
+  });
+  const offTasks = useTaskStore.subscribe((now, was) => {
+    if (now.tasks !== was.tasks) check();
+  });
   return () => {
-    offPins();
+    offNotes();
+    offTasks();
     for (const timer of timers.values()) clearTimeout(timer);
   };
 }

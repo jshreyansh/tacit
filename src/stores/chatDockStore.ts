@@ -133,11 +133,11 @@ function loadFloatRect(): FloatRect | null {
 
 /**
  * What the docked chat shows: the conversation, the live and past sessions,
- * the pins, or the roster for choosing a manager. Held here rather than in
- * the chat so other places can open it on a face: a project's pin badge,
- * a terminal's pin chip, a first project added to an empty canvas.
+ * or the roster for choosing a manager. Held here rather than in
+ * the chat so other places can open it on a face: a first project added to an
+ * empty canvas.
  */
-export type ChatFace = "chat" | "sessions" | "pins" | "roster";
+export type ChatFace = "chat" | "sessions" | "roster";
 
 /**
  * Whether the navigator docks beside the rail: the window is wide enough,
@@ -193,7 +193,7 @@ interface ChatDockStore {
   /** Opens the chat on a face. */
   showFace: (face: ChatFace) => void;
   /**
-   * Text for the manager's message box from elsewhere (a pin handed over,
+   * Text for the manager's message box from elsewhere (a page handed over,
    * a past session to ask about), taken once by the chat.
    */
   draftInsert: string | null;

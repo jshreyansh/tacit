@@ -17,6 +17,10 @@ interface BoardDraftStore {
   /** The element or tile an arrow end would attach to under the pointer. */
   target: string | null;
   guides: AlignGuide[];
+  /** Where the things a section being drawn or resized takes in are. */
+  holding: BoardRect[];
+  /** The drawing being resized, whose size shows. */
+  resizing: string | null;
   /** True while something on the board is being moved or resized. */
   dragging: boolean;
   set: (patch: Partial<Omit<BoardDraftStore, "set" | "clear">>) => void;
@@ -27,7 +31,9 @@ export const useBoardDraft = create<BoardDraftStore>((set) => ({
   draft: null,
   target: null,
   guides: [],
+  holding: [],
+  resizing: null,
   dragging: false,
   set: (patch) => set(patch),
-  clear: () => set({ draft: null, target: null, guides: [], dragging: false }),
+  clear: () => set({ draft: null, target: null, guides: [], holding: [], resizing: null, dragging: false }),
 }));

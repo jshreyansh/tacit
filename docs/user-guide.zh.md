@@ -313,20 +313,25 @@ canvas 底部正中有一条小点,显示哪些槽已经填了。布局铺得很
 
 ---
 
-## Pin — 把以后再办的事先记下来
+## 任务 — 工作台的看板
 
-Pin 是持久化的「这事先记下,以后办」清单。每条 pin 有标题、描述、可选外链(比如 GitHub issue)。重启不丢、按 repo 分组。
+在导航栏打开**任务**。整个工作台一个看板：以后、接下来、进行中、等你处理、完成。
 
-CLI 是 `tacit pin`(在 设置 → CLI 里和 `tacit` 一起注册):
+- **新任务**：只需要名称。在名称里输入 `#文件夹`、`!high` 或 `@智能体` 即可设置。
+- **交给智能体**：把卡片拖到它上面，或点“交给”。它正忙时可以排队或打断。
+- **等你处理**：回答问题、批准、检查完成的工作，或看看智能体为什么停下。
+- **便签**就是画布上的贴纸。可以打开成页面，也可以由它开始一个任务。
+
+在终端里：
 
 ```bash
-tacit pin add --title "修一下 OAuth refresh 边界情况" --body "请求中途 token 过期..."
-tacit pin add --title "看一下这个 issue" --link https://github.com/.../issues/42 --link-type github_issue
-tacit pin list
-tacit pin update <id> --status done
+tacit task add --title "修一下 OAuth refresh 边界情况" --body "请求中途 token 过期..." --done-when "请求中途刷新也能成功"
+tacit task list
+tacit task show T-12
+tacit note add "发布故事"
 ```
 
-App 内的 Pin 抽屉读取同一份存储,带一键状态切换。看到什么但不想中断手头的事,先 pin 一下。
+在工作台的智能体终端里，可以用 `tacit task take`、`ask`、`approve` 和 `finish` 处理任务。
 
 ---
 

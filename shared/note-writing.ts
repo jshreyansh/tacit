@@ -8,7 +8,7 @@
  * promise than one that adds to them.
  *
  * Pure: the shapes and the text assembly live here so both halves can be tested
- * without a store, a pin file, or an Electron session.
+ * without a store or an Electron session.
  */
 
 import { resolveConnectionType } from "./connection-types";
@@ -54,13 +54,10 @@ export function appendToNoteBody(
   // while the same answer arriving twice in a row is the duplicate signal.
   if (existing.trimEnd().endsWith(text)) return { ok: false, reason: "duplicate" };
 
-  const heading = `**${entry.source}** · ${entry.at}`;
-  const block = `${heading}\n\n${text}`;
-  // A note that has never been written to gets no leading rule: the separator
-  // is there to divide entries, and there is nothing yet to divide it from.
-  const next = existing.trim()
-    ? `${existing.trimEnd()}\n\n---\n\n${block}\n`
-    : `${block}\n`;
+  // A note is plain words, on its sticky as on its page: who and when, then
+  // what they said, with a line between entries.
+  const block = `${entry.source} · ${entry.at}\n${text}`;
+  const next = existing.trim() ? `${existing.trimEnd()}\n\n${block}` : block;
 
   if (next.length > MAX_NOTE_BODY_LENGTH) return { ok: false, reason: "too-long" };
   return { ok: true, body: next };

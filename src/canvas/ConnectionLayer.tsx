@@ -7,7 +7,7 @@ import {
 } from "../stores/browserCardStore";
 import type {
   CanvasFlowNode,
-  PinFlowNode,
+  TaskFlowNode,
   TerminalFlowNode,
 } from "./nodeProjection";
 import {
@@ -26,7 +26,9 @@ import {
   connectionEventPairKey,
 } from "../stores/bridgeActivityStore";
 import { useProjectStore } from "../stores/projectStore";
-import { usePinStore } from "../stores/pinStore";
+import { useNotes } from "../board/notes";
+import { useTaskStore } from "../tasks/taskStore";
+import type { BoardRect } from "../types/board";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { ContextMenu } from "../components/ContextMenu";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
@@ -148,8 +150,9 @@ const ATTACHED_COLOR = "var(--cyan)";
  */
 function collectEndpointRects(
   terminalNodes: TerminalFlowNode[],
-  pinNodes: PinFlowNode[],
+  taskNodes: TaskFlowNode[],
   browserCards: Record<string, BrowserCardData>,
+  notes: ReadonlyArray<BoardRect & { id: string }>,
 ): EndpointRect[] {
   const rects: EndpointRect[] = [];
   for (const node of terminalNodes) {
@@ -162,14 +165,13 @@ function collectEndpointRects(
       h: (node.style?.height as number | undefined) ?? FALLBACK_TERMINAL_HEIGHT,
     });
   }
-  // Notes come from the same React Flow node tree as terminals (and so are
-  // already live during a drag, unlike reading pinStore directly). Only pins
-  // with x/y are on the canvas at all — buildPinFlowNodes skips the rest —
-  // so anything in this list is genuinely placed and connectable.
-  for (const node of pinNodes) {
+  // Tasks come from the same React Flow node tree as terminals, so they're
+  // already live during a drag; notes are the board's stickies.
+  for (const note of notes) rects.push({ kind: "note", id: note.id, x: note.x, y: note.y, w: note.w, h: note.h });
+  for (const node of taskNodes) {
     rects.push({
       kind: "note",
-      id: node.data.pinId,
+      id: node.data.taskId,
       x: node.position.x,
       y: node.position.y,
       w: (node.style?.width as number | undefined) ?? FALLBACK_TERMINAL_WIDTH,
@@ -237,7 +239,7 @@ function curveMidpoint(a: EndpointRect, b: EndpointRect): Point {
 
 export function ConnectionLayer() {
   // useNodes()'s generic is a type hint only — it does not filter at
-  // runtime, and the node tree now also holds "pin" (note) nodes, so this
+  // runtime, and the node tree now also holds task nodes, so this
   // must explicitly narrow to terminals before anything here can assume
   // node.data.terminalId exists.
   const allNodes = useNodes<CanvasFlowNode>();
@@ -245,10 +247,11 @@ export function ConnectionLayer() {
     () => allNodes.filter((node): node is TerminalFlowNode => node.type === "terminal"),
     [allNodes],
   );
-  const pinNodes = useMemo(
-    () => allNodes.filter((node): node is PinFlowNode => node.type === "pin"),
+  const taskNodes = useMemo(
+    () => allNodes.filter((node): node is TaskFlowNode => node.type === "task"),
     [allNodes],
   );
+  const notes = useNotes();
   const viewport = useCanvasStore((s) => s.viewport);
   const browserCardMap = useBrowserCardStore((s) => s.cards);
   const connections = useConnectionStore((s) => s.connections);
@@ -295,7 +298,7 @@ export function ConnectionLayer() {
   // ClusterLinkLayer used it, and WorktreeLabelLayer/FamilyTreeOverlay still
   // do, reading its detail as a bare terminal id), so it can't be widened to
   // carry other kinds without breaking them. `node-hover` carries a full
-  // endpoint and is what BrowserCard and PinNode emit.
+  // endpoint and is what BrowserCard, notes and TaskNode emit.
   useEffect(() => {
     const handleTerminal = (event: Event) => {
       const id = (event as CustomEvent<string | null>).detail;
@@ -314,8 +317,8 @@ export function ConnectionLayer() {
   }, []);
 
   const rects = useMemo(
-    () => collectEndpointRects(terminalNodes, pinNodes, browserCardMap),
-    [terminalNodes, pinNodes, browserCardMap],
+    () => collectEndpointRects(terminalNodes, taskNodes, browserCardMap, notes),
+    [terminalNodes, taskNodes, browserCardMap, notes],
   );
   const rectByKey = useMemo(() => {
     const map = new Map<string, EndpointRect>();
@@ -381,7 +384,7 @@ export function ConnectionLayer() {
   // these are cheap store reads.
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
+  const tasks = useTaskStore((s) => s.tasks);
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
 
@@ -391,7 +394,7 @@ export function ConnectionLayer() {
     return {
       projects,
       browserCards: browserCardMap,
-      pins: Object.values(pinsByProject).flat(),
+      notes: [...notes, ...Object.values(tasks)],
       workspaceManagerTerminalId:
         activeCanvas?.workspaceManagerTerminalId ?? null,
       strings: {
@@ -401,7 +404,7 @@ export function ConnectionLayer() {
         unknownNote: t.connection_endpoint_unknown_note,
       },
     };
-  }, [projects, browserCardMap, pinsByProject, canvases, activeCanvasId, t]);
+  }, [projects, browserCardMap, notes, tasks, canvases, activeCanvasId, t]);
 
   const pendingRemoval = pendingRemovalId
     ? (connections[pendingRemovalId] ?? null)

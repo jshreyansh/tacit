@@ -97,11 +97,6 @@ export function folderDot(live: readonly { state: CanvasTerminalItem["state"] }[
   return null;
 }
 
-/** Tasks still open (pass tasks only, not notes): neither done nor dropped. */
-export function openTaskCount(tasks: readonly { status: string }[]): number {
-  return tasks.filter((p) => p.status !== "done" && p.status !== "dropped").length;
-}
-
 /** The dot on a live row: running, needs you, or nothing to say. */
 export function liveDot(state: CanvasTerminalItem["state"]): "run" | "need" | null {
   if (state === "attention") return "need";

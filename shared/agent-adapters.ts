@@ -41,6 +41,13 @@ export const TACIT_MCP_SERVER_NAME = "tacit";
  */
 export const TACIT_MEMORY_TOOLS: readonly string[] = ["recall", "remember", "forget", "update_handover", "query_memory"];
 
+/**
+ * The task tools it may use the same way: they only change Tacit's own board,
+ * and asking you a question shouldn't need your permission first. Not
+ * `hand_over_task`, which sets another agent to work.
+ */
+export const TACIT_TASK_TOOLS: readonly string[] = ["list_tasks", "get_task", "create_task", "take_part", "report_part", "finish_task", "ask_user", "ask_approval", "withdraw_question", "suggest_task_text"];
+
 /** One MCP server as every agent format needs it: what to run, with what. */
 export interface BridgeDescriptor {
   command: string;
@@ -211,7 +218,7 @@ const claude: AgentAdapter = {
       },
     };
     return {
-      args: ["--mcp-config", configPath, `--allowedTools=${TACIT_MEMORY_TOOLS.map((tool) => `mcp__${TACIT_MCP_SERVER_NAME}__${tool}`).join(",")}`],
+      args: ["--mcp-config", configPath, `--allowedTools=${[...TACIT_MEMORY_TOOLS, ...TACIT_TASK_TOOLS].map((tool) => `mcp__${TACIT_MCP_SERVER_NAME}__${tool}`).join(",")}`],
       // --mcp-config is variadic and consumes whatever positional value
       // follows it, including a `--`-separated initial prompt (see
       // getTerminalPromptArgs in src/terminal/cliConfig.ts), so it must land

@@ -1,12 +1,12 @@
-import { activateCardInScene, activatePinInScene, clearSceneFocusAndSelection } from "../actions/sceneSelectionActions";
+import { activateCardInScene, clearSceneFocusAndSelection } from "../actions/sceneSelectionActions";
 import { openFileInView, openPastSession } from "../actions/openSession";
 import { useBrowserCardStore } from "../stores/browserCardStore";
-import { usePinStore } from "../stores/pinStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
-import { showPinOnCanvas } from "../tasks/showPinOnCanvas";
+import { openTask } from "../tasks/taskActions";
+import { goToNote } from "../board/notes";
 import { flyToBounds, panToTerminal } from "../utils/panToTerminal";
 import { canvasFocusedNode } from "./canvasFocus";
 
@@ -51,7 +51,19 @@ export function showGridOnFocusedNode(): void {
     view.openFile(filePath);
     return;
   }
-  useWorkdeskViewStore.getState().showGrid(canvasFocusedNode());
+  if (page.page === "note" && page.noteId) {
+    const id = page.noteId;
+    page.close();
+    view.showGrid({ kind: "note", id });
+    return;
+  }
+  const focused = canvasFocusedNode();
+  if (focused?.kind === "task") {
+    view.setMode("grid");
+    openTask(focused.id);
+    return;
+  }
+  view.showGrid(focused);
 }
 
 /** The canvas, on the node open in the grid's tab: focused, or selected, and in view. */
@@ -95,18 +107,10 @@ export async function showOpenNodeOnCanvas(): Promise<void> {
       if (data) flyToBounds(data.x, data.y, data.w, data.h);
       return;
     }
-    case "task":
-    case "note": {
-      const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === node.id);
-      if (!pin) {
-        view.setMode("canvas");
-        clearSceneFocusAndSelection();
-        return;
-      }
-      // One not on the canvas yet is put there.
-      await showPinOnCanvas(pin);
-      activatePinInScene(pin.id);
-    }
+    case "note":
+      view.setMode("canvas");
+      goToNote(node.id);
+      return;
   }
 }
 

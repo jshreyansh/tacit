@@ -79,6 +79,8 @@ interface TerminalState {
   sessionWatchTimer: ReturnType<typeof setTimeout> | null;
   /** Replaying a newly attached session's history; see primeSessionFromTail. */
   priming: boolean;
+  /** When its process began (ms): what its session said before that, another process did. */
+  ptySince: number | null;
   /** When Tacit started watching this terminal (ms). */
   watchingSince: number;
   /** The attached session's title as last seen; Claude repeats it every turn. */
@@ -761,6 +763,9 @@ export class TelemetryService {
     state.snapshot.pty_alive = true;
     state.snapshot.exit_code = undefined;
     state.snapshot.active_tool_calls = 0;
+    const since = Date.parse(input.at ?? "");
+    state.ptySince = Number.isFinite(since) ? since : this.now();
+    this.endTurnOfAnotherProcess(state);
     this.ptyToTerminal.set(input.ptyId, input.terminalId);
     this.appendEvent(state, input.at, "pty", "pty_created", {
       pty_id: input.ptyId,
@@ -1445,6 +1450,11 @@ export class TelemetryService {
     };
   }
 
+  /** Tokens its session has used so far, where its CLI's log says; null where it doesn't. */
+  tokensUsed(terminalId: string): number | null {
+    return this.terminals.get(terminalId)?.lastTokenTotal ?? null;
+  }
+
   recordHookEvent(
     terminalId: string,
     event: {
@@ -1525,6 +1535,10 @@ export class TelemetryService {
         state.snapshot.turn_state = "turn_complete";
         state.snapshot.turn_started_at = undefined;
         state.snapshot.last_meaningful_progress_at = at;
+        state.snapshot.last_reply =
+          typeof event.last_assistant_message === "string"
+            ? event.last_assistant_message.trim().slice(0, 1000) || undefined
+            : undefined;
         this.appendEvent(state, at, "session", "hook_stop", {
           last_assistant_message: event.last_assistant_message ?? null,
         });
@@ -1694,6 +1708,7 @@ export class TelemetryService {
         state.snapshot.turn_state = "in_turn";
         state.snapshot.turn_started_at = at;
         state.snapshot.last_meaningful_progress_at = at;
+        state.snapshot.last_reply = undefined;
         this.appendEvent(state, at, "session", "hook_user_prompt", {
           prompt: event.prompt ?? null,
         });
@@ -1823,6 +1838,7 @@ export class TelemetryService {
       sessionWalWatcher: null,
       sessionWatchTimer: null,
       priming: false,
+      ptySince: null,
       watchingSince: this.now(),
       sessionTitle: null,
       sessionOffset: 0,
@@ -2163,8 +2179,32 @@ export class TelemetryService {
       this.replaySessionTail(state);
     } finally {
       state.priming = false;
+      const last = Date.parse(state.snapshot.last_session_event_at ?? "");
+      if (state.ptySince !== null && !(last >= state.ptySince)) this.endTurnOfAnotherProcess(state);
       this.updateDerivedStatus(state, { force: true });
     }
+  }
+
+  /**
+   * A turn its session left open was the last process's, which is gone: one
+   * opened again (a workdesk you came back to, a restart) waits for you, not
+   * on the tool the old one was stopped in.
+   */
+  private endTurnOfAnotherProcess(state: TerminalState): void {
+    const turn = state.snapshot.turn_state;
+    if (!isActiveTurnState(turn) && turn !== "awaiting_input") return;
+    if (state.awaitingInputTimer) {
+      clearTimeout(state.awaitingInputTimer);
+      state.awaitingInputTimer = null;
+    }
+    state.pendingPreToolUse = false;
+    state.activeToolCalls.clear();
+    state.lastTerminalTurnAtMs = this.now();
+    state.snapshot.pending_tool_use_at = undefined;
+    state.snapshot.active_tool_calls = 0;
+    state.snapshot.foreground_tool = undefined;
+    state.snapshot.turn_started_at = undefined;
+    state.snapshot.turn_state = "turn_aborted";
   }
 
   private replaySessionTail(state: TerminalState): void {

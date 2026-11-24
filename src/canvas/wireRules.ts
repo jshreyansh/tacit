@@ -5,7 +5,7 @@ import { resolveConnectionType } from "../../shared/connection-types";
 import { replyKey } from "../../shared/agent-reply";
 import { useConnectionStore, type ConnectionData, type ConnectionEndpoint } from "../stores/connectionStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { usePinStore } from "../stores/pinStore";
+import { logToTask } from "./noteEnds";
 import { useBridgeActivityStore } from "../stores/bridgeActivityStore";
 import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
 import { setRuleAlwaysInScene } from "../actions/sceneConnectionActions";
@@ -138,19 +138,11 @@ async function deliver(
   const targetRole = endpointRole(target);
   const sentence = `${name(source)} → ${name(target)}`;
   if (targetRole === "task") {
-    const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === target.id);
-    const step = stepFromMessage(body);
-    if (!pin || !step) return false;
-    try {
-      const updated = await window.tacit.pins.update(pin.repo, pin.id, {
-        steps: [...(pin.steps ?? []), { text: step, status: "done" }],
-      });
-      if (updated) usePinStore.getState().upsertPin(pin.repo, updated);
-      return true;
-    } catch (err) {
-      notify("warn", `A rule couldn't log in ${name(target)}: ${err instanceof Error ? err.message : String(err)}`);
-      return false;
-    }
+    const words = stepFromMessage(body);
+    if (!words) return false;
+    const ok = await logToTask(target.id, words, source.kind === "terminal" ? { terminal: source.id, name: name(source) } : null);
+    if (!ok) notify("warn", `A rule couldn't log in ${name(target)}.`);
+    return ok;
   }
   const found = findTerminal(target.id);
   const ptyId = getLivePtyId(target.id);

@@ -46,14 +46,14 @@ test("each kind of node describes itself completely", () => {
   assert.deepEqual(ROLES.filter((r) => NODE_CONTRACTS[r].startsThings), ["agent", "shell"]);
 });
 
-test("a terminal is an agent when it runs an agent CLI, otherwise a shell; a pin is a note or a task", () => {
+test("a terminal is an agent when it runs an agent CLI, otherwise a shell; a note end is a note or a task", () => {
   assert.equal(nodeRoleOf("terminal", { terminalType: "claude" }), "agent");
   assert.equal(nodeRoleOf("terminal", { terminalType: "codex" }), "agent");
   assert.equal(nodeRoleOf("terminal", { terminalType: "shell" }), "shell");
   assert.equal(nodeRoleOf("terminal", {}), "shell");
   assert.equal(nodeRoleOf("browser"), "browser");
-  assert.equal(nodeRoleOf("note", { pinKind: "task" }), "task");
-  assert.equal(nodeRoleOf("note", { pinKind: "note" }), "note");
+  assert.equal(nodeRoleOf("note", { noteRole: "task" }), "task");
+  assert.equal(nodeRoleOf("note", { noteRole: "note" }), "note");
 });
 
 test("the tail of an agent-to-browser wire may read and drive the page; the page can't start anything", () => {

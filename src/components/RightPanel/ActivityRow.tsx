@@ -2,7 +2,9 @@ import { useState, type ReactNode } from "react";
 import type { CaptureEntryView } from "../../../shared/capture";
 import { useT } from "../../i18n/useT";
 import { useBrowserCardStore } from "../../stores/browserCardStore";
-import { usePinStore } from "../../stores/pinStore";
+import { useTask } from "../../tasks/taskStore";
+import { openTask } from "../../tasks/taskActions";
+import { goToNote, useNote } from "../../board/notes";
 import { useProjectStore } from "../../stores/projectStore";
 import { agentIcon } from "../../toolbar/agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
@@ -264,14 +266,9 @@ function NodeChip({ nodeRef }: { nodeRef: string }) {
     return null;
   });
   const browser = useBrowserCardStore((s) => (kind === "browser" ? (s.cards[id] ?? null) : null));
-  const pin = usePinStore((s) => {
-    if (kind !== "note" && kind !== "pin" && kind !== "task") return null;
-    for (const list of Object.values(s.pinsByProject)) {
-      const found = list.find((p) => p.id === id);
-      if (found) return found;
-    }
-    return null;
-  });
+  const written = kind === "note" || kind === "pin" || kind === "task";
+  const task = useTask(written ? id : null);
+  const note = useNote(written ? id : null);
 
   let icon: ReactNode = null;
   let name: string;
@@ -285,10 +282,14 @@ function NodeChip({ nodeRef }: { nodeRef: string }) {
     icon = <BrowserTabIcon cardId={browser.id} favicon={browser.favicon} size={12} />;
     name = browser.title || hostOf(browser.url);
     go = () => flyToBounds(browser.x, browser.y, browser.w, browser.h);
-  } else if (pin) {
+  } else if (task) {
     icon = <PinGlyph />;
-    name = pin.title || t.task_untitled;
-    if (pin.x != null && pin.y != null) go = () => flyToBounds(pin.x!, pin.y!, pin.w ?? 300, pin.h ?? 240);
+    name = `T-${task.n} ${task.title}`;
+    go = () => openTask(task.id);
+  } else if (note) {
+    icon = <PinGlyph />;
+    name = note.title;
+    go = () => goToNote(note.id);
   } else {
     name = kind === "terminal" ? t.activity_closed_terminal : kind === "browser" ? t.activity_closed_browser : t.activity_closed_node;
   }

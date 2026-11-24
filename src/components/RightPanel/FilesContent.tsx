@@ -28,6 +28,8 @@ interface Props {
   onFileClick: (filePath: string) => void;
   /** Shown to the user: files are listed and watched only then. */
   active: boolean;
+  /** How tall it would be with everything listed, for a place that fits itself to it. */
+  onContentHeight?: (height: number) => void;
 }
 
 // Map our git status codes to @pierre/trees status strings.
@@ -199,7 +201,7 @@ export function buildFileTreeMoveRequests(
     .filter((move) => move.from !== move.to);
 }
 
-export function FilesContent({ worktreePath, onFileClick, active }: Props) {
+export function FilesContent({ worktreePath, onFileClick, active, onContentHeight }: Props) {
   const files = useWorktreeFiles(worktreePath, active);
   // A project loaded a folder at a time has no search: it could only cover
   // the folders already open. The tree's search is fixed when the tree is
@@ -212,6 +214,7 @@ export function FilesContent({ worktreePath, onFileClick, active }: Props) {
       onFileClick={onFileClick}
       files={files}
       searchable={searchable}
+      onContentHeight={onContentHeight}
     />
   );
 }
@@ -221,9 +224,10 @@ interface FilesTreeProps {
   onFileClick: (filePath: string) => void;
   files: ReturnType<typeof useWorktreeFiles>;
   searchable: boolean;
+  onContentHeight?: (height: number) => void;
 }
 
-function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreeProps) {
+function FilesTree({ worktreePath, onFileClick, files, searchable, onContentHeight }: FilesTreeProps) {
   const t = useT();
   const editorItems = useEditorItems();
   const { paths, ignoredPaths, mode, lazyReason, folders, unreadable, watchProblem, refresh, openFolder } = files;
@@ -1012,6 +1016,39 @@ function FilesTree({ worktreePath, onFileClick, files, searchable }: FilesTreePr
       </div>
     );
   }
+
+  // As tall as what's listed, for a place that fits itself to it. The tree only
+  // draws the rows in view, and says how tall they'd all be on its list.
+  useEffect(() => {
+    if (!containerEl || !onContentHeight) return;
+    let observer: MutationObserver | null = null;
+    let frame = 0;
+    const attach = () => {
+      const root = model.getFileTreeContainer()?.shadowRoot;
+      const scroll = root?.querySelector<HTMLElement>("[data-file-tree-virtualized-scroll='true']");
+      const list = root?.querySelector<HTMLElement>("[data-file-tree-virtualized-list='true']");
+      if (!scroll || !list) {
+        frame = requestAnimationFrame(attach);
+        return;
+      }
+      const report = () => {
+        const rows = Number.parseFloat(list.style.height);
+        // A search narrows the list, not the panel: it would jump as you type.
+        if (!Number.isFinite(rows) || model.getSearchValue()) return;
+        const style = getComputedStyle(scroll);
+        const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom) || 0;
+        onContentHeight(Math.ceil(containerEl.clientHeight - scroll.clientHeight + rows + padding));
+      };
+      observer = new MutationObserver(report);
+      observer.observe(list, { attributes: true, attributeFilter: ["style"] });
+      report();
+    };
+    attach();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [containerEl, model, onContentHeight]);
 
   return (
     <div

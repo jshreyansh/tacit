@@ -5,30 +5,24 @@ import { findTerminal } from "../actions/terminalLookup";
 import { useT } from "../i18n/useT";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { usePinStore } from "../stores/pinStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
-import { useProjectStore } from "../stores/projectStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
-import { tasksNeedingYou } from "../tasks/taskModel";
-import { openPinFull } from "../tasks/TasksView";
+import { openTask } from "../tasks/taskActions";
+import { useTaskStore } from "../tasks/taskStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
 import { panToTerminal } from "../utils/panToTerminal";
 import { attentionText, folderName } from "./attentionText";
 
 /** The tasks waiting on the person across every workdesk, each counted once. */
 function useNeedsYouTaskCount(): number {
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
-  const projects = useProjectStore((s) => s.projects);
+  const tasks = useTaskStore((s) => s.tasks);
   const canvases = useCanvasRegistryStore((s) => s.canvases);
-  const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   return useMemo(() => {
-    const paths = new Set(projects.map((p) => p.path));
-    for (const canvas of canvases) {
-      if (canvas.id === activeCanvasId) continue;
-      for (const project of canvas.scene.projects) paths.add(project.path);
-    }
-    return tasksNeedingYou(pinsByProject, paths).length;
-  }, [pinsByProject, projects, canvases, activeCanvasId]);
+    const here = new Set(canvases.map((c) => c.id));
+    // A permission is counted by its terminal.
+    return Object.values(tasks).filter((t) => here.has(t.workdesk) && t.requests.some((r) => r.kind !== "allow")).length;
+  }, [tasks, canvases]);
 }
 
 /** A running agent's tile: its name, folder and workdesk. Only the open workdesk runs agents. */
@@ -52,8 +46,9 @@ function isViewing(target: AttentionTarget): boolean {
     if (mode === "grid") return openNode?.kind === "terminal" && openNode.id === target.terminalId;
     return !!findTerminal(target.terminalId)?.terminal.focused;
   }
-  if (mode === "grid") return openNode?.kind === "task" && openNode.id === target.taskId;
-  return usePinStore.getState().openDetailPinId === target.taskId;
+  const { openTask: open } = useTaskStore.getState();
+  const board = mode === "grid" ? openNode?.kind === "tasks" : useCanvasPageStore.getState().page === "tasks";
+  return board && (open === target.taskId || open === null) && activeIs(target.workdesk);
 }
 
 /** A burst of agents shows the latest few, not a column up the window. */
@@ -71,7 +66,7 @@ function showToast(notice: AttentionNotice, text: { title: string; body: string 
         : t["attention.toastNeedsYou"];
   const id = notify(
     type,
-    [text.title, text.body].filter(Boolean).join(" · "),
+    (notice.kind === "needs_you" ? [notice.detail, text.body] : [text.title, text.body]).filter(Boolean).join(" · "),
     {
       label: t["attention.open"],
       run: () => {
@@ -95,16 +90,13 @@ function openTarget(target: AttentionTarget): void {
     else panToTerminal(target.terminalId);
     return;
   }
-  // A task's project may be on another workdesk; go there first.
+  // It may be on another workdesk; go there first.
   const registry = useCanvasRegistryStore.getState();
-  const onActive = useProjectStore.getState().projects.some((p) => p.path === target.repo);
-  if (!onActive) {
-    const other = registry.canvases.find((c) => c.scene.projects.some((p) => p.path === target.repo));
-    if (other) registry.switchCanvas(other.id);
-  }
-  const pin = usePinStore.getState().pinsByProject[target.repo]?.find((p) => p.id === target.taskId);
-  if (pin) openPinFull(pin);
+  if (!registry.canvases.some((c) => c.id === target.workdesk)) return;
+  registry.switchCanvas(target.workdesk);
+  openTask(target.taskId);
 }
+const activeIs = (workdesk: string) => useCanvasRegistryStore.getState().activeCanvasId === workdesk;
 
 /**
  * Notifications (T16), the window's half: tells main the settings and how

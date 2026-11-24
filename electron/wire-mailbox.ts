@@ -41,6 +41,8 @@ export interface MailItem {
   at: number;
   /** Set when it is a question whose answer goes back (electron/wire-asks.ts). */
   askId?: string;
+  /** What on a task it carries (electron/task-runner.ts), told when it goes or doesn't. */
+  tag?: string;
 }
 
 /** Messages waiting for one agent, as the window shows them. */
@@ -57,6 +59,8 @@ export interface MailboxDeps {
   deliver: (item: MailItem) => Promise<{ ok: boolean; detail?: string }>;
   /** The queue for one terminal changed; empty when it drained. */
   changed: (terminalId: string, view: MailboxView) => void;
+  /** A tagged message won't be delivered: thrown away, or its terminal closed. */
+  lost?: (tag: string, why: string) => void;
   now: () => number;
 }
 
@@ -191,7 +195,10 @@ export class WireMailbox {
       const next = state.queue.shift()!;
       const result = await this.deliverNow(state, next);
       if (result.ok) delivered += 1;
-      else failed += 1;
+      else {
+        failed += 1;
+        if (next.tag) this.deps.lost?.(next.tag, result.detail ?? "It couldn't be typed in");
+      }
     }
     this.emit(terminalId, state);
     return { delivered, failed };
@@ -200,6 +207,7 @@ export class WireMailbox {
   discard(terminalId: string): number {
     const state = this.states.get(terminalId);
     const count = state?.queue.length ?? 0;
+    for (const item of state?.queue ?? []) if (item.tag) this.deps.lost?.(item.tag, "You threw it away");
     if (state) {
       state.queue = [];
       state.held = null;
@@ -208,10 +216,20 @@ export class WireMailbox {
     return count;
   }
 
+  /** Takes back one message that hasn't gone yet. */
+  removeTagged(terminalId: string, tag: string): void {
+    const state = this.states.get(terminalId);
+    if (!state?.queue.some((item) => item.tag === tag)) return;
+    state.queue = state.queue.filter((item) => item.tag !== tag);
+    this.emit(terminalId, state);
+  }
+
   /** Drop a terminal that closed, with anything waiting for it. */
   forget(terminalId: string): void {
-    if (this.states.get(terminalId)?.queue.length) this.deps.changed(terminalId, { waiting: [], held: false });
+    const queue = this.states.get(terminalId)?.queue ?? [];
+    if (queue.length) this.deps.changed(terminalId, { waiting: [], held: false });
     this.states.delete(terminalId);
+    for (const item of queue) if (item.tag) this.deps.lost?.(item.tag, "Its terminal closed");
   }
 
   /** Everything waiting, for every agent, in order: what is saved to disk. */

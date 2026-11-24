@@ -68,7 +68,7 @@ test("unknown id, or one already gone, is a 404 naming it", async () => {
 });
 
 test("the wrong kind for an id is refused before anything is closed", async () => {
-  const { deps, closed } = setup([browser("br"), { kind: "pin", id: "pn" }]);
+  const { deps, closed } = setup([browser("br"), { kind: "note", id: "pn" }]);
   await rejectsWith(closeNode(deps, MANAGER, { kind: "terminal", id: "br" }), 400, "wrong_kind");
   await assert.rejects(closeNode(deps, MANAGER, { kind: "browser", id: "pn" }), /is a note/);
   assert.equal(closed.length, 0);

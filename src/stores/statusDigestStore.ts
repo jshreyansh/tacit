@@ -7,7 +7,7 @@ import {
 import { resolveTerminalRuntimeState } from "./terminalRuntimeStateStore";
 import { getTerminalDisplayTitle } from "./terminalState";
 import { useProjectStore } from "./projectStore";
-import { usePinStore } from "./pinStore";
+import { useTaskStore, taskTry } from "../tasks/taskStore";
 import type { TerminalData } from "../types";
 
 export type DigestSignalKind =
@@ -150,12 +150,11 @@ function computeSignals(now: number): DigestSignal[] {
     }
   }
 
-  // 5. Pinned terminals — declared priorities. Order by the project store's
-  //    natural traversal so the same chip order is stable across opens.
-  const pinMap = usePinStore.getState().terminalPinMap;
+  // 5. Terminals on a task. Order by the project store's natural traversal
+  //    so the same chip order is stable across opens.
+  const open = Object.values(useTaskStore.getState().tasks).filter((task) => !task.closed);
   for (const loc of terminals) {
-    if (!(loc.terminal.id in pinMap)) continue;
-    push("pinned", loc);
+    if (open.some((task) => taskTry(task, loc.terminal.id))) push("pinned", loc);
   }
 
   return out;

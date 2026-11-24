@@ -1,4 +1,3 @@
-import { usePinStore } from "../stores/pinStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useChatDockStore } from "../stores/chatDockStore";
@@ -77,13 +76,7 @@ export function openListedPastSession(entry: { filePath: string; sessionId: stri
   useCanvasPageStore.getState().open("session");
 }
 
-/** All the tasks: a tab in the grid, a page beside the sheet on the canvas. */
-/** One folder's tasks: the task list, on that folder (the pane on the canvas, a tab in the grid). */
-export function openFolderTasks(projectPath: string): void {
-  usePinStore.getState().openDrawer(projectPath);
-  openAllTasks();
-}
-
+/** All the tasks: a tab in the grid, a page beside the panels on the canvas. */
 export function openAllTasks(): void {
   const view = useWorkdeskViewStore.getState();
   if (view.mode === "grid") {

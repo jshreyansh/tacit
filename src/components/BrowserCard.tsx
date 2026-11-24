@@ -8,7 +8,9 @@ import {
 } from "../actions/sceneCardActions";
 import { activateCardInScene } from "../actions/sceneSelectionActions";
 import { isInGroup } from "../canvas/canvasSelection";
+import { beginCanvasDrag } from "../canvas/canvasDrag";
 import { startGroupMove } from "../canvas/groupMove";
+import { tileDropped } from "../board/boardMembership";
 import {
   type BrowserCardData,
   useBrowserCardStore,
@@ -314,6 +316,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       // One of several selected: they all come along.
       const group = isInGroup({ type: "card", cardId: `browser:${card.id}` }) ? startGroupMove(useSelectionStore.getState().selectedItems) : null;
       let by = { x: 0, y: 0 };
+      const endDrag = beginCanvasDrag();
       const handleMove = (ev: MouseEvent) => {
         if (!dragRef.current) return;
         by = { x: (ev.clientX - dragRef.current.startX) / scale, y: (ev.clientY - dragRef.current.startY) / scale };
@@ -328,7 +331,13 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       };
       const handleUp = () => {
         dragRef.current = null;
-        group?.drop(by.x, by.y);
+        endDrag();
+        if (group) group.drop(by.x, by.y);
+        else if (by.x !== 0 || by.y !== 0) {
+          // Dropped into a board section, or out of one.
+          const now = useBrowserCardStore.getState().cards[card.id];
+          if (now) tileDropped(`browser:${card.id}`, now);
+        }
         window.removeEventListener("mousemove", handleMove);
         window.removeEventListener("mouseup", handleUp);
       };

@@ -3,7 +3,7 @@ import { useT } from "../i18n/useT";
 import { CHROME_HEIGHT, CHROME_TOP } from "../canvas/floatingChrome";
 import { getRightPanelInset } from "../canvas/viewportBounds";
 import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
-import { PANE_ASIDE_WIDTH, PANE_DEFAULT_WIDTH, paneLayout, usePaneStore } from "../stores/paneStore";
+import { PANE_ASIDE_WIDTH, paneLayout, usePaneStore } from "../stores/paneStore";
 import { useWindowSize } from "../utils/useWindowSize";
 import { MOTION } from "../utils/motion";
 
@@ -21,19 +21,22 @@ export function PaneFrame({
   label,
   title,
   glowKey,
+  wide,
   children,
 }: {
   label: string;
   /** Shown on the tab when it's slid aside. */
   title: string;
   glowKey: string;
+  /** Opens as wide as there is room for, with a width of its own. */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   const t = useT();
   const left = useLeftChromeInset();
   const shift = useLeftChromeShift();
   const { width: windowWidth } = useWindowSize();
-  const width = usePaneStore((s) => s.width);
+  const width = usePaneStore((s) => (wide ? s.wideWidth : s.width));
   const aside = usePaneStore((s) => s.aside);
   const resizing = usePaneStore((s) => s.resizing);
   const room = windowWidth - left - getRightPanelInset();
@@ -60,7 +63,7 @@ export function PaneFrame({
     const startWidth = layout.width;
     const store = usePaneStore.getState();
     store.setResizing(true);
-    const move = (ev: PointerEvent) => store.setWidth(Math.min(room, startWidth + ev.clientX - startX));
+    const move = (ev: PointerEvent) => store.setWidth(Math.min(room, startWidth + ev.clientX - startX), wide);
     const up = () => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
@@ -117,7 +120,7 @@ export function PaneFrame({
           onPointerDown={startResize}
           onDoubleClick={() => {
             const store = usePaneStore.getState();
-            store.setWidth(PANE_DEFAULT_WIDTH);
+            store.resetWidth(wide);
             store.commitWidth();
           }}
         />

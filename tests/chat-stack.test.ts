@@ -68,7 +68,7 @@ test("Claude hears what to do instead when a tool is denied with words; else the
   assert.equal(plain.response.response.message, "The person declined this in Tacit.");
 });
 
-import { buildChatList, folderDot, openTaskCount, orderLive } from "../src/toolbar/chatListModel";
+import { buildChatList, folderDot, orderLive } from "../src/toolbar/chatListModel";
 
 test("the navigator keeps every folder of the workdesk, even with no chats; a search hides the empty ones", () => {
   const folders = [
@@ -86,8 +86,4 @@ test("a folder's chats put the one that needs you first; its dot says the same",
   assert.equal(folderDot(items as never), "need");
   assert.equal(folderDot([{ state: "active" }] as never), "run");
   assert.equal(folderDot([{ state: "idle" }] as never), null);
-});
-
-test("a folder's open tasks leave out the done and dropped", () => {
-  assert.equal(openTaskCount([{ status: "open" }, { status: "in_progress" }, { status: "needs_you" }, { status: "done" }, { status: "dropped" }]), 3);
 });

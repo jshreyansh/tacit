@@ -4,6 +4,36 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **One task board for the workdesk**: Later, Next, Working, Needs you, Done, across every folder and work with no folder. The column is worked out from what's happening, so a card can't say Working while it waits for you. Board or List, search, folders; What needs you is filtered by why. The Tasks under each folder are gone.
+- **A task is the brief, then the record**: description with pictures, Done when, Leave alone, what to start from, what it may do without asking, parts; then who tried, what they asked, what you decided, what changed, and where it landed (committed, pushed).
+- **Hand it over**: drop a card on an agent, or start a new one on it. A busy agent offers Queue or Interrupt. You see it delivered, then started; a change to the brief is told to whoever has it.
+- **Needs you says what to do**: Decide, Approve first, Allow (in its terminal), Stuck (quiet, out of usage, interrupted, stopped without a report), Check. Several can wait at once, and an answer stays until it arrives.
+- **Ending a turn isn't finishing.** Agents report each Done when line; every line is marked Tacit saw, Agent says or Not checked. A clean report goes to Done, otherwise it comes to you with the reason.
+- **Notes are stickies**: the first line is the name, a page when opened, and agents wired to one can read and add to it. **Start a task from it** keeps the note.
+- **Claude uses the task tools without asking**, as it does memory: reading tasks, reporting, asking you. Handing work to another agent still asks. Your Claude settings aren't touched.
+- **One way to pick an agent**: agents that are here as rows with who's free, a new one as a tile. Handing a task over, a folder's +, the grid's + and choosing a manager. Arrow keys work, and nothing is cut off.
+- **A column on the board keeps a width its cards can be read at**, and the board scrolls sideways. An empty one gives up its room.
+- **The old tasks and notes are gone from the app**, with `tacit pin render`. `tacit task` and `tacit note` are new; `tacit pin` still adds a task.
+- **Drawings resize from any side or corner**; Shift keeps the proportions, Option resizes from the middle, and the size shows.
+- **Resizing a section** takes in what it now covers and lets go of what's left outside. What a section will hold is ringed as you draw or resize it.
+- **A tile opened inside a section joins it**: terminals, tasks, notes, files and browsers.
+
+### Fixed
+- A task with no Done when lines has a place for the agent to say how it checked, so one that did is no longer sent to you for not saying.
+- Stuck shows what the agent said as it stopped.
+- A folder's Files list in the navigator is as tall as its files, not a fixed block.
+- Two agents of a kind are named apart: Claude Code, Claude Code 2, on their tiles, in the navigator, the grid's tabs and wherever one is picked. A task's brief is no longer a chat's name.
+- A turn cut short by opening another workdesk, or by a restart, no longer shows as running when its agent is opened again.
+- The grid's open tab shows its whole name beside its close button.
+- A Needs you notification says so once.
+- Putting a task on the canvas shows it at 100%, with nothing else selected.
+- Sections hold browsers, and arrows attach to them. 0.44.10 said so, but browsers were left out.
+- A drag that crosses a browser's page no longer loses the mouse to it.
+- A task made from a sticky stays in the sticky's section, and a file dropped from the workdesk's own folders joins the one it lands in.
+- A copied section no longer moves the original's tiles.
+- Undoing a drawing no longer takes a tile out of the section it was put in since.
+
 ## [0.44.10] - 2026-11-24
 
 ### Changed

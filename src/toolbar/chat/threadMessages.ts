@@ -168,31 +168,36 @@ export function spawnedTerminalId(result: string | undefined): string | null {
 export type TaskToolView =
   | { kind: "create"; title: string; steps: number }
   | { kind: "ask"; taskId: string; question: string; choices: string[] }
-  | { kind: "update"; taskId: string; done: number; total: number; status: string | null; notes: boolean }
-  | { kind: "list" };
+  | { kind: "update" | "take" | "finish" | "suggest" | "hand"; taskId: string; text: string | null }
+  | { kind: "list" | "read" };
 
 export function taskTool(toolName: string, args: JsonObject): TaskToolView | null {
   const tool = /^mcp__tacit__(.+)$/.exec(toolName)?.[1];
-  const steps = Array.isArray(args.steps) ? (args.steps as Array<{ status?: unknown }>) : null;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const taskId = str(args.id);
   switch (tool) {
     case "create_task":
-      return { kind: "create", title: typeof args.title === "string" ? args.title : "", steps: steps?.length ?? 0 };
+      return { kind: "create", title: str(args.title), steps: Array.isArray(args.parts) ? args.parts.length : 0 };
     case "ask_user":
+    case "ask_approval":
       return {
         kind: "ask",
-        taskId: typeof args.id === "string" ? args.id : "",
-        question: typeof args.question === "string" ? args.question : "",
-        choices: Array.isArray(args.choices) ? args.choices.filter((c): c is string => typeof c === "string") : [],
+        taskId,
+        question: str(args.question) || str(args.what),
+        choices: Array.isArray(args.options) ? args.options.map((o) => (typeof o === "string" ? o : str((o as JsonObject | null)?.label))).filter(Boolean) : [],
       };
-    case "update_task":
-      return {
-        kind: "update",
-        taskId: typeof args.id === "string" ? args.id : "",
-        done: steps ? steps.filter((s) => s?.status === "done").length : 0,
-        total: steps?.length ?? 0,
-        status: typeof args.status === "string" ? args.status : null,
-        notes: typeof args.body === "string",
-      };
+    case "report_part":
+      return { kind: "update", taskId, text: str(args.say) || str(args.state) || null };
+    case "take_part":
+      return { kind: "take", taskId, text: taskId };
+    case "finish_task":
+      return { kind: "finish", taskId, text: str(args.summary).split("\n")[0] || null };
+    case "suggest_task_text":
+      return { kind: "suggest", taskId, text: null };
+    case "hand_over_task":
+      return { kind: "hand", taskId, text: taskId };
+    case "get_task":
+      return { kind: "read" };
     case "list_tasks":
       return { kind: "list" };
     default:

@@ -1,3 +1,4 @@
+import { coerceRecordPlaces } from "./stores/recordPlaceStore";
 import type { DrawingElement } from "./stores/drawingStore";
 import type {
   PersistedProjectData,
@@ -670,6 +671,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
 
   const stashedTerminals = normalizeStashedTerminals(record.stashedTerminals);
   const fileTiles = coerceFileTiles(record.fileTiles);
+  const recordPlaces = coerceRecordPlaces(record.recordPlaces);
 
   return {
     version: 2,
@@ -684,6 +686,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
         ? (record.connections as SceneDocument["connections"])
         : {},
     ...(Object.keys(fileTiles).length > 0 ? { fileTiles } : {}),
+    ...(Object.keys(recordPlaces).length > 0 ? { recordPlaces } : {}),
     annotations,
     ...(Array.isArray(record.board) ? { board: coerceBoardElements(record.board) } : {}),
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),

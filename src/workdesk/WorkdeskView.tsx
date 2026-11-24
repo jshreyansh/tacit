@@ -9,7 +9,10 @@ import { StatusChip } from "../components/ui/parts";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useIdentityStore } from "../stores/identityStore";
-import { usePinStore } from "../stores/pinStore";
+import { useNotes } from "../board/notes";
+import { useTasks } from "../tasks/taskStore";
+import { openTask } from "../tasks/taskActions";
+import { COLUMN_COLOR } from "../tasks/taskWords";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
@@ -32,8 +35,6 @@ import { useBrowserSnapshots } from "./browserSnapshots";
 import { WorkdeskTab } from "./WorkdeskTab";
 import { FileCardView, useFileTiles } from "./FileCards";
 import { BrowserTabIcon, BrowserTabSound } from "./BrowserTabIcon";
-import { STATUS_COLOR } from "../tasks/taskModel";
-import { statusLabel, useOwnerView } from "../tasks/TaskParts";
 import {
   buildWorkdeskSections,
   minutesSince,
@@ -61,7 +62,6 @@ const TAIL_ROWS = 40;
 const TAIL_LINES = 6;
 const TAIL_REFRESH_MS = 1500;
 /** A tab's name fades out under its close button, which sits over its last 24px. */
-const TAB_FADE = "[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))]";
 const TAB_FADE_ON_HOVER =
   "group-hover/tab:[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))] group-focus-within/tab:[mask-image:linear-gradient(to_right,#000_calc(100%_-_26px),transparent_calc(100%_-_8px))]";
 
@@ -222,59 +222,30 @@ function TaskIcon() {
   );
 }
 
-/** A task as a card: its status, progress, the step under way (or the question), who's on it. */
+/** A task that needs you, or is being worked on; its page is on the board. */
 function TaskCardView({ card, t }: { card: TaskCard; t: Dict }) {
-  const color = STATUS_COLOR[card.status];
+  const needs = card.column === "needs";
   return (
-    <button
-      type="button"
-      className={cardCls}
-      style={card.status === "needs_you" ? { borderColor: "color-mix(in srgb, var(--amber) 50%, var(--border))" } : undefined}
-      onClick={() => useWorkdeskViewStore.getState().setOpenNode({ kind: "task", id: card.id })}
-    >
+    <button type="button" className={cardCls} style={needs ? { borderColor: "color-mix(in srgb, var(--amber) 50%, var(--border))" } : undefined} onClick={() => openTask(card.id)}>
       <div className={headCls}>
         <span className="flex shrink-0 text-[var(--text-muted)]"><TaskIcon /></span>
-        <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{card.title}</span>
+        <span className="min-w-0 truncate text-[12px] text-[var(--text-primary)]">{`T-${card.n} ${card.title}`}</span>
         <span className="ml-auto shrink-0">
-          <StatusChip tone={card.status === "needs_you" ? "ask" : card.status === "in_progress" ? "live" : "neutral"}>{statusLabel(card.status, t)}</StatusChip>
+          <StatusChip tone={needs ? "ask" : "live"}>{t.tb.columns[card.column]}</StatusChip>
         </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 py-2.5">
         {card.progress && (
           <span className="flex items-center gap-2">
             <span aria-hidden="true" className="block h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-              <span className="block h-1 rounded-full" style={{ width: `${card.percent}%`, background: color }} />
+              <span className="block h-1 rounded-full" style={{ width: `${card.percent}%`, background: COLUMN_COLOR[card.column] }} />
             </span>
             <span className="text-[11px] tabular-nums text-[var(--text-secondary)]">{card.progress}</span>
           </span>
         )}
-        <span className="line-clamp-3 text-[12px] leading-[1.6]" style={{ color: card.status === "needs_you" ? "var(--text-primary)" : "var(--text-secondary)" }}>
-          {card.current ?? (card.status === "done" ? t.workdesk_all_steps_done : t.workdesk_no_steps)}
-        </span>
-        <span className="mt-auto">
-          <OwnerList owners={card.owners} />
-        </span>
+        {card.note && <span className="line-clamp-4 text-[12.5px] leading-[1.6] text-[var(--text-primary)]">{card.note}</span>}
       </div>
     </button>
-  );
-}
-
-function OwnerList({ owners }: { owners: string[] }) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      {owners.map((o) => (
-        <OwnerDot key={o} owner={o} />
-      ))}
-    </span>
-  );
-}
-
-function OwnerDot({ owner }: { owner: string }) {
-  const view = useOwnerView(owner);
-  return view.icon ? (
-    <img src={view.icon} alt={view.label} title={view.label} className="h-3.5 w-3.5 object-contain" draggable={false} />
-  ) : (
-    <span className="text-[11px] text-[var(--text-muted)]">{view.label}</span>
   );
 }
 
@@ -313,7 +284,6 @@ export function WorkdeskView() {
   const openNode = useWorkdeskViewStore((s) => s.openNode);
   const setOpenNode = useWorkdeskViewStore((s) => s.setOpenNode);
   const hiddenTabs = useWorkdeskViewStore((s) => s.hiddenTabs);
-  const hideTab = useWorkdeskViewStore((s) => s.hideTab);
   const [closing, setClosing] = useState<WorkdeskCard | null>(null);
   const sessionTabs = useWorkdeskViewStore((s) => s.sessionTabs);
   const fileTabs = useWorkdeskViewStore((s) => s.fileTabs);
@@ -323,7 +293,8 @@ export function WorkdeskView() {
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const browserCards = useBrowserCardStore((s) => s.cards);
   const identities = useIdentityStore((s) => s.identities);
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
+  const tasks = useTasks();
+  const notes = useNotes();
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const transcripts = useManagerChatStore((s) => s.transcripts);
@@ -344,10 +315,11 @@ export function WorkdeskView() {
       telemetry,
       browsers: Object.values(browserCards),
       identityNames,
-      pins: Object.values(pinsByProject).flat(),
+      tasks,
+      notes,
       managerTerminalId,
     });
-  }, [projects, runtimeTerminals, browserCards, identities, pinsByProject, managerTerminalId]);
+  }, [projects, runtimeTerminals, browserCards, identities, tasks, notes, managerTerminalId]);
 
   // The cards' last lines, read from each terminal's screen while the grid shows.
   const terminalIds = useMemo(
@@ -355,13 +327,13 @@ export function WorkdeskView() {
     [sections],
   );
   const allCards = useMemo<WorkdeskCard[]>(
-    () => [...sections.agents, ...sections.terminals, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.tasks, ...sections.notes],
+    () => [...sections.agents, ...sections.terminals, ...sections.browserGroups.flatMap((g) => g.cards), ...sections.notes],
     [sections],
   );
   // Past sessions and files opened here, each in a tab after the nodes.
   const extraCards = useMemo<TabCard[]>(
     () => [
-      ...(tasksTab ? [{ kind: "tasks", id: "all", title: t.nav_all_tasks } as TabCard] : []),
+      ...(tasksTab ? [{ kind: "tasks", id: "all", title: t.tb.navTasks } as TabCard] : []),
       ...sessionTabs.map((s): TabCard => ({ kind: "session", id: s.id, title: s.title ?? t.reader_loading, agent: s.agent })),
       ...fileTabs.map((p): TabCard => ({ kind: "file", id: p, title: p.split("/").pop() ?? p })),
       ...toolTabs.map((id): TabCard => ({ kind: "tool", id, title: folderToolTitle(parseFolderToolId(id), t) })),
@@ -412,10 +384,9 @@ export function WorkdeskView() {
 
   if (mode !== "grid") return null;
 
-  // The strip: every terminal and browser, and the tasks and notes not
-  // closed from it (the open one always shows).
+  // The strip: every terminal and browser, and a note while it's open.
   // In the tabs' own order, which doesn't follow state: a tab stays put.
-  const tabCards: TabCard[] = [...sections.tabs.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c))), ...extraCards];
+  const tabCards: TabCard[] = [...sections.tabs.filter((c) => c === openCard || !hiddenTabs.includes(tabKey(c))), ...(openCard?.kind === "note" ? [openCard] : []), ...extraCards];
   /** Closing a tab moves to the one beside it, as a browser does. */
   const nextAfter = (card: TabCard): OpenNode | null => {
     if (card !== openCard) return openNode;
@@ -434,10 +405,8 @@ export function WorkdeskView() {
       setOpenNode(next);
       return;
     }
-    if (card.kind === "task" || card.kind === "note") {
-      const next = nextAfter(card);
-      hideTab({ kind: card.kind, id: card.id });
-      setOpenNode(next);
+    if (card.kind === "note") {
+      setOpenNode(nextAfter(card));
       return;
     }
     setClosing(card);
@@ -504,21 +473,22 @@ export function WorkdeskView() {
             const icon =
               card.kind === "terminal" && card.isAgent ? agentIcon(card.type) : card.kind === "session" && card.agent ? agentIcon(card.agent) : null;
             const label = card.kind === "terminal" ? card.label : card.title;
-            const closeLabel = card.kind === "task" || card.kind === "note" ? t.workdesk_tab_hide(label) : t.workdesk_tab_close(label);
+            const closeLabel = card.kind === "note" ? t.workdesk_tab_hide(label) : t.workdesk_tab_close(label);
             return (
               <div
                 key={`${card.kind}:${card.id}`}
                 role="tab"
                 aria-selected={active}
-                className="group/tab tc-rail-btn relative flex h-[30px] max-w-[150px] shrink-0 items-center px-2.5 text-[12px]"
+                className={`group/tab tc-rail-btn relative flex h-[30px] max-w-[160px] shrink-0 items-center pl-2.5 text-[12px] ${active ? "pr-7" : "pr-2.5"}`}
                 data-on={active ? "" : undefined}
                 style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
               >
-                {/* The close button takes no room of its own: as in Chrome,
-                    it shows over the end of the name, which fades under it. */}
+                {/* The open tab's close button has its own place, so its name is
+                    whole. On another it shows over the end of the name, which
+                    fades under it. */}
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center gap-1.5 outline-none ${active ? TAB_FADE : TAB_FADE_ON_HOVER}`}
+                  className={`flex min-w-0 items-center gap-1.5 outline-none ${active ? "" : TAB_FADE_ON_HOVER}`}
                   onClick={() => setOpenNode({ kind: card.kind, id: card.id })}
                   title={label}
                 >
@@ -530,7 +500,7 @@ export function WorkdeskView() {
                         <BrowserTabIcon cardId={card.id} favicon={card.favicon} />
                       ) : card.kind === "note" ? (
                         <NoteIcon />
-                      ) : card.kind === "task" || card.kind === "tasks" ? (
+                      ) : card.kind === "tasks" ? (
                         <TaskIcon />
                       ) : card.kind === "file" || card.kind === "tool" ? (
                         <FileIcon />
@@ -633,7 +603,7 @@ export function WorkdeskView() {
           )}
           {sections.tasks.length > 0 && (
             <>
-              <SectionHead title={t.workdesk_tasks} summary={String(sections.tasks.length)} />
+              <SectionHead title={t.tb.navTasks} summary={String(sections.tasks.length)} />
               <div className={gridCols}>
                 {sections.tasks.map((card) => (
                   <TaskCardView key={card.id} card={card} t={t} />

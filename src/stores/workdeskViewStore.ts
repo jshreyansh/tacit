@@ -43,7 +43,7 @@ function saveHidden(keys: string[]): void {
   }
 }
 
-/** A tab's key in the strip: `task:<id>`. */
+/** A tab's key in the strip: `terminal:<id>`. */
 export function tabKey(node: OpenNode): string {
   return `${node.kind}:${node.id}`;
 }
@@ -51,7 +51,7 @@ export function tabKey(node: OpenNode): string {
 /** A node opened full size in the workdesk view's tabs. */
 export interface OpenNode {
   /** `session`: a past session read in a tab, by its file path; `file`: a file, by its path. */
-  kind: "terminal" | "browser" | "task" | "note" | "session" | "file" | "tasks" | "tool";
+  kind: "terminal" | "browser" | "note" | "session" | "file" | "tasks" | "tool";
   id: string;
 }
 
@@ -88,8 +88,8 @@ interface WorkdeskViewStore {
    */
   showGrid: (node: OpenNode | null) => void;
   /**
-   * Tasks and notes closed from the tab strip: still in the grid, and back
-   * in the strip once opened again.
+   * Nodes closed from the tab strip: still in the grid, and back in the
+   * strip once opened again.
    */
   hiddenTabs: string[];
   hideTab: (node: OpenNode) => void;

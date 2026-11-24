@@ -1,9 +1,9 @@
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
-import type { Pin, PinStatus } from "../../shared/pin";
-import { pinKind } from "../../shared/pin";
+import { columnOf, sortTasks, type Column, type Task } from "../../shared/task";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import type { ProjectData, TerminalData } from "../types/index.ts";
-import { deriveTerminalState, isCanvasTerminal, type CanvasTerminalState } from "../components/sessionPanelModel";
+import { agentNames, agentsIn } from "../tasks/agentNames";
+import { deriveTerminalState, isCanvasTerminal, isPlainTitle, isTaskBrief, type CanvasTerminalState } from "../components/sessionPanelModel";
 
 /**
  * The workdesk view's grid (T7): every node on the canvas on screen, as
@@ -52,7 +52,6 @@ export interface BrowserCard {
 export interface NoteCard {
   kind: "note";
   id: string;
-  projectPath: string;
   title: string;
   body: string;
 }
@@ -60,18 +59,17 @@ export interface NoteCard {
 export interface TaskCard {
   kind: "task";
   id: string;
-  projectPath: string;
+  n: number;
   title: string;
-  status: PinStatus;
-  /** "2/4", or empty with no steps. */
+  column: Column;
+  /** "2/4" of its parts, or empty. */
   progress: string;
   percent: number;
-  /** The step being done, the agent's question, or nothing. */
-  current: string | null;
-  owners: string[];
+  /** What it needs from you, or who's on it. */
+  note: string | null;
 }
 
-export type WorkdeskCard = TerminalCard | BrowserCard | TaskCard | NoteCard;
+export type WorkdeskCard = TerminalCard | BrowserCard | NoteCard;
 
 /** A past session read in a tab of the workdesk view, by its file path. */
 export interface SessionTabCard {
@@ -114,7 +112,7 @@ export interface BrowserGroup {
 export interface WorkdeskSections {
   agents: TerminalCard[];
   browserGroups: BrowserGroup[];
-  /** Whoever needs the person first, then work under way. */
+  /** Tasks needing the person, then work under way; the rest are on the board. */
   tasks: TaskCard[];
   /** Plain terminals: shells and anything that isn't an agent. */
   terminals: TerminalCard[];
@@ -123,9 +121,9 @@ export interface WorkdeskSections {
   runningAgents: number;
   /**
    * Every card in the order of the open view's tabs: agents and terminals
-   * as they were added to the canvas, browsers, tasks as they were made,
-   * notes. Unlike the grid's, it never follows state, so a tab stays where
-   * it is when its agent starts work, switches to chat, or a task moves on.
+   * as they were added to the canvas, then browsers. Unlike the grid's, it
+   * never follows state, so a tab stays where it is when its agent starts
+   * work or switches to chat. A note has a tab while it's open.
    */
   tabs: WorkdeskCard[];
 }
@@ -135,7 +133,8 @@ export interface WorkdeskInputs {
   telemetry: ReadonlyMap<string, TerminalTelemetrySnapshot | null | undefined>;
   browsers: ReadonlyArray<{ id: string; url: string; title: string; identityId: string; favicon?: string }>;
   identityNames: Readonly<Record<string, string>>;
-  pins: readonly Pin[];
+  tasks: readonly Task[];
+  notes: ReadonlyArray<{ id: string; title: string; text: string }>;
   managerTerminalId: string | null;
 }
 
@@ -157,6 +156,7 @@ function oneLine(text: string, max: number): string {
 export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
   const agents: TerminalCard[] = [];
   const otherTerminals: TerminalCard[] = [];
+  const names = agentNames(agentsIn(input.projects));
   for (const project of input.projects) {
     for (const worktree of project.worktrees) {
       for (const terminal of worktree.terminals) {
@@ -164,7 +164,8 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
         const telemetry = input.telemetry.get(terminal.id) ?? null;
         const derived = deriveTerminalState(terminal, telemetry, undefined);
         const isAgent = findAgentAdapter(terminal.type) !== null;
-        const prompt = telemetry?.first_user_prompt;
+        const first = telemetry?.first_user_prompt;
+        const prompt = first && !isTaskBrief(first) ? first : undefined;
         const card: TerminalCard = {
           kind: "terminal",
           id: terminal.id,
@@ -174,7 +175,7 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
           subtitle: prompt ? oneLine(prompt, 80) : worktree.name || project.name,
           label:
             terminal.customTitle?.trim() ||
-            (prompt && terminal.id !== input.managerTerminalId ? oneLine(prompt, 80) : terminal.title),
+            (prompt && terminal.id !== input.managerTerminalId ? oneLine(prompt, 80) : isAgent && isPlainTitle(terminal.title, terminal.type) ? (names.get(terminal.id) ?? terminal.title) : terminal.title),
           state: derived.state,
           ...(derived.attentionReason ? { attentionReason: derived.attentionReason } : {}),
           ...(derived.state === "active" && derived.turnStartedAt ? { since: derived.turnStartedAt } : {}),
@@ -217,38 +218,21 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
   }
   const browserGroups = [...groups.values()];
 
-  // Every task and note on this workdesk's projects, on the canvas or not.
-  // The pin store keeps every project it has loaded, other workdesks' too,
-  // so a new workdesk with one empty folder showed their tasks and notes.
-  const projectPaths = new Set(input.projects.map((p) => p.path));
-  const pins = input.pins.filter((p) => projectPaths.has(p.repo));
-  const notes: NoteCard[] = pins
-    .filter((p) => pinKind(p) === "note")
-    .map((p) => ({ kind: "note", id: p.id, projectPath: p.repo, title: p.title, body: p.body }));
-  const TASK_ORDER: Record<PinStatus, number> = { needs_you: 0, in_progress: 1, open: 2, done: 3, dropped: 4 };
-  const taskPins = pins.filter((p) => pinKind(p) === "task" && p.status !== "dropped");
-  const taskCard = (p: Pin): TaskCard => {
-    const steps = p.steps ?? [];
-    const done = steps.filter((st) => st.status === "done").length;
-    const step = steps.find((st) => st.status === "active") ?? steps.find((st) => st.status === "pending");
+  const notes: NoteCard[] = input.notes.map((n) => ({ kind: "note", id: n.id, title: n.title, body: n.text }));
+  const ORDER: Column[] = ["needs", "working"];
+  const tasks: TaskCard[] = ORDER.flatMap((column) => sortTasks(input.tasks.filter((t) => columnOf(t) === column))).map((t) => {
+    const done = t.parts.filter((x) => x.state === "done").length;
     return {
       kind: "task",
-      id: p.id,
-      projectPath: p.repo,
-      title: p.title,
-      status: p.status,
-      progress: steps.length ? `${done}/${steps.length}` : "",
-      percent: steps.length ? Math.round((done / steps.length) * 100) : 0,
-      current: p.status === "needs_you" ? (p.ask?.reason ?? null) : (step?.text ?? null),
-      owners: p.owners ?? [],
+      id: t.id,
+      n: t.n,
+      title: t.title,
+      column: columnOf(t),
+      progress: t.parts.length ? `${done}/${t.parts.length}` : "",
+      percent: t.parts.length ? Math.round((done / t.parts.length) * 100) : 0,
+      note: t.requests[0]?.text ?? null,
     };
-  };
-  // Each card made once, so the grid and the tabs hold the same ones.
-  const made = taskPins.map((pin) => ({ pin, card: taskCard(pin) }));
-  const tasks = [...made]
-    .sort((a, b) => TASK_ORDER[a.pin.status] - TASK_ORDER[b.pin.status] || Date.parse(b.pin.updated) - Date.parse(a.pin.updated))
-    .map((m) => m.card);
-  const tasksAsMade = [...made].sort((a, b) => Date.parse(a.pin.created) - Date.parse(b.pin.created)).map((m) => m.card);
+  });
 
   const browserCount = input.browsers.length;
   return {
@@ -266,7 +250,7 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
       notes: notes.length,
     },
     runningAgents: agents.filter((a) => a.state === "active").length,
-    tabs: [...agentsAsAdded, ...terminalsAsAdded, ...browserGroups.flatMap((g) => g.cards), ...tasksAsMade, ...notes],
+    tabs: [...agentsAsAdded, ...terminalsAsAdded, ...browserGroups.flatMap((g) => g.cards)],
   };
 }
 

@@ -1,7 +1,7 @@
 import { recordDecision } from "./capture";
 import { useBrowserCardStore } from "./stores/browserCardStore";
 import { useConnectionStore } from "./stores/connectionStore";
-import { usePinStore } from "./stores/pinStore";
+import { noteEnds } from "./canvas/noteEnds";
 import { useProjectStore } from "./stores/projectStore";
 import { endpointKey } from "./stores/connectionStore";
 import type { CaptureNodeRef } from "../shared/capture";
@@ -41,11 +41,8 @@ export function readTopologyShape(): TopologyShape {
     }
   }
 
-  // Only pins actually placed on the canvas count — buildPinFlowNodes skips
-  // the rest, so counting all of them would report notes that aren't there.
-  const notes = Object.values(usePinStore.getState().pinsByProject)
-    .flat()
-    .filter((pin) => pin.x != null && pin.y != null).length;
+  // Notes, and the tasks placed on the canvas.
+  const notes = noteEnds().length;
 
   const wires = Object.values(useConnectionStore.getState().connections).map(
     (connection) =>

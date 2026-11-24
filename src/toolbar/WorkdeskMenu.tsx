@@ -3,7 +3,7 @@ import { useT } from "../i18n/useT";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
-import { useNeedsYouOnOtherWorkdesks, useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { useNeedsYouOnOtherWorkdesks, useTasksNeedingYou } from "../tasks/taskStore";
 
 /**
  * The workdesk's name at the top of the list, and its menu: every workdesk

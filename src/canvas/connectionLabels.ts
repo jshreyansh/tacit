@@ -9,7 +9,7 @@
  */
 import type { BrowserCardData } from "../stores/browserCardStore";
 import type { ConnectionEndpoint } from "../stores/connectionStore";
-import type { Pin, ProjectData } from "../types";
+import type { ProjectData } from "../types";
 
 /**
  * Longest label rendered before eliding. Page titles in particular run long
@@ -39,7 +39,8 @@ export interface EndpointLabelStrings {
 export interface EndpointLabelContext {
   projects: ProjectData[];
   browserCards: Record<string, BrowserCardData>;
-  pins: Pin[];
+  /** Notes and tasks. */
+  notes: ReadonlyArray<{ id: string; title: string }>;
   workspaceManagerTerminalId: string | null;
   strings: EndpointLabelStrings;
 }
@@ -88,8 +89,7 @@ function describeBrowser(id: string, ctx: EndpointLabelContext): string {
 }
 
 function describeNote(id: string, ctx: EndpointLabelContext): string {
-  const pin = ctx.pins.find((candidate) => candidate.id === id);
-  const title = pin?.title?.trim();
+  const title = ctx.notes.find((n) => n.id === id)?.title.trim();
   return title ? truncateLabel(title) : ctx.strings.unknownNote;
 }
 

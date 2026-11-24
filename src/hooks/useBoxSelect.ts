@@ -2,13 +2,14 @@ import { useCallback } from "react";
 import {
   activateCardInScene,
   activateAnnotationInScene,
-  activatePinInScene,
+  activateTaskInScene,
   activateTerminalInScene,
   activateWorktreeInScene,
   clearSceneFocus,
   setSceneSelection,
   setSceneSelectionRect,
 } from "../actions/sceneSelectionActions";
+import { beginCanvasDrag } from "../canvas/canvasDrag";
 import { drawingAt, isInGroup, itemsInBox, pressOn, toggleItem, unionItems } from "../canvas/canvasSelection";
 import { sameSelectedItems } from "../canvas/sceneState";
 import { useBoardStore } from "../stores/boardStore";
@@ -37,8 +38,8 @@ export function activateSingleBoxSelectionItem(item: SelectedItem): void {
     activateCardInScene(item.cardId);
   } else if (item.type === "annotation") {
     activateAnnotationInScene(item.annotationId);
-  } else if (item.type === "pin") {
-    activatePinInScene(item.pinId);
+  } else if (item.type === "task") {
+    activateTaskInScene(item.taskId);
   } else {
     setSceneSelection([item]);
   }
@@ -119,6 +120,7 @@ export function useBoxSelect() {
     e.stopPropagation();
 
     const start = screenToCanvas(sx, sy);
+    const endDrag = beginCanvasDrag();
     const base = adding ? useSelectionStore.getState().selectedItems.filter((i) => i.type !== "project" && i.type !== "worktree") : [];
     let dragging = false;
     let frame = 0;
@@ -143,6 +145,7 @@ export function useBoxSelect() {
     };
 
     const handleUp = (ev: MouseEvent) => {
+      endDrag();
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
       if (frame) cancelAnimationFrame(frame);

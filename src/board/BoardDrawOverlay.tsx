@@ -2,8 +2,8 @@ import { memo, useCallback, useRef } from "react";
 import { useBoardStore } from "../stores/boardStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { screenPointToCanvasPoint } from "../canvas/viewportBounds";
-import type { BoardPoint } from "../types/board";
-import { attachTargetAt, boxFromDrag, finishArrow, normalizeRect, snapAngle, squareDrag, type Point } from "./boardModel";
+import type { BoardPoint, BoardRect } from "../types/board";
+import { adoptInto, attachTargetAt, boxFromDrag, finishArrow, normalizeRect, rectsFor, snapAngle, squareDrag, type Point } from "./boardModel";
 import { boardTargetLookup, tileRects } from "./boardTargets";
 import { useBoardDraft } from "./boardDraft";
 import { addPenStroke, createArrow, createBox, createText, doneDrawing, placeSticky, selectBoard } from "./boardActions";
@@ -22,6 +22,13 @@ const CURSOR: Record<string, string> = { text: "text", pen: "crosshair" };
 
 function toWorld(e: { clientX: number; clientY: number }): Point {
   return screenPointToCanvasPoint(e.clientX, e.clientY, useCanvasStore.getState().viewport);
+}
+
+/** Where what a section drawn round `rect` would take in is, to show it as it's drawn. */
+function rectsTaken(rect: BoardRect): BoardRect[] {
+  const els = useBoardStore.getState().elements;
+  const lookup = boardTargetLookup(els);
+  return rectsFor(adoptInto({ id: "", type: "section", title: "", color: "ink", ...rect }, els, tileRects(), lookup), els, tileRects(), lookup);
 }
 
 export const BoardDrawOverlay = memo(function BoardDrawOverlay() {
@@ -59,7 +66,8 @@ export const BoardDrawOverlay = memo(function BoardDrawOverlay() {
       const p = toWorld(e);
       const d = useBoardDraft.getState().draft;
       if (d?.kind === "box") {
-        useBoardDraft.getState().set({ draft: { ...d, rect: e.shiftKey ? squareDrag(start, p) : normalizeRect(start, p) } });
+        const rect = e.shiftKey ? squareDrag(start, p) : normalizeRect(start, p);
+        useBoardDraft.getState().set({ draft: { ...d, rect }, holding: d.shape === "section" ? rectsTaken(rect) : [] });
       } else if (d?.kind === "arrow") {
         const from = startRef ? boardTargetLookup()(startRef)?.rect : null;
         const origin = from ? { x: from.x + from.w / 2, y: from.y + from.h / 2 } : start;

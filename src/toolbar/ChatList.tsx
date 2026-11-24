@@ -1,3 +1,5 @@
+import { isPlainTitle } from "../components/sessionPanelModel";
+import { agentNames, agentsIn } from "../tasks/agentNames";
 import { FolderAddMenu } from "./FolderAddMenu";
 import { FilesContent } from "../components/RightPanel/FilesContent";
 import { openFileInView } from "../actions/openSession";
@@ -13,27 +15,25 @@ import { useT } from "../i18n/useT";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useProjectStore } from "../stores/projectStore";
-import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { useTasksNeedingYou } from "../tasks/taskStore";
 import { agentIcon } from "./agentIcons";
 import { chatTitle, stamp, type ChatHistoryEntry } from "./chatHistoryModel";
 import { groupContentMatches, searchFiles, type ContentFileGroup, type FileSearchFolder, type FileSearchHit } from "./fileSearchModel";
 import { useFileRevealStore } from "../stores/fileRevealStore";
 import { useWorktreeFilesStore } from "../stores/worktreeFilesStore";
-import { buildChatList, folderDot, liveDot, matchRanges, openTaskCount, orderLive, searchChats, type ChatListFolder, type ChatListSource, type ChatSearchHit } from "./chatListModel";
+import { buildChatList, folderDot, liveDot, matchRanges, orderLive, searchChats, type ChatListFolder, type ChatListSource, type ChatSearchHit } from "./chatListModel";
 import { WorkdeskMenu } from "./WorkdeskMenu";
-import { usePinStore } from "../stores/pinStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { panToTerminal } from "../utils/panToTerminal";
 import { addProjectFromDirectoryPath, promptAndAddProjectToScene } from "../canvas/sceneCommands";
 import { recentFolders } from "../components/canvasEmptyModel";
-import { pinKind } from "../../shared/pin";
-import type { Pin, ProjectData } from "../types";
+import type { ProjectData } from "../types";
 import { diffTotals, type DiffTotals } from "./chat/chatPlaceModel";
 import { useLiveTree } from "./LiveSessions";
 import { useSessionStore } from "../stores/sessionStore";
-import { openAllTasks, openFolderTasks, openListedLiveChat, openListedPastSession } from "../actions/openSession";
+import { openAllTasks, openListedLiveChat, openListedPastSession } from "../actions/openSession";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { showGridOnFocusedNode, showOpenNodeOnCanvas } from "../workdesk/workdeskModeSwitch";
 import { treeTerminals } from "./liveSessionsModel";
@@ -126,6 +126,7 @@ function Dot({ kind }: { kind: "run" | "need" | "ended" }) {
 export function ChatList() {
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
+  const names = useMemo(() => agentNames(agentsIn(projects)), [projects]);
   const managerId = useCanvasRegistryStore(
     (s) => (s.canvases.find((c) => c.id === s.activeCanvasId) ?? s.canvases[0])?.workspaceManagerTerminalId ?? null,
   );
@@ -138,7 +139,6 @@ export function ChatList() {
   const memoryWaiting = useMemoryPendingCount(workdeskId);
   const memoryToolId = useCanvasPageStore((s) => (s.page === "tool" ? s.toolId : null));
   const recordingTask = useRecordingTask();
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
   const { tree } = useLiveTree();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -325,7 +325,7 @@ export function ChatList() {
             </button>
             <NavRow
               icon={<TaskGlyph />}
-              label={t.nav_all_tasks}
+              label={t.tb.navTasks}
               selected={page === "tasks"}
               onClick={openAllTasks}
               trailing={tasksWaiting > 0 ? <NeedsBadge text={t.nav_needs_you(tasksWaiting)} /> : undefined}
@@ -405,7 +405,6 @@ export function ChatList() {
                       project={project}
                       git={git === true}
                       open={open}
-                      pins={pinsByProject[project.path] ?? []}
                       types={types}
                       section={section?.key === folder.key ? section.kind : null}
                       onSection={(kind) => {
@@ -424,7 +423,7 @@ export function ChatList() {
                         key={item.terminalId}
                         small
                         icon={<img src={agentIcon(type)} alt="" className="h-4 w-4 object-contain" />}
-                        label={item.title}
+                        label={isPlainTitle(item.title, type) ? (names.get(item.terminalId) ?? item.title) : item.title}
                         title={item.locationLabel}
                         selected={focusedId === item.terminalId}
                         trailing={state === "need" ? <NeedsBadge text={t.nav_needs_you_word} /> : state === "run" ? <Dot kind="run" /> : undefined}
@@ -954,7 +953,6 @@ function FolderTools({
   project,
   git,
   open,
-  pins,
   types,
   section,
   onSection,
@@ -962,7 +960,6 @@ function FolderTools({
   project: ProjectData;
   git: boolean;
   open: boolean;
-  pins: readonly Pin[];
   types: ReadonlyMap<string, string>;
   /** Which of its own lists is unfolded in the navigator. */
   section: FolderSection | null;
@@ -972,9 +969,10 @@ function FolderTools({
   const primary = project.worktrees.find((w) => w.isPrimary) ?? project.worktrees[0];
   const path = primary?.path ?? null;
   const totals = useFolderChanges(git && open ? path : null);
-  const tasks = openTaskCount(pins.filter((p) => pinKind(p) === "task"));
   const shells = project.worktrees.flatMap((w) => w.terminals).filter((term) => !term.stashed && !findAgentAdapter(types.get(term.id) ?? term.type));
   const [settingUp, setSettingUp] = useState(false);
+  // As tall as its files, up to what the list has room for.
+  const [filesHeight, setFilesHeight] = useState(132);
   const toolOpen = useCanvasPageStore((s) => (s.page === "tool" ? s.toolId : null));
   const isOpenTool = (kind: FolderToolKind) => !!path && !!toolOpen && toolOpen.startsWith(`${kind}:${path}`);
   return (
@@ -996,8 +994,8 @@ function FolderTools({
       />
       {/* The folder's files, right here: picking one opens it in the pane (a tab in the grid). */}
       {section === "files" && path && (
-        <div className="tc-nav-tree my-0.5 flex h-[min(420px,52vh)] min-h-0 flex-col overflow-hidden">
-          <FilesContent worktreePath={path} onFileClick={openFileInView} active />
+        <div className="tc-nav-tree my-0.5 flex min-h-0 flex-col overflow-hidden" style={{ height: `min(${filesHeight}px, 420px, 52vh)` }}>
+          <FilesContent worktreePath={path} onFileClick={openFileInView} active onContentHeight={setFilesHeight} />
         </div>
       )}
       {git && (
@@ -1039,15 +1037,6 @@ function FolderTools({
           onClick={() => openFolderTool({ kind: "history", path })}
         />
       )}
-      <NavRow
-        small
-        icon={<TaskGlyph />}
-        label={t.nav_tasks}
-        selected={false}
-        // This folder's tasks; All tasks above is the workdesk's.
-        onClick={() => openFolderTasks(project.path)}
-        trailing={tasks > 0 ? <span className="shrink-0 text-[11px] text-[var(--text-muted)]">{tasks}</span> : undefined}
-      />
       {path && (
         <NavRow
           small

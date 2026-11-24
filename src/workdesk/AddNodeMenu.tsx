@@ -1,15 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import { useT } from "../i18n/useT";
-import { addBrowser, addNote, addTerminal } from "../actions/dockActions";
-import { DOCK_ENTRIES, DockIcon, useDockAvailability, type DockEntry } from "../toolbar/dockEntries";
+import { addBrowser, addNote, addTask, addTerminal } from "../actions/dockActions";
+import { NewAgentTiles, PickerHeading, PickerPopover } from "../agents/AgentPicker";
+import { DockIcon, dockEntry } from "../toolbar/dockEntries";
 import { useIdentityStore } from "../stores/identityStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
-import { createTask } from "../tasks/taskActions";
 import type { OpenNode } from "../stores/workdeskViewStore";
 import type { TerminalType } from "../types";
-import { AGENT_ICON } from "../toolbar/agentIcons";
 
 /**
  * The + at the start of the workdesk view's tabs: add an agent (which one),
@@ -17,17 +15,16 @@ import { AGENT_ICON } from "../toolbar/agentIcons";
  * opens in its tab.
  */
 
-type Step = "root" | "agents" | "browsers";
+type Step = "root" | "browsers";
 
-function Row({ onClick, children, disabled, title, more }: { onClick: () => void; children: React.ReactNode; disabled?: boolean; title?: string; more?: boolean }) {
+function Row({ onClick, children, more }: { onClick: () => void; children: React.ReactNode; more?: boolean }) {
   return (
     <button
       type="button"
       role="menuitem"
-      className="tc-rail-btn flex h-9 w-full items-center gap-2.5 px-2.5 text-left text-[13px] text-[var(--text-primary)] disabled:opacity-45"
+      data-pick=""
+      className="tc-ap-row"
       onClick={onClick}
-      disabled={disabled}
-      title={title}
     >
       {children}
       {more && (
@@ -39,63 +36,12 @@ function Row({ onClick, children, disabled, title, more }: { onClick: () => void
   );
 }
 
-/**
- * The Agents row's icon: OpenCode, Codex and Claude Code as tiles stacked
- * from one side, each partly in view, so it reads as a choice of agents
- * rather than one of them.
- */
-function AgentsStackIcon() {
-  const tile = 16;
-  const step = 7;
-  return (
-    <span className="relative block shrink-0" style={{ width: tile + step * 2, height: tile }} aria-hidden="true">
-      {[AGENT_ICON.opencode, AGENT_ICON.codex, AGENT_ICON.claude].map((icon, i) => (
-        <span key={icon} className="tc-icon-shell absolute top-0" style={{ left: i * step, width: tile, height: tile }}>
-          <img src={icon} alt="" className="h-3 w-3 object-contain" draggable={false} />
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function AgentRow({ entry, onPick }: { entry: DockEntry; onPick: (type: TerminalType) => void }) {
-  const t = useT();
-  const { missing, title } = useDockAvailability(entry);
-  return (
-    <Row onClick={() => onPick(entry.terminalType!)} disabled={missing} title={missing ? (title ?? undefined) : undefined}>
-      <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
-        <DockIcon art={entry.art} scale={0.75} />
-      </span>
-      <span className="truncate">{entry.label(t)}</span>
-      {missing && <span className="ml-auto text-[11px] text-[var(--text-muted)]">{t.workdesk_add_not_installed}</span>}
-    </Row>
-  );
-}
-
 export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("root");
   const ref = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const identities = useIdentityStore((s) => s.identities);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", esc);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-
   const done = (node: OpenNode | null) => {
     setOpen(false);
     if (node) onAdded(node);
@@ -105,11 +51,10 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
     const id = addTerminal(type);
     done(id ? { kind: "terminal", id } : null);
   };
-  const shell = DOCK_ENTRIES.find((e) => e.id === "shell")!;
-  const browser = DOCK_ENTRIES.find((e) => e.id === "browser")!;
-  const task = DOCK_ENTRIES.find((e) => e.id === "task")!;
-  const note = DOCK_ENTRIES.find((e) => e.id === "note")!;
-  const agents = DOCK_ENTRIES.filter((e) => e.group === "agents");
+  const shell = dockEntry("shell");
+  const browser = dockEntry("browser");
+  const task = dockEntry("task");
+  const note = dockEntry("note");
   const profiles = Object.values(identities);
 
   return (
@@ -130,10 +75,18 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
           <path d="M8 3v10M3 8h10" />
         </svg>
       </button>
-      {/* On the page itself: inside the view's blurred panel a fixed menu
-          would be placed against the panel, not the window. */}
-      {open && createPortal(
-        <div ref={menuRef} role="menu" aria-label={t.workdesk_add} className="tc-float pointer-events-auto fixed z-[1000] w-[240px] p-1.5" style={{ borderRadius: 11, ...menuPosition(ref.current) }}>
+      {open && ref.current && (
+        <PickerPopover
+          anchor={ref.current}
+          role="menu"
+          label={t.workdesk_add}
+          width={336}
+          onClose={() => setOpen(false)}
+          onEscape={() => {
+            if (step !== "root") setStep("root");
+            return step !== "root";
+          }}
+        >
           {step !== "root" && (
             <button
               type="button"
@@ -143,19 +96,16 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
               <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M10 3L5 8l5 5" />
               </svg>
-              {step === "agents" ? t.workdesk_add_agent : t.workdesk_add_browser_profile}
+              {t.workdesk_add_browser_profile}
             </button>
           )}
           {step === "root" && (
             <>
-              <Row onClick={() => setStep("agents")} more>
-                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
-                  <AgentsStackIcon />
-                </span>
-                {t.workdesk_add_agent}
-              </Row>
+              <PickerHeading>{t.workdesk_add_agent}</PickerHeading>
+              <NewAgentTiles role="menuitem" actionLabel={t.nav_new_chat_with} onPick={(entry) => entry.terminalType && terminal(entry.terminalType)} />
+              <div className="tc-ap-rule" />
               <Row onClick={() => terminal("shell")}>
-                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
+                <span className="tc-ap-mark">
                   <DockIcon art={shell.art} scale={0.7} />
                 </span>
                 {t.dock_terminal}
@@ -164,21 +114,18 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                 onClick={() => (profiles.length > 1 ? setStep("browsers") : done({ kind: "browser", id: addBrowser(profiles[0]?.id) }))}
                 more={profiles.length > 1}
               >
-                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
+                <span className="tc-ap-mark">
                   <DockIcon art={browser.art} scale={0.75} />
                 </span>
                 {t.dock_browser}
               </Row>
               <Row
                 onClick={() => {
-                  const { focusedProjectId, projects } = useProjectStore.getState();
-                  const project = projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-                  if (!project) return done(null);
                   setOpen(false);
-                  void createTask(project.path).then((made) => made && onAdded({ kind: "task", id: made.id }));
+                  addTask();
                 }}
               >
-                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
+                <span className="tc-ap-mark">
                   <DockIcon art={task.art} scale={0.7} />
                 </span>
                 {t.dock_task}
@@ -186,17 +133,16 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
               <Row
                 onClick={() => {
                   setOpen(false);
-                  void addNote().then((id) => done(id ? { kind: "note", id } : null));
+                  done({ kind: "note", id: addNote() });
                 }}
               >
-                <span className="flex h-6 w-[30px] shrink-0 items-center justify-center">
+                <span className="tc-ap-mark">
                   <DockIcon art={note.art} scale={0.7} />
                 </span>
                 {t.dock_note}
               </Row>
             </>
           )}
-          {step === "agents" && agents.map((entry) => <AgentRow key={entry.id} entry={entry} onPick={terminal} />)}
           {step === "browsers" &&
             profiles.map((profile) => (
               <Row key={profile.id} onClick={() => done({ kind: "browser", id: addBrowser(profile.id) })}>
@@ -210,16 +156,8 @@ export function AddNodeMenu({ onAdded }: { onAdded: (node: OpenNode) => void }) 
                 <span className="truncate">{profile.name}</span>
               </Row>
             ))}
-        </div>,
-        document.body,
+        </PickerPopover>
       )}
     </div>
   );
-}
-
-/** Under the button, kept on screen; fixed, so the scrolling tab strip doesn't clip it. */
-function menuPosition(anchor: HTMLElement | null): React.CSSProperties {
-  const rect = anchor?.getBoundingClientRect();
-  if (!rect) return {};
-  return { top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)) };
 }

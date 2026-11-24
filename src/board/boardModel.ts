@@ -107,6 +107,21 @@ export function bounds(e: BoardElement, lookup: TargetLookup): BoardRect {
   return { x: e.x, y: e.y, w: e.w, h: e.h };
 }
 
+/** The nearest place to `want` with nothing already in it, tried in rings around it. */
+export function freeSpot(want: BoardRect, taken: readonly BoardRect[], gap = 16): Point {
+  const free = (p: Point) => !taken.some((o) => overlaps({ ...want, ...p }, o, gap));
+  for (let ring = 0; ring < 12; ring++) {
+    for (let i = -ring; i <= ring; i++) {
+      for (let j = -ring; j <= ring; j++) {
+        if (Math.max(Math.abs(i), Math.abs(j)) !== ring) continue;
+        const p = { x: Math.round(want.x + (i * want.w) / 2), y: Math.round(want.y + (j * want.h) / 2) };
+        if (free(p)) return p;
+      }
+    }
+  }
+  return { x: Math.round(want.x), y: Math.round(want.y) };
+}
+
 /** Where a line from `from` toward `toward` leaves the target, `gap` outside its edge. */
 export function clipToTarget(t: Target, toward: Point, gap = END_GAP): Point {
   const c = center(t.rect);
@@ -382,7 +397,9 @@ export function adoptInto(
   const eligible = (parent: string | undefined) => (parent ?? null) === outer;
   const adopted: string[] = [];
   for (const e of elements) {
-    if (e.id === section.id || !eligible(e.parent)) continue;
+    // Loose things count as at this level, even over a section that doesn't hold them; a section round this one doesn't.
+    const loose = !e.parent && e.type !== "section" && e.type !== "frame";
+    if (e.id === section.id || !(loose || eligible(e.parent))) continue;
     if (e.type === "frame" && e.parent) continue;
     if (inside(section, center(bounds(e, lookup)))) adopted.push(e.id);
   }
@@ -392,11 +409,64 @@ export function adoptInto(
   for (const t of tiles) {
     if (!inside(section, center(t))) continue;
     const owner = ownerOf(t.id);
-    if (owner !== outer) continue;
+    if (owner !== outer && owner !== null) continue;
     tilesIn.push(t.id);
     if (owner) (takenFrom[owner] ??= []).push(t.id);
   }
   return { parent: outer, elements: adopted, tiles: tilesIn, takenFrom };
+}
+
+/** Where held things are, to show them. Arrows and strokes follow the rest, so only boxes and tiles. */
+export function rectsFor(held: { elements: string[]; tiles: string[] }, elements: readonly BoardElement[], tiles: ReadonlyArray<{ id: string } & BoardRect>, lookup: TargetLookup): BoardRect[] {
+  const ids = new Set(held.elements);
+  const tileIds = new Set(held.tiles);
+  return [...elements.filter((e) => ids.has(e.id) && isBoxed(e)).map((e) => bounds(e, lookup)), ...tiles.filter((t) => tileIds.has(t.id)).map(({ x, y, w, h }) => ({ x, y, w, h }))];
+}
+
+const touching = (a: BoardRect, b: BoardRect) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const around = (a: BoardRect, b: BoardRect) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
+
+/**
+ * What a section resized to `rect` holds. Nothing in it moves or scales (as
+ * in Figma and tldraw). Something loose, or at its own level, comes in when
+ * its centre does, as when it's drawn or dropped (another section or a drawing only
+ * when wholly inside). What it holds leaves only when wholly outside, so
+ * something half over the edge doesn't come and go (as in Excalidraw).
+ */
+export function heldAfterResize(
+  section: Extract<BoardElement, { type: "section" }>,
+  rect: BoardRect,
+  elements: readonly BoardElement[],
+  tiles: ReadonlyArray<{ id: string } & BoardRect>,
+  lookup: TargetLookup,
+): { elements: string[]; tiles: string[] } {
+  const level = section.parent ?? null;
+  const ownerOf = new Map<string, string>();
+  for (const e of elements) if (e.type === "section") for (const t of e.tiles ?? []) ownerOf.set(t, e.id);
+  const solid = (r: BoardRect) => ({ ...r, w: Math.max(r.w, 1), h: Math.max(r.h, 1) });
+  // A section it's inside of never goes into it.
+  const ancestors = new Set<string>();
+  for (let up = section.parent; up && !ancestors.has(up); up = elements.find((e) => e.id === up)?.parent) ancestors.add(up);
+
+  const held = elements
+    .filter((e) => {
+      if (e.id === section.id || ancestors.has(e.id)) return false;
+      const r = solid(bounds(e, lookup));
+      if (e.parent === section.id) return touching(rect, r);
+      if (e.parent && e.parent !== level) return false;
+      return e.type === "section" || e.type === "frame" ? around(rect, r) : inside(rect, center(r));
+    })
+    .map((e) => e.id);
+  const here = tiles
+    .filter((t) => {
+      const owner = ownerOf.get(t.id) ?? null;
+      if (owner === section.id) return touching(rect, t);
+      return (owner === level || owner === null) && inside(rect, center(t));
+    })
+    .map((t) => t.id);
+  // A tile that's out of sight just now (stashed, being rebuilt) stays.
+  const seen = new Set(tiles.map((t) => t.id));
+  return { elements: held, tiles: [...here, ...(section.tiles ?? []).filter((t) => !seen.has(t))] };
 }
 
 /** Move an element by (dx, dy). Attached arrow ends stay attached. */
@@ -438,6 +508,8 @@ export function cloneElement<T extends BoardElement>(e: T, id: string, offset: n
   copy.id = id;
   delete copy.parent;
   delete copy.editedBy;
+  // A copied section doesn't hold the original's tiles.
+  if (copy.type === "section") delete copy.tiles;
   copy.author = { kind: "you" };
   return translate(copy, offset, offset);
 }

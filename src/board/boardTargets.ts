@@ -1,7 +1,7 @@
 /**
- * What arrows can attach to: board elements, and the workdesk's tiles
- * (terminals, tasks, notes, files). The board layer publishes the tiles'
- * rectangles from React Flow as they move, so code outside React (the box
+ * What arrows attach to, sections hold and drawings line up with: board
+ * elements, and every tile of the workdesk (terminals, tasks, notes, files
+ * and browsers). The board layer publishes the tiles' rectangles as they move, so code outside React (the box
  * select, the keyboard) can resolve an arrow end without the canvas.
  */
 import { useBoardStore } from "../stores/boardStore";
@@ -10,8 +10,38 @@ import { isBoxed, type Target, type TargetLookup } from "./boardModel";
 
 export interface TileRect extends BoardRect {
   id: string;
-  /** React Flow's node type: terminal, pin, file. */
+  /** React Flow's node type (terminal, task, file), or "card" for a browser. */
   kind: string;
+}
+
+/** A browser isn't a React Flow node, so its id says what it is: `browser:<card id>`. */
+export const CARD_PREFIX = "browser:";
+
+interface FlowNode {
+  id: string;
+  type?: string;
+  hidden?: boolean;
+  position: { x: number; y: number };
+  measured?: { width?: number; height?: number };
+  width?: number;
+  height?: number;
+  style?: object;
+}
+
+/** Every tile's rectangle: React Flow's nodes, whatever their kind, and the browsers. */
+export function collectTileRects(nodes: readonly FlowNode[], cards: Readonly<Record<string, { id: string } & BoardRect>>): TileRect[] {
+  const rects: TileRect[] = [];
+  for (const n of nodes) {
+    if (n.hidden) continue;
+    // After a drop the canvas rebuilds its nodes without React Flow's measurements;
+    // the size the tile was given is the same, so use it rather than lose the tile.
+    const style = (n.style ?? {}) as { width?: unknown; height?: unknown };
+    const w = n.measured?.width ?? n.width ?? (typeof style.width === "number" ? style.width : 0);
+    const h = n.measured?.height ?? n.height ?? (typeof style.height === "number" ? style.height : 0);
+    if (w > 0 && h > 0) rects.push({ id: n.id, kind: n.type ?? "", x: n.position.x, y: n.position.y, w, h });
+  }
+  for (const c of Object.values(cards)) rects.push({ id: `${CARD_PREFIX}${c.id}`, kind: "card", x: c.x, y: c.y, w: c.w, h: c.h });
+  return rects;
 }
 
 let tiles: TileRect[] = [];

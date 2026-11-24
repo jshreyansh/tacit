@@ -13,11 +13,10 @@ import {
   buildGitWorktreeAddArgs,
   validateWorktreePath,
 } from "../hydra/src/spawn";
-import { PinStore, PinStoreError } from "./pin-store";
-import { parsePinStatus, pinKind, type PinStatus } from "../shared/pin";
-import { resolveCanvasProjectRoot } from "./pin-project-resolver";
-import { renderPinToPng } from "./pin-render";
-import { cleanupPinRenderCache } from "./pin-render-utils";
+import type { TaskStore } from "./task-store";
+import type { TaskRunner, TaskTerminal } from "./task-runner";
+import { TaskError, columnOf, sortTasks } from "../shared/task";
+import { parseNewTask } from "../shared/task-ops";
 import { sendToWindow } from "./window-events";
 import {
   createDefaultComposerSubmitDeps,
@@ -78,7 +77,8 @@ interface ApiServerDeps {
   ptyManager: PtyManager;
   projectScanner: ProjectScanner;
   telemetryService: TelemetryService;
-  taskStore: PinStore;
+  taskStore: TaskStore;
+  tasks: TaskRunner;
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
   recallService: RecallService;
   connectedBrowserBroker: ConnectedBrowserBroker;
@@ -215,6 +215,7 @@ export class ApiServer {
         });
         this.scheduleWireStateSave();
       },
+      lost: (tag, why) => this.deps.tasks.mailFailed(tag, why),
       now: () => Date.now(),
     });
     this.wireAsks = new WireAsks({
@@ -507,28 +508,8 @@ export class ApiServer {
       return this.getState();
     }
 
-    if (method === "GET" && pathname === "/pin/list") {
-      return this.pinList(url);
-    }
-    if (method === "POST" && pathname === "/pin/create") {
-      return this.pinCreate(body);
-    }
-    if (method === "POST" && pathname.match(/^\/pin\/[^/]+\/render$/)) {
-      const id = pathname.split("/")[2];
-      return this.pinRender(id, body);
-    }
-    if (method === "GET" && pathname.match(/^\/pin\/[^/]+$/)) {
-      const id = pathname.split("/")[2];
-      return this.pinGet(url, id);
-    }
-    if (method === "PUT" && pathname.match(/^\/pin\/[^/]+$/)) {
-      const id = pathname.split("/")[2];
-      return this.pinUpdate(id, body);
-    }
-    if (method === "DELETE" && pathname.match(/^\/pin\/[^/]+$/)) {
-      const id = pathname.split("/")[2];
-      return this.pinRemove(url, id);
-    }
+    const board = /^\/board\/(tasks|notes)(?:\/([A-Za-z0-9._-]{1,128}))?$/.exec(pathname);
+    if (board) return this.board(method, board[1] as "tasks" | "notes", board[2] ?? null, body);
 
     if (method === "GET" && pathname === "/browser/list") {
       return this.browserList();
@@ -596,11 +577,10 @@ export class ApiServer {
         body,
       );
     }
-    // The task list, for an agent: always its own project's, and its changes
-    // are recorded as its own.
-    const taskRoute = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/tasks(?:\/([a-z0-9][a-z0-9-]*))?$/.exec(pathname);
+    // Tasks, for an agent: always its own workdesk's, and its changes are its own.
+    const taskRoute = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/tasks(?:\/([A-Za-z0-9-]{1,128})(?:\/([a-z-]+))?)?$/.exec(pathname);
     if (taskRoute) {
-      return this.terminalTasks(method, taskRoute[1], taskRoute[2] ?? null, body);
+      return this.terminalTasks(method, taskRoute[1], taskRoute[2] ?? null, taskRoute[3] ?? null, body);
     }
     if (method === "POST" && START_TASK_ROUTE.test(pathname)) {
       return this.startRunFor(pathname.split("/")[2], body);
@@ -1060,199 +1040,90 @@ export class ApiServer {
     return this.execRenderer(`window.__tcApi.getProjects()`);
   }
 
-  /** The project a terminal belongs to, as the task store keys it. */
-  private async repoOfTerminal(terminalId: string): Promise<string> {
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    for (const project of projects ?? []) {
-      for (const worktree of project.worktrees ?? []) {
-        if ((worktree.terminals ?? []).some((t: { id?: string }) => t.id === terminalId)) {
-          return resolveCanvasProjectRoot(worktree.path, projects);
-        }
-      }
-    }
-    throw Object.assign(new Error(`Terminal not on the canvas: ${terminalId}`), { status: 404 });
+  /** A terminal on any workdesk, as tasks see it: whose it is, where it works, what can be typed into. */
+  async taskTerminal(id: string): Promise<Omit<TaskTerminal, "running" | "agent"> | null> {
+    return (await this.execRenderer(`window.__tcApi.taskTerminal(${JSON.stringify(id)})`)) as Omit<TaskTerminal, "running" | "agent"> | null;
   }
 
-  /**
-   * Backs the task tools (list_tasks, create_task, update_task, ask_user):
-   * the same list the person sees in Tasks, scoped to the agent's project.
-   */
-  private async terminalTasks(method: string, terminalId: string, taskId: string | null, body: any) {
-    const repo = await this.repoOfTerminal(terminalId);
-    const actor = `terminal:${terminalId}`;
+  /** A brief, an answer or a message about a task, typed in when the agent's turn is over. */
+  async deliverForTask(to: TaskTerminal, text: string, tag: string): Promise<{ status: "delivered" | "queued" | "failed"; detail?: string }> {
+    if (to.ptyId == null || !to.worktree) return { status: "failed", detail: `${to.name} isn't running` };
+    const sent = await this.deliverAlongWire({ terminalId: to.id, ptyId: to.ptyId, terminalType: to.type, worktreePath: to.worktree, text, from: "app:tasks", tag });
+    return { status: sent.queued ? "queued" : sent.ok ? "delivered" : "failed", ...(sent.detail ? { detail: sent.detail } : {}) };
+  }
+
+  /** Backs the task tools: everything is checked in the runner against the terminal's own workdesk and try. */
+  private async terminalTasks(method: string, terminalId: string, ref: string | null, act: string | null, body: any) {
+    const { tasks } = this.deps;
     try {
-      if (method === "GET" && !taskId) {
-        return { tasks: this.deps.taskStore.list(repo).filter((pin) => pinKind(pin) === "task") };
-      }
-      if (method === "POST" && !taskId) {
-        const task = this.deps.taskStore.create(
-          {
-            title: body?.title,
-            repo,
-            kind: "task",
-            body: body?.body,
-            steps: body?.steps,
-            owners: body?.owners ?? [terminalId],
-            status: body?.status === undefined ? undefined : requireStatus(body.status),
-          },
-          actor,
-        );
-        return { task };
-      }
-      if (method === "PUT" && taskId) {
-        const ask =
-          body?.ask && typeof body.ask === "object"
-            ? { reason: body.ask.reason, choices: body.ask.choices, by: terminalId }
-            : body?.ask === null
-              ? null
-              : undefined;
-        const task = this.deps.taskStore.update(
-          repo,
-          taskId,
-          {
-            title: body?.title,
-            status: body?.status === undefined ? undefined : requireStatus(body.status),
-            body: body?.body,
-            steps: body?.steps,
-            owners: body?.owners,
-            ask,
-          },
-          actor,
-        );
-        return { task };
+      if (method === "GET" && !ref) return await tasks.agentList(terminalId);
+      if (method === "GET" && ref && !act) return await tasks.agentGet(terminalId, ref);
+      if (method === "POST" && !ref) return await tasks.agentCreate(terminalId, body);
+      if (method === "POST" && ref) {
+        switch (act) {
+          case "take":
+            return await tasks.agentTake(terminalId, ref, body?.part);
+          case "report":
+            return await tasks.agentReport(terminalId, ref, body);
+          case "finish":
+            return await tasks.agentFinish(terminalId, ref, body);
+          case "ask":
+            return await tasks.agentAsk(terminalId, ref, body, "decide");
+          case "approve":
+            return await tasks.agentAsk(terminalId, ref, body, "approve");
+          case "withdraw":
+            return await tasks.agentWithdraw(terminalId, ref, body?.request);
+          case "suggest":
+            return await tasks.agentSuggest(terminalId, ref, body);
+          case "hand-over":
+            return await tasks.agentHandOver(terminalId, ref, body);
+        }
       }
     } catch (err) {
-      throw rethrowPinStoreError(err);
+      throw asHttp(err);
     }
     throw Object.assign(new Error("Not found"), { status: 404 });
   }
 
-  private async pinList(url: URL) {
-    const inputRepo = requireRepoQuery(url);
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
-    return { pins: this.deps.taskStore.list(canonicalRepo) };
-  }
-
-  private async pinCreate(body: any) {
-    const inputRepo = body?.repo;
-    if (!inputRepo) {
-      throw Object.assign(new Error("repo is required"), { status: 400 });
-    }
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
+  /**
+   * The open workdesk's tasks and notes, for the CLI in a plain shell: to read
+   * and to add, nothing more. Working on a task is done from a terminal on the
+   * workdesk, as itself.
+   */
+  private async board(method: string, what: "tasks" | "notes", id: string | null, body: any) {
     try {
-      const pin = this.deps.taskStore.create(
-        {
-          title: body?.title,
-          repo: canonicalRepo,
-          kind: body?.kind,
-          body: body?.body,
-          status: body?.status === undefined ? undefined : requireStatus(body.status),
-          links: body?.links,
-          steps: body?.steps,
-          owners: body?.owners,
-          x: body?.x,
-          y: body?.y,
-          w: body?.w,
-          h: body?.h,
-        },
-        pinActor(body?.actor),
-      );
-      return { pin };
-    } catch (err) {
-      throw rethrowPinStoreError(err);
-    }
-  }
-
-  private async pinGet(url: URL, id: string) {
-    const inputRepo = requireRepoQuery(url);
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
-    try {
-      const pins = this.deps.taskStore.list(canonicalRepo);
-      cleanupPinRenderCache(canonicalRepo, pins.map((pin) => pin.id));
-      const pin = this.deps.taskStore.get(canonicalRepo, id);
-      if (!pin) {
-        throw Object.assign(new Error(`Pin not found: ${id}`), { status: 404 });
+      const workdesk = (await this.execRenderer("window.__tcApi.getActiveCanvasId()")) as string;
+      if (what === "tasks") {
+        if (method === "GET" && !id) return { tasks: sortTasks(this.deps.taskStore.list(workdesk)).map((t) => ({ ...t, column: columnOf(t) })) };
+        if (method === "GET" && id) {
+          const task = this.deps.taskStore.find(workdesk, id);
+          if (!task) throw new TaskError("There's no such task on the open workdesk", 404);
+          return { task: { ...task, column: columnOf(task) } };
+        }
+        if (method === "POST" && !id) {
+          const task = this.deps.taskStore.create(workdesk, parseNewTask(body), "user");
+          return { task: { ...task, column: columnOf(task) } };
+        }
+      } else {
+        if (method === "GET" && !id) return { notes: await this.execRenderer("window.__tcApi.listNotes()") };
+        if (method === "GET" && id) {
+          const note = await this.execRenderer(`window.__tcApi.getNodeState("note", ${JSON.stringify(id)})`);
+          if (!note) throw new TaskError("There's no such note on the open workdesk", 404);
+          return { note };
+        }
+        if (method === "POST" && !id) {
+          const text = typeof body?.text === "string" ? body.text.trim().slice(0, 20_000) : "";
+          if (!text) throw new TaskError("A note needs words");
+          return { note: await this.execRenderer(`window.__tcApi.addNote(${JSON.stringify(text)}, ${JSON.stringify(typeof body?.by === "string" ? body.by.slice(0, 128) : null)})`) };
+        }
       }
-      return { pin };
     } catch (err) {
-      throw rethrowPinStoreError(err);
+      throw asHttp(err);
     }
+    throw Object.assign(new Error("Not found"), { status: 404 });
   }
 
-  private async pinRender(id: string, body: any) {
-    const inputRepo = body?.repo;
-    if (!inputRepo) {
-      throw Object.assign(new Error("repo is required"), { status: 400 });
-    }
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
-    try {
-      const pin = this.deps.taskStore.get(canonicalRepo, id);
-      if (!pin) {
-        throw Object.assign(new Error(`Pin not found: ${id}`), { status: 404 });
-      }
-      return await renderPinToPng(pin, {
-        outputPath: body?.outputPath,
-        width: body?.width,
-        height: body?.height,
-        waitMs: body?.waitMs,
-        fullPage: body?.fullPage,
-      });
-    } catch (err) {
-      throw rethrowPinStoreError(err);
-    }
-  }
-
-  private async pinUpdate(id: string, body: any) {
-    const inputRepo = body?.repo;
-    if (!inputRepo) {
-      throw Object.assign(new Error("repo is required"), { status: 400 });
-    }
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
-    try {
-      const pin = this.deps.taskStore.update(
-        canonicalRepo,
-        id,
-        {
-          title: body?.title,
-          kind: body?.kind,
-          status: body?.status === undefined ? undefined : requireStatus(body.status),
-          body: body?.body,
-          links: body?.links,
-          steps: body?.steps,
-          owners: body?.owners,
-          ask: body?.ask,
-          answer: typeof body?.answer === "string" ? body.answer : undefined,
-          x: body?.x,
-          y: body?.y,
-          w: body?.w,
-          h: body?.h,
-        },
-        pinActor(body?.actor),
-      );
-      return { pin };
-    } catch (err) {
-      throw rethrowPinStoreError(err);
-    }
-  }
-
-  private async pinRemove(url: URL, id: string) {
-    const inputRepo = requireRepoQuery(url);
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
-    const canonicalRepo = resolveCanvasProjectRoot(inputRepo, projects);
-    try {
-      this.deps.taskStore.remove(canonicalRepo, id);
-      return { ok: true };
-    } catch (err) {
-      throw rethrowPinStoreError(err);
-    }
-  }
-
-  // Browser tiles only exist in the renderer's Zustand store (unlike pins,
+  // Browser tiles only exist in the renderer's Zustand store (unlike tasks,
   // which are file-backed and owned here) — every route round-trips through
   // execRenderer/window.__tcApi rather than touching a main-process store.
 
@@ -1836,7 +1707,12 @@ export class ApiServer {
 
   /** Backs the get_node_state MCP tool — open to any terminal, no gating. */
   private async workspaceNodeState(kind: string, id: string) {
-    if (kind !== "terminal" && kind !== "browser" && kind !== "pin") {
+    if (kind === "pin" || kind === "task" || kind === "note") {
+      const task = kind === "note" ? null : this.deps.taskStore.all().find((t) => t.id === id);
+      if (task) return { kind: "task", column: columnOf(task), ...task };
+      return this.execRenderer(`window.__tcApi.getNodeState("note", ${JSON.stringify(id)})`);
+    }
+    if (kind !== "terminal" && kind !== "browser") {
       throw Object.assign(new Error(`Unsupported node kind: ${kind}`), {
         status: 400,
       });
@@ -1875,7 +1751,7 @@ export class ApiServer {
     )) as {
       terminalCount: number;
       browserCount: number;
-      pinCount: number;
+      noteCount: number;
       connectionCount: number;
       statusCounts: Record<string, number>;
       /** Paths of the files shown on the canvas. */
@@ -2103,6 +1979,7 @@ export class ApiServer {
     if (!result.ok) return { ok: false, detail: result.detail ?? result.error };
     this.deps.recordAgentPrompt({ targetTerminalId: item.terminalId, by: item.from, text: item.text });
     if (item.askId) this.wireAsks.started(item.askId);
+    if (item.tag) this.deps.tasks.mailDelivered(item.tag, item.terminalId);
     return { ok: true };
   }
 
@@ -2289,6 +2166,7 @@ export class ApiServer {
     text: string;
     from: CaptureNodeRef;
     askId?: string;
+    tag?: string;
   }): Promise<{ ok: boolean; detail?: string; queued?: boolean; waiting?: number }> {
     const item: MailItem = {
       id: randomUUID(),
@@ -2299,6 +2177,7 @@ export class ApiServer {
       preview: envelopePreview(delivery.text),
       at: Date.now(),
       ...(delivery.askId ? { askId: delivery.askId } : {}),
+      ...(delivery.tag ? { tag: delivery.tag } : {}),
     };
     if (!findAgentAdapter(delivery.terminalType)) return this.typeMailItem(item);
     const result = await this.wireMailbox.submit(item);
@@ -2315,35 +2194,18 @@ export class ApiServer {
   }
 
   /**
-   * A message arriving at a pin over a wire. A note has it added to its
-   * text; a task logs it as a done step, written as the agent that sent it
-   * so the task's history says who did what.
+   * A message arriving at a note or task over a wire. A note has it added to
+   * its text; a task keeps it in its conversation, as from whoever sent it.
    */
-  private async deliverToPin(
-    pinId: string,
-    senderId: string,
-    senderTitle: string,
-    text: string,
-  ): Promise<{ ok: boolean; detail?: string }> {
-    const pin = (await this.execRenderer(
-      `window.__tcApi.getNodeState("pin", ${JSON.stringify(pinId)})`,
-    )) as { id: string; repo: string; kind?: "task" | "note"; x?: number; y?: number; steps?: Array<{ text: string; status: "pending" | "active" | "done" }> } | null;
-    if (!pin) return { ok: false, detail: "that note or task is gone" };
-    if (pinKind(pin) !== "task") {
+  private async deliverToNote(id: string, senderId: string, senderTitle: string, text: string): Promise<{ ok: boolean; detail?: string }> {
+    const task = this.deps.taskStore.all().find((t) => t.id === id);
+    if (!task) {
       return (await this.execRenderer(
-        `window.__tcApi.appendToNote(${JSON.stringify(pinId)}, ${JSON.stringify(senderTitle)}, ${JSON.stringify(text)})`,
+        `window.__tcApi.appendToNote(${JSON.stringify(id)}, ${JSON.stringify(senderTitle)}, ${JSON.stringify(text)})`,
       )) as { ok: boolean; detail?: string };
     }
-    const step = stepFromMessage(text);
-    if (!step) return { ok: false, detail: "nothing to log" };
-    const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
     try {
-      this.deps.taskStore.update(
-        resolveCanvasProjectRoot(pin.repo, projects),
-        pin.id,
-        { steps: [...(pin.steps ?? []), { text: step, status: "done" }] },
-        `terminal:${senderId}`,
-      );
+      await this.deps.tasks.say(task.workdesk, task.id, text, `terminal:${senderId}`, senderTitle);
       return { ok: true };
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : String(err) };
@@ -2448,7 +2310,7 @@ export class ApiServer {
         wiresOf: (id) => this.wiresOf(id),
         deliverToTerminal: (delivery) =>
           this.deliverAlongWire({ ...delivery, from: `terminal:${terminalId}` }),
-        appendToNote: (noteId, source, text) => this.deliverToPin(noteId, terminalId, source, text),
+        appendToNote: (noteId, source, text) => this.deliverToNote(noteId, terminalId, source, text),
         pulse: (event) =>
           sendToWindow(win, "canvas-bridge:event", {
             ...event,
@@ -2677,22 +2539,9 @@ function requireRepoQuery(url: URL): string {
   return repo;
 }
 
-/** Who made a change, from the request: an agent's terminal, else the person. */
-function pinActor(raw: unknown): string {
-  return typeof raw === "string" && /^terminal:[A-Za-z0-9._-]{1,128}$/.test(raw) ? raw : "user";
-}
-
-/** A status as typed ("todo", "doing", "needs-you"…), or a 400. */
-function requireStatus(raw: unknown): PinStatus {
-  const status = parsePinStatus(raw);
-  if (!status) throw Object.assign(new Error(`Invalid status: ${String(raw)}`), { status: 400 });
-  return status;
-}
-
-function rethrowPinStoreError(err: unknown): Error {
-  if (err instanceof PinStoreError) {
-    return Object.assign(new Error(err.message), { status: err.status });
-  }
+/** A refusal from the tasks, with its own status. */
+function asHttp(err: unknown): Error {
+  if (err instanceof TaskError) return Object.assign(new Error(err.message), { status: err.status });
   return err instanceof Error ? err : new Error(String(err));
 }
 

@@ -117,7 +117,7 @@ export async function waitForNodes(deps: NodeWaitDeps, body: unknown): Promise<N
     for (const id of ids) {
       const node = await deps.findNode(id);
       if (!node) fail(404, "not_found", `No node with id "${id}" on this canvas. Call list_nodes for current ids.`);
-      if (node.kind === "pin") fail(400, "not_a_worker", `"${id}" is a note; notes don't change state.`);
+      if (node.kind === "note" || node.kind === "task") fail(400, "not_a_worker", `"${id}" is a ${node.kind}; it doesn't start or end turns.`);
       const onlyTurnKinds = [...kinds].every((kind) => TURN_KINDS.has(kind));
       const trackable = node.kind === "terminal" && TURN_TRACKED.has(node.terminalType ?? "");
       if (wantsTurns && onlyTurnKinds && !trackable) {

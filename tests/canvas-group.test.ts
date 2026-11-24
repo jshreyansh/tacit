@@ -10,7 +10,7 @@ Object.defineProperty(globalThis, "localStorage", {
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: { language: "en-US", userAgent: "node-test" } });
 Object.defineProperty(globalThis, "window", {
   configurable: true,
-  value: Object.assign(new EventTarget(), { navigator: globalThis.navigator, tacit: { app: { platform: "darwin" }, pins: { update: async () => null } } }),
+  value: Object.assign(new EventTarget(), { navigator: globalThis.navigator, tacit: { app: { platform: "darwin" }, tasks: {} } }),
 });
 
 const { drawingsInBox, toggleItem, unionItems } = await import("../src/canvas/canvasSelection.ts");
@@ -108,4 +108,129 @@ test("deleting a mixed selection deletes its drawings and leaves its terminals, 
   assert.equal(useBoardStore.getState().elements.length, 0);
   assert.ok(useFileTileStore.getState().tiles.f);
   assert.deepEqual(useSelectionStore.getState().selectedItems, [file("f")]);
+});
+
+/* ---------- sections hold every kind of tile ---------- */
+
+const { collectTileRects } = await import("../src/board/boardTargets.ts");
+const { heldAfterResize, cloneElement, attachTargetAt } = await import("../src/board/boardModel.ts");
+const { createBox, regroupAfterResize } = await import("../src/board/boardActions.ts");
+const { tileDropped, tileGone } = await import("../src/board/boardMembership.ts");
+const { createBrowserCardInScene, removeBrowserCardFromScene } = await import("../src/actions/sceneCardActions.ts");
+const { useBrowserCardStore } = await import("../src/stores/browserCardStore.ts");
+const { useProjectStore } = await import("../src/stores/projectStore.ts");
+const { useRecordPlaceStore } = await import("../src/stores/recordPlaceStore.ts");
+const { useTaskStore, activeWorkdesk } = await import("../src/tasks/taskStore.ts");
+const { placedTasks } = await import("../src/canvas/noteEnds.ts");
+const { makeTask, parseNewTask } = await import("../shared/task-ops.ts");
+const { buildCanvasFlowNodes, buildFileFlowNodes, buildTaskFlowNodes } = await import("../src/canvas/nodeProjection.ts");
+
+/** One of every kind of tile there is, through the same code the canvas uses. */
+function everyTile() {
+  const terminal = { id: "t", title: "t", type: "shell", minimized: false, focused: false, ptyId: null, status: "idle", x: 100, y: 100, width: 300, height: 200 };
+  useProjectStore.setState({ projects: [{ id: "p", name: "p", path: "/p", worktrees: [{ id: "w", name: "w", path: "/p", terminals: [terminal] }] }] as never });
+  useTaskStore.setState({ tasks: { task: makeTask(parseNewTask({ title: "t" }), { id: "task", n: 1, workdesk: activeWorkdesk() }, { at: "", by: "user", newId: () => "i" }) } });
+  useRecordPlaceStore.getState().restore({ task: { x: 100, y: 400 } });
+  useFileTileStore.setState({ tiles: { f: { id: "f", path: "/p/f", x: 500, y: 100, w: 200, h: 100 } } });
+  useBrowserCardStore.setState({ cards: { c: { id: "c", url: "u", title: "c", x: 100, y: 750, w: 400, h: 200, identityId: "g" } } as never });
+  const nodes = [
+    ...buildCanvasFlowNodes(useProjectStore.getState().projects),
+    ...buildTaskFlowNodes(placedTasks()),
+    ...buildFileFlowNodes(Object.values(useFileTileStore.getState().tiles)),
+  ];
+  publishTileRects(collectTileRects(nodes, useBrowserCardStore.getState().cards));
+  return [...new Set(nodes.map((n) => n.id)), "browser:c"].sort();
+}
+const held = (id: string) => [...((useBoardStore.getState().elements.find((e) => e.id === id) as { tiles?: string[] }).tiles ?? [])].sort();
+
+test("a section drawn round one of everything holds all of it, and moves all of it", () => {
+  const all = everyTile();
+  assert.deepEqual(all, ["browser:c", "f", "t", "task"]);
+  useBoardStore.getState().restore([box("a", 700, 700)]);
+  const s = createBox({ x: 0, y: 0, w: 1200, h: 1200 }, "section");
+  assert.deepEqual(held(s), all);
+  assert.equal(useBoardStore.getState().elements.find((e) => e.id === "a")!.parent, s);
+  const g = startGroupMove([drawing(s)]);
+  g.shift(1000, 0);
+  g.drop(1000, 0);
+  assert.equal(useBrowserCardStore.getState().cards.c.x, 1100);
+  assert.equal(useFileTileStore.getState().tiles.f.x, 1500);
+  assert.equal(useRecordPlaceStore.getState().places.task.x, 1100);
+  assert.equal(useProjectStore.getState().projects[0].worktrees[0].terminals[0].x, 1100);
+  assert.deepEqual(held(s), all);
+});
+
+test("an arrow attaches to every kind of tile", () => {
+  everyTile();
+  const { tileRects: list } = { tileRects: collectTileRects([], useBrowserCardStore.getState().cards) };
+  assert.equal(attachTargetAt({ x: 300, y: 850 }, [], list), "browser:c");
+});
+
+test("a browser opened in a section joins it, and leaves every list when closed", () => {
+  useBoardStore.getState().restore([section("s", 0, 0, 2000, 2000)]);
+  const id = createBrowserCardInScene("https://example.com", { x: 100, y: 100 }, "g");
+  assert.deepEqual(held("s"), [`browser:${id}`]);
+  removeBrowserCardFromScene(id);
+  assert.deepEqual(held("s"), []);
+});
+
+test("undoing a drawing doesn't take a tile out of the section it was put in since", () => {
+  useBoardStore.getState().restore([section("s", 0, 0, 1000, 1000)]);
+  createBox({ x: 2000, y: 0, w: 100, h: 100 }, "rect");
+  tileDropped("t", { x: 100, y: 100, w: 100, h: 100 });
+  useBoardStore.getState().undo();
+  assert.deepEqual(held("s"), ["t"]);
+  tileGone("t");
+  useBoardStore.getState().redo();
+  assert.deepEqual(held("s"), []);
+});
+
+test("a section resized takes in what it covers and lets go only of what's wholly outside", () => {
+  const s = section("s", 0, 0, 400, 400, { tiles: ["browser:c"] });
+  const els = [s, box("in", 100, 100, { parent: "s" }), box("edge", 350, 100, { parent: "s" }), box("near", 600, 100), box("half", 760, 300), section("big", 500, 0, 5000, 5000)];
+  const list = [{ id: "browser:c", x: 100, y: 300, w: 200, h: 80 }, { id: "f", x: 500, y: 300, w: 100, h: 80 }];
+  const lookup = () => null;
+  const at = (rect: object) => heldAfterResize(s as never, rect as never, els, list, lookup);
+  // Bigger: what its edge reaches the middle of, but not the section it only overlaps.
+  assert.deepEqual(at({ x: 0, y: 0, w: 800, h: 400 }), { elements: ["in", "edge", "near"], tiles: ["browser:c", "f"] });
+  // Smaller: half over the edge stays, wholly outside goes.
+  assert.deepEqual(at({ x: 0, y: 0, w: 360, h: 250 }), { elements: ["in", "edge"], tiles: [] });
+  assert.deepEqual(at({ x: 0, y: 0, w: 300, h: 400 }), { elements: ["in"], tiles: ["browser:c"] });
+});
+
+test("a resize is one step: undo gives the section back its size and what it held", () => {
+  everyTile();
+  useBoardStore.getState().restore([section("outer", -100, -100, 3000, 3000), section("s", 0, 0, 450, 350, { tiles: ["t"], parent: "outer" })]);
+  useBoardStore.getState().checkpoint();
+  useBoardStore.getState().patch({ s: { w: 1200, h: 1200 } });
+  regroupAfterResize("s");
+  // Loose tiles come in too, though they sit over the outer section without being its own.
+  assert.deepEqual(held("s"), ["browser:c", "f", "t", "task"]);
+  useBoardStore.getState().undo();
+  for (const id of ["f", "browser:c"]) tileDropped(id, { x: 1500, y: 1500, w: 10, h: 10 });
+  useBoardStore.getState().checkpoint();
+  useBoardStore.getState().patch({ s: { w: 1200, h: 1200 } });
+  regroupAfterResize("s");
+  assert.deepEqual([held("s"), held("outer")], [["browser:c", "f", "t", "task"], []]);
+  useBoardStore.getState().undo();
+  assert.deepEqual([held("s"), held("outer")], [["t"], ["browser:c", "f"]]);
+  // What it lets go of goes to the section it's in.
+  useBoardStore.getState().checkpoint();
+  useBoardStore.getState().patch({ s: { x: 800, y: 800, w: 200, h: 200 } });
+  regroupAfterResize("s");
+  assert.deepEqual([held("s"), held("outer")], [[], ["browser:c", "f", "t"]]);
+});
+
+test("a copied section doesn't hold the original's tiles", () => {
+  assert.equal((cloneElement(section("s", 0, 0, 10, 10, { tiles: ["t"] }), "s2", 24) as { tiles?: string[] }).tiles, undefined);
+});
+
+test("a task shows only where this workdesk put it, and only its own workdesk's", () => {
+  everyTile();
+  assert.deepEqual(placedTasks().map((p) => [p.task.id, p.rect.x, p.rect.y]), [["task", 100, 400]]);
+  useRecordPlaceStore.getState().forget("task");
+  assert.deepEqual(placedTasks(), []);
+  useRecordPlaceStore.getState().restore({ task: { x: 1, y: 2 } });
+  useTaskStore.setState((s) => ({ tasks: { task: { ...s.tasks.task, workdesk: "another" } } }));
+  assert.deepEqual(placedTasks(), []);
 });

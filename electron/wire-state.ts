@@ -44,7 +44,8 @@ function isMailItem(value: unknown): value is MailItem {
     typeof value.preview === "string" && typeof value.at === "number" &&
     (target === undefined ||
       (isObject(target) && typeof target.ptyId === "number" && isString(target.terminalType) && isString(target.worktreePath))) &&
-    (value.askId === undefined || isString(value.askId))
+    (value.askId === undefined || isString(value.askId)) &&
+    (value.tag === undefined || isString(value.tag))
   );
 }
 

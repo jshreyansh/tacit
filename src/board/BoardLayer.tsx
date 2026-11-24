@@ -3,6 +3,7 @@ import { ViewportPortal, useStore, useStoreApi } from "@xyflow/react";
 import { useBoardStore, selectedBoardElements } from "../stores/boardStore";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { useSelectionStore } from "../stores/selectionStore";
+import { beginCanvasDrag } from "../canvas/canvasDrag";
 import { startGroupMove } from "../canvas/groupMove";
 import { alignRect, ALIGN_SNAP } from "../canvas/tileMove";
 import { hasPrimaryModifier } from "../hooks/shortcutTarget";
@@ -18,6 +19,8 @@ import {
   attachTargetAt,
   bounds,
   canQuickConnect,
+  heldAfterResize,
+  rectsFor,
   cssColor,
   inside,
   isBlock,
@@ -27,7 +30,10 @@ import {
   type Point,
   type TargetLookup,
 } from "./boardModel";
-import { boardTargetLookup, publishTileRects, tileRects, type TileRect } from "./boardTargets";
+import { boardTargetLookup, collectTileRects, publishTileRects, tileRects } from "./boardTargets";
+import { useBrowserCardStore } from "../stores/browserCardStore";
+import { SizeReadout } from "../canvas/SizeReadout";
+import { RESIZE_CORNERS, RESIZE_CURSOR, RESIZE_EDGES, resizeRect, type ResizeDir } from "../canvas/resizeZones";
 import { useBoardDraft } from "./boardDraft";
 import {
   commitText,
@@ -38,6 +44,7 @@ import {
   measureText,
   quickAdd,
   registerEditFinisher,
+  regroupAfterResize,
   selectBoard,
   startEditing,
 } from "./boardActions";
@@ -60,23 +67,34 @@ const QC_PATH: Record<Direction, string> = {
 };
 const SNAP_TYPES = new Set(["shape", "sticky", "section", "frame"]);
 
-/** The canvas's tiles, from React Flow, for arrows and snapping. */
-function useTilePublisher() {
+/** Every tile of the canvas, browsers too, for arrows, sections and lining up. Changes when any of them does. */
+function useTilePublisher(): unknown {
   const nodes = useStore((s) => s.nodes);
-  useEffect(() => {
-    const rects: TileRect[] = [];
-    for (const n of nodes) {
-      if (n.hidden) continue;
-      // After a drop the canvas rebuilds its nodes without React Flow's measurements;
-      // the size the tile was given is the same, so use it rather than lose the tile.
-      const style = (n.style ?? {}) as { width?: unknown; height?: unknown };
-      const w = n.measured?.width ?? n.width ?? (typeof style.width === "number" ? style.width : 0);
-      const h = n.measured?.height ?? n.height ?? (typeof style.height === "number" ? style.height : 0);
-      if (w > 0 && h > 0) rects.push({ id: n.id, kind: n.type ?? "", x: n.position.x, y: n.position.y, w, h });
-    }
+  const cards = useBrowserCardStore((s) => s.cards);
+  // Published as it renders, so this render's arrows end where the tiles are now.
+  return useMemo(() => {
+    const rects = collectTileRects(nodes, cards);
     publishTileRects(rects);
-  }, [nodes]);
-  return nodes;
+    return rects;
+  }, [nodes, cards]);
+}
+
+/**
+ * Resized from any side or corner, as tiles are (canvas/resizeZones.ts): the
+ * zones sit mostly outside, so a small shape can still be picked up, and in
+ * front of the tiles, so a section's are never behind one.
+ */
+function ResizeZones({ e }: { e: BoxedElement }) {
+  const zoom = useStore((s) => s.transform[2]);
+  const resizing = useBoardDraft((s) => s.resizing === e.id);
+  return (
+    <div className="tc-bd-zones" style={{ left: e.x, top: e.y, width: e.w, height: e.h }}>
+      {[...RESIZE_EDGES, ...RESIZE_CORNERS].map((dir) => (
+        <div key={dir} className={`tc-bd-zone z-${dir} ${dir.length === 2 ? "tc-resize-corner" : ""}`} data-board-handle={e.id} data-board-dir={dir} data-scene-box-select-block="" style={{ cursor: RESIZE_CURSOR[dir] }} />
+      ))}
+      {resizing && <SizeReadout w={e.w} h={e.h} zoom={zoom} />}
+    </div>
+  );
 }
 
 function toWorld(e: { clientX: number; clientY: number }): Point {
@@ -191,7 +209,6 @@ const Boxed = memo(function Boxed({
 }) {
   const cls = `${selected ? " is-sel" : ""}${hovered ? " is-hov" : ""}${born ? " is-born" : ""}`;
   const pos = { left: e.x, top: e.y, width: e.w, height: e.h, "--c": cssColor(e.color) } as React.CSSProperties;
-  const handle = selected && single && !editing && e.type !== "text" ? <div className="tc-bd-handle" data-board-handle={e.id} /> : null;
   if (e.type === "text") return null;
   if (e.type === "section" || e.type === "frame") {
     const agent = e.author?.kind === "agent" ? e.author : null;
@@ -210,16 +227,23 @@ const Boxed = memo(function Boxed({
       );
     }
     return (
-      <div className={`tc-bd-${e.type}${cls}`} data-board-container={e.id} style={pos}>
-        {handle}
-      </div>
+      <div className={`tc-bd-${e.type}${cls}`} data-board-container={e.id} style={pos} />
     );
   }
   if (e.type === "sticky") {
     return (
-      <div className={`tc-bd-el tc-bd-sticky${cls}`} data-board-el={e.id} data-scene-box-select-block="" style={{ ...pos, fontSize: LABEL_SIZES[e.label ?? "M"] + 1, textAlign: e.align ?? "left" }}>
+      <div
+        className={`tc-bd-el tc-bd-sticky${cls}`}
+        data-board-el={e.id}
+        data-record-node={`note:${e.id}`}
+        // A wire being dragged can end here (src/canvas/ConnectionLayer.tsx).
+        data-connect-kind="note"
+        data-connect-id={e.id}
+        onMouseEnter={() => window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: { kind: "note", id: e.id } }))}
+        onMouseLeave={() => window.dispatchEvent(new CustomEvent("tacit:node-hover", { detail: null }))}
+        data-scene-box-select-block=""
+        style={{ ...pos, fontSize: LABEL_SIZES[e.label ?? "M"] + 1, textAlign: e.align ?? "left" }}>
         {editing ? <EditableText id={e.id} initial={e.text} /> : <span className={e.text ? undefined : "tc-bd-placeholder"}>{e.text || "Type something…"}</span>}
-        {handle}
       </div>
     );
   }
@@ -238,7 +262,6 @@ const Boxed = memo(function Boxed({
         </svg>
       )}
       {editing ? <EditableText id={e.id} initial={e.text} /> : <span>{e.text}</span>}
-      {handle}
     </div>
   );
 });
@@ -285,6 +308,7 @@ function DraftSvg({ lookup }: { lookup: TargetLookup }) {
   const draft = useBoardDraft((s) => s.draft);
   const target = useBoardDraft((s) => s.target);
   const guides = useBoardDraft((s) => s.guides);
+  const holding = useBoardDraft((s) => s.holding);
   const style = useBoardStore((s) => s.style);
   const k = 1 / zoom;
   const dash = { fill: "none", strokeWidth: 1.5 * k, strokeDasharray: `${6 * k} ${4 * k}` };
@@ -315,6 +339,10 @@ function DraftSvg({ lookup }: { lookup: TargetLookup }) {
   return (
     <g pointerEvents="none">
       {shape}
+      {/* What the section being drawn or resized takes in. */}
+      {holding.map((r, i) => (
+        <rect key={`h${i}`} className="tc-bd-holding" x={r.x - 4 * k} y={r.y - 4 * k} width={r.w + 8 * k} height={r.h + 8 * k} rx={10 * k} strokeWidth={1.5 * k} />
+      ))}
       {t && <rect className="tc-bd-draft" x={t.rect.x - 5} y={t.rect.y - 5} width={t.rect.w + 10} height={t.rect.h + 10} rx={16} fill="none" strokeWidth={2 * k} />}
       {guides.map((g, i) =>
         g.axis === "x" ? (
@@ -325,6 +353,13 @@ function DraftSvg({ lookup }: { lookup: TargetLookup }) {
       )}
     </g>
   );
+}
+
+/** Where what a section at `rect` would hold is, to show it. */
+function rectsHeld(section: Extract<BoardElement, { type: "section" }>, rect: BoardRect): BoardRect[] {
+  const els = useBoardStore.getState().elements;
+  const lookup = boardTargetLookup(els);
+  return rectsFor(heldAfterResize(section, rect, els, tileRects(), lookup), els, tileRects(), lookup);
 }
 
 /**
@@ -400,6 +435,10 @@ export const BoardLayer = memo(function BoardLayer() {
     }
   }
 
+  // The one thing selected can be resized.
+  const only = single && interactive && !editingId ? elements.find((e) => selected.has(e.id)) : undefined;
+  const resizable = only && isBoxed(only) && only.type !== "text" ? only : null;
+
   // Quick connect: four arrows around the shape or sticky you're on.
   const qcSource = (() => {
     if (!interactive || editingId || dragging) return null;
@@ -443,7 +482,9 @@ export const BoardLayer = memo(function BoardLayer() {
       const sx = ev.clientX;
       const sy = ev.clientY;
       const onUp = (fn: (e: PointerEvent) => void, move?: (e: PointerEvent) => void) => {
+        const endDrag = beginCanvasDrag();
         const up = (e: PointerEvent) => {
+          endDrag();
           window.removeEventListener("pointermove", mv);
           window.removeEventListener("pointerup", up);
           fn(e);
@@ -510,30 +551,36 @@ export const BoardLayer = memo(function BoardLayer() {
         return;
       }
 
-      // A corner handle: resize.
+      // A side or a corner: resize. Shift keeps the proportions, Option resizes from the middle.
       const handle = t.closest("[data-board-handle]");
       if (handle) {
         ev.stopPropagation();
         ev.preventDefault();
         const id = handle.getAttribute("data-board-handle")!;
+        const dir = handle.getAttribute("data-board-dir") as ResizeDir;
         const el = store.elements.find((x) => x.id === id);
         if (!el || !isBoxed(el)) return;
-        const ow = el.w;
-        const oh = el.h;
+        const from = { x: el.x, y: el.y, w: el.w, h: el.h };
+        const min = { w: el.type === "section" || el.type === "frame" ? 120 : 40, h: 30 };
         let checkpointed = false;
-        draft.set({ dragging: true });
         onUp(
-          () => {},
+          () => {
+            // What it now covers comes in; what's left outside goes.
+            if (checkpointed && el.type === "section") regroupAfterResize(id);
+          },
           (e) => {
             const p = toWorld(e);
             if (!checkpointed) {
+              if (Math.hypot(e.clientX - sx, e.clientY - sy) < 2) return;
               useBoardStore.getState().checkpoint();
               checkpointed = true;
             }
-            const minW = el.type === "section" || el.type === "frame" ? 120 : 40;
-            const w = Math.max(minW, ow + p.x - start.x);
-            const h = Math.max(30, oh + p.y - start.y);
-            useBoardStore.getState().patch({ [id]: { w, h } });
+            const k = e.altKey ? 2 : 1;
+            const r = resizeRect(from, dir, (p.x - start.x) * k, (p.y - start.y) * k, min, e.shiftKey);
+            const rect = e.altKey ? { ...r, x: from.x + (from.w - r.w) / 2, y: from.y + (from.h - r.h) / 2 } : r;
+            useBoardStore.getState().patch({ [id]: rect });
+            const now = useBoardStore.getState().elements.find((x) => x.id === id);
+            useBoardDraft.getState().set({ dragging: true, resizing: id, holding: now?.type === "section" ? rectsHeld(now, rect) : [] });
           },
         );
         return;
@@ -634,6 +681,7 @@ export const BoardLayer = memo(function BoardLayer() {
           </svg>
           {titles}
           {top}
+          {resizable && <ResizeZones e={resizable} />}
           {qcSource &&
             DIRS.map((d) => {
               const s = qcSource as BoxedElement;

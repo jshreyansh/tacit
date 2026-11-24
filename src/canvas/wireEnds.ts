@@ -13,7 +13,6 @@ import {
   type PayloadKind,
   type WireLimits,
 } from "../../shared/node-contracts";
-import { pinKind } from "../../shared/pin";
 import {
   connectionsInvolving,
   useConnectionStore,
@@ -21,9 +20,9 @@ import {
   type ConnectionEndpoint,
 } from "../stores/connectionStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
-import { usePinStore } from "../stores/pinStore";
 import { getTerminalDisplayTitle } from "../stores/terminalState";
 import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
+import { noteEnd, noteEndTitle } from "./noteEnds";
 
 /**
  * What a node is wired to, seen from that node: the other end of each wire,
@@ -68,15 +67,14 @@ export function nodeTitle(kind: ConnectionEndpointKind, id: string): string | nu
     const card = useBrowserCardStore.getState().cards[id];
     return card ? card.title || card.url || null : null;
   }
-  const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === id);
-  return pin?.title || null;
+  return noteEndTitle(id);
 }
 
 /** Whether a node is on the open canvas: a wire can't be drawn to one that isn't. */
 export function isOnCanvas(endpoint: ConnectionEndpoint): boolean {
   if (endpoint.kind === "terminal") return findTerminal(endpoint.id) !== null;
   if (endpoint.kind === "browser") return endpoint.id in useBrowserCardStore.getState().cards;
-  return Object.values(usePinStore.getState().pinsByProject).some((pins) => pins.some((p) => p.id === endpoint.id));
+  return noteEnd(endpoint.id) !== null;
 }
 
 /** What a node on the canvas is, as far as wires care. */
@@ -84,11 +82,7 @@ export function endpointRole(endpoint: ConnectionEndpoint): NodeRole {
   if (endpoint.kind === "terminal") {
     return nodeRoleOf("terminal", { terminalType: findTerminal(endpoint.id)?.terminal.type ?? null });
   }
-  if (endpoint.kind === "note") {
-    const pin = Object.values(usePinStore.getState().pinsByProject).flat().find((p) => p.id === endpoint.id);
-    return nodeRoleOf("note", { pinKind: pin ? pinKind(pin) : null });
-  }
-  return "browser";
+  return nodeRoleOf(endpoint.kind, { noteRole: endpoint.kind === "note" ? noteEnd(endpoint.id)?.role : null });
 }
 
 /** What `self` may do to the other end of one wire. */

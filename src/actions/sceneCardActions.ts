@@ -9,10 +9,19 @@ import { DEFAULT_IDENTITY_ID } from "../types/workspace";
 import { recordDecision } from "../capture";
 import type { CaptureActor } from "../../shared/capture";
 import { removeConnectionsInvolving } from "../stores/connectionStore";
+import { tileDropped, tileGone } from "../board/boardMembership";
+import { CARD_PREFIX } from "../board/boardTargets";
 import { normalizeBrowserNodeBinding } from "../../shared/browser-controller";
 import type { ConnectedBrowserConnection, ConnectedTabBinding } from "../../shared/browser-connection";
 
 const DEFAULT_BROWSER_URL = "https://google.com";
+
+/** In the board section it opened in, if any. */
+function joinSection(id: string): string {
+  const card = useBrowserCardStore.getState().cards[id];
+  if (card) tileDropped(`${CARD_PREFIX}${id}`, card);
+  return id;
+}
 
 function removeCardSelection(cardId: string) {
   useSelectionStore.setState((state) => ({
@@ -35,7 +44,7 @@ export function createBrowserCardInScene(
   identityId?: string,
 ): string {
   const resolved = identityId ?? useIdentityStore.getState().activeIdentityId;
-  return useBrowserCardStore.getState().addCard(url, resolved, position);
+  return joinSection(useBrowserCardStore.getState().addCard(url, resolved, position));
 }
 
 /**
@@ -98,7 +107,7 @@ export function addPopupBrowserCardToScene(options: {
   position?: { x: number; y: number };
 }): string {
   const { url, identityId, sourceCardId, position } = options;
-  const id = useBrowserCardStore.getState().addCard(url, identityId, position);
+  const id = joinSection(useBrowserCardStore.getState().addCard(url, identityId, position));
   recordDecision({
     kind: "spawn",
     node: `browser:${id}`,
@@ -115,7 +124,7 @@ export function addConnectedBrowserCardToScene(
   connection: ConnectedBrowserConnection,
   position?: { x: number; y: number },
 ): string {
-  const id = useBrowserCardStore.getState().addConnectedCard(binding, connection, position);
+  const id = joinSection(useBrowserCardStore.getState().addConnectedCard(binding, connection, position));
   recordDecision({
     kind: "spawn",
     node: `browser:${id}`,
@@ -141,6 +150,7 @@ export function removeBrowserCardFromScene(
   const existed = !!useBrowserCardStore.getState().cards[cardId];
   useBrowserCardStore.getState().removeCard(cardId);
   removeCardSelection(`browser:${cardId}`);
+  tileGone(`${CARD_PREFIX}${cardId}`);
   removeConnectionsInvolving("browser", cardId);
   // Closing something is as much a decision as opening it — a browser opened
   // and shut minutes later says the page was the wrong lead, which is exactly

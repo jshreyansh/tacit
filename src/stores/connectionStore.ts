@@ -19,9 +19,9 @@ import { isWireRole, type WireRole, type WireTracking } from "../../shared/wire-
  */
 export const WIRE_MODEL_VERSION = 2;
 
-// "note" endpoints use the pin's own id, which buildPinFlowNodes
+// "note" endpoints are a sticky's or a task's own id, which buildTaskFlowNodes
 // (src/canvas/nodeProjection.ts) already uses as the canvas node id, so it
-// is unique canvas-wide without needing to carry the pin's repo alongside it.
+// is unique canvas-wide on its own.
 export type ConnectionEndpointKind = "terminal" | "browser" | "note";
 
 export interface ConnectionEndpoint {

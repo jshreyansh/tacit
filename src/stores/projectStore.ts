@@ -32,7 +32,6 @@ import {
   useTileDimensionsStore,
 } from "./tileDimensionsStore.ts";
 import { useTerminalRuntimeStateStore } from "./terminalRuntimeStateStore.ts";
-import { usePinStore } from "./pinStore.ts";
 import { forgetManagerChat } from "./managerChatStore.ts";
 import { destroyTerminalRuntime } from "../terminal/terminalRuntimeStore.ts";
 import { resolveCollisions } from "../canvas/collisionResolver.ts";
@@ -363,14 +362,12 @@ function cleanupRemovedTerminalIds(terminalIds: string[]) {
   }
 
   const runtimeState = useTerminalRuntimeStateStore.getState();
-  const pinState = usePinStore.getState();
   for (const terminalId of uniqueTerminalIds) {
     destroyTerminalRuntime(terminalId, {
       caller: "cleanupRemovedTerminalIds",
       reason: "terminal_removed_from_project_store",
     });
     runtimeState.clearTerminal(terminalId);
-    pinState.clearTerminalAssignment(terminalId);
     forgetManagerChat(terminalId);
   }
 }

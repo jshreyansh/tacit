@@ -87,7 +87,12 @@ import {
   isValidBrowserIdentityId,
   partitionForBrowserIdentity,
 } from "../shared/browser-profile-import";
-import { PinStore } from "./pin-store";
+import { TaskStore } from "./task-store";
+import { TaskRunner, type TaskTerminal } from "./task-runner";
+import { TaskEvidence } from "./task-evidence";
+import { landedState } from "./task-landed";
+import { registerTaskIpc } from "./task-ipc";
+import { snapshotSaysBusy } from "./wire-mailbox";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
 import { ensureCliLauncher } from "./cli-launchers";
@@ -169,7 +174,6 @@ import type {
   ComposerSubmitRequest,
   ComposerSupportedTerminalType,
 } from "../src/types";
-import { buildPinComposerPayload } from "./pin-dispatch";
 import { getProjectDiff } from "./git-diff";
 import { searchFileContents, searchSessionContents } from "./search-handlers";
 import {
@@ -277,12 +281,10 @@ import {
   fileDropEvent,
   isAgentHarness,
   loadHandoffKey,
-  pinDropEvent,
 } from "./handoff-tracker";
 import { getOpenCodeDbPath } from "./opencode-session";
 import { SessionScanner } from "./session-scanner.ts";
 import { mergeAndDedupeSessions } from "./session-list.ts";
-import { buildPinRenderHtml } from "./pin-render-utils";
 import { CheckpointStore, reposInside } from "./checkpoints";
 import { lastUndoableTurn, resolveTurnRequest, TurnCheckpoints } from "./turn-checkpoints";
 import { AttentionNotifier } from "./attention-notifier";
@@ -322,7 +324,7 @@ crashReporter.start({
   compress: true,
 });
 
-// Custom scheme for serving pin image attachments from disk. Renderer-side
+// Custom scheme for serving tasks' pictures from disk. Renderer-side
 // `<img src="tc-attachment://local/<abs-path>">` resolves through the handler
 // registered after app.whenReady. Must be declared as privileged BEFORE the
 // app is ready, otherwise Chromium treats it as opaque and blocks subresources.
@@ -477,6 +479,7 @@ function promptHandoffRefs(terminalId: string, text: string | null): CaptureRefe
 }
 /** Set once the API server exists: a terminal's turn state changed, so a
  * message waiting for it may go now (electron/wire-mailbox.ts). */
+let pokeTasks: ((terminalId: string, snapshot: import("./task-runner").SnapshotView) => void) | null = null;
 let pokeWireMailbox: ((terminalId: string, snapshot: { turn_state?: string; derived_status?: string }) => void) | null = null;
 
 // A checkpoint of the folder at each agent turn's start and end, so the
@@ -524,6 +527,7 @@ const telemetryService = new TelemetryService({
   },
   onSnapshotChanged: (terminalId, snapshot) => {
     pokeWireMailbox?.(terminalId, snapshot);
+    pokeTasks?.(terminalId, snapshot);
     const changes = nodeEvents.observeSnapshot(terminalId, snapshot);
     attention.observeTerminal(terminalId, snapshot, changes);
     for (const change of changes) {
@@ -761,6 +765,7 @@ function notePromptForAttention(terminalId: string, source: CaptureTextSource | 
 
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
+  taskEvidence.toolUsed(event.terminal_id, telemetryService.getTerminalSnapshot(event.terminal_id)?.worktree_path ?? null, event);
 
   // Claude reports its own subagents through these; other harnesses' are
   // invisible to Tacit for now (SHR-118).
@@ -839,20 +844,55 @@ const hookReceiver = new HookReceiver((event) => {
     });
   }
 });
-const taskStore = new PinStore(path.join(TACIT_DIR, "pins"));
-
-taskStore.on("pin:created", (payload: { pin: unknown; repo: string }) => {
-  sendToWindow(mainWindow, "pin:event", { type: "pin:created", ...payload });
-  attention.observeTask(payload.repo, payload.pin);
+/** Tasks (electron/task-store.ts), and what connects them to agents (electron/task-runner.ts). */
+const taskStore = new TaskStore(path.join(TACIT_DIR, "tasks"));
+const taskEvidence = new TaskEvidence({
+  mark: (terminal, dir, name) => turnCheckpoints.mark(terminal, dir, name),
+  changedFrom: (terminal, dir, commit) => turnCheckpoints.changedFrom(terminal, dir, commit),
+  changedSince: (terminal, dir, since) => turnCheckpoints.changedSince(terminal, dir, since),
+  othersChangedSince: (terminal, dir, since, except) => turnCheckpoints.othersChangedSince(terminal, dir, since, except),
+  now: () => Date.now(),
 });
-taskStore.on("pin:updated", (payload: { pin: unknown; repo: string }) => {
-  sendToWindow(mainWindow, "pin:event", { type: "pin:updated", ...payload });
-  attention.observeTask(payload.repo, payload.pin);
+const taskRunner: TaskRunner = new TaskRunner({
+  store: taskStore,
+  terminal: async (id): Promise<TaskTerminal | null> => {
+    const found = await apiServer.taskTerminal(id);
+    if (!found) return null;
+    const running = found.ptyId != null || chatEngine.isRunning(id);
+    return { ...found, running, agent: !!findAgentAdapter(found.type) };
+  },
+  send: async (to, text, tag) => {
+    if (chatEngine.isRunning(to.id)) {
+      const ok = chatEngine.send(to.id, text);
+      return ok ? { status: "delivered" } : { status: "failed", detail: `${to.name} isn't running` };
+    }
+    return apiServer.deliverForTask(to, text, tag);
+  },
+  unsend: (terminal, tag) => apiServer.wireMailbox.removeTagged(terminal, tag),
+  flush: async (terminal) => void (await apiServer.wireMailbox.flush(terminal)),
+  hasMail: (terminal) => apiServer.wireMailbox.waiting(terminal).length > 0,
+  busy: (terminal) => snapshotSaysBusy(telemetryService.getTerminalSnapshot(terminal)),
+  interrupt: (to) => {
+    if (chatEngine.isRunning(to.id)) {
+      chatEngine.interrupt(to.id);
+      return true;
+    }
+    if (to.ptyId == null) return false;
+    // Escape is how each of these CLIs stops a turn from its keyboard.
+    ptyManager.write(to.ptyId, "\x1b");
+    return true;
+  },
+  snapshot: (terminal) => telemetryService.getTerminalSnapshot(terminal),
+  tokens: (terminal) => telemetryService.tokensUsed(terminal),
+  observe: (terminal, dir, since) => taskEvidence.of(terminal, dir, since),
+  landed: landedState,
+  now: () => Date.now(),
 });
-taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
-  sendToWindow(mainWindow, "pin:event", { type: "pin:removed", ...payload });
-  attention.taskRemoved(payload.repo, payload.id);
+taskStore.on("changed", ({ task, before }) => {
+  sendToWindow(mainWindow, "tasks:event", { type: "changed", task });
+  attention.observeTask(task, before);
 });
+taskStore.on("removed", (gone) => sendToWindow(mainWindow, "tasks:event", { type: "removed", ...gone }));
 
 // Hydra's built-in roles ship with the CLI (vite.config.ts copies them to
 // dist-cli/roles/builtin); the loader bundled into this process looks for
@@ -891,6 +931,7 @@ const apiServer = new ApiServer({
   ptyManager,
   projectScanner,
   telemetryService,
+  tasks: taskRunner,
   taskStore,
   dataUrlToPngBuffer,
   recallService,
@@ -919,53 +960,10 @@ const apiServer = new ApiServer({
       { method: "main" },
     );
   },
-});pokeWireMailbox = (terminalId, snapshot) => apiServer.onTerminalSnapshot(terminalId, snapshot);
+});
+pokeWireMailbox = (terminalId, snapshot) => apiServer.onTerminalSnapshot(terminalId, snapshot);
+pokeTasks = (terminalId, snapshot) => taskRunner.onSnapshot(terminalId, snapshot);
 
-
-function openPinPreviewWindow(repo: string, pinId: string): void {
-  const pin = taskStore.get(repo, pinId);
-  if (!pin) {
-    throw new Error(`Pin not found: ${pinId}`);
-  }
-
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 900,
-    useContentSize: true,
-    minWidth: 480,
-    minHeight: 360,
-    show: false,
-    title: pin.title.trim() || "Pin Preview",
-    backgroundColor: "#ffffff",
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-    },
-  });
-
-  let initialUrl: string | null = null;
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSafeExternalUrl(url)) {
-      void shell.openExternal(url);
-    }
-    return { action: "deny" };
-  });
-  win.webContents.on("will-navigate", (event, url) => {
-    if (initialUrl && url === initialUrl) return;
-    event.preventDefault();
-    if (isSafeExternalUrl(url)) {
-      void shell.openExternal(url);
-    }
-  });
-  win.once("ready-to-show", () => {
-    if (!win.isDestroyed()) win.show();
-  });
-
-  const html = buildPinRenderHtml(pin);
-  initialUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  void win.loadURL(initialUrl);
-}
 
 /**
  * Browser observation (tier 2 of the record). Main owns the whole path: it
@@ -1477,12 +1475,15 @@ const TITLE_STRIP_HEIGHT = 28;
     if (rendererReady) {
       console.warn("[PtyManager] renderer reloaded – destroying orphaned PTYs");
       apiServer.onAgentsStopping();
+      taskRunner.agentsStopping();
       await ptyManager.destroyAll();
     }
     rendererReady = true;
     // Every agent starts again with this window: what wires were waiting on
     // is held until each has had a turn (electron/wire-mailbox.ts).
     apiServer.onAgentsRestarted();
+    taskRunner.agentsRestarted();
+    taskRunner.start();
     try {
       const port = await apiServer.start();
       desktopApiPort = port;
@@ -3100,7 +3101,7 @@ function setupIpc() {
   // Lets the user pick a local image as the canvas background (Settings >
   // Appearance). The file is copied into a managed directory rather than
   // referenced by its original path — so it survives the source file being
-  // moved/deleted, and (like pin attachments) is servable through the
+  // moved/deleted, and (like tasks' attachments) is servable through the
   // already-proven tc-attachment:// protocol rather than a raw file:// URL,
   // which this app's CSP blocks for other local resources (see the font
   // load warnings this same restriction produces elsewhere).
@@ -3124,7 +3125,7 @@ function setupIpc() {
     const destPath = path.join(backgroundsDir, `${randomUUID()}${ext}`);
     fs.copyFileSync(sourcePath, destPath);
 
-    // Match pin-store.ts's populateAttachmentsUrl exactly: pathToFileURL's
+    // Match task-store.ts's attachmentsUrl exactly: pathToFileURL's
     // pathname is already correctly percent-encoded per-segment (spaces,
     // unicode, etc.) without touching the "/" separators the way a blind
     // encodeURIComponent(destPath) would — that would double-encode the
@@ -4031,172 +4032,13 @@ function setupIpc() {
     return safeStorage.decryptString(Buffer.from(base64, "base64"));
   });
 
-  // Tasks and notes: only the app's own window, and the store checks each
-  // field. Changes from here are the person's ("user") in a task's history.
-  ipcMain.handle("pin:list", (event, repo: unknown) => {
-    if (!isMainWindowSender(event) || typeof repo !== "string") return [];
-    return taskStore.list(repo);
-  });
-
-  ipcMain.handle(
-    "pin:create",
-    (event, input: Parameters<typeof taskStore.create>[0]) => {
-      if (!isMainWindowSender(event)) throw new Error("Not allowed");
-      return taskStore.create(input, "user");
-    },
-  );
-
-  ipcMain.handle(
-    "pin:update",
-    (
-      event,
-      repo: string,
-      id: string,
-      patch: Parameters<typeof taskStore.update>[2],
-    ) => {
-      if (!isMainWindowSender(event) || typeof repo !== "string" || typeof id !== "string") throw new Error("Not allowed");
-      return taskStore.update(repo, id, patch, "user");
-    },
-  );
-
-  ipcMain.handle("pin:remove", (event, repo: string, id: string) => {
-    if (!isMainWindowSender(event) || typeof repo !== "string" || typeof id !== "string") throw new Error("Not allowed");
-    taskStore.remove(repo, id);
-  });
-
-  ipcMain.handle("pin:open-preview", (_event, repo: string, id: string) => {
-    openPinPreviewWindow(repo, id);
-  });
-
-  ipcMain.handle(
-    "pin:save-attachment",
-    (
-      _event,
-      repo: string,
-      id: string,
-      fileName: string,
-      data: ArrayBuffer | Uint8Array,
-    ) => {
-      const buffer = Buffer.from(
-        data instanceof Uint8Array ? data : new Uint8Array(data),
-      );
-      return taskStore.saveAttachment(repo, id, fileName, buffer);
-    },
-  );
-
-  // Inject a pin's body + image attachments into a terminal via the existing
-  // composer-submit pipeline. We deliberately do not mutate pin.status here:
-  // dispatching the same pin to multiple terminals is a supported flow, and
-  // status changes stay manual.
-  ipcMain.handle(
-    "pin:dispatch-to-terminal",
-    async (
-      _event,
-      repo: string,
-      pinId: string,
-      target: {
-        terminalId: string;
-        ptyId: number;
-        terminalType: ComposerSupportedTerminalType;
-        worktreePath: string;
-      },
-    ) => {
-      const pin = taskStore.get(repo, pinId);
-      if (!pin) {
-        return {
-          ok: false,
-          code: "internal-error" as const,
-          stage: "validate" as const,
-          error: `Pin not found: ${pinId}`,
-          detail: `Pin not found: ${pinId}`,
-        };
-      }
-
-      if (!ptyManager.getPid(target.ptyId)) {
-        return {
-          ok: false,
-          code: "target-not-running" as const,
-          stage: "target" as const,
-          error: "Target terminal is not running.",
-          detail: "Target terminal is not running.",
-        };
-      }
-
-      const { text, images } = await buildPinComposerPayload(
-        pin,
-        taskStore.attachmentsDir(repo, pinId),
-      );
-
-      // Paste-only — fill the agent's input buffer with the title + body
-      // (and stage attachments) but leave submission to the user. They
-      // review the prompt in context, edit if needed, and hit Enter
-      // themselves.
-      const request: ComposerSubmitRequest = {
-        terminalId: target.terminalId,
-        ptyId: target.ptyId,
-        terminalType: target.terminalType,
-        worktreePath: target.worktreePath,
-        text,
-        images,
-        submit: false,
-      };
-
-      try {
-        const result = await submitComposerRequest(
-          request,
-          createDefaultComposerSubmitDeps(
-            process.platform as "darwin" | "win32" | "linux",
-            dataUrlToPngBuffer,
-            (ptyId: number, data: string) => {
-              ptyManager.write(ptyId, data);
-            },
-          ),
-        );
-
-        if (result.ok && handoffs && agentTerminal(target.terminalId)) {
-          const handoffEvent = pinDropEvent(pinId, `terminal:${target.terminalId}`);
-          const eventId = randomUUID();
-          recordHandoff(handoffEvent, eventId, [{ ref: `note:${pinId}`, kind: "node" }]);
-          handoffs.awaitPrompt(`terminal:${target.terminalId}`, eventId, text);
-        }
-
-        if (!result.ok) {
-          console.error("[Pin] Dispatch failed:", {
-            pinId,
-            terminalId: target.terminalId,
-            ptyId: target.ptyId,
-            terminalType: target.terminalType,
-            stage: result.stage,
-            code: result.code,
-            detail: result.detail ?? result.error,
-          });
-        }
-
-        return result;
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error("[Pin] Dispatch crashed:", {
-          pinId,
-          terminalId: target.terminalId,
-          detail,
-        });
-        return {
-          ok: false,
-          code: "internal-error" as const,
-          stage: "submit" as const,
-          error: detail,
-          detail,
-        };
-      }
-    },
-  );
+  registerTaskIpc({ handle: (channel, fn) => ipcMain.handle(channel, fn), allowed: isMainWindowSender, store: taskStore, runner: taskRunner });
 
   // Notifies a terminal that a browser tile has just been wired to it (see
   // src/canvas/ConnectionLayer.tsx's drag-to-connect +
   // src/actions/sceneConnectionActions.ts). Reuses the exact same
-  // composer-submit pipeline as pin:dispatch-to-terminal — real injected
-  // user-turn text, auto-submitted (unlike the pin flow, which pastes only)
-  // so the agent picks it up on its own without the user pressing Enter.
+  // composer-submit pipeline as the message box — real injected user-turn
+  // text, auto-submitted so the agent picks it up on its own without the user pressing Enter.
   // The waiting badge on an agent (src/canvas/ConnectionLayer.tsx): deliver
   // what is waiting now, or throw it away. Only the app's window, one
   // terminal at a time.
@@ -4284,7 +4126,7 @@ function setupIpc() {
         worktreePath: target.worktreePath,
         text: message,
         images: [],
-        // Paste-only, same convention as pin dispatch above: this is a
+        // Paste-only, as a drop is: this is a
         // notice the app decided to send, not something the user asked for,
         // so it must never spend the agent's turn on its own. It waits in
         // the input until the user actually wants it sent. Agent-to-agent
@@ -4445,14 +4287,14 @@ app.whenReady().then(async () => {
   const partitionReport = browserPartitionStore.start();
   renderDiagnostics.recordMainEvent("browser_partitions_reconciled", { ...partitionReport });
 
-  // Serve pin attachments and canvas background images from disk.
+  // Serve tasks' attachments and canvas background images from disk.
   // Path-traversal guard: resolved disk path must stay under one of these
   // roots. Renderer constructs URLs as tc-attachment://local/<abs-path>;
   // handler decodes pathname back to a real path and streams the file via
   // Electron's net.fetch.
-  const ATTACHMENTS_ROOT = path.join(TACIT_DIR, "pins");
+  const ATTACHMENT_ROOTS = [path.join(TACIT_DIR, "tasks")];
   const CANVAS_BACKGROUNDS_ROOT = path.join(TACIT_DIR, "canvas-backgrounds");
-  const LOCAL_MEDIA_ROOTS = [ATTACHMENTS_ROOT, CANVAS_BACKGROUNDS_ROOT];
+  const LOCAL_MEDIA_ROOTS = [...ATTACHMENT_ROOTS, CANVAS_BACKGROUNDS_ROOT];
   protocol.handle("tc-attachment", async (request) => {
     try {
       const url = new URL(request.url);

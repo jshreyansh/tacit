@@ -44,7 +44,8 @@ import {
   telemetrySaysBusy,
 } from "../../shared/agent-reply";
 import { useConnectionStore } from "../stores/connectionStore";
-import { usePinStore } from "../stores/pinStore";
+import { NOTE_MAX, noteById, setNoteText } from "../board/noteStore";
+import { useBoardStore } from "../stores/boardStore";
 import {
   appendToNoteBody,
   resolveNoteWriteTargets,
@@ -515,21 +516,21 @@ async function writeReplyToNotes(
   });
 
   for (const target of noteTargets) {
-    const pin = findPinById(target.id);
-    if (!pin) {
+    const note = noteById(target.id);
+    if (!note) {
       notify("warn", `The note this wire writes to is gone, so nothing was saved.`);
       continue;
     }
     const result = await appendToNote(target.id, sourceTitle, text, at);
     if (result.ok) {
-      notify("info", `Saved ${sourceTitle}'s reply to “${pin.title}”.`);
+      notify("info", `Saved ${sourceTitle}'s reply to “${note.title}”.`);
     } else if (result.reason === "too-long") {
       // `empty` and `duplicate` are ordinary and not the user's problem. A note
       // that has hit its ceiling is, because it means writes are being dropped
       // from here on and only the user can decide what to do about it.
-      notify("warn", `“${pin.title}” is full, so ${sourceTitle}'s reply wasn't added.`);
+      notify("warn", `“${note.title}” is full, so ${sourceTitle}'s reply wasn't added.`);
     } else if (result.reason === "failed") {
-      notify("warn", `Couldn't write ${sourceTitle}'s reply to “${pin.title}”: ${result.detail}`);
+      notify("warn", `Couldn't write ${sourceTitle}'s reply to “${note.title}”: ${result.detail}`);
     }
   }
 }
@@ -539,41 +540,26 @@ async function writeReplyToNotes(
  * delivery and send_to_connected; the caller decides what to tell the user.
  */
 export async function appendToNote(
-  pinId: string,
+  id: string,
   source: string,
   text: string,
   at: string = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
 ): Promise<{ ok: true } | { ok: false; reason: "gone" | "empty" | "duplicate" | "too-long" | "failed"; detail: string }> {
-  const pin = findPinById(pinId);
-  if (!pin) return { ok: false, reason: "gone", detail: "the note is gone" };
-  const appended = appendToNoteBody(pin.body, { source, at, text });
-  if (!appended.ok) {
+  const note = noteById(id);
+  if (!note) return { ok: false, reason: "gone", detail: "the note is gone" };
+  const appended = appendToNoteBody(note.text, { source, at, text });
+  if (!appended.ok || appended.body.length > NOTE_MAX) {
+    const reason = appended.ok ? ("too-long" as const) : appended.reason;
     const detail =
-      appended.reason === "too-long" ? `“${pin.title}” is full`
-      : appended.reason === "duplicate" ? "the note already ends with that text"
+      reason === "too-long" ? `“${note.title}” is full`
+      : reason === "duplicate" ? "the note already ends with that text"
       : "nothing to add";
-    return { ok: false, reason: appended.reason, detail };
+    return { ok: false, reason, detail };
   }
-  try {
-    const updated = await window.tacit?.pins?.update?.(pin.repo, pin.id, {
-      body: appended.body,
-    });
-    // The drawer's subscription only runs while the drawer is mounted, so the
-    // store is updated here rather than relying on the broadcast.
-    if (updated) usePinStore.getState().upsertPin(pin.repo, updated);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, reason: "failed", detail: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/** A note node is a pin; the store holds them per project, not by id. */
-function findPinById(pinId: string) {
-  for (const pins of Object.values(usePinStore.getState().pinsByProject)) {
-    const found = pins.find((pin) => pin.id === pinId);
-    if (found) return found;
-  }
-  return null;
+  // A step of its own, so ⌘Z takes back what the agent added.
+  useBoardStore.getState().checkpoint();
+  setNoteText(id, appended.body);
+  return { ok: true };
 }
 
 async function deliverForTerminal(

@@ -107,6 +107,8 @@ export interface SceneDocument {
   browserCards: Record<string, BrowserCardData>;
   /** Files from the workdesk's folders shown on its canvas. */
   fileTiles?: Record<string, FileTileData>;
+  /** Where this workdesk's canvas shows tasks and notes (recordPlaceStore). */
+  recordPlaces?: Record<string, { x: number; y: number; w?: number; h?: number }>;
   connections?: Record<string, ConnectionData>;
   annotations: AnnotationElement[];
   /**

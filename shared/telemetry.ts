@@ -115,6 +115,8 @@ export interface TerminalTelemetrySnapshot {
   last_meaningful_progress_at?: string;
   last_hook_error?: string;
   last_hook_error_details?: string;
+  /** The start of what the agent said as its last turn ended. Gone when the next one starts. */
+  last_reply?: string;
   first_user_prompt?: string;
   derived_status: TelemetryDerivedStatus;
 }

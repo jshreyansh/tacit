@@ -4,23 +4,21 @@
  * alike. What a press lands on, and what a box takes in.
  */
 import { bounds, inside, isBoxed } from "../board/boardModel";
-import { boardTargetLookup, tileRects } from "../board/boardTargets";
+import { CARD_PREFIX, boardTargetLookup, tileRects } from "../board/boardTargets";
 import { useBoardStore } from "../stores/boardStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useFileTileStore } from "../stores/fileTileStore";
-import { usePinStore } from "../stores/pinStore";
+import { useRecordPlaceStore } from "../stores/recordPlaceStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore, type SelectedItem } from "../stores/selectionStore";
 import type { BoardElement, BoardRect } from "../types/board";
-
-export const CARD_PREFIX = "browser:";
 
 export function itemKey(item: SelectedItem): string {
   switch (item.type) {
     case "terminal":
       return `tile:${item.terminalId}`;
-    case "pin":
-      return `tile:${item.pinId}`;
+    case "task":
+      return `tile:${item.taskId}`;
     case "file":
       return `tile:${item.tileId}`;
     case "card":
@@ -54,21 +52,22 @@ export function isInGroup(item: SelectedItem): boolean {
 /** A tile's React Flow node id, or a browser's `browser:<id>`; null for a drawing. */
 export function tileIdOf(item: SelectedItem): string | null {
   if (item.type === "terminal") return item.terminalId;
-  if (item.type === "pin") return item.pinId;
+  if (item.type === "task") return item.taskId;
   if (item.type === "file") return item.tileId;
   if (item.type === "card") return item.cardId;
   return null;
 }
 
-/** The thing behind a React Flow node's id. */
+/** The thing behind a tile's id: a React Flow node's, or `browser:<id>`. */
 export function itemForTile(id: string): SelectedItem | null {
+  if (id.startsWith(CARD_PREFIX)) return useBrowserCardStore.getState().cards[id.slice(CARD_PREFIX.length)] ? { type: "card", cardId: id } : null;
   for (const p of useProjectStore.getState().projects) {
     for (const w of p.worktrees) {
       if (w.terminals.some((t) => t.id === id)) return { type: "terminal", projectId: p.id, worktreeId: w.id, terminalId: id };
     }
   }
   if (useFileTileStore.getState().tiles[id]) return { type: "file", tileId: id };
-  for (const pins of Object.values(usePinStore.getState().pinsByProject)) if (pins.some((p) => p.id === id)) return { type: "pin", pinId: id };
+  if (useRecordPlaceStore.getState().places[id]) return { type: "task", taskId: id };
   return null;
 }
 
@@ -123,9 +122,6 @@ export function itemsInBox(box: BoardRect): SelectedItem[] {
   for (const tile of tileRects()) {
     const item = touches(box, tile) ? itemForTile(tile.id) : null;
     if (item) items.push(item);
-  }
-  for (const card of Object.values(useBrowserCardStore.getState().cards)) {
-    if (touches(box, card)) items.push({ type: "card", cardId: `${CARD_PREFIX}${card.id}` });
   }
   const elements = useBoardStore.getState().elements;
   const lookup = boardTargetLookup(elements);

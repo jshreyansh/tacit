@@ -10,7 +10,9 @@ import { useT } from "../i18n/useT";
 import type { BoardElement } from "../types/board";
 import { BOARD_COLORS, BOARD_COLOR_NAMES, cssColor } from "./boardModel";
 import { BoardIcon, type BoardIconName } from "./BoardIcons";
-import { duplicate, pickTool, setStyleProp, stickyToTask } from "./boardActions";
+import { duplicate, pickTool, setStyleProp } from "./boardActions";
+import { openNote } from "./notes";
+import { startTaskFromNote } from "../tasks/noteTask";
 
 /**
  * The board's chrome (docs/architecture/workdesk-board.md, "How it feels"):
@@ -157,10 +159,15 @@ function OptionsBody({ ctx }: { ctx: Ctx }) {
   const actions = ctx.kind !== "tool" && (
     <div className="tc-bd-actions">
       {el?.type === "sticky" && (
-        <button type="button" className="tc-bd-action" onClick={() => void stickyToTask(el.id)}>
-          <BoardIcon name="task" size={14} />
-          {t.board_make_task}
-        </button>
+        <>
+          <button type="button" className="tc-bd-action" title={t.tb.fromNote} onClick={() => startTaskFromNote(el.id)}>
+            <BoardIcon name="task" size={14} />
+            {t.tb.noteStart}
+          </button>
+          <button type="button" className="tc-bd-action" title={t.tb.noteOpen} onClick={() => openNote(el.id)}>
+            {t.tb.open}
+          </button>
+        </>
       )}
       <span className="tc-bd-actions-end">
         {!(el && (el.type === "frame" || el.type === "arrow")) && (

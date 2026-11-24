@@ -21,7 +21,7 @@ import {
 } from "./connection-types";
 
 /** What a node is, as far as wires care. Finer than the endpoint kind:
- * a terminal is an agent or a shell, a pin is a note or a task. */
+ * a terminal is an agent or a shell, a note end is a note or a task. */
 export type NodeRole = "agent" | "shell" | "browser" | "note" | "task";
 
 /** Something a node lets whoever is wired to it do. */
@@ -131,15 +131,15 @@ export function nodeContract(role: NodeRole): NodeContract {
 /**
  * The role of a node from what the canvas knows about it. A terminal is an
  * agent when its type is an agent CLI Tacit knows; anything else running in
- * a terminal is a shell. A pin without a kind is a note when it sits on the
- * canvas, as `pinKind` decides.
+ * a terminal is a shell. The "note" kind of end is a
+ * note or a task's tile.
  */
 export function nodeRoleOf(
   kind: ConnectionEndpointKind,
-  detail: { terminalType?: string | null; pinKind?: "task" | "note" | null } = {},
+  detail: { terminalType?: string | null; noteRole?: "task" | "note" | null } = {},
 ): NodeRole {
   if (kind === "browser") return "browser";
-  if (kind === "note") return detail.pinKind === "task" ? "task" : "note";
+  if (kind === "note") return detail.noteRole === "task" ? "task" : "note";
   return findAgentAdapter(detail.terminalType ?? undefined) ? "agent" : "shell";
 }
 

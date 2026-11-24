@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { useCanvasStore } from "./canvasStore";
-import { usePinStore } from "./pinStore";
 import { getLeftPanelInset, getCanvasRightInset } from "../canvas/viewportBounds";
 
 const TARGET_AREA = 640 * 480;
@@ -72,16 +71,6 @@ useCanvasStore.subscribe((state, prev) => {
   if (
     state.rightPanelCollapsed !== prev.rightPanelCollapsed ||
     state.rightPanelWidth !== prev.rightPanelWidth
-  ) {
-    recomputeTileDimensions();
-  }
-});
-
-usePinStore.subscribe((state, prev) => {
-  if (!trackSidebar) return;
-  if (
-    (state.openProjectPath !== null) !==
-    (prev.openProjectPath !== null)
   ) {
     recomputeTileDimensions();
   }

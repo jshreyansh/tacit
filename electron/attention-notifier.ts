@@ -8,7 +8,7 @@ import {
   type AttentionPrefs,
   type AttentionTarget,
 } from "../shared/attention";
-import { pinKind, type Pin } from "../shared/pin";
+import type { Task } from "../shared/task";
 import { maskSecrets } from "../shared/secret-mask";
 import type { NodeEventKind } from "./node-events";
 
@@ -69,8 +69,6 @@ export class AttentionNotifier {
   private readonly toasted = new Map<string, Set<AttentionKind>>();
   /** Terminals whose current turn is one the person typed. */
   private readonly typedTurns = new Set<string>();
-  /** The question each task was last notified for, by `repo\0id`. */
-  private readonly taskAsks = new Map<string, string>();
   private readonly pending = new Map<string, { notice: AttentionNotice; at: number }>();
   private badge = 0;
 
@@ -129,31 +127,22 @@ export class AttentionNotifier {
     this.typedTurns.add(terminalId);
   }
 
-  /** A task was made or changed (the pin store's events). */
-  observeTask(repo: string, pin: unknown): void {
-    if (!pin || typeof pin !== "object") return;
-    const task = pin as Pin;
-    if (typeof task.id !== "string" || pinKind(task) !== "task") return;
-    const key = `${repo}\0${task.id}`;
-    if (task.status !== "needs_you" || !task.ask) {
-      this.taskAsks.delete(key);
-      return;
-    }
-    const askKey = `${task.ask.at}\0${task.ask.reason}`;
-    if (this.taskAsks.get(key) === askKey) return;
-    this.taskAsks.set(key, askKey);
+  /**
+   * A task changed: anything new waiting on the person is told once. A
+   * permission isn't, since its terminal's own notice says it.
+   */
+  observeTask(task: Task, before: Task | null): void {
     if (!this.prefs.needsYou) return;
-    this.issue({
-      kind: "needs_you",
-      surface: this.deps.isFocused() ? "toast" : "banner",
-      target: { kind: "task", repo, taskId: task.id },
-      detail: clean(task.title, TITLE_MAX),
-      question: clean(task.ask.reason, BODY_MAX),
-    });
-  }
-
-  taskRemoved(repo: string, id: string): void {
-    this.taskAsks.delete(`${repo}\0${id}`);
+    for (const request of task.requests) {
+      if (request.kind === "allow" || before?.requests.some((r) => r.id === request.id)) continue;
+      this.issue({
+        kind: "needs_you",
+        surface: this.deps.isFocused() ? "toast" : "banner",
+        target: { kind: "task", workdesk: task.workdesk, taskId: task.id },
+        detail: clean(`T-${task.n} ${task.title}`, TITLE_MAX),
+        question: clean(request.text, BODY_MAX),
+      });
+    }
   }
 
   /**

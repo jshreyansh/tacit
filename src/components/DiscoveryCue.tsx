@@ -11,7 +11,8 @@ import {
 import { useProjectStore } from "../stores/projectStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { openAllTasks } from "../actions/openSession";
-import { usePinStore } from "../stores/pinStore";
+import { useTasks } from "../tasks/taskStore";
+import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useSearchStore } from "../stores/searchStore";
 import { useCommandPaletteStore } from "../stores/commandPaletteStore";
 import { useStatusDigestStore } from "../stores/statusDigestStore";
@@ -138,21 +139,18 @@ function useSearchDiscoveryCue(): CueViewModel | null {
 function usePinningDiscoveryCue(): CueViewModel | null {
   const t = useT();
   const focused = useFocusedProjectSnapshot();
-  // Retire the cue once the user has any pin in any project — pinning is
-  // a concept, not a per-project tutorial. One pin proves discovery.
-  const totalPins = usePinStore((s) =>
-    Object.values(s.pinsByProject).reduce((sum, list) => sum + list.length, 0),
-  );
-  const drawerOpenFor = usePinStore((s) => s.openProjectPath);
+  // Retire the cue once the workdesk has a task: one proves discovery.
+  const totalTasks = useTasks().length;
+  const boardOpen = useCanvasPageStore((s) => s.page === "tasks");
   const seen = usePreferencesStore((s) => s.seenHints[CUE_ID_PINNING] === true);
   const markSeen = usePreferencesStore((s) => s.markHintSeen);
 
   if (seen) return null;
   if (!focused) return null;
   if (focused.terminalCount < PINNING_TRIGGER_THRESHOLD) return null;
-  if (totalPins > 0) return null;
-  // If the drawer is already open, the user has discovered it — silence.
-  if (drawerOpenFor === focused.path) return null;
+  if (totalTasks > 0) return null;
+  // If the board is already open, the user has discovered it — silence.
+  if (boardOpen) return null;
 
   return {
     id: CUE_ID_PINNING,
@@ -161,7 +159,6 @@ function usePinningDiscoveryCue(): CueViewModel | null {
     action: {
       label: t["discovery.pinning.action"],
       onClick: () => {
-        usePinStore.getState().openDrawer(focused.path);
         openAllTasks();
         markSeen(CUE_ID_PINNING);
       },

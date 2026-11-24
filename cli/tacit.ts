@@ -3,7 +3,6 @@ import https from "https";
 import fs from "fs";
 import path from "path";
 import { resolveTacitPortFile } from "../shared/tacit-instance";
-import { parsePinStatus, pinKind } from "../shared/pin";
 import { RECORD_USAGE, runRecordCommand } from "./record";
 
 const CONNECTION_TIMEOUT_MS = 10_000;
@@ -185,6 +184,130 @@ const args = process.argv.slice(2);
 const jsonFlag = args.includes("--json");
 const filteredArgs = args.filter((a) => a !== "--json");
 const [group, command, ...rest] = filteredArgs;
+
+/* ---------- tasks and notes ---------- */
+
+const flagOf = (rest: string[], flag: string): string | undefined => {
+  const i = rest.indexOf(flag);
+  return i >= 0 && i + 1 < rest.length ? rest[i + 1] : undefined;
+};
+const flagsOf = (rest: string[], flag: string): string[] => rest.flatMap((arg, i) => (arg === flag && i + 1 < rest.length ? [rest[i + 1]] : []));
+const stop = (message: string): never => {
+  console.error(message);
+  process.exit(1);
+};
+const COLUMN_LABEL: Record<string, string> = { later: "later", next: "next", working: "working", needs: "needs you", done: "done", dropped: "dropped" };
+const TASK_USAGE =
+  "Usage: tacit task <command>   (tacit pin works too)\n" +
+  "  task add --title <t> [--body <b>] [--done-when <line>]... [--part <p>]... [--later] [--kind build|bug|research|write] [--folder <path>] [--follow-up-of <id>] [--take]\n" +
+  "  task list [--column later|next|working|needs|done]\n" +
+  "  task show <id>\n" +
+  "In a terminal on the workdesk, as yourself:\n" +
+  "  task take <id> [--part <p>]\n" +
+  "  task part <id> <part> todo|doing|done   |   task part <id> --add <text>\n" +
+  "  task say <id> <text>\n" +
+  "  task ask <id> <question> [--option <answer>]... [--why <w>] [--meanwhile <m>]\n" +
+  "  task approve <id> <what you'd do> [--why <w>]\n" +
+  "  task suggest <id> [--title <t>] [--body <b>] [--done-when <line>]... [--leave-alone <l>]\n" +
+  "  task finish <id> --summary <s> [--checked <line>=<how>]... [--how <how you checked, with no lines>] [--unchecked <line>=<why>]... [--left <l>] [--unsure <u>] [--sensitive <s>] [--taste] [--check]\n" +
+  "  task going <id>                          (your turn ended, but something you started is still running)\n" +
+  "  task hand-over <id> --to <terminal> [--part <p>] [--note <n>]   (workdesk manager)";
+
+async function runTaskCommand(command: string | undefined, rest: string[]): Promise<void> {
+  const terminal = process.env.TACIT_TERMINAL_ID?.trim();
+  const id = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+  const words = rest[1] && !rest[1].startsWith("--") ? rest[1] : undefined;
+  const mine = (): string => `/terminal/${encodeURIComponent(terminal ?? stop("That works in a terminal on a Tacit workdesk."))}/tasks`;
+  const call = async (act: string, body: unknown) => request("POST", `${mine()}/${encodeURIComponent(id ?? stop(TASK_USAGE))}/${act}`, body);
+  const show = (result: any) => {
+    if (jsonFlag) console.log(JSON.stringify(result, null, 2));
+    else if (result.brief) console.log(result.brief);
+    else if (result.outcome) console.log(result.outcome);
+    else if (result.asked) console.log(result.note);
+    else if (result.task) console.log(line(result.task));
+    else console.log("Done.");
+  };
+  const line = (t: any) => `${t.name ?? `T-${t.n}`}  [${COLUMN_LABEL[t.column] ?? t.column}]  ${t.title}  (${t.id})`;
+  const pairs = (flag: string, checked: boolean) =>
+    flagsOf(rest, flag).map((v) => {
+      const at = v.indexOf("=");
+      return { line: at < 0 ? v : v.slice(0, at), checked, how: at < 0 ? undefined : v.slice(at + 1) };
+    });
+
+  if (command === "add") {
+    const title = flagOf(rest, "--title") ?? stop("--title is required");
+    const doneWhen = flagsOf(rest, "--done-when");
+    const parts = [...flagsOf(rest, "--part"), ...flagsOf(rest, "--step")];
+    const link = flagOf(rest, "--link");
+    const body = [flagOf(rest, "--body"), link].filter(Boolean).join("\n\n");
+    const folder = flagOf(rest, "--folder") ?? flagOf(rest, "--repo");
+    const common = { title, ...(body ? { body } : {}), parts, kind: flagOf(rest, "--kind"), priority: flagOf(rest, "--priority"), ...(folder ? { folder: path.resolve(folder) } : {}) };
+    show(
+      terminal
+        ? await request("POST", mine(), { ...common, done_when: doneWhen, leave_alone: flagOf(rest, "--leave-alone"), follow_up_of: flagOf(rest, "--follow-up-of"), take: rest.includes("--take") })
+        : await request("POST", "/board/tasks", { ...common, doneWhen, leaveAlone: flagOf(rest, "--leave-alone"), ...(rest.includes("--later") ? { wait: "later" } : {}) }),
+    );
+  } else if (command === "list") {
+    const wanted = flagOf(rest, "--column");
+    const result = await request("GET", terminal ? mine() : "/board/tasks");
+    const tasks = result.tasks.filter((t: any) => !wanted || t.column === wanted);
+    if (jsonFlag) console.log(JSON.stringify({ tasks }, null, 2));
+    else if (tasks.length === 0) console.log("No tasks.");
+    else for (const t of tasks) console.log(line(t));
+  } else if (command === "show" && id) {
+    const { task: t } = await request("GET", terminal ? `${mine()}/${encodeURIComponent(id)}` : `/board/tasks/${encodeURIComponent(id)}`);
+    if (jsonFlag) return console.log(JSON.stringify(t, null, 2));
+    console.log(line(t));
+    if (t.folder) console.log(`folder: ${t.folder}`);
+    if (t.body) console.log(`\n${t.body}`);
+    if (t.doneWhen?.length) console.log(`\nDone when:\n${t.doneWhen.map((l: any) => `  - ${l.text} [${l.id}]${l.proof ? `  (${l.proof.src === "saw" ? "Tacit saw" : l.proof.src === "says" ? "agent says" : "not checked"}: ${l.proof.text})` : ""}`).join("\n")}`);
+    if (t.leaveAlone) console.log(`\nLeave alone: ${t.leaveAlone}`);
+    if (t.parts?.length) console.log(`\nParts:\n${t.parts.map((p: any) => `  - [${p.state}] ${p.text} [${p.id}]`).join("\n")}`);
+    if (t.requests?.length) console.log(`\nWaiting on the user:\n${t.requests.map((r: any) => `  - ${r.text}`).join("\n")}`);
+    if (t.decisions?.length) console.log(`\nDecided:\n${t.decisions.map((d: any) => `  - ${d.text} ${d.answer}`).join("\n")}`);
+    if (t.report) console.log(`\nReport: ${t.report.summary}`);
+  } else if (command === "take") show(await call("take", { part: flagOf(rest, "--part") }));
+  else if (command === "part" || command === "step") {
+    const add = flagOf(rest, "--add");
+    show(await call("report", add ? { add_parts: [add] } : { part: words ?? stop(TASK_USAGE), state: rest[2] ?? flagOf(rest, "--status") ?? "done" }));
+  } else if (command === "say") show(await call("report", { say: words ?? stop(TASK_USAGE) }));
+  else if (command === "going") show(await call("report", { still_going: true }));
+  else if (command === "ask") {
+    const choices = flagOf(rest, "--choices")?.split(",").map((c) => c.trim()).filter(Boolean) ?? [];
+    show(await call("ask", { question: words ?? stop(TASK_USAGE), options: [...flagsOf(rest, "--option"), ...choices], why: flagOf(rest, "--why"), meanwhile: flagOf(rest, "--meanwhile") }));
+  } else if (command === "approve") show(await call("approve", { what: words ?? stop(TASK_USAGE), why: flagOf(rest, "--why"), meanwhile: flagOf(rest, "--meanwhile") }));
+  else if (command === "suggest") show(await call("suggest", { title: flagOf(rest, "--title"), body: flagOf(rest, "--body"), leave_alone: flagOf(rest, "--leave-alone"), ...(flagsOf(rest, "--done-when").length ? { done_when: flagsOf(rest, "--done-when") } : {}) }));
+  else if (command === "finish" || command === "done") {
+    show(
+      await call("finish", {
+        summary: flagOf(rest, "--summary") ?? stop("--summary is required: say what you did"),
+        lines: [...pairs("--checked", true), ...pairs("--unchecked", false)],
+        checked: flagOf(rest, "--how"),
+        left: flagOf(rest, "--left"), unsure: flagOf(rest, "--unsure"), sensitive: flagOf(rest, "--sensitive"),
+        taste: rest.includes("--taste"), wants_check: rest.includes("--check"),
+      }),
+    );
+  } else if (command === "hand-over") show(await call("hand-over", { terminal: flagOf(rest, "--to") ?? stop("--to <terminal> is required"), part: flagOf(rest, "--part"), note: flagOf(rest, "--note") }));
+  else console.log(TASK_USAGE);
+}
+
+async function runNoteCommand(command: string | undefined, rest: string[]): Promise<void> {
+  if (command === "add") {
+    const title = flagOf(rest, "--title");
+    const text = title ? [title, flagOf(rest, "--body")].filter(Boolean).join("\n\n") : rest.find((a) => !a.startsWith("--"));
+    const terminal = process.env.TACIT_TERMINAL_ID?.trim();
+    const { note } = await request("POST", "/board/notes", { text: text ?? stop('Usage: tacit note add "<text>"'), ...(terminal ? { by: terminal } : {}) });
+    console.log(jsonFlag ? JSON.stringify(note, null, 2) : `${note.id}  ${note.title}`);
+  } else if (command === "list") {
+    const { notes } = await request("GET", "/board/notes");
+    if (jsonFlag) console.log(JSON.stringify({ notes }, null, 2));
+    else if (notes.length === 0) console.log("No notes.");
+    else for (const n of notes) console.log(`${n.id}  ${n.title}`);
+  } else if (command === "show" && rest[0]) {
+    const { note } = await request("GET", `/board/notes/${encodeURIComponent(rest[0])}`);
+    console.log(jsonFlag ? JSON.stringify(note, null, 2) : note.text);
+  } else console.log('Usage: tacit note add "<text>"   |   tacit note list   |   tacit note show <id>');
+}
 
 async function main() {
   try {
@@ -699,256 +822,10 @@ async function main() {
       } else {
         console.log(result.diff);
       }
-    } else if (group === "task" || group === "pin" || group === "note") {
-      // `tacit task` is the task list the person sees; `tacit pin` is its
-      // old name and still works; `tacit note add` makes a note.
-      const pinOptionalFlag = (flag: string): string | undefined => {
-        const idx = rest.indexOf(flag);
-        return idx >= 0 && idx + 1 < rest.length ? rest[idx + 1] : undefined;
-      };
-      const allFlags = (flag: string): string[] =>
-        rest.flatMap((arg, i) => (arg === flag && i + 1 < rest.length ? [rest[i + 1]] : []));
-      // An agent's changes are its own in the task's history.
-      const actor = process.env.TACIT_TERMINAL_ID?.trim() ? `terminal:${process.env.TACIT_TERMINAL_ID.trim()}` : "user";
-      const STATUS_LABEL: Record<string, string> = { open: "to do", in_progress: "in progress", needs_you: "needs you", done: "done", dropped: "dropped" };
-      const STEP_MARK: Record<string, string> = { pending: "○", active: "▸", done: "✓" };
-      const progressOf = (t: any): string => {
-        const steps: any[] = t.steps ?? [];
-        return steps.length ? ` ${steps.filter((s) => s.status === "done").length}/${steps.length}` : "";
-      };
-      const pinRequireFlag = (flag: string): string => {
-        const value = pinOptionalFlag(flag);
-        if (!value) {
-          console.error(`${flag} is required`);
-          process.exit(1);
-        }
-        return value;
-      };
-      const resolveRepo = (): string => {
-        const explicit = pinOptionalFlag("--repo");
-        return path.resolve(explicit ?? process.cwd());
-      };
-      const pinNumberFlag = (flag: string): number | undefined => {
-        const value = pinOptionalFlag(flag);
-        if (value === undefined) return undefined;
-        const parsed = Number(value);
-        if (!Number.isFinite(parsed)) {
-          console.error(`${flag} must be a number`);
-          process.exit(1);
-        }
-        return parsed;
-      };
-
-      if (command === "add") {
-        const title = pinRequireFlag("--title");
-        const pinBody = pinOptionalFlag("--body");
-        const status = pinOptionalFlag("--status");
-        const linkUrl = pinOptionalFlag("--link");
-        const linkType = pinOptionalFlag("--link-type") ?? "url";
-        const links = linkUrl ? [{ type: linkType, url: linkUrl }] : undefined;
-        const kind = group === "note" ? "note" : (pinOptionalFlag("--kind") ?? "task");
-        const steps = allFlags("--step");
-        const result = await request("POST", "/pin/create", {
-          title,
-          repo: resolveRepo(),
-          kind,
-          body: pinBody,
-          status,
-          links,
-          ...(steps.length ? { steps } : {}),
-          actor,
-          x: pinNumberFlag("--x"),
-          y: pinNumberFlag("--y"),
-          w: pinNumberFlag("--w"),
-          h: pinNumberFlag("--h"),
-        });
-        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
-        else console.log(`${result.pin.id}  ${result.pin.title}`);
-      } else if (command === "list") {
-        const repo = resolveRepo();
-        const statusFilter = pinOptionalFlag("--status");
-        const wanted = statusFilter ? parsePinStatus(statusFilter) : null;
-        if (statusFilter && !wanted) {
-          console.error(`Unknown status: ${statusFilter} (todo, doing, needs-you, done, dropped)`);
-          process.exit(1);
-        }
-        const kindFilter = group === "note" ? "note" : group === "task" ? "task" : pinOptionalFlag("--kind");
-        const result = await request(
-          "GET",
-          `/pin/list?repo=${encodeURIComponent(repo)}`,
-        );
-        const pins = result.pins.filter(
-          (t: any) => (!wanted || t.status === wanted) && (!kindFilter || pinKind(t) === kindFilter),
-        );
-        if (jsonFlag) {
-          console.log(JSON.stringify({ pins }, null, 2));
-          return;
-        }
-        if (pins.length === 0) {
-          console.log(group === "note" ? "No notes." : "No tasks.");
-          return;
-        }
-        for (const t of pins) {
-          const linkSuffix = t.links?.length ? `  [${t.links.length} link]` : "";
-          const label = pinKind(t) === "note" ? "note" : `${STATUS_LABEL[t.status] ?? t.status}${progressOf(t)}`;
-          console.log(`${t.id}  [${label}]  ${t.title}${linkSuffix}`);
-        }
-      } else if (command === "show" && rest[0]) {
-        const id = rest[0];
-        const repo = resolveRepo();
-        const result = await request(
-          "GET",
-          `/pin/${encodeURIComponent(id)}?repo=${encodeURIComponent(repo)}`,
-        );
-        if (jsonFlag) {
-          console.log(JSON.stringify(result, null, 2));
-          return;
-        }
-        const t = result.pin;
-        console.log(`id:      ${t.id}`);
-        console.log(`kind:    ${pinKind(t)}`);
-        console.log(`title:   ${t.title}`);
-        if (pinKind(t) === "task") console.log(`status:  ${STATUS_LABEL[t.status] ?? t.status}${progressOf(t)}`);
-        if (t.owners?.length) console.log(`owners:  ${t.owners.join(", ")}`);
-        if (t.ask) console.log(`asks:    ${t.ask.reason}${t.ask.choices?.length ? `  (${t.ask.choices.join(" / ")})` : ""}`);
-        console.log(`created: ${t.created}`);
-        console.log(`updated: ${t.updated}`);
-        if (t.steps?.length) {
-          console.log(`steps:`);
-          t.steps.forEach((s: any, i: number) => console.log(`  ${i + 1}. ${STEP_MARK[s.status] ?? "○"} ${s.text}`));
-        }
-        if (t.links?.length) {
-          console.log(`links:`);
-          for (const l of t.links) {
-            console.log(`  - ${l.type}: ${l.url}`);
-          }
-        }
-        if (t.body) {
-          console.log("");
-          console.log(t.body);
-        }
-      } else if (command === "render" && rest[0]) {
-        const id = rest[0];
-        const repo = resolveRepo();
-        const payload: Record<string, unknown> = { repo };
-        const out = pinOptionalFlag("--out");
-        if (out !== undefined) payload.outputPath = path.resolve(out);
-        const width = pinNumberFlag("--width");
-        if (width !== undefined) payload.width = width;
-        const height = pinNumberFlag("--height");
-        if (height !== undefined) payload.height = height;
-        const waitMs = pinNumberFlag("--wait-ms");
-        if (waitMs !== undefined) payload.waitMs = waitMs;
-        if (rest.includes("--full-page")) payload.fullPage = true;
-
-        const result = await request(
-          "POST",
-          `/pin/${encodeURIComponent(id)}/render`,
-          payload,
-        );
-        if (jsonFlag) {
-          console.log(JSON.stringify(result, null, 2));
-          return;
-        }
-        console.log(result.image_path);
-      } else if (command === "update" && rest[0]) {
-        const id = rest[0];
-        const repo = resolveRepo();
-        const payload: Record<string, unknown> = { repo, actor };
-        const newKind = pinOptionalFlag("--kind");
-        if (newKind !== undefined) payload.kind = newKind;
-        const newTitle = pinOptionalFlag("--title");
-        if (newTitle !== undefined) payload.title = newTitle;
-        const newStatus = pinOptionalFlag("--status");
-        if (newStatus !== undefined) payload.status = newStatus;
-        const newBody = pinOptionalFlag("--body");
-        if (newBody !== undefined) payload.body = newBody;
-        const newX = pinNumberFlag("--x");
-        if (newX !== undefined) payload.x = newX;
-        const newY = pinNumberFlag("--y");
-        if (newY !== undefined) payload.y = newY;
-        const newW = pinNumberFlag("--w");
-        if (newW !== undefined) payload.w = newW;
-        const newH = pinNumberFlag("--h");
-        if (newH !== undefined) payload.h = newH;
-        const result = await request(
-          "PUT",
-          `/pin/${encodeURIComponent(id)}`,
-          payload,
-        );
-        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
-        else console.log(`Updated ${result.pin.id}`);
-      } else if ((command === "step" || command === "ask" || command === "assign" || command === "done") && rest[0]) {
-        // The task changes agents make most: a step on, a question for the
-        // person, who's on it, done.
-        const id = rest[0];
-        const repo = resolveRepo();
-        const current = (await request("GET", `/pin/${encodeURIComponent(id)}?repo=${encodeURIComponent(repo)}`)).pin;
-        const payload: Record<string, unknown> = { repo, actor };
-        if (command === "done") {
-          payload.status = "done";
-        } else if (command === "step") {
-          const steps: any[] = [...(current.steps ?? [])];
-          const add = pinOptionalFlag("--add");
-          if (add) {
-            steps.push({ text: add, status: "pending" });
-          } else {
-            const n = Number(rest[1]);
-            if (!Number.isInteger(n) || n < 1 || n > steps.length) {
-              console.error(`Step number 1-${steps.length || 0}, or --add "<text>"`);
-              process.exit(1);
-            }
-            const wantedStatus = (pinOptionalFlag("--status") ?? "done").toLowerCase();
-            const status = wantedStatus === "doing" || wantedStatus === "active" || wantedStatus === "in_progress" ? "active" : wantedStatus === "todo" || wantedStatus === "pending" ? "pending" : "done";
-            steps[n - 1] = { ...steps[n - 1], status };
-          }
-          payload.steps = steps;
-        } else if (command === "ask") {
-          const reason = rest[1];
-          if (!reason || reason.startsWith("--")) {
-            console.error('Usage: tacit task ask <id> "<question>" [--choices a,b]');
-            process.exit(1);
-          }
-          const choices = pinOptionalFlag("--choices")?.split(",").map((c) => c.trim()).filter(Boolean);
-          payload.ask = { reason, ...(choices?.length ? { choices } : {}), ...(process.env.TACIT_TERMINAL_ID ? { by: process.env.TACIT_TERMINAL_ID.trim() } : {}) };
-        } else {
-          const to = pinOptionalFlag("--to") ?? "me";
-          const owner = to === "me" ? process.env.TACIT_TERMINAL_ID?.trim() : to;
-          if (!owner) {
-            console.error("--to me works inside a Tacit terminal; else --to manager or a terminal id");
-            process.exit(1);
-          }
-          payload.owners = rest.includes("--remove")
-            ? (current.owners ?? []).filter((o: string) => o !== owner)
-            : [...new Set([...(current.owners ?? []), owner])];
-        }
-        const result = await request("PUT", `/pin/${encodeURIComponent(id)}`, payload);
-        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
-        else console.log(`${result.pin.id}  [${STATUS_LABEL[result.pin.status] ?? result.pin.status}${progressOf(result.pin)}]  ${result.pin.title}`);
-      } else if ((command === "rm" || command === "remove") && rest[0]) {
-        const id = rest[0];
-        const repo = resolveRepo();
-        const result = await request(
-          "DELETE",
-          `/pin/${encodeURIComponent(id)}?repo=${encodeURIComponent(repo)}`,
-        );
-        if (jsonFlag) console.log(JSON.stringify(result, null, 2));
-        else console.log(`Removed ${id}`);
-      } else {
-        console.log(
-          "Usage: tacit task <add|list|show|step|ask|assign|done|update|render|rm> [args]   (tacit pin works too; tacit note add makes a note)\n" +
-          "  task add --title <t> [--step <text>]... [--body <b>] [--status todo|doing|done] [--link <url>] [--link-type <type>] [--repo <path>]\n" +
-          "  task list [--status todo|doing|needs-you|done|dropped] [--repo <path>]\n" +
-          "  task show <id> [--repo <path>]\n" +
-          "  task step <id> <n> [--status todo|doing|done]   |   task step <id> --add <text>\n" +
-          "  task ask <id> <question> [--choices a,b]        (sets Needs you; the answer comes into this terminal)\n" +
-          "  task assign <id> [--to me|manager|<terminal-id>] [--remove]\n" +
-          "  task done <id>\n" +
-          "  task update <id> [--title <t>] [--status <s>] [--body <b>] [--kind task|note] [--x N] [--y N] [--w N] [--h N] [--repo <path>]\n" +
-          "  task render <id> [--repo <path>] [--out <png>] [--width N] [--height N] [--wait-ms N] [--full-page]\n" +
-          "  task rm <id> [--repo <path>]",
-        );
-      }
+    } else if (group === "note") {
+      await runNoteCommand(command, rest);
+    } else if (group === "task" || group === "pin") {
+      await runTaskCommand(command, rest);
     } else if (group === "browser") {
       const browserOptionalFlag = (flag: string): string | undefined => {
         const idx = rest.indexOf(flag);
@@ -1124,26 +1001,10 @@ async function main() {
         "  telemetry events --terminal <id>            List terminal telemetry events",
       );
       console.log("  diff <worktree-path> [--summary]            Get git diff");
-      console.log(
-        "  task add --title <t> [--step <s>]... [--body <b>]  Record a task (pin works too)",
-      );
-      console.log(
-        "  task list [--status todo|doing|needs-you|done]   List tasks for cwd repo",
-      );
-      console.log(
-        "  task show <id>                             Show a task: status, steps, owners",
-      );
-      console.log(
-        "  task step <id> <n> [--status doing|done]   Move a step on (or --add <text>)",
-        "  task ask <id> <question> [--choices a,b]   Ask the person (sets Needs you)",
-        "  task render <id>                           Render a task's HTML/Markdown to PNG",
-      );
-      console.log(
-        "  task update <id> [--title|--status|--body] Edit a task",
-      );
-      console.log(
-        "  task rm <id>                               Delete a task",
-      );
+      console.log("  task add --title <t> [--body <b>] [--done-when <l>]...  Put a task on the workdesk's board");
+      console.log("  task list | show <id>                      Read the board");
+      console.log("  task take|part|say|ask|approve|finish <id> Work on one, from a terminal on the workdesk");
+      console.log('  note add "<text>" | list | show <id>       Notes on the canvas');
       console.log(
         "  browser add <url> [--x N] [--y N]          Add a browser tile to the canvas",
       );

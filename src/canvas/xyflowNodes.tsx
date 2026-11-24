@@ -12,7 +12,7 @@ import {
 } from "../terminal/terminalRuntimeStore";
 import { panToTerminal } from "../utils/panToTerminal";
 import { type TerminalFlowNode, type CanvasFlowNode } from "./nodeProjection";
-import { PinNode } from "./PinNode";
+import { TaskNode } from "./TaskNode";
 import { FileTileNode } from "./FileTileNode";
 import { TileResizer } from "./TileResizer";
 import { TileFarLabel, TileMoveSurface, useZoomedOut } from "./TileFarChrome";
@@ -261,9 +261,9 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
-  pin: PinNode,
+  task: TaskNode,
   file: FileTileNode,
 } satisfies NodeTypes;
 
 export type { CanvasFlowNode };
-export type { TerminalNodeData, PinNodeData } from "./nodeProjection";
+export type { TerminalNodeData, TaskNodeData } from "./nodeProjection";

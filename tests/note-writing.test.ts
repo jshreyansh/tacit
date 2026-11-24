@@ -9,13 +9,13 @@ import {
 const entry = (text: string, source = "Claude Code", at = "3 Sep, 18:22") =>
   ({ source, at, text });
 
-test("the first write into an empty note carries no leading rule", () => {
+test("the first write into an empty note starts the note", () => {
   const result = appendToNoteBody("", entry("Ship the gate."));
   assert.equal(result.ok, true);
   // The separator divides entries; there is nothing yet to divide it from.
   assert.equal(
     result.ok && result.body,
-    "**Claude Code** · 3 Sep, 18:22\n\nShip the gate.\n",
+    "Claude Code · 3 Sep, 18:22\nShip the gate.",
   );
 });
 
@@ -29,7 +29,7 @@ test("a later write is separated from what was already there", () => {
   assert.equal(second.ok, true);
   assert.equal(
     second.ok && second.body,
-    "**Claude Code** · 3 Sep, 18:22\n\nOne.\n\n---\n\n**Codex** · 3 Sep, 18:40\n\nTwo.\n",
+    "Claude Code · 3 Sep, 18:22\nOne.\n\nCodex · 3 Sep, 18:40\nTwo.",
   );
 });
 
@@ -37,7 +37,7 @@ test("the user's own writing is preserved above the first entry", () => {
   const result = appendToNoteBody("My own notes on the release.", entry("Done."));
   assert.equal(result.ok, true);
   // Appending, never rewriting: the note belongs to the user.
-  assert.match(result.ok ? result.body : "", /^My own notes on the release\.\n\n---\n\n/);
+  assert.match(result.ok ? result.body : "", /^My own notes on the release\.\n\nClaude Code · /);
 });
 
 test("the same answer arriving twice in a row is written once", () => {

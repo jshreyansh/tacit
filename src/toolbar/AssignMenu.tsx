@@ -4,8 +4,8 @@ import { managerCandidates, seatManager, startManager } from "../actions/manager
 import { useT } from "../i18n/useT";
 import { useAgentAvailabilityStore } from "../stores/agentAvailabilityStore";
 import { useProjectStore } from "../stores/projectStore";
-import type { TerminalType } from "../types";
-import { agentIcon } from "./agentIcons";
+import { AgentOption, NewAgentTiles, PickerHeading, arrowKeys } from "../agents/AgentPicker";
+import { agentNames, agentsIn } from "../tasks/agentNames";
 
 export const MANAGER_AGENTS = listAgentAdapters().filter((adapter) => !adapter.retired);
 
@@ -27,55 +27,37 @@ export function AssignMenu({ managerId, onPicked }: { managerId: string | null; 
   const t = useT();
   const projects = useProjectStore((s) => s.projects);
   const running = useMemo(() => managerCandidates(projects, managerId), [projects, managerId]);
-  const missing = useMissingAgents();
+  const names = useMemo(() => agentNames(agentsIn(projects)), [projects]);
 
   return (
-    <div role="menu" aria-label={t.project_chat_assign}>
+    <div role="menu" aria-label={t.project_chat_assign} onKeyDown={arrowKeys}>
       {running.length > 0 && (
         <>
-          <div className="tc-eyebrow px-2.5 pb-1 pt-2">{t.assign_running}</div>
+          <PickerHeading>{t.assign_running}</PickerHeading>
           {running.map((c) => (
-            <button
+            <AgentOption
               key={c.id}
-              type="button"
               role="menuitem"
-              className="tc-menu-option"
-              onClick={() => {
+              type={c.type}
+              name={names.get(c.id) ?? MANAGER_AGENTS.find((a) => a.id === c.type)?.displayName ?? c.type}
+              detail={`${c.where} · ${t.assign_keeps_chat}`}
+              onPick={() => {
                 seatManager(c.id);
                 onPicked?.();
               }}
-            >
-              <img src={agentIcon(c.type)} alt="" className="h-4 w-4 shrink-0 object-contain" />
-              <span className="min-w-0 flex-1 truncate">{MANAGER_AGENTS.find((a) => a.id === c.type)?.displayName ?? c.type}</span>
-              <span className="tc-menu-option-detail shrink-0 truncate">
-                {c.where} · {t.assign_keeps_chat}
-              </span>
-            </button>
+            />
           ))}
+          <div className="tc-ap-rule" />
         </>
       )}
-      <div className="tc-eyebrow px-2.5 pb-1 pt-2">{t.assign_new}</div>
-      {MANAGER_AGENTS.map(({ id, displayName }) => {
-        const reason = missing(id);
-        return (
-          <button
-            key={id}
-            type="button"
-            role="menuitem"
-            className={`tc-menu-option${reason !== null ? " opacity-50" : ""}`}
-            aria-disabled={reason !== null || undefined}
-            title={reason || undefined}
-            onClick={() => {
-              if (reason !== null) return;
-              if (startManager(id as TerminalType)) onPicked?.();
-            }}
-          >
-            <img src={agentIcon(id)} alt="" className="h-4 w-4 shrink-0 object-contain" />
-            <span className="min-w-0 flex-1 truncate">{displayName}</span>
-            {reason !== null && <span className="tc-menu-option-detail shrink-0">{t.agent_not_installed}</span>}
-          </button>
-        );
-      })}
+      <PickerHeading>{t.assign_new}</PickerHeading>
+      <NewAgentTiles
+        role="menuitem"
+        actionLabel={t.tb.newAgent}
+        onPick={(entry) => {
+          if (entry.terminalType && startManager(entry.terminalType)) onPicked?.();
+        }}
+      />
     </div>
   );
 }

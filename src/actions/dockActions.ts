@@ -3,7 +3,8 @@ import { useProjectStore } from "../stores/projectStore";
 import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { createTerminalInScene } from "./terminalSceneActions";
 import { addBrowserCardToScene } from "./sceneCardActions";
-import { createNoteInScene, createTaskInScene } from "./scenePinActions";
+import { placeSticky } from "../board/boardActions";
+import { newTask } from "../tasks/taskActions";
 import type { TerminalType } from "../types";
 import { openNewAgentAsSet } from "./managerChatMode";
 
@@ -64,20 +65,13 @@ export function addBrowser(identityId?: string): string {
   return addBrowserCardToScene(visibleCanvasCenter(), undefined, "user", identityId);
 }
 
-/** Adds a task to the canvas; resolves to its id, or null with no project open. */
-export function addTask(): Promise<string | null> {
-  const { focusedProjectId, projects } = useProjectStore.getState();
-  const project =
-    projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-  if (!project) return Promise.resolve(null);
-  return createTaskInScene(project.path, visibleCanvasCenter()).then((pin) => pin.id);
+/** A new task, to write; it goes on the canvas only if you put it there. */
+export function addTask(): null {
+  newTask();
+  return null;
 }
 
-/** Adds a note to the canvas; resolves to its id, or null with no project open. */
-export function addNote(): Promise<string | null> {
-  const { focusedProjectId, projects } = useProjectStore.getState();
-  const project =
-    projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-  if (!project) return Promise.resolve(null);
-  return createNoteInScene(project.path, visibleCanvasCenter()).then((pin) => pin.id);
+/** Adds a note to the canvas, ready to type in; its id. */
+export function addNote(): string {
+  return placeSticky(visibleCanvasCenter());
 }

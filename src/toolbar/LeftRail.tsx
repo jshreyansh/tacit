@@ -5,7 +5,7 @@ import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
-import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
+import { useNeedsYouOnOtherWorkdesks } from "../tasks/taskStore";
 import { IconChat } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";

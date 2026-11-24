@@ -9,11 +9,9 @@
  */
 import { getTranslations } from "../i18n/useT";
 import { insideThisWorkdesk, showFilesOnCanvas } from "../files/fileTileActions";
-import { useFileTileStore } from "../stores/fileTileStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
 import type { Point } from "./boardModel";
-import { tileDropped } from "./boardActions";
 
 
 function warn(message: string) {
@@ -77,8 +75,7 @@ async function fileInWorkdesk(file: File, folder: string | null): Promise<{ path
 }
 
 /**
- * Show files as tiles, from `at` (canvas units) or in the middle of the
- * view. A tile let go inside a board section joins it.
+ * Show files as tiles, from `at` (canvas units) or in the middle of the view.
  */
 export async function placeMediaFiles(files: readonly File[], at?: Point | null): Promise<void> {
   const folder = homeFolder();
@@ -100,11 +97,6 @@ export async function placeMediaFiles(files: readonly File[], at?: Point | null)
       label: t.ctx_reveal(window.tacit.app.platform),
       run: () => void window.tacit.fs.reveal(saved[saved.length - 1]),
     });
-  }
-  const tiles = Object.values(useFileTileStore.getState().tiles);
-  for (const p of paths) {
-    const tile = tiles.find((tt) => tt.path === p);
-    if (tile) tileDropped(tile.id, tile);
   }
 }
 

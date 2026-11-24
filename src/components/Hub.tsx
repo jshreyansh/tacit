@@ -19,10 +19,10 @@ import { PanelCollapseButton } from "./PanelCollapseButton";
 import { StatusChip } from "./ui/parts";
 import { agentIcon } from "../toolbar/agentIcons";
 import { useProjectStore } from "../stores/projectStore";
-import { usePinStore } from "../stores/pinStore";
+import { taskTry, useTasks } from "../tasks/taskStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
-import { useNeedsYouOnOtherWorkdesks } from "../tasks/useTasksNeedingYou";
+import { useNeedsYouOnOtherWorkdesks } from "../tasks/taskStore";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import {
@@ -463,7 +463,7 @@ export function Hub() {
   const projects = useProjectStore((s) => s.projects);
   const focusedProjectId = useProjectStore((s) => s.focusedProjectId);
   const runtimeMap = useTerminalRuntimeStateStore((s) => s.terminals);
-  const terminalPinMap = usePinStore((s) => s.terminalPinMap);
+  const tasks = useTasks();
   const seenHints = usePreferencesStore((s) => s.seenHints);
   const activityHeatmapEnabled = usePreferencesStore(
     (s) => s.activityHeatmapEnabled,
@@ -590,14 +590,13 @@ export function Hub() {
       slot: ResolvedTerminalSlot;
       pinTitle: string;
     }> = [];
-    for (const [terminalId, assignment] of Object.entries(terminalPinMap)) {
-      const slot = terminalIndex.get(terminalId);
-      if (!slot) continue;
-      rows.push({ slot, pinTitle: assignment.title });
+    for (const [terminalId, slot] of terminalIndex) {
+      const task = tasks.find((x) => !x.closed && taskTry(x, terminalId));
+      if (task) rows.push({ slot, pinTitle: `T-${task.n} ${task.title}` });
     }
     rows.sort((a, b) => a.pinTitle.localeCompare(b.pinTitle));
     return rows;
-  }, [terminalPinMap, terminalIndex]);
+  }, [tasks, terminalIndex]);
 
   const capabilityRows = useMemo(() => {
     void seenHints;

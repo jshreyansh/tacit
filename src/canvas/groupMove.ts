@@ -7,33 +7,24 @@
  * (XyFlowCanvas) and a browser's bar (BrowserCard). Each says how far its own
  * thing has moved; the rest follow by the same amount.
  */
-import { updatePinInScene } from "../actions/scenePinActions";
 import { updateBrowserCardInScene } from "../actions/sceneCardActions";
 import { contentsOf, regroup, translate } from "../board/boardModel";
-import { boardTargetLookup, tileRects } from "../board/boardTargets";
-import { tileDropped } from "../board/boardActions";
+import { CARD_PREFIX, boardTargetLookup, tileRects } from "../board/boardTargets";
+import { tileDropped } from "../board/boardMembership";
 import { registerTilePlaces, useBoardStore, type TilePlaces } from "../stores/boardStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useFileTileStore } from "../stores/fileTileStore";
-import { usePinStore } from "../stores/pinStore";
 import { useProjectStore } from "../stores/projectStore";
+import { useRecordPlaceStore } from "../stores/recordPlaceStore";
 import type { SelectedItem } from "../stores/selectionStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import type { BoardElement } from "../types/board";
-import { CARD_PREFIX, itemForTile, tileIdOf } from "./canvasSelection";
+import { itemForTile, tileIdOf } from "./canvasSelection";
 import { resolveCollisionsDetailed } from "./collisionResolver";
 
 type Place = { x: number; y: number };
 
 /* ---------- where tiles are, and putting them somewhere ---------- */
-
-function pinById(id: string) {
-  for (const pins of Object.values(usePinStore.getState().pinsByProject)) {
-    const pin = pins.find((p) => p.id === id);
-    if (pin) return pin;
-  }
-  return null;
-}
 
 /** Where a tile is, by its React Flow node id, or `browser:<id>`. */
 function placeOf(id: string): Place | null {
@@ -51,8 +42,8 @@ function placeOf(id: string): Place | null {
     const tile = useFileTileStore.getState().tiles[id];
     return { x: tile.x, y: tile.y };
   }
-  const pin = item?.type === "pin" ? pinById(id) : null;
-  return pin && pin.x != null && pin.y != null ? { x: pin.x, y: pin.y } : null;
+  const at = item?.type === "task" ? useRecordPlaceStore.getState().places[id] : null;
+  return at ? { x: at.x, y: at.y } : null;
 }
 
 /** Put a tile somewhere, and save it there. */
@@ -64,13 +55,8 @@ export function placeTile(id: string, at: Place): void {
   const item = itemForTile(id);
   if (item?.type === "terminal") useProjectStore.getState().updateTerminalPosition(item.projectId, item.worktreeId, id, at.x, at.y);
   else if (item?.type === "file") useFileTileStore.getState().update(id, at);
-  else if (item?.type === "pin") {
-    const pin = pinById(id);
-    if (!pin) return;
-    // Here at once, and saved by main: otherwise it jumps back until the save returns.
-    usePinStore.getState().upsertPin(pin.repo, { ...pin, ...at });
-    updatePinInScene(pin.repo, id, at);
-  }
+  // This workdesk's place for it, saved with the workdesk.
+  else if (item?.type === "task") useRecordPlaceStore.getState().place(id, at);
 }
 
 registerTilePlaces({
@@ -199,7 +185,7 @@ export function startGroupMove(items: readonly SelectedItem[], options: { live?:
       for (const id of moving.selectedTiles) {
         const size = sizes.get(id);
         const at = placeOf(id);
-        if (size && at && !heldTiles.has(id)) tileDropped(id, { x: at.x, y: at.y, w: size.w, h: size.h });
+        if (size && at && !heldTiles.has(id)) tileDropped(id, { x: at.x, y: at.y, w: size.w, h: size.h }, true);
       }
       pushAside(moving.tiles, tilesFrom);
       // Moved without a save per frame: the workdesk is saved once, now.

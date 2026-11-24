@@ -68,7 +68,7 @@ test("a plain folder is offered tasks and notes, without the multi-agent section
   const result = await setUpProjectInstructions(dir, "/nowhere");
   assert.equal(result.ok, true);
   const agents = read(dir, "AGENTS.md");
-  assert.match(agents, /## Tacit Pin System/);
+  assert.match(agents, /## Tacit Tasks/);
   assert.doesNotMatch(agents, /## Hydra/);
   assert.match(read(dir, "CLAUDE.md"), /^@AGENTS\.md$/m);
   const after = await checkProjectInstructions(dir, "/nowhere");
@@ -93,7 +93,7 @@ test("a git repo gets both sections, and the prompt says which files git tracks"
   await setUpProjectInstructions(dir, "/nowhere");
   const agents = read(dir, "AGENTS.md");
   assert.match(agents, /## Hydra Orchestration Toolkit/);
-  assert.match(agents, /## Tacit Pin System/);
+  assert.match(agents, /## Tacit Tasks/);
   assert.match(read(dir, "CLAUDE.md"), /^# Team rules\n\n## Shared Agent Instructions[\s\S]*^@AGENTS\.md$/m);
 });
 
@@ -116,9 +116,9 @@ test("a plain folder an older Tacit gave the multi-agent section loses it on upd
   assert.equal(result.ok, true);
   const agents = read(dir, "AGENTS.md");
   assert.doesNotMatch(agents, /Hydra/);
-  assert.match(agents, /^## Tacit Pin System/);
+  assert.match(agents, /^## Tacit Tasks/);
   const claude = read(dir, "CLAUDE.md");
-  assert.doesNotMatch(claude, /Hydra|Tacit Pin System/);
+  assert.doesNotMatch(claude, /Hydra|Tacit Pin System|Tacit Tasks/);
   assert.match(claude, /^# My notes\n\nBe brief\.\n\n## Shared Agent Instructions[\s\S]*^@AGENTS\.md$/m);
 
   const after = await checkProjectInstructions(dir, "/nowhere");

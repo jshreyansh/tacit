@@ -20,11 +20,9 @@ import { createdTaskId, memoryTool, spawnedTerminalId, taskTool, toolRunSummary,
 import { currentFolderPath, openFolderTool, workdeskMemoryTool } from "../../actions/folderTools";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { askedView, isAskedTool, type AskedView } from "./askedModel";
-import { usePinStore } from "../../stores/pinStore";
-import { openPinFull } from "../../tasks/TasksView";
-import { parseAnswerMessage } from "../../tasks/taskModel";
-import { parsePinStatus } from "../../../shared/pin";
-import { statusLabel } from "../../tasks/TaskParts";
+import { openTask } from "../../tasks/taskActions";
+import { useTaskStore } from "../../tasks/taskStore";
+import { parseAnswerMessage } from "../../tasks/taskWords";
 import { findTerminal } from "../../actions/terminalLookup";
 import { linkNodeIds, NODE_CHIP_HREF, type NodeDescription } from "../sessionReaderModel";
 import { todoPlan } from "../../../shared/chat-stream-claude";
@@ -233,10 +231,11 @@ function AskedCard({ props, view, t }: { props: ToolCardProps; view: AskedView; 
 
 /** Opens a task by id, wherever it is. */
 function openTaskById(id: string): void {
-  const pin = Object.values(usePinStore.getState().pinsByProject)
-    .flat()
-    .find((p) => p.id === id);
-  if (pin) openPinFull(pin);
+  // Named by its id, or as agents do: T-12.
+  const n = /^t-?(\d+)$/i.exec(id);
+  const { tasks } = useTaskStore.getState();
+  const task = tasks[id] ?? (n ? Object.values(tasks).find((t) => t.workdesk === useCanvasRegistryStore.getState().activeCanvasId && t.n === Number(n[1])) : undefined);
+  if (task) openTask(task.id);
 }
 
 /**
@@ -289,20 +288,12 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
       </div>
     );
   }
-  const detail =
-    view.kind === "list"
-      ? null
-      : [
-          view.total > 0 ? t.chat_task_progress(view.done, view.total) : null,
-          view.status && parsePinStatus(view.status) ? statusLabel(parsePinStatus(view.status)!, t) : null,
-          view.notes ? t.chat_task_notes : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
+  const words = { list: t.chat_task_read, read: t.chat_task_read, update: t.chat_task_updated, take: t.tb.chatTook, finish: t.tb.chatFinished, suggest: t.tb.chatSuggested, hand: t.tb.chatHanded }[view.kind];
+  const detail = "text" in view ? view.text : null;
   return (
     <div className="my-0.5 flex items-center gap-1.5 py-0.5 text-[12px]">
       <span className="text-[var(--text-muted)]">{taskIcon}</span>
-      <span className="text-[var(--text-secondary)]">{view.kind === "list" ? t.chat_task_read : t.chat_task_updated}</span>
+      <span className="text-[var(--text-secondary)]">{words}</span>
       {detail && <span className="min-w-0 truncate text-[var(--text-muted)]">{detail}</span>}
       <span className="ml-auto shrink-0 pl-2"><StatusMark status={status} /></span>
     </div>

@@ -313,20 +313,25 @@ A small dot strip at the bottom-centre of the canvas shows which slots are fille
 
 ---
 
-## Pins — capturing deferred work
+## Tasks — the workdesk's board
 
-Pins are the persistent "I'll handle this later" store. Each pin has a title, a description, and an optional link (e.g. a GitHub issue). Pins survive restarts and are scoped per repo.
+Open **Tasks** in the navigator. One board for the whole workdesk: Later, Next, Working, Needs you, Done.
 
-The CLI is `tacit pin` (registered alongside `tacit` in Settings → CLI):
+- **New task**: only a name is needed. Type `#folder`, `!high` or `@agent` in it to set them.
+- **Hand it over**: drop the card on an agent, or use Hand over. A busy agent offers Queue or Interrupt.
+- **Needs you**: answer a question, approve, look at finished work, or see why an agent stopped.
+- **Notes** are stickies on the canvas. Open one as a page, or start a task from it.
+
+From a shell:
 
 ```bash
-tacit pin add --title "Fix the OAuth refresh edge case" --body "Token expires mid-request..."
-tacit pin add --title "Look at this issue" --link https://github.com/.../issues/42 --link-type github_issue
-tacit pin list
-tacit pin update <id> --status done
+tacit task add --title "Fix the OAuth refresh edge case" --body "Token expires mid-request..." --done-when "A refresh mid-request succeeds"
+tacit task list
+tacit task show T-12
+tacit note add "Launch story"
 ```
 
-Inside the app, the Pin drawer surfaces the same store with one-click status toggles. Drop pins whenever you notice something but don't want to derail what you're doing right now.
+In an agent's terminal on the workdesk, `tacit task take`, `ask`, `approve` and `finish` work on one.
 
 ---
 

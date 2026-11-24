@@ -2062,6 +2062,36 @@ test("reattaching a session replays its history without reporting old turns as n
   }
 });
 
+test("a turn the last process was stopped in isn't running when its session is opened again", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "telemetry-resume-"));
+  const sessionFile = path.join(dir, "s1.jsonl");
+  const tool = (at: string) => JSON.stringify({ type: "assistant", timestamp: at, message: { role: "assistant", stop_reason: "tool_use", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] } }) + "\n";
+  const started = Date.parse("2026-11-24T14:44:20.000Z");
+  const open = (at: string, ptyFirst: boolean) => {
+    fs.writeFileSync(sessionFile, tool(at));
+    const seen: string[] = [];
+    const service = new TelemetryService({ processPollIntervalMs: 0, now: () => started, onSnapshotChanged: (_id, snap) => seen.push(snap.turn_state) });
+    service.registerTerminal({ terminalId: "w", worktreePath: dir, provider: "claude" });
+    const pty = () => service.recordPtyCreated({ terminalId: "w", ptyId: 1 });
+    if (ptyFirst) pty();
+    service.attachSessionSource({ terminalId: "w", provider: "claude", sessionId: "s1", confidence: "strong", sessionFile });
+    if (!ptyFirst) pty();
+    const snap = service.getTerminalSnapshot("w")!;
+    service.dispose();
+    return { turn: snap.turn_state, tools: snap.active_tool_calls, seen };
+  };
+  try {
+    const before = open("2026-11-24T14:44:13.000Z", true);
+    assert.deepEqual([before.turn, before.tools], ["turn_aborted", 0]);
+    assert.ok(!before.seen.includes("tool_running"), "never shown as running");
+    assert.equal(open("2026-11-24T14:44:13.000Z", false).turn, "turn_aborted");
+    // One that's really going, in this process, still is.
+    assert.equal(open("2026-11-24T14:44:21.000Z", true).turn, "tool_pending");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a Codex turn that ends on an error is reported as errored, and the next turn starts clean", async () => {
   const { eventsForTransition } = await import("../electron/node-events.ts");
   const service = new TelemetryService({ processPollIntervalMs: 0 });

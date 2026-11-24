@@ -29,22 +29,26 @@ import type { UpdaterSnapshot } from "../../electron/updater-state";
 import type { BrowserObservationSummary } from "../../shared/browser-observation";
 import type { ManagerSessionRow, ManagerTenure } from "../../shared/manager-role";
 import type { AgentDetection } from "../../shared/agent-adapters";
-import type {
-  Pin,
-  PinLink,
-  PinStatus,
-  CreatePinInput,
-  UpdatePinInput,
-} from "../../shared/pin";
+import type { Task } from "../../shared/task";
 
-export type { Pin, PinLink, PinStatus, CreatePinInput, UpdatePinInput };
+export type { Task };
+export type { TaskResult } from "../../shared/task-ops";
+import type { TaskResult } from "../../shared/task-ops";
 
 type SessionTelemetryProvider = Exclude<TelemetryProvider, "unknown">;
 
-export type PinEvent =
-  | { type: "pin:created"; pin: Pin; repo: string }
-  | { type: "pin:updated"; pin: Pin; repo: string }
-  | { type: "pin:removed"; id: string; repo: string };
+export type TaskEvent = { type: "changed"; task: Task } | { type: "removed"; workdesk: string; id: string };
+
+export interface HandOverRequest {
+  workdesk: string;
+  id: string;
+  part?: string | null;
+  terminal: string;
+  how?: "queue" | "interrupt" | "launch";
+  as?: { name: string; worktree: string };
+  allowed?: string;
+  note?: string;
+}
 
 export * from "./scene";
 
@@ -159,7 +163,7 @@ export interface ComposerSubmitRequest {
    * When false, paste the text and stage any images but DO NOT send the
    * Enter key — leaves the prompt in the agent's input buffer for the user
    * to review/edit/submit themselves. Defaults to true to preserve the
-   * existing composer:submit behavior; pin drag-and-drop opts out.
+   * existing composer:submit behavior; a paste-only send opts out.
    */
   submit?: boolean;
 }
@@ -1512,29 +1516,22 @@ export interface TacitAPI {
     onOpenFolder: (callback: (dirPath: string) => void) => () => void;
     onSelectAll: (callback: () => void) => () => void;
   };
-  pins: {
-    list: (repo: string) => Promise<Pin[]>;
-    create: (input: CreatePinInput) => Promise<Pin>;
-    update: (repo: string, id: string, patch: UpdatePinInput) => Promise<Pin>;
-    remove: (repo: string, id: string) => Promise<void>;
-    openPreview: (repo: string, id: string) => Promise<void>;
-    saveAttachment: (
-      repo: string,
-      id: string,
-      fileName: string,
-      data: ArrayBuffer,
-    ) => Promise<{ relativePath: string; absolutePath: string }>;
-    dispatchToTerminal: (
-      repo: string,
-      pinId: string,
-      target: {
-        terminalId: string;
-        ptyId: number;
-        terminalType: ComposerSupportedTerminalType;
-        worktreePath: string;
-      },
-    ) => Promise<ComposerSubmitResult>;
-    subscribe: (handler: (event: PinEvent) => void) => () => void;
+  /** Tasks (docs/architecture/task-board.md). Refusals come back as results, in words to show. */
+  tasks: {
+    list: () => Promise<TaskResult<Task[]>>;
+    create: (workdesk: string, input: import("../../shared/task-ops").NewTask) => Promise<TaskResult<Task>>;
+    change: (workdesk: string, id: string, op: import("../../shared/task-ops").TaskOp, key?: string) => Promise<TaskResult<Task>>;
+    remove: (workdesk: string, id: string) => Promise<TaskResult<void>>;
+    handOver: (request: HandOverRequest) => Promise<TaskResult<{ task: Task; try: string; brief: string; queued: boolean }>>;
+    sendNow: (workdesk: string, id: string, tryId: string) => Promise<TaskResult<Task>>;
+    stop: (workdesk: string, id: string, tryId: string) => Promise<TaskResult<Task>>;
+    answer: (workdesk: string, id: string, request: string, text: string) => Promise<TaskResult<Task>>;
+    say: (workdesk: string, id: string, text: string, tryId?: string) => Promise<TaskResult<Task>>;
+    log: (workdesk: string, id: string, text: string, terminal: string, name: string) => Promise<TaskResult<Task>>;
+    attach: (workdesk: string, id: string, fileName: string, data: ArrayBuffer) => Promise<TaskResult<{ relativePath: string; absolutePath: string }>>;
+    attachments: (workdesk: string, id: string) => Promise<TaskResult<string>>;
+    landed: (workdesk: string) => Promise<TaskResult<void>>;
+    subscribe: (handler: (event: TaskEvent) => void) => () => void;
   };
   updater: {
     check: () => Promise<import("../../shared/updater-types").UpdateCheckOutcome>;

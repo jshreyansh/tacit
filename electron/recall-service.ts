@@ -338,7 +338,7 @@ export function summarize(entry: CaptureEntry): string {
 
 function handoffWhat(entry: Extract<CaptureEntry, { kind: "handoff" }>): string {
   if (entry.files) return entry.files.length === 1 ? entry.files[0].path : `${entry.files.length} files`;
-  if (entry.from.startsWith("note:") && entry.via === "drop") return "a pin";
+  if (entry.from.startsWith("note:") && entry.via === "drop") return "a note";
   return entry.length !== undefined ? `${entry.length} characters` : "text";
 }
 

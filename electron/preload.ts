@@ -1558,59 +1558,26 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("menu:select-all", listener);
     },
   },
-  pins: {
-    list: (repo: string) =>
-      ipcRenderer.invoke("pin:list", repo) as Promise<import("../shared/pin.js").Pin[]>,
-    create: (input: import("../shared/pin.js").CreatePinInput) =>
-      ipcRenderer.invoke("pin:create", input) as Promise<import("../shared/pin.js").Pin>,
-    update: (
-      repo: string,
-      id: string,
-      patch: import("../shared/pin.js").UpdatePinInput,
-    ) =>
-      ipcRenderer.invoke("pin:update", repo, id, patch) as Promise<import("../shared/pin.js").Pin>,
-    remove: (repo: string, id: string) =>
-      ipcRenderer.invoke("pin:remove", repo, id) as Promise<void>,
-    openPreview: (repo: string, id: string) =>
-      ipcRenderer.invoke("pin:open-preview", repo, id) as Promise<void>,
-    saveAttachment: (
-      repo: string,
-      id: string,
-      fileName: string,
-      data: ArrayBuffer,
-    ) =>
-      ipcRenderer.invoke(
-        "pin:save-attachment",
-        repo,
-        id,
-        fileName,
-        data,
-      ) as Promise<{ relativePath: string; absolutePath: string }>,
-    dispatchToTerminal: (
-      repo: string,
-      pinId: string,
-      target: {
-        terminalId: string;
-        ptyId: number;
-        terminalType: string;
-        worktreePath: string;
-      },
-    ) =>
-      ipcRenderer.invoke(
-        "pin:dispatch-to-terminal",
-        repo,
-        pinId,
-        target,
-      ) as Promise<import("../src/types").ComposerSubmitResult>,
-    subscribe: (
-      handler: (event: { type: string; [key: string]: unknown }) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: { type: string; [key: string]: unknown },
-      ) => handler(payload);
-      ipcRenderer.on("pin:event", listener);
-      return () => ipcRenderer.removeListener("pin:event", listener);
+  tasks: {
+    list: () => ipcRenderer.invoke("tasks:list"),
+    create: (workdesk: string, input: unknown) => ipcRenderer.invoke("tasks:create", workdesk, input),
+    change: (workdesk: string, id: string, op: unknown, key?: string) => ipcRenderer.invoke("tasks:change", workdesk, id, op, key),
+    remove: (workdesk: string, id: string) => ipcRenderer.invoke("tasks:remove", workdesk, id),
+    handOver: (request: unknown) => ipcRenderer.invoke("tasks:hand-over", request),
+    sendNow: (workdesk: string, id: string, tryId: string) => ipcRenderer.invoke("tasks:send-now", workdesk, id, tryId),
+    stop: (workdesk: string, id: string, tryId: string) => ipcRenderer.invoke("tasks:stop", workdesk, id, tryId),
+    answer: (workdesk: string, id: string, request: string, text: string) => ipcRenderer.invoke("tasks:answer", workdesk, id, request, text),
+    say: (workdesk: string, id: string, text: string, tryId?: string) => ipcRenderer.invoke("tasks:say", workdesk, id, text, tryId),
+    log: (workdesk: string, id: string, text: string, terminal: string, name: string) => ipcRenderer.invoke("tasks:log", workdesk, id, text, terminal, name),
+    attach: (workdesk: string, id: string, fileName: string, data: ArrayBuffer) => ipcRenderer.invoke("tasks:attach", workdesk, id, fileName, data),
+    attachments: (workdesk: string, id: string) => ipcRenderer.invoke("tasks:attachments", workdesk, id),
+    landed: (workdesk: string) => ipcRenderer.invoke("tasks:landed", workdesk),
+    subscribe: (handler: (event: import("../src/types").TaskEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: import("../src/types").TaskEvent) => handler(payload);
+      ipcRenderer.on("tasks:event", listener);
+      return () => {
+        ipcRenderer.removeListener("tasks:event", listener);
+      };
     },
   },
 });

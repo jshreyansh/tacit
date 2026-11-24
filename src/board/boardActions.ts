@@ -4,9 +4,9 @@
  * Each change you make is one step ⌘Z can undo.
  */
 import { clearSceneFocus } from "../actions/sceneSelectionActions";
-import { createTaskInScene } from "../actions/scenePinActions";
 import { useBoardStore, boardId, selectedBoardElements, type BoardStyle, type BoardTool } from "../stores/boardStore";
 import { pickMedia } from "./boardMedia";
+import { setTileSection } from "./boardMembership";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
@@ -15,6 +15,8 @@ import {
   STICKY_SIZE,
   adoptInto,
   center,
+  contentsOf,
+  heldAfterResize,
   sectionAt,
   bounds,
   canQuickConnect,
@@ -38,19 +40,34 @@ export function inSection<T extends BoardElement>(e: T): T {
 }
 
 /**
- * A tile dropped on the canvas belongs to the section it landed in, or to
- * none. Called by the canvas when a tile drag ends.
+ * A section was resized: what it now holds, and where what it let go of goes
+ * (the section it's in, if any). Part of the resize's undo step.
  */
-export function tileDropped(tileId: string, rect: BoardRect): void {
+export function regroupAfterResize(id: string): void {
   const els = board().elements;
-  const into = sectionAt(center(rect), els);
-  const owner = els.find((e) => e.type === "section" && e.tiles?.includes(tileId));
-  if ((owner?.id ?? null) === into) return;
+  const section = els.find((e) => e.id === id);
+  if (section?.type !== "section") return;
+  const lookup = boardTargetLookup();
+  const tiles = tileRects();
+  const held = heldAfterResize(section, section, els, tiles, lookup);
+  const inNow = new Set(held.elements);
   const changes: Record<string, Partial<BoardElement>> = {};
-  if (owner && owner.type === "section") changes[owner.id] = { tiles: (owner.tiles ?? []).filter((t) => t !== tileId) };
-  const target = into ? els.find((e) => e.id === into) : null;
-  if (target && target.type === "section") changes[target.id] = { tiles: [...(target.tiles ?? []), tileId] };
-  board().patch(changes);
+  for (const e of els) {
+    if (inNow.has(e.id)) {
+      if (e.parent !== id) changes[e.id] = { parent: id };
+    } else if (e.parent === id) {
+      const skip = new Set([id, e.id, ...contentsOf(e, els).elements.map((c) => c.id)]);
+      changes[e.id] = { parent: sectionAt(center(bounds(e, lookup)), els, skip) ?? undefined };
+    }
+  }
+  if (Object.keys(changes).length) board().patch(changes);
+  const keep = new Set(held.tiles);
+  for (const t of keep) setTileSection(t, id, true);
+  for (const t of section.tiles ?? []) {
+    if (keep.has(t)) continue;
+    const rect = tiles.find((x) => x.id === t);
+    setTileSection(t, rect ? sectionAt(center(rect), board().elements, new Set([id])) : null, true);
+  }
 }
 
 /* ---------- tools ---------- */
@@ -320,34 +337,4 @@ export function setStyleProp<K extends keyof BoardStyle>(prop: K, value: BoardSt
   board().patch(changes);
   // A text's size changes how it lays out; let it measure again.
   if (prop === "size") for (const e of selected) if (e.type === "text") measureText(e.id, estimateTextRect(e.text, value as BoardStyle["size"]).w, estimateTextRect(e.text, value as BoardStyle["size"]).h);
-}
-
-/* ---------- a sticky becomes a task ---------- */
-
-/**
- * The sticky becomes a real task in the same place: its first line the
- * title, the rest its steps. Arrows to the sticky move to the task.
- */
-export async function stickyToTask(id: string): Promise<boolean> {
-  const sticky = board().elements.find((e) => e.id === id);
-  if (!sticky || sticky.type !== "sticky") return false;
-  const { projects, focusedProjectId } = useProjectStore.getState();
-  const project = projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-  if (!project) return false;
-  const lines = sticky.text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const created = await createTaskInScene(project.path, { x: sticky.x, y: sticky.y });
-  await window.tacit.pins.update(project.path, created.id, {
-    title: lines[0] ?? "Untitled task",
-    ...(lines.length > 1 ? { steps: lines.slice(1).map((text) => ({ text, status: "pending" as const })) } : {}),
-  });
-  board().checkpoint();
-  const changes: Record<string, Partial<BoardElement>> = {};
-  for (const e of board().elements) {
-    if (e.type !== "arrow") continue;
-    if ("ref" in e.a && e.a.ref === id) changes[e.id] = { ...changes[e.id], a: { ref: created.id } };
-    if ("ref" in e.b && e.b.ref === id) changes[e.id] = { ...(changes[e.id] ?? {}), b: { ref: created.id } };
-  }
-  if (Object.keys(changes).length) board().patch(changes);
-  board().remove([id]);
-  return true;
 }

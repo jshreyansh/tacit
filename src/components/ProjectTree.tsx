@@ -1,11 +1,9 @@
-import { pinKind } from "../../shared/pin";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSessionPanelCollapseStore } from "../stores/sessionPanelCollapseStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { usePinStore } from "../stores/pinStore";
 import { ContextMenu } from "./ContextMenu";
 import { useEditorItems } from "../editors/useEditorItems";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -455,16 +453,6 @@ function ProjectRow({
   const collapsed = useSessionPanelCollapseStore((s) =>
     s.isCollapsed(project.projectId),
   );
-  const taskToggle = usePinStore((s) => s.toggle);
-  const openProjectPath = usePinStore((s) => s.openProjectPath);
-  const tasksByProject = usePinStore((s) => s.pinsByProject);
-
-  const isTaskDrawerOpen = openProjectPath === project.projectPath;
-  // Tasks not finished yet; notes aren't counted.
-  const openCount = (tasksByProject[project.projectPath] ?? []).filter(
-    (t) => pinKind(t) === "task" && (t.status === "open" || t.status === "in_progress" || t.status === "needs_you"),
-  ).length;
-
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -612,25 +600,6 @@ function ProjectRow({
           {project.projectName}
         </span>
         <StatusBadges summary={project.statusSummary} />
-        <div className="relative flex items-center">
-          <IconButton
-            size="sm"
-            tone="neutral"
-            label={t["pin.triggerLabel"](project.projectName)}
-            className={`transition-opacity hover:text-[var(--pin)] hover:bg-[var(--pin-soft)] ${isTaskDrawerOpen ? "opacity-100 text-[var(--pin)] bg-[var(--pin-soft)]" : "opacity-0 group-hover:opacity-100"}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              taskToggle(project.projectPath);
-            }}
-          >
-            <ListTodoIcon />
-          </IconButton>
-          {openCount > 0 && !isTaskDrawerOpen && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[12px] h-3 flex items-center justify-center rounded-full bg-[var(--pin)] text-[var(--pin-foreground)] text-[8px] font-medium px-0.5 pointer-events-none">
-              {openCount > 9 ? "9+" : openCount}
-            </span>
-          )}
-        </div>
         <IconButton
           size="sm"
           tone="neutral"

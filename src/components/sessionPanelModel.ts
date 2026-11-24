@@ -103,11 +103,15 @@ const VAGUE_TERMS = new Set([
   "help", "this", "that", "hey", "hi", "ok", "yes", "no",
 ]);
 
+/** What Tacit types to an agent for a task (briefText in shared/task.ts, and what's said on it after). */
+export const isTaskBrief = (text: string) => /^\s*(?:<pasted_content[^>]*>\s*)?(?:Tacit task T-\d+ \(|Task T-\d+[. (])/.test(text);
+
 export function extractIntent(
   raw: string | undefined,
   maxLen = 40,
 ): string | null {
-  if (!raw) return null;
+  // A brief Tacit typed in isn't what the chat is about in your words, and it goes on to others.
+  if (!raw || isTaskBrief(raw)) return null;
   let text = raw.trim();
   text = text.replace(/```[\s\S]*?```/g, "").trim();
   // Only strip things that look like real file paths (must have 2+ segments
@@ -126,6 +130,9 @@ export function extractIntent(
   if (!text || VAGUE_TERMS.has(text)) return null;
   return text;
 }
+
+/** A title that only says which CLI it is: two of a kind are the same, so it's named as its tile is. */
+export const isPlainTitle = (title: string, type: string) => title.toLowerCase() === type.toLowerCase();
 
 /** "project / branch", or the project alone for its own name or a folder that isn't a git repo (no branch). */
 function worktreeLocation(projectName: string, worktreeName: string): string {

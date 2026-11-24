@@ -1,6 +1,6 @@
-import { pinKind } from "../../shared/pin";
 import type { Node } from "@xyflow/react";
-import type { ProjectData, Pin } from "../types";
+import type { ProjectData, Task } from "../types";
+import type { BoardRect } from "../types/board";
 import type { FileTileData } from "../stores/fileTileStore";
 
 export interface TerminalNodeData {
@@ -11,10 +11,8 @@ export interface TerminalNodeData {
   [key: string]: unknown;
 }
 
-export interface PinNodeData {
-  pinId: string;
-  /** Same value as Pin.repo — the project path pins are keyed by in usePinStore. */
-  projectPath: string;
+export interface TaskNodeData {
+  taskId: string;
   [key: string]: unknown;
 }
 
@@ -25,9 +23,9 @@ export interface FileNodeData {
 }
 
 export type TerminalFlowNode = Node<TerminalNodeData, "terminal">;
-export type PinFlowNode = Node<PinNodeData, "pin">;
+export type TaskFlowNode = Node<TaskNodeData, "task">;
 export type FileFlowNode = Node<FileNodeData, "file">;
-export type CanvasFlowNode = TerminalFlowNode | PinFlowNode | FileFlowNode;
+export type CanvasFlowNode = TerminalFlowNode | TaskFlowNode | FileFlowNode;
 
 /** Files shown on the canvas (FileTileNode.tsx): plain DOM, like notes. */
 export function buildFileFlowNodes(tiles: readonly FileTileData[]): FileFlowNode[] {
@@ -42,35 +40,17 @@ export function buildFileFlowNodes(tiles: readonly FileTileData[]): FileFlowNode
   }));
 }
 
-const DEFAULT_PIN_WIDTH = 280;
-const DEFAULT_PIN_HEIGHT = 220;
-
-/**
- * Notes are plain markdown/DOM (see PinNode.tsx) with no native surface to
- * protect, unlike browser tiles' <webview> — so unlike those (kept in the
- * parallel CanvasCardLayer), they live directly inside React Flow's own
- * node tree, same as terminals. Only pins with x/y set render here; a pin
- * with no spatial data stays list/drawer-only (see shared/pin.ts).
- */
-export function buildPinFlowNodes(pins: Pin[]): PinFlowNode[] {
-  const nodes: PinFlowNode[] = [];
-  for (const pin of pins) {
-    if (pin.x == null || pin.y == null) continue;
-    nodes.push({
-      id: pin.id,
-      type: "pin",
-      position: { x: pin.x, y: pin.y },
-      data: { pinId: pin.id, projectPath: pin.repo },
-      // A task holds its steps and who's on it, so it starts roomier.
-      style: {
-        width: pin.w ?? (pinKind(pin) === "task" ? 320 : DEFAULT_PIN_WIDTH),
-        height: pin.h ?? (pinKind(pin) === "task" ? 280 : DEFAULT_PIN_HEIGHT),
-      },
-      draggable: true,
-      selectable: true,
-    });
-  }
-  return nodes;
+/** Tasks put on this canvas (TaskNode.tsx), where the workdesk says they are. */
+export function buildTaskFlowNodes(placed: ReadonlyArray<{ task: Pick<Task, "id">; rect: BoardRect }>): TaskFlowNode[] {
+  return placed.map(({ task, rect }) => ({
+    id: task.id,
+    type: "task",
+    position: { x: rect.x, y: rect.y },
+    data: { taskId: task.id },
+    style: { width: rect.w, height: rect.h },
+    draggable: true,
+    selectable: true,
+  }));
 }
 
 export function buildCanvasFlowNodes(

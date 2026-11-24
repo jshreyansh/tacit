@@ -10,7 +10,7 @@ import { findAgentAdapter } from "../shared/agent-adapters";
  */
 
 export interface PromptTargetNode {
-  kind: "terminal" | "browser" | "pin";
+  kind: "terminal" | "browser" | "note" | "task";
   id: string;
   /** Terminal only: null while its PTY has not started or has exited. */
   ptyId?: number | null;
@@ -129,7 +129,7 @@ export class NodePromptSender {
       fail(
         400,
         "not_a_terminal",
-        `"${id}" is a ${node.kind === "pin" ? "note" : node.kind}, not a terminal. Only terminals take prompts.`,
+        `"${id}" is a ${node.kind}, not a terminal. Only terminals take prompts.`,
       );
     }
     if (node.ptyId == null || !node.terminalType || !node.worktreePath) {

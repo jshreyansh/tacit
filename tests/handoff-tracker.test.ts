@@ -11,7 +11,6 @@ import {
   isAgentHarness,
   keyedFingerprint,
   loadHandoffKey,
-  pinDropEvent,
 } from "../electron/handoff-tracker.ts";
 import { isGuestCopyChord } from "../electron/browser-guest-shortcuts.ts";
 import { CaptureService } from "../electron/capture-service.ts";
@@ -175,14 +174,6 @@ test("a very short paste links only when it is the whole prompt", () => {
 
 test("a dropped pin is an observed handoff from its note, and its prompt points to it", () => {
   const { tracker } = setup();
-  assert.deepEqual(pinDropEvent("fix-login-ab12", T), {
-    kind: "handoff",
-    from: "note:fix-login-ab12",
-    to: T,
-    via: "drop",
-    attribution: "observed",
-    by: "user",
-  });
   tracker.awaitPrompt(T, "pin-event-1", "Fix login\n\nThe session expires too early.");
   assert.deepEqual(tracker.promptRefs(T, "Fix login\n\nThe session expires too early. Start with auth.ts"), ["pin-event-1"]);
 });

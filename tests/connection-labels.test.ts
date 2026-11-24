@@ -69,7 +69,7 @@ function context(over: Partial<EndpointLabelContext> = {}): EndpointLabelContext
   return {
     projects: [],
     browserCards: {},
-    pins: [],
+    notes: [],
     workspaceManagerTerminalId: null,
     strings: STRINGS,
     ...over,
@@ -131,9 +131,9 @@ test("browser with an unparseable url falls back to the unknown string", () => {
   );
 });
 
-test("note uses its pin title", () => {
+test("note uses its title", () => {
   const ctx = context({
-    pins: [{ id: "p1", title: "drawer jitters on resize" } as Pin],
+    notes: [{ id: "p1", title: "drawer jitters on resize" }],
   });
   assert.equal(
     describeEndpoint({ kind: "note", id: "p1" }, ctx),

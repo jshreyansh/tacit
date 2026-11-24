@@ -48,10 +48,13 @@ import {
   scheduleTerminalFocus,
 } from "./focusScheduler";
 import { useSidebarDragStore } from "../stores/sidebarDragStore";
-import { usePinDragStore } from "../stores/pinDragStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
-import { usePinStore } from "../stores/pinStore";
+import { taskById, useTaskOfTerminal, useTaskStore } from "../tasks/taskStore";
+import { handOver, openTask } from "../tasks/taskActions";
+import { trackChat } from "../tasks/trackChat";
+import { useAgentName } from "../tasks/useAgents";
+import { findAgentAdapter } from "../../shared/agent-adapters";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useTurnUndo } from "./useTurnUndo";
@@ -275,7 +278,7 @@ export function TerminalTile({
   latestContainerElRef.current = containerEl;
   const isSummarizing = useIsSummarizing(terminal.id);
   const sidebarDragActive = useSidebarDragStore((s) => s.active);
-  const taskDragActive = usePinDragStore((s) => s.active);
+  const taskDragActive = useTaskStore((s) => s.dragging !== null);
   const handoffActive = useHandoffDragStore((s) => s.active);
   const handoffSourceId = useHandoffDragStore((s) => s.payload?.sourceTerminalId ?? null);
   const handoffHoveredTerminalId = useHandoffDragStore(
@@ -284,13 +287,13 @@ export function TerminalTile({
   const isHandoffSource = handoffActive && handoffSourceId === terminal.id;
   const isHandoffTarget =
     handoffActive && handoffHoveredTerminalId === terminal.id;
-  const terminalTaskAssignment = usePinStore(
-    (s) => s.terminalPinMap[terminal.id],
-  );
+  const onTask = useTaskOfTerminal(terminal.id);
+  // As tasks call it, so two of a kind can be told apart.
+  const agentName = useAgentName(terminal.id);
   const [taskFlash, setTaskFlash] = useState(false);
   const taskFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerAdapter = getComposerAdapter(terminal.type);
-  const acceptsTaskDrop = composerAdapter !== null;
+  const acceptsTaskDrop = findAgentAdapter(terminal.type) !== null;
   const viewportScale = useCanvasStore((s) => s.viewport.scale);
   // A past session continued in chat: the tile is the chat (the manager's
   // own chat lives in the panel instead).
@@ -711,90 +714,24 @@ export function TerminalTile({
   }, []);
 
   const handleTaskDropPayload = useCallback(
-    async (raw: string) => {
-      let parsed: { repo: string; id: string };
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return;
-      }
-      if (!parsed?.repo || !parsed?.id) return;
-
-      const ptyId = getTerminalPtyId(terminal.id);
-      if (ptyId === null) {
-        useNotificationStore
-          .getState()
-          .notify("warn", t["pin.dispatch.terminalNotRunning"]);
-        return;
-      }
-      if (!composerAdapter) {
-        useNotificationStore
-          .getState()
-          .notify(
-            "warn",
-            t["pin.dispatch.unsupportedTerminal"](terminal.type),
-          );
-        return;
-      }
-
+    async (id: string) => {
+      const task = taskById(id);
+      if (!task) return;
       activateTerminalInScene(projectId, worktreeId, terminal.id);
-
-      try {
-        const result = await window.tacit.pins.dispatchToTerminal(
-          parsed.repo,
-          parsed.id,
-          {
-            terminalId: terminal.id,
-            ptyId,
-            terminalType: terminal.type,
-            worktreePath,
-          },
-        );
-        if (result.ok) {
-          // Record the terminal ↔ pin association for the badge. Look the
-          // full pin up so we cache its current title; if the project
-          // drawer is closed for some reason (rare race) fall back to a
-          // placeholder title — the entry still resolves visually.
-          const pinState = usePinStore.getState();
-          const fullPin = (pinState.pinsByProject[parsed.repo] ?? []).find(
-            (entry) => entry.id === parsed.id,
-          );
-          pinState.assignPinToTerminal(
-            terminal.id,
-            fullPin ?? {
-              id: parsed.id,
-              repo: parsed.repo,
-              title: t["pin.untitled"],
-            },
-          );
-          flashTaskAccept();
-        } else {
-          useNotificationStore
-            .getState()
-            .notify(
-              "error",
-              t["pin.dispatch.failed"](
-                result.detail ?? result.error ?? "unknown",
-              ),
-            );
-        }
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        useNotificationStore
-          .getState()
-          .notify("error", t["pin.dispatch.failed"](detail));
+      const given = await handOver(task, terminal.id);
+      if (given === "done") flashTaskAccept();
+      // It's doing something else: queue it, or stop that.
+      else if (given === "busy") {
+        useNotificationStore.getState().notify("info", t.tb.busy(agentName ?? terminal.title), undefined, undefined, {
+          sticky: true,
+          actions: [
+            { label: t.tb.queue, run: () => void handOver(task, terminal.id, { how: "queue" }) },
+            { label: t.tb.interrupt, run: () => void handOver(task, terminal.id, { how: "interrupt" }) },
+          ],
+        });
       }
     },
-    [
-      composerAdapter,
-      flashTaskAccept,
-      projectId,
-      t,
-      terminal.id,
-      terminal.type,
-      worktreeId,
-      worktreePath,
-    ],
+    [flashTaskAccept, projectId, t, terminal.id, agentName, terminal.title, worktreeId],
   );
 
   // Intercept drag events on the xterm container in the capture phase so they
@@ -806,7 +743,7 @@ export function TerminalTile({
     const isTaskDrag = (e: DragEvent) =>
       !!e.dataTransfer &&
       Array.from(e.dataTransfer.types).includes(
-        "application/x-tacit-pin",
+        "application/x-tacit-task",
       );
 
     const onDragOver = (e: DragEvent) => {
@@ -828,7 +765,7 @@ export function TerminalTile({
         e.preventDefault();
         e.stopPropagation();
         setDragOver(false);
-        const raw = e.dataTransfer?.getData("application/x-tacit-pin");
+        const raw = e.dataTransfer?.getData("application/x-tacit-task");
         if (raw) void handleTaskDropPayload(raw);
         return;
       }
@@ -903,7 +840,7 @@ export function TerminalTile({
   }, [projectId, terminal.id, worktreeId]);
 
   const isTaskDragEvent = (e: React.DragEvent) =>
-    Array.from(e.dataTransfer.types).includes("application/x-tacit-pin");
+    Array.from(e.dataTransfer.types).includes("application/x-tacit-task");
 
   const handleTileDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -928,7 +865,7 @@ export function TerminalTile({
         e.preventDefault();
         e.stopPropagation();
         setDragOver(false);
-        const raw = e.dataTransfer.getData("application/x-tacit-pin");
+        const raw = e.dataTransfer.getData("application/x-tacit-task");
         if (raw) void handleTaskDropPayload(raw);
         return;
       }
@@ -1137,7 +1074,7 @@ export function TerminalTile({
             ) : (
               <>
                 <span className="min-w-0 flex-1 truncate leading-[22px]">
-                  {terminal.customTitle || t.terminal_custom_title_placeholder}
+                  {terminal.customTitle || agentName || t.terminal_custom_title_placeholder}
                 </span>
                 <button
                   type="button"
@@ -1286,33 +1223,20 @@ export function TerminalTile({
         </div>
       </div>
 
-      {terminalTaskAssignment && (
+      {onTask && (
         <div className="shrink-0 flex items-center px-3 pb-1.5 -mt-1">
           <button
             type="button"
-            className="group/badge inline-flex items-center gap-1 max-w-[200px] px-1.5 py-0.5 rounded-sm text-[10px] leading-none cursor-pointer bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/25 hover:border-[var(--accent)]/45 transition-colors duration-quick"
-            title={t["pin.terminalBadge.tooltip"](
-              terminalTaskAssignment.title,
-            )}
+            className="group/badge inline-flex items-center gap-1 max-w-[220px] px-1.5 py-0.5 rounded-sm text-[11px] leading-none cursor-pointer bg-[var(--accent)]/10 text-[var(--text-primary)] border border-[var(--accent)]/25 hover:border-[var(--accent)]/45 transition-colors duration-quick"
+            title={onTask.title}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              // The task full size: its tab in the grid; on the canvas, the
-              // tasks page with its detail over it.
-              if (useWorkdeskViewStore.getState().mode === "grid") {
-                useWorkdeskViewStore.getState().setOpenNode({ kind: "task", id: terminalTaskAssignment.pinId });
-                return;
-              }
-              useCanvasPageStore.getState().open("tasks");
-              const pinState = usePinStore.getState();
-              pinState.openDrawer(terminalTaskAssignment.repo);
-              pinState.openDetail(terminalTaskAssignment.pinId);
+              openTask(onTask.id);
             }}
           >
-            <span aria-hidden="true" className="shrink-0">
-              ▸
-            </span>
-            <span className="truncate">{terminalTaskAssignment.title}</span>
+            <span className="shrink-0">{`T-${onTask.n}`}</span>
+            <span className="truncate">{onTask.title}</span>
           </button>
         </div>
       )}
@@ -1492,6 +1416,7 @@ export function TerminalTile({
                     { type: "separator" as const },
                   ]
                 : []),
+              ...(acceptsTaskDrop && !onTask ? [{ label: t.tb.trackChat, onClick: () => trackChat(terminal.id) }] : []),
               {
                 label: t.stash_terminal,
                 onClick: () =>

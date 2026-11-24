@@ -1,7 +1,7 @@
 import type { CanvasFlowNode } from "./nodeProjection";
 import type { BrowserCardData } from "../stores/browserCardStore";
 
-export type FocusableNodeKind = "terminal" | "pin" | "browser";
+export type FocusableNodeKind = "terminal" | "task" | "browser";
 
 export interface FocusableNode {
   kind: FocusableNodeKind;
@@ -14,8 +14,8 @@ export interface FocusableNode {
 
 const FALLBACK_TERMINAL_WIDTH = 300;
 const FALLBACK_TERMINAL_HEIGHT = 200;
-const FALLBACK_PIN_WIDTH = 280;
-const FALLBACK_PIN_HEIGHT = 220;
+const FALLBACK_TASK_WIDTH = 280;
+const FALLBACK_TASK_HEIGHT = 220;
 
 export function focusableNodeKey(kind: FocusableNodeKind, id: string): string {
   return `${kind}:${id}`;
@@ -27,17 +27,17 @@ export function focusableNodeKey(kind: FocusableNodeKind, id: string): string {
  * stored, so rearranging the canvas naturally reorders focus view with no
  * migration needed. Mirrors ConnectionLayer.tsx's collectEndpointRects
  * (terminal positions from React Flow's own live `useNodes()` state, not
- * projectStore, so a card mid-drag isn't stale) but also includes pins,
+ * projectStore, so a card mid-drag isn't stale) but also includes tasks,
  * which collectEndpointRects doesn't need to since ConnectionEndpointKind
- * has no "pin" variant.
+ * has no "task" variant.
  */
 export function collectFocusableNodes(
-  terminalAndPinNodes: CanvasFlowNode[],
+  terminalAndTaskNodes: CanvasFlowNode[],
   browserCards: Record<string, BrowserCardData>,
 ): FocusableNode[] {
   const nodes: FocusableNode[] = [];
 
-  for (const node of terminalAndPinNodes) {
+  for (const node of terminalAndTaskNodes) {
     if (node.type === "terminal") {
       nodes.push({
         kind: "terminal",
@@ -47,14 +47,14 @@ export function collectFocusableNodes(
         w: (node.style?.width as number | undefined) ?? FALLBACK_TERMINAL_WIDTH,
         h: (node.style?.height as number | undefined) ?? FALLBACK_TERMINAL_HEIGHT,
       });
-    } else if (node.type === "pin") {
+    } else if (node.type === "task") {
       nodes.push({
-        kind: "pin",
+        kind: "task",
         id: node.id,
         x: node.position.x,
         y: node.position.y,
-        w: (node.style?.width as number | undefined) ?? FALLBACK_PIN_WIDTH,
-        h: (node.style?.height as number | undefined) ?? FALLBACK_PIN_HEIGHT,
+        w: (node.style?.width as number | undefined) ?? FALLBACK_TASK_WIDTH,
+        h: (node.style?.height as number | undefined) ?? FALLBACK_TASK_HEIGHT,
       });
     }
   }

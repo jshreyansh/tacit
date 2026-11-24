@@ -1,0 +1,30 @@
+/* Choosing an agent (src/agents/AgentPicker.tsx). Unlayered, as the other panels' styles are. */
+.tc-menu-pop.tc-ap { z-index: 1000; max-height: none; padding: 6px; border-radius: 14px; }
+.tc-ap-head { display: flex; min-height: 28px; align-items: center; gap: 5px; padding: 2px 8px; font-size: 12px; color: var(--text-metadata); }
+.tc-ap-row { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 10px; border-radius: 9px; padding: 4px 8px; text-align: left; font-size: 13px; color: var(--text-primary); }
+.tc-ap-row:hover, .tc-ap-row:focus-visible { background: var(--surface-hover); outline: none; }
+.tc-ap-mark { display: inline-flex; width: 28px; height: 28px; flex: none; align-items: center; justify-content: center; border-radius: 8px; background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.tc-ap-mark > img { object-fit: contain; }
+.tc-ap-words { display: flex; min-width: 0; flex: 1; flex-direction: column; line-height: 1.35; }
+.tc-ap-detail { font-size: 12px; color: var(--text-metadata); }
+.tc-ap-state { display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: 12px; color: var(--text-metadata); }
+.tc-ap-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.tc-ap-state[data-state="free"]::before { background: var(--green); }
+.tc-ap-state[data-state="on"]::before { background: var(--cyan); }
+.tc-ap-state[data-state="busy"]::before { background: var(--amber); }
+.tc-ap-list { max-height: 248px; overflow-y: auto; }
+.tc-ap-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; }
+.tc-ap-tile { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; border-radius: 10px; padding: 8px 2px 7px; font-size: 12px; line-height: 1.2; color: var(--text-primary); }
+.tc-ap-tile > span:last-of-type { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-ap-tile > small { font-size: 11px; color: var(--text-metadata); }
+.tc-ap-tile:hover:not([aria-disabled="true"]), .tc-ap-tile:focus-visible { background: var(--surface-hover); outline: none; }
+.tc-ap-tile[aria-disabled="true"] { cursor: default; opacity: 0.5; }
+.tc-ap-rule { height: 1px; margin: 6px 8px; background: var(--border); }
+.tc-ap-folder { max-width: 160px; border: 0; border-radius: 6px; background: none; padding: 2px 4px; font-size: 12px; color: var(--text-primary); text-overflow: ellipsis; }
+.tc-ap-folder:hover, .tc-ap-folder:focus-visible { background: var(--surface-hover); outline: none; }
+.tc-ap-fold { display: flex; width: 100%; min-height: 34px; align-items: center; gap: 8px; border-radius: 9px; padding: 4px 8px; text-align: left; font-size: 12.5px; color: var(--text-metadata); }
+.tc-ap-fold:hover, .tc-ap-fold:focus-visible { background: var(--surface-hover); outline: none; }
+.tc-ap-fold > svg { flex: none; transition: transform 120ms; }
+.tc-ap-fold[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.tc-ap-fold > span:last-child { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) { .tc-ap-fold > svg { transition: none; } }

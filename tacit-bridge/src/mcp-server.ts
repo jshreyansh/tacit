@@ -400,98 +400,174 @@ export function createTacitBridgeServer(): McpServer {
     },
   );
 
-  // The task list the person sees (Tasks, in the manager's chat and on the
-  // canvas). Not start_task/end_task, which record a context.
-  const taskSteps = z
-    .array(
-      z.object({
-        text: z.string().describe("The step, in a few words"),
-        status: z.enum(["pending", "active", "done"]).optional().describe("pending (default), active (doing it now), or done"),
-      }),
-    )
-    .describe("Every step of the task, in order. Send the whole list each time; it replaces the last one.");
-  const tasksPath = (terminalId: string, taskId?: string) =>
-    `/terminal/${encodeURIComponent(terminalId)}/tasks${taskId ? `/${encodeURIComponent(taskId)}` : ""}`;
+  // The workdesk's task board. Not start_task/end_task, which record a context.
+  const tasksPath = (terminalId: string, ref?: string, act?: string) =>
+    `/terminal/${encodeURIComponent(terminalId)}/tasks${ref ? `/${encodeURIComponent(ref)}` : ""}${act ? `/${act}` : ""}`;
+  const taskCall = async (method: "GET" | "POST", ref: string | undefined, act: string | undefined, body?: unknown) => {
+    const terminalId = getTerminalId();
+    if (!terminalId) return textResult("Not running inside a Tacit terminal.");
+    return textResult(JSON.stringify(await apiRequest(method, tasksPath(terminalId, ref, act), body), null, 2));
+  };
+  const taskId = z.string().describe("The task's id, or its name like T-12");
 
   server.registerTool(
     "list_tasks",
     {
-      title: "List this project's tasks",
+      title: "List this workdesk's tasks",
       description:
-        "Lists the tasks in this project's task list, the one the user sees in Tacit: id, title, status (open = to do, in_progress, needs_you, done, dropped), steps, owners (terminal ids, or \"manager\") and any question waiting on the user. Read it before creating a task, so you don't make a duplicate.",
+        "Lists the tasks on this workdesk's board, which the user sees in Tacit: name (T-12), title, column (later, next, working, needs = waiting on the user, done), Done when, parts, who's on each, and what's waiting on the user. Read it before creating one, so you don't make a duplicate.",
       inputSchema: {},
     },
-    async () => {
-      const terminalId = getTerminalId();
-      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
-      return textResult(JSON.stringify(await apiRequest("GET", tasksPath(terminalId)), null, 2));
+    async () => taskCall("GET", undefined, undefined),
+  );
+
+  server.registerTool(
+    "get_task",
+    {
+      title: "Read one task",
+      description: "Reads one task in full: its description, Done when, what to leave alone, what the user decided, its parts, tries, messages and report.",
+      inputSchema: { id: taskId },
     },
+    async ({ id }) => taskCall("GET", id, undefined),
   );
 
   server.registerTool(
     "create_task",
     {
-      title: "Add a task to the user's task list",
+      title: "Put a task on the board",
       description:
-        "Adds a task to this project's task list, which the user sees in Tacit and which outlasts this session, restarts and handovers. Use it for work that takes more than one turn or is handed to workers: one task per goal the user gave you, with its steps. Don't make a task for a one-line request. It's yours (owners: you) unless you name owners. Use your own todo tool, if you have one, for small steps within a turn.",
+        "Adds a task to this workdesk's board. Use it for work with a clear end that the user would mind losing: something they put off, a goal with several parts, work handed to others. Not for a question, a one-line request, or steps within your turn. Something you find on the way that isn't your task: pass follow_up_of, and the user decides. Write done_when as lines that can be checked.",
       inputSchema: {
         title: z.string().describe("The goal, in one line, e.g. 'Fix the failing PR checks'"),
-        steps: taskSteps.optional(),
-        body: z.string().optional().describe("Context worth keeping: links, decisions, what done means (markdown)"),
-        owners: z
-          .array(z.string())
-          .optional()
-          .describe("Who's on it: terminal ids, or \"manager\". Defaults to you."),
+        body: z.string().optional().describe("What and why, with links and evidence (markdown). Neutral words; keep the user's language."),
+        done_when: z.array(z.string()).optional().describe("What must be true for it to be finished, a line each"),
+        leave_alone: z.string().optional().describe("What must not be changed or done"),
+        kind: z.enum(["build", "bug", "research", "write", "other"]).optional(),
+        priority: z.enum(["none", "low", "medium", "high", "urgent"]).optional(),
+        folder: z.string().nullable().optional().describe("The folder it works in (whole path), if any"),
+        parts: z.array(z.string()).optional().describe("Its parts, if several agents could each take one"),
+        follow_up_of: z.string().optional().describe("The task it came out of"),
+        take: z.boolean().optional().describe("true: you start on it now"),
       },
     },
-    async ({ title, steps, body, owners }) => {
-      const terminalId = getTerminalId();
-      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
-      return textResult(JSON.stringify(await apiRequest("POST", tasksPath(terminalId), { title, steps, body, owners }), null, 2));
-    },
+    async (input) => taskCall("POST", undefined, undefined, input),
   );
 
   server.registerTool(
-    "update_task",
+    "take_part",
     {
-      title: "Update a task: its steps, status, owners or notes",
+      title: "Take a task, or a part of one",
       description:
-        "Updates a task in the user's task list as you work: mark a step active when you start it and done when it's done (send the whole steps list), set the status (in_progress, done, dropped), change who's on it, or add notes. When every step is done the task is done. To ask the user something, use ask_user instead.",
+        "Puts you on a task (or one part of it) that nobody has, and returns its brief. If it was handed to you in a message you're already on it. While you're on it, the board shows what you're doing; end with finish_task.",
+      inputSchema: { id: taskId, part: z.string().optional().describe("The part's id or words; leave out for the whole task") },
+    },
+    async ({ id, part }) => taskCall("POST", id, "take", { part }),
+  );
+
+  server.registerTool(
+    "report_part",
+    {
+      title: "Say where a task has got to",
+      description:
+        "Changes one part's state, adds parts, says something the user should see on the task, or says you're still going. One part at a time, so nobody's edits are lost. still_going: true when your turn ends while something you started (a build, a helper) is still running.",
       inputSchema: {
-        id: z.string().describe("The task's id, from list_tasks or create_task"),
-        steps: taskSteps.optional(),
-        status: z.enum(["open", "in_progress", "done", "dropped"]).optional(),
-        title: z.string().optional(),
-        body: z.string().optional(),
-        owners: z.array(z.string()).optional().describe("Who's on it now: terminal ids, or \"manager\""),
+        id: taskId,
+        part: z.string().optional().describe("The part's id or words"),
+        state: z.enum(["todo", "doing", "done"]).optional(),
+        add_parts: z.array(z.string()).optional(),
+        say: z.string().optional().describe("A short message kept on the task"),
+        still_going: z.boolean().optional(),
       },
     },
-    async ({ id, steps, status, title, body, owners }) => {
-      const terminalId = getTerminalId();
-      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
-      return textResult(JSON.stringify(await apiRequest("PUT", tasksPath(terminalId, id), { steps, status, title, body, owners }), null, 2));
-    },
+    async ({ id, ...body }) => taskCall("POST", id, "report", body),
   );
+
+  server.registerTool(
+    "finish_task",
+    {
+      title: "Finish a task or your part of it",
+      description:
+        "Reports that you've finished. Ending your turn isn't finishing: this is. Say what you did, and for every Done when line whether you checked it and how (with no lines, how you checked in `checked`); say plainly what you didn't check. Tacit adds what it saw itself (files changed, tests run). A clean report goes straight to Done; otherwise the user looks. Run the tests before this, not piped into another command, so Tacit can see how they ended.",
+      inputSchema: {
+        id: taskId,
+        summary: z.string().describe("What you did and found, for the user"),
+        lines: z
+          .array(z.object({ line: z.string().describe("The Done when line's id"), checked: z.boolean(), how: z.string().optional().describe("How you checked, or why you couldn't") }))
+          .optional(),
+        checked: z.string().optional().describe("How you checked the work, when the task has no Done when lines. Leave it out if you didn't"),
+        left: z.string().optional().describe("Anything not done, or left for later"),
+        unsure: z.string().optional().describe("Anything you aren't sure of"),
+        taste: z.boolean().optional().describe("true when it's a matter of taste: looks, wording"),
+        sensitive: z.string().optional().describe("If it touches sign-in, payments, permissions or people's data: what"),
+        wants_check: z.boolean().optional().describe("true to have the user look whatever the rules say"),
+      },
+    },
+    async ({ id, ...body }) => taskCall("POST", id, "finish", body),
+  );
+
+  const taskOptions = z
+    .array(z.object({ label: z.string(), detail: z.string().optional(), recommended: z.boolean().optional() }))
+    .optional()
+    .describe("A few short answers they can pick, and which you recommend");
 
   server.registerTool(
     "ask_user",
     {
       title: "Ask the user something a task needs",
       description:
-        "Puts a question to the user on a task, which shows it as Needs you: in the task list, on the canvas, and in the manager's chat. Use it when you can't go on without their decision or something only they can do. Offer choices when there are a few clear options. Their answer arrives in this terminal as a message; carry on from there.",
+        "Puts a question to the user on a task you're on: it shows in Needs you. Use it for a decision only they can make. Offer options, recommend one, and say what you'll carry on with meanwhile. Several questions can wait at once. Their answer arrives in this terminal as a message.",
       inputSchema: {
-        id: z.string().describe("The task's id"),
+        id: taskId,
         question: z.string().describe("What you need from them, in one line"),
-        choices: z.array(z.string()).optional().describe("A few short answers they can pick, e.g. ['0.9.0', '1.0.0']"),
+        why: z.string().optional().describe("What turns on it"),
+        options: taskOptions,
+        multi: z.boolean().optional().describe("true when they may pick more than one"),
+        meanwhile: z.string().optional().describe("What you'll do while you wait, in a few words"),
       },
     },
-    async ({ id, question, choices }) => {
-      const terminalId = getTerminalId();
-      if (!terminalId) return textResult("Not running inside a Tacit terminal.");
-      return textResult(
-        JSON.stringify(await apiRequest("PUT", tasksPath(terminalId, id), { ask: { reason: question, choices } }), null, 2),
-      );
+    async ({ id, ...body }) => taskCall("POST", id, "ask", body),
+  );
+
+  server.registerTool(
+    "ask_approval",
+    {
+      title: "Ask before doing something that can't be undone",
+      description:
+        "Asks the user's go-ahead on a task you're on, before something that can't be undone or that leaves this machine: deleting, sending, publishing, pushing, paying. Don't do it until their answer arrives here as a message.",
+      inputSchema: { id: taskId, what: z.string().describe("Exactly what you'd do, in one line"), why: z.string().optional(), meanwhile: z.string().optional() },
     },
+    async ({ id, ...body }) => taskCall("POST", id, "approve", body),
+  );
+
+  server.registerTool(
+    "withdraw_question",
+    {
+      title: "Take back a question you asked",
+      description: "Takes back a question or approval you asked for on a task, when it no longer matters. list_tasks shows its id (yours: true).",
+      inputSchema: { id: taskId, request: z.string().describe("The question's id") },
+    },
+    async ({ id, request }) => taskCall("POST", id, "withdraw", { request }),
+  );
+
+  server.registerTool(
+    "suggest_task_text",
+    {
+      title: "Suggest a better brief",
+      description: "Suggests a task's name, description, Done when lines or Leave alone. The user accepts it or not; nothing changes until they do.",
+      inputSchema: { id: taskId, title: z.string().optional(), body: z.string().optional(), done_when: z.array(z.string()).optional(), leave_alone: z.string().optional() },
+    },
+    async ({ id, ...body }) => taskCall("POST", id, "suggest", body),
+  );
+
+  server.registerTool(
+    "hand_over_task",
+    {
+      title: "Hand a task to a worker (workdesk manager only)",
+      description:
+        "Gives a task, or one part of it, to an agent's terminal: it receives the brief, and the board shows who has it. If that agent is busy it waits its turn. Use this rather than send_prompt_to_node for work that's on the board. Only the workdesk manager can.",
+      inputSchema: { id: taskId, terminal: z.string().describe("The terminal's id, from list_nodes or spawn_terminal"), part: z.string().optional(), note: z.string().optional().describe("Anything this worker needs besides the brief") },
+    },
+    async ({ id, ...body }) => taskCall("POST", id, "hand-over", body),
   );
 
   const memoryScope = z
@@ -604,9 +680,9 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Get one node's live state",
       description:
-        "Reads live detail on one specific node by kind and id — a terminal's title/status/worktree/startedBy, a browser's current url/title, or a note's body. A terminal also has busy: \"busy\", \"idle\" or \"unknown\", the same check close_node makes. Use busy, not status, to tell whether a worker is mid-task: status follows screen output, so a command that prints nothing shows as waiting. Open to any terminal.",
+        "Reads live detail on one specific node by kind and id — a terminal's title/status/worktree/startedBy, a browser's current url/title, a note's text, or a task. A terminal also has busy: \"busy\", \"idle\" or \"unknown\", the same check close_node makes. Use busy, not status, to tell whether a worker is mid-task: status follows screen output, so a command that prints nothing shows as waiting. Open to any terminal.",
       inputSchema: {
-        kind: z.enum(["terminal", "browser", "pin"]).describe("Node kind"),
+        kind: z.enum(["terminal", "browser", "note", "task"]).describe("Node kind"),
         id: z.string().describe("Node id, from list_nodes"),
       },
     },

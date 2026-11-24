@@ -4,7 +4,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
 import { buildCanvasTerminalSections, buildProjectTree } from "../components/sessionPanelModel";
-import { useTasksNeedingYou } from "../tasks/useTasksNeedingYou";
+import { useTasksNeedingYou } from "../tasks/taskStore";
 import { useMemoryPendingCount } from "../components/MemoryView";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 

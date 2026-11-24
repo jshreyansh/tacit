@@ -57,8 +57,6 @@ export interface DockEntry {
 type Added = OpenNode | null | Promise<OpenNode | null>;
 
 const terminalNode = (id: string | null): OpenNode | null => (id ? { kind: "terminal", id } : null);
-const pinNode = (kind: "task" | "note", made: Promise<string | null>) =>
-  made.then((id): OpenNode | null => (id ? { kind, id } : null));
 
 const agent = (id: DockId & TerminalType, name: string, art: DockArt): DockEntry => ({
   id,
@@ -91,8 +89,8 @@ export const DOCK_ENTRIES: readonly DockEntry[] = [
     label: (t) => t.dock_browser,
     create: () => ({ kind: "browser", id: addBrowser() }),
   },
-  { id: "task", group: "tools", art: { icon: taskIcon, tiled: true }, label: (t) => t.dock_task, create: () => pinNode("task", addTask()) },
-  { id: "note", group: "tools", art: { icon: noteIcon, tiled: true }, label: (t) => t.dock_note, create: () => pinNode("note", addNote()) },
+  { id: "task", group: "tools", art: { icon: taskIcon, tiled: true }, label: (t) => t.dock_task, create: () => addTask() },
+  { id: "note", group: "tools", art: { icon: noteIcon, tiled: true }, label: (t) => t.dock_note, create: () => ({ kind: "note", id: addNote() }) },
 ];
 
 /**

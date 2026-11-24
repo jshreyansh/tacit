@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../../i18n/useT";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
-import { pinKind } from "../../../shared/pin";
 import { useProjectStore } from "../../stores/projectStore";
 import { useBrowserCardStore } from "../../stores/browserCardStore";
 import { useFileTileStore } from "../../stores/fileTileStore";
-import { usePinStore } from "../../stores/pinStore";
+import { useTasks } from "../../tasks/taskStore";
 import { filterRefs, workdeskRefs, type WorkdeskRef, type WorkdeskRefKind } from "./composerRefs";
 import type { SlashCommand } from "../../terminal/slashCommands";
 
@@ -15,7 +14,7 @@ export function useWorkdeskRefs(): WorkdeskRef[] {
   const projects = useProjectStore((s) => s.projects);
   const cards = useBrowserCardStore((s) => s.cards);
   const tiles = useFileTileStore((s) => s.tiles);
-  const pinsByProject = usePinStore((s) => s.pinsByProject);
+  const tasks = useTasks();
   return useMemo(
     () =>
       workdeskRefs({
@@ -34,13 +33,9 @@ export function useWorkdeskRefs(): WorkdeskRef[] {
         ),
         pages: Object.entries(cards).map(([id, card]) => ({ id, title: card.title, url: card.url })),
         files: Object.values(tiles).map((tile) => ({ id: tile.id, path: tile.path })),
-        tasks: projects.flatMap((p) =>
-          (pinsByProject[p.path] ?? [])
-            .filter((pin) => pinKind(pin) === "task" && pin.status !== "done" && pin.status !== "dropped")
-            .map((pin) => ({ id: pin.id, title: pin.title || "Untitled task", folder: p.name })),
-        ),
+        tasks: tasks.filter((x) => !x.closed).map((x) => ({ id: x.id, title: `T-${x.n} ${x.title}`, folder: projects.find((p) => p.path === x.folder)?.name ?? "" })),
       }),
-    [projects, cards, tiles, pinsByProject],
+    [projects, cards, tiles, tasks],
   );
 }
 

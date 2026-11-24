@@ -80,7 +80,7 @@ test("an unknown id is a 404 that names the id", async () => {
 });
 
 test("a browser or note id is refused as not a terminal", async () => {
-  const { sender } = setup([{ kind: "browser", id: "br" }, { kind: "pin", id: "pn" }]);
+  const { sender } = setup([{ kind: "browser", id: "br" }, { kind: "note", id: "pn" }]);
   await rejectsWith(sender.send(MANAGER, { id: "br", prompt: "hi" }), 400, "not_a_terminal");
   await assert.rejects(sender.send(MANAGER, { id: "pn", prompt: "hi" }), /is a note/);
 });

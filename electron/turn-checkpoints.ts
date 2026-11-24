@@ -25,7 +25,7 @@ export const MAX_CHECKPOINT_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 type Store = Pick<
   CheckpointStore,
-  "snapshot" | "snapshotSince" | "list" | "undoTurns" | "restorePaths" | "deleteRefs" | "headOf"
+  "snapshot" | "snapshotSince" | "list" | "undoTurns" | "restorePaths" | "deleteRefs" | "headOf" | "diffSnapshots"
 >;
 
 interface ActiveTurn {
@@ -133,6 +133,54 @@ export class TurnCheckpoints {
   async list(terminalId: string, dir: string): Promise<TurnRecord[]> {
     if (!isSafeRefSegment(terminalId)) return [];
     return turnsFromRefs(await this.store.list(dir, `${terminalId}/`));
+  }
+
+  /**
+   * The files that differ in `dir` since this terminal's first turn that was
+   * under way at `since`, or started after it: for what a task changed. Null
+   * when that can't be told (not git, or no turn saved since).
+   */
+  async changedSince(terminalId: string, dir: string, since: number): Promise<CheckpointFileChange[] | null> {
+    if (!isSafeRefSegment(terminalId)) return null;
+    const at = (ref: CheckpointRef | undefined) => {
+      const value = (ref?.meta as Meta | null | undefined)?.at;
+      return typeof value === "string" ? Date.parse(value) : null;
+    };
+    const pairs = [...refsBySeq(await this.store.list(dir, `${terminalId}/`))].sort(([a], [b]) => a - b);
+    const first = pairs.find(([, pair], i) => {
+      const start = at(pair.start);
+      if (start === null) return false;
+      const end = at(pair.end);
+      // One with no end is the turn under way, if it's the last; otherwise its end was never seen.
+      return start >= since || (end !== null ? end >= since : i === pairs.length - 1);
+    });
+    return first?.[1].start ? this.changedFrom(terminalId, dir, first[1].start.commit) : null;
+  }
+
+  /** The folder as it is now, kept under a name of this terminal's; its commit, or null. */
+  async mark(terminalId: string, dir: string, name: string): Promise<string | null> {
+    if (!isSafeRefSegment(terminalId) || !isSafeRefSegment(name)) return null;
+    const saved = await this.store.snapshot(dir, refOf(terminalId, name), { v: 1, phase: "mark", terminal: terminalId, at: this.nowIso() });
+    return saved.ok ? saved.commit : null;
+  }
+
+  /** The files that differ in `dir` from a mark. */
+  async changedFrom(terminalId: string, dir: string, commit: string): Promise<CheckpointFileChange[] | null> {
+    const now = await this.mark(terminalId, dir, "compare");
+    return now ? this.store.diffSnapshots(dir, commit, now) : null;
+  }
+
+  /**
+   * Whether files in `dir` changed over another terminal's turn since then, or
+   * one is under way. Whose change isn't known, so this is only for agents that
+   * don't say what they do; `except` are those that do.
+   */
+  async othersChangedSince(terminalId: string, dir: string, since: number, except: ReadonlySet<string> = new Set()): Promise<boolean> {
+    for (const [other, state] of this.terminals) if (other !== terminalId && !except.has(other) && state.dir === dir && state.active) return true;
+    return (await this.store.list(dir, "")).some((r) => {
+      const meta = (r.meta ?? {}) as Meta & { terminal?: unknown };
+      return meta.phase === "end" && meta.terminal !== terminalId && !except.has(String(meta.terminal)) && typeof meta.files === "number" && meta.files > 0 && typeof meta.at === "string" && Date.parse(meta.at) >= since;
+    });
   }
 
   /** Why this terminal's turns aren't being saved right now, if they aren't. */

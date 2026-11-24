@@ -20,7 +20,6 @@ import { startAgentAvailability } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
 import { useIdentityManagerStore } from "./stores/identityManagerStore";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
-import { PinDetailDrawer } from "./components/PinDetailDrawer";
 import { initUpdaterListeners } from "./stores/updaterStore";
 import { ComposerBar } from "./components/ComposerBar";
 import { HandoffDragChip } from "./components/HandoffDragChip";
@@ -78,13 +77,17 @@ import {
 import { appendToNote, installReplyDelivery } from "./browser/chatReplyDelivery";
 import { endpointRole, isOnCanvas, nodeTitle, wireEndsOf } from "./canvas/wireEnds";
 import { ABILITY_WORDS } from "../shared/node-contracts";
-import { subscribePinEvents, usePinStore } from "./stores/pinStore";
+import { startTasks } from "./tasks/taskStore";
+import { agentNames, agentsIn } from "./tasks/agentNames";
+import { noteEnd, noteEnds, placedTasks } from "./canvas/noteEnds";
+import { addNote, noteById, notes } from "./board/notes";
+import { columnOf } from "../shared/task";
+import { visibleCanvasCenter } from "./actions/dockActions";
 import {
   useCanvasRegistryStore,
   getActiveCanvas,
   getWorkspaceManagerTerminalId,
 } from "./stores/canvasRegistryStore";
-import { createNoteInScene, updatePinInScene } from "./actions/scenePinActions";
 import {
   createConnectionInScene,
   wireSpawnedBrowser,
@@ -93,7 +96,6 @@ import type { ConnectionEndpoint } from "./stores/connectionStore";
 import type { HydraIdentity, TerminalType } from "./types";
 import { addScannedProjectAndFocus } from "./projects/projectCreation";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import { usePinPreloader } from "./hooks/usePinPreloader";
 import { getTranslations, useT } from "./i18n/useT";
 import { loadAllDownloadedFonts } from "./terminal/fontLoader";
 import { startAutoSummaryWatcher } from "./terminal/summaryScheduler";
@@ -366,9 +368,8 @@ export function App() {
     });
     return off;
   }, []);
-  // Pins change outside the app too (an agent's `tacit pin add`).
-  useEffect(() => (window.tacit?.pins ? subscribePinEvents() : undefined), []);
-  usePinPreloader();
+  // Tasks change in the main process: an agent's work, the CLI, what's seen of a terminal.
+  useEffect(() => (window.tacit?.tasks ? startTasks() : undefined), []);
   useStatePersistence();
   useAutoSave();
   useWorkspaceOpen();
@@ -831,7 +832,7 @@ export function App() {
       // electron/api-server.ts). Flat across all three node kinds — no
       // project/worktree nesting — since the PM reasons about the canvas as
       // one flat space, same as focusableNodes.ts's collector does for
-      // focus view. Pins without x/y (list/drawer-only, never placed on the
+      // focus view. Tasks that were never placed on the
       // canvas) are excluded, same as focusableNodes.ts excludes them.
       listWorkspaceNodes: (forTerminalId?: string | null, everything = true) => {
         // Seen from the asking terminal: itself, which way each node is
@@ -841,7 +842,7 @@ export function App() {
         const wires = new Map<string, { wire: string; purpose?: string; can: string[] }>();
         if (forTerminalId) {
           for (const end of wireEndsOf("terminal", forTerminalId)) {
-            wires.set(`${end.kind === "note" ? "pin" : end.kind}:${end.id}`, {
+            wires.set(`${end.kind === "note" ? end.role : end.kind}:${end.id}`, {
               wire: end.plain ? "relates_only" : end.direction,
               ...(end.purpose ? { purpose: end.purpose } : {}),
               can: end.can.map((ability) => ABILITY_WORDS[ability]),
@@ -849,7 +850,7 @@ export function App() {
           }
         }
         const nodes: Array<{
-          kind: "terminal" | "browser" | "pin";
+          kind: "terminal" | "browser" | "note" | "task";
           id: string;
           x: number;
           y: number;
@@ -903,19 +904,15 @@ export function App() {
           });
         }
 
-        const { pinsByProject } = usePinStore.getState();
-        for (const pin of Object.values(pinsByProject).flat()) {
-          if (pin.x == null || pin.y == null) continue;
+        const columns = new Map(placedTasks().map(({ task }) => [task.id, columnOf(task)]));
+        for (const end of noteEnds()) {
           nodes.push({
-            kind: "pin",
-            id: pin.id,
-            x: pin.x,
-            y: pin.y,
-            w: pin.w ?? 280,
-            h: pin.h ?? 220,
+            kind: end.role,
+            id: end.id,
+            ...end.rect,
             type: null,
-            status: pin.status,
-            title: pin.title || null,
+            status: columns.get(end.id) ?? null,
+            title: end.title,
             startedBy: null,
           });
         }
@@ -937,7 +934,7 @@ export function App() {
         return JSON.parse(JSON.stringify(nodes));
       },
 
-      getNodeState: (kind: "terminal" | "browser" | "pin", id: string) => {
+      getNodeState: (kind: "terminal" | "browser" | "note", id: string) => {
         if (kind === "terminal") {
           const found = findTerminal(id);
           if (!found) return null;
@@ -963,13 +960,9 @@ export function App() {
           if (!card) return null;
           return JSON.parse(JSON.stringify(card));
         }
-        if (kind === "pin") {
-          const { pinsByProject } = usePinStore.getState();
-          const pin = Object.values(pinsByProject)
-            .flat()
-            .find((p) => p.id === id);
-          if (!pin) return null;
-          return JSON.parse(JSON.stringify(pin));
+        if (kind === "note") {
+          const note = noteById(id);
+          return note ? { kind: "note", ...note } : null;
         }
         return null;
       },
@@ -1033,10 +1026,8 @@ export function App() {
         if (card) {
           return { kind: "browser" as const, id, startedBy: card.spawnedBy ?? "user" };
         }
-        const isPin = Object.values(usePinStore.getState().pinsByProject)
-          .flat()
-          .some((p) => p.id === id);
-        return isPin ? { kind: "pin" as const, id } : null;
+        const end = noteEnd(id);
+        return end ? { kind: end.role, id } : null;
       },
 
       getWorkspaceLiveSummary: () => {
@@ -1056,16 +1047,14 @@ export function App() {
         const browserCount = Object.keys(
           useBrowserCardStore.getState().cards,
         ).length;
-        const pinCount = Object.values(usePinStore.getState().pinsByProject)
-          .flat()
-          .filter((p) => p.x != null && p.y != null).length;
+        const noteCount = notes().length;
         const connectionCount = useConnectionStore.getState().connections.length;
         // Files shown on the canvas, so "look at hero.png" finds it.
         const files = Object.values(useFileTileStore.getState().tiles).map((tile) => tile.path);
         return {
           terminalCount,
           browserCount,
-          pinCount,
+          noteCount,
           connectionCount,
           statusCounts,
           files,
@@ -1081,6 +1070,44 @@ export function App() {
       },
 
       getActiveCanvasId: () => getActiveCanvas().id,
+
+      // Backs tasks (electron/task-runner.ts): a terminal on any workdesk, the
+      // open one or one whose agents are stopped until it's opened.
+      taskTerminal: (id: string) => {
+        const found = findTerminal(id);
+        const { canvases, activeCanvasId } = useCanvasRegistryStore.getState();
+        if (found) {
+          return {
+            id,
+            name: agentNames(agentsIn(useProjectStore.getState().projects)).get(id) ?? (found.terminal.customTitle?.trim() || found.terminal.title),
+            type: found.terminal.type,
+            workdesk: activeCanvasId,
+            worktree: found.worktree.path,
+            ptyId: getLivePtyId(id),
+            manager: getWorkspaceManagerTerminalId() === id,
+            here: true,
+          };
+        }
+        for (const canvas of canvases) {
+          if (canvas.id === activeCanvasId) continue;
+          for (const project of canvas.scene.projects) {
+            for (const worktree of project.worktrees) {
+              const terminal = worktree.terminals.find((x) => x.id === id);
+              if (!terminal) continue;
+              return { id, name: agentNames(agentsIn(canvas.scene.projects)).get(id) ?? terminal.title, type: terminal.type, workdesk: canvas.id, worktree: worktree.path, ptyId: null, manager: canvas.workspaceManagerTerminalId === id, here: false };
+            }
+          }
+        }
+        return null;
+      },
+
+      // Notes, for `tacit note`.
+      listNotes: () => notes().map(({ id, title, text }) => ({ id, title, text })),
+      addNote: (text: string, by: string | null) => {
+        const found = by ? findTerminal(by) : null;
+        const id = addNote(text, visibleCanvasCenter(), found ? { kind: "agent", agent: found.terminal.type, name: found.terminal.customTitle?.trim() || found.terminal.title, terminalId: found.terminal.id } : { kind: "you" });
+        return noteById(id);
+      },
 
       setWorkspaceManager: (terminalId: string | null) => {
         const canvasId = getActiveCanvas().id;
@@ -1207,11 +1234,12 @@ export function App() {
       }) => {
         const found = findTerminal(opts.requesterTerminalId);
         if (!found) return { ok: false, reason: "requester terminal not found" };
-        const pin = await createNoteInScene(found.project.path, opts.position);
-        updatePinInScene(found.project.path, pin.id, { body: opts.body });
+        const at = opts.position ?? visibleCanvasCenter();
+        const name = found.terminal.customTitle?.trim() || found.terminal.title;
+        const id = addNote(opts.body, at, { kind: "agent", agent: found.terminal.type, name, terminalId: found.terminal.id });
         recordDecision({
           kind: "spawn",
-          node: `note:${pin.id}`,
+          node: `note:${id}`,
           by: `terminal:${opts.requesterTerminalId}`,
           parent: `terminal:${opts.requesterTerminalId}`,
         });
@@ -1220,10 +1248,10 @@ export function App() {
         // deliberately applies no reaction to a note target.
         createConnectionInScene(
           { kind: "terminal", id: opts.requesterTerminalId },
-          { kind: "note", id: pin.id },
+          { kind: "note", id },
           { origin: "spawn", by: `terminal:${opts.requesterTerminalId}` },
         );
-        return { ok: true, id: pin.id };
+        return { ok: true, id };
       },
 
       // Backs the connect_nodes MCP tool. A manual wire is a real capability
@@ -1288,7 +1316,6 @@ export function App() {
       {!gridMode && <SessionsOverlay />}
       {!gridMode && <FileEditorDrawer />}
       {!gridMode && <CanvasPage />}
-      <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />
       <NewCanvasDialog />

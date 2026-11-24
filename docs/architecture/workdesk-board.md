@@ -86,11 +86,27 @@ These follow the prototype, and tldraw and Excalidraw where it is silent.
   An arrow drawn within one shape stays loose.
 - **Sections:**
   - a titled area; dragging its title moves everything inside;
-  - drawn behind tiles.
+  - drawn behind tiles;
+  - holds every kind of drawing and every kind of tile: terminals, tasks,
+    notes, files and browsers (`collectTileRects`, the one list arrows,
+    sections and lining up all use);
+  - drawn round things, it takes in what its area has the centre of. What it
+    will take in is ringed as it's drawn;
+  - something dropped, opened or made with its centre inside joins it
+    (`boardMembership.ts`);
+  - resized from any side or corner, nothing in it moves or scales (as in
+    Figma and tldraw). Something loose comes in with its centre (another
+    section or a drawing only when wholly inside); what it holds leaves only
+    when wholly outside, so a half-covered thing doesn't come and go (as in
+    Excalidraw). Ringed as it goes; one undo gives back both.
+- **Resizing** any drawing: every side and corner. Shift keeps its
+  proportions, Option resizes from the middle, and its size shows.
+- **Dragging across a browser**: its page doesn't take the pointer while
+  anything on the canvas is dragged (`canvasDrag.ts`).
 - **Stickies:**
   - drawn above tiles;
-  - "Make it a task" turns a sticky into a real Task (pin) in the same place,
-    with the same id, so arrows stay attached.
+  - "Start task" makes a separate task from a sticky, linked to it; the sticky
+    stays (docs/architecture/task-board.md, "Notes").
 - **Selecting several**, drawings and tiles (terminals, tasks, notes, files,
   browsers) alike (`canvasSelection.ts`, `useBoxSelect.ts`):
   - In Select, a drag on empty canvas draws a box. What it touches is selected
@@ -295,7 +311,7 @@ minimum and can't be turned off; it's how an agent understands what you mean.
 - **Other workdesks:** an agent only reads or changes the board of its own
   workdesk. Copying a drawing to another workdesk gives it that workdesk's
   default.
-- **Stickies made into tasks** follow tasks' own rules from then on.
+- **A task started from a sticky** is its own record; the sticky stays a note.
 
 All enforcement is in the main process, before `execRenderer`. The renderer
 never decides whether an agent may change something.

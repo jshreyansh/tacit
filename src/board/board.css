@@ -41,7 +41,7 @@
 
 .tc-board.is-interactive .tc-bd-el,
 .tc-board.is-interactive .tc-bd-title,
-.tc-board.is-interactive .tc-bd-handle,
+.tc-board.is-interactive .tc-bd-zone,
 .tc-board.is-interactive .tc-bd-qc { pointer-events: auto; }
 .tc-board.is-interactive .tc-bd-hit { pointer-events: stroke; cursor: move; }
 .tc-board.is-interactive .tc-bd-end { pointer-events: all; cursor: grab; }
@@ -105,10 +105,22 @@
 .tc-bd-el.is-hov { outline: calc(1px * var(--inv)) solid color-mix(in srgb, var(--board-sel) 42%, transparent); outline-offset: calc(3px * var(--inv)); }
 .tc-bd-editing { outline: none; cursor: text; min-width: 4px; display: inline-block; white-space: inherit; user-select: text; -webkit-user-select: text; caret-color: var(--board-sel); }
 .tc-bd-text .tc-bd-editing { white-space: pre; }
-.tc-bd-handle {
-  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; transform: scale(var(--inv));
-  border-radius: 4px; background: var(--text-primary); box-shadow: 0 0 0 1.5px var(--bg), 0 2px 6px rgba(0, 0, 0, 0.4); cursor: nwse-resize;
-}
+/* Resized from any side or corner: 6px out, 3px in, so a small shape can still be picked up. */
+.tc-bd-zones { position: absolute; pointer-events: none; }
+.tc-bd-zone { position: absolute; --o: calc(-6px * var(--inv)); --t: calc(9px * var(--inv)); --tc-inv: var(--inv); }
+.tc-bd-zone.z-n, .tc-bd-zone.z-s { left: 0; right: 0; height: var(--t); }
+.tc-bd-zone.z-e, .tc-bd-zone.z-w { top: 0; bottom: 0; width: var(--t); }
+.tc-bd-zone.z-n { top: var(--o); }
+.tc-bd-zone.z-s { bottom: var(--o); }
+.tc-bd-zone.z-e { right: var(--o); }
+.tc-bd-zone.z-w { left: var(--o); }
+.tc-bd-zone.tc-resize-corner { width: calc(18px * var(--inv)); height: calc(18px * var(--inv)); --o: calc(-11px * var(--inv)); }
+.tc-bd-zone.z-nw { left: var(--o); top: var(--o); }
+.tc-bd-zone.z-ne { right: var(--o); top: var(--o); }
+.tc-bd-zone.z-sw { left: var(--o); bottom: var(--o); }
+.tc-bd-zone.z-se { right: var(--o); bottom: var(--o); }
+.tc-bd-zone.tc-resize-corner::after { opacity: 1; inset: 25%; border-color: var(--bg); background: var(--text-primary); }
+.tc-bd-holding { fill: color-mix(in srgb, var(--board-sel) 8%, transparent); stroke: var(--board-sel); }
 .tc-bd-halo { fill: none; stroke: var(--board-sel); stroke-opacity: 0.32; stroke-linecap: round; stroke-linejoin: round; }
 .tc-bd-end { fill: var(--text-primary); stroke: var(--bg); r: calc(5.5px * var(--inv)); stroke-width: calc(1.5px * var(--inv)); }
 .tc-bd-end:hover { fill: var(--board-sel); }
@@ -189,7 +201,7 @@
 .tc-bd-swatches button[aria-pressed="true"]::after { opacity: 1; transform: none; }
 .tc-bd-actions { display: flex; align-items: center; gap: 4px; margin-top: 2px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .tc-bd-actions-end { display: flex; gap: 2px; margin-left: auto; }
-.tc-bd-action { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--text-secondary); transition: background-color 80ms, color 80ms; }
+.tc-bd-action { height: 28px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--text-secondary); transition: background-color 80ms, color 80ms; }
 .tc-bd-action:hover, .tc-bd-icon-btn:hover { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-primary); }
 .tc-bd-icon-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--text-muted); transition: background-color 80ms, color 80ms; }
 .tc-bd-icon-btn.danger:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }

@@ -1,7 +1,7 @@
-import { pinKind, type Pin } from "../../shared/pin";
 import { isCanvasTerminal } from "../components/sessionPanelModel";
 import { useBrowserCardStore } from "../stores/browserCardStore";
-import { usePinStore } from "../stores/pinStore";
+import { useRecordPlaceStore } from "../stores/recordPlaceStore";
+import { noteById } from "../board/noteStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore, type SelectedItem } from "../stores/selectionStore";
 import type { OpenNode } from "../stores/workdeskViewStore";
@@ -11,8 +11,12 @@ export interface CanvasFocusInput {
   projects: readonly ProjectData[];
   selectedItems: readonly SelectedItem[];
   hasBrowser: (id: string) => boolean;
-  findPin: (id: string) => Pin | undefined;
+  hasTask: (id: string) => boolean;
+  hasNote: (id: string) => boolean;
 }
+
+/** A node the grid has a tab for, or a task, whose page is on the board. */
+export type CanvasFocus = OpenNode | { kind: "task"; id: string };
 
 const BROWSER_CARD_PREFIX = "browser:";
 
@@ -24,7 +28,7 @@ const BROWSER_CARD_PREFIX = "browser:";
  * selected. Null with nothing chosen, or several boxed at once, or one the
  * grid has no tab for (a minimized or stashed terminal).
  */
-export function resolveCanvasFocusedNode(input: CanvasFocusInput): OpenNode | null {
+export function resolveCanvasFocusedNode(input: CanvasFocusInput): CanvasFocus | null {
   for (const project of input.projects) {
     for (const worktree of project.worktrees) {
       const focused = worktree.terminals.find((t) => t.focused);
@@ -37,19 +41,17 @@ export function resolveCanvasFocusedNode(input: CanvasFocusInput): OpenNode | nu
     const id = item.cardId.slice(BROWSER_CARD_PREFIX.length);
     return input.hasBrowser(id) ? { kind: "browser", id } : null;
   }
-  if (item.type === "pin") {
-    const pin = input.findPin(item.pinId);
-    return pin ? { kind: pinKind(pin), id: pin.id } : null;
-  }
+  if (item.type === "task") return input.hasTask(item.taskId) ? { kind: "task", id: item.taskId } : null;
+  if (item.type === "annotation") return input.hasNote(item.annotationId) ? { kind: "note", id: item.annotationId } : null;
   return null;
 }
 
-export function canvasFocusedNode(): OpenNode | null {
-  const pins = usePinStore.getState().pinsByProject;
+export function canvasFocusedNode(): CanvasFocus | null {
   return resolveCanvasFocusedNode({
     projects: useProjectStore.getState().projects,
     selectedItems: useSelectionStore.getState().selectedItems,
     hasBrowser: (id) => id in useBrowserCardStore.getState().cards,
-    findPin: (id) => Object.values(pins).flat().find((p) => p.id === id),
+    hasTask: (id) => id in useRecordPlaceStore.getState().places,
+    hasNote: (id) => noteById(id) !== null,
   });
 }

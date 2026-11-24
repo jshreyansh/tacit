@@ -234,10 +234,6 @@ export function isAgentHarness(harness: string | null): boolean {
   return harness !== null && AGENT_HARNESSES.has(harness);
 }
 
-/** A pin dropped on an agent terminal: the pin's text is typed in. */
-export function pinDropEvent(pinId: string, to: CaptureNodeRef): CaptureEvent {
-  return { kind: "handoff", from: `note:${pinId}`, to, via: "drop", attribution: "observed", by: "user" };
-}
 
 /** Files dropped on an agent terminal, from Tacit's Files panel or another app. */
 export function fileDropEvent(files: HandoffFile[], to: CaptureNodeRef, fromFilesPanel: boolean): CaptureEvent {

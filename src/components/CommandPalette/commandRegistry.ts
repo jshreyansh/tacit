@@ -22,8 +22,7 @@ import {
   fitAllProjects,
   setZoomToHundred,
 } from "../../canvas/zoomActions";
-import { addBrowser, visibleCanvasCenter } from "../../actions/dockActions";
-import { createNoteInScene, createTaskInScene } from "../../actions/scenePinActions";
+import { addBrowser, visibleCanvasCenter, addTask, addNote } from "../../actions/dockActions";
 import {
   stashTerminalInScene,
   toggleTerminalStarredInScene,
@@ -404,11 +403,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
     title: t.dock_add_task,
     keywords: ["todo", "task", "plan", "checklist"],
     perform: () => {
-      const { focusedProjectId, projects } = useProjectStore.getState();
-      const project =
-        projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-      if (!project) return;
-      void createTaskInScene(project.path, visibleCanvasCenter());
+      addTask();
     },
   });
 
@@ -418,11 +413,7 @@ function actionCommands(ctx: CommandContext): PaletteCommand[] {
     title: t.dock_add_note,
     keywords: ["pin", "sticky", "memo"],
     perform: () => {
-      const { focusedProjectId, projects } = useProjectStore.getState();
-      const project =
-        projects.find((p) => p.id === focusedProjectId) ?? projects[0];
-      if (!project) return;
-      void createNoteInScene(project.path, visibleCanvasCenter());
+      addNote();
     },
   });
 

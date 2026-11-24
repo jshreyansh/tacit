@@ -399,7 +399,7 @@ export function backfillLineageConnections(): void {
  * with a browser tile, push a real (auto-submitted) turn into that
  * terminal's running agent announcing the browser-bridge tools now work for
  * it — see electron/main.ts's browser:notify-wired handler, which reuses
- * the same composer-submit pipeline pin dispatch already relies on. The
+ * the same composer-submit pipeline the message box relies on. The
  * actual capability grant itself is enforced separately, per-call, by
  * browser-bridge checking /terminal/:id/browser-binding — this notice is
  * just courtesy, not the gate.
@@ -448,7 +448,7 @@ export function waitForTerminalReady(
  * Tell the agents at a wire's ends what it now lets them do.
  *
  * Pushed as a real turn into each agent, through the same composer-submit
- * path pin dispatch uses (electron/main.ts's browser:notify-wired handler).
+ * path the message box uses (electron/main.ts's browser:notify-wired handler).
  * Only agents are told: typing a notice into a shell would run it. An end
  * the wire gives nothing to (the head of a one-way wire, a plain link) is
  * skipped, since there is nothing for it to know. The notice is courtesy;
