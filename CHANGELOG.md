@@ -4,6 +4,8 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.11] - 2026-11-24
+
 ### Changed
 - **One task board for the workdesk**: Later, Next, Working, Needs you, Done, across every folder and work with no folder. The column is worked out from what's happening, so a card can't say Working while it waits for you. Board or List, search, folders; What needs you is filtered by why. The Tasks under each folder are gone.
 - **A task is the brief, then the record**: description with pictures, Done when, Leave alone, what to start from, what it may do without asking, parts; then who tried, what they asked, what you decided, what changed, and where it landed (committed, pushed).
