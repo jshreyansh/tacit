@@ -1176,6 +1176,15 @@ export interface TacitAPI {
     openInApp: (filePath: string) => Promise<void>;
     /** Quick Look on a Mac; elsewhere, in its app. */
     quickLook: (filePath: string) => Promise<void>;
+    /**
+     * Save a picture, video, sound or PDF pasted or dropped from outside in
+     * `<folder>/.tacit/media/`; `folder` must be one of this workdesk's.
+     */
+    saveMedia: (
+      folder: string,
+      bytes: Uint8Array,
+      name: string,
+    ) => Promise<{ ok: true; path: string } | { ok: false; reason: "not_a_folder" | "empty" | "unsupported" | "too_large" }>;
   };
   fs: {
     /** One folder's entries, folders first, or why it can't be read. */

@@ -7,6 +7,8 @@ import {
   updateBrowserCardInScene,
 } from "../actions/sceneCardActions";
 import { activateCardInScene } from "../actions/sceneSelectionActions";
+import { isInGroup } from "../canvas/canvasSelection";
+import { startGroupMove } from "../canvas/groupMove";
 import {
   type BrowserCardData,
   useBrowserCardStore,
@@ -82,6 +84,10 @@ export function BrowserCard({ card, projectedLayout }: Props) {
   } | null>(null);
 
   const cardId = `browser:${card.id}`;
+  // One of several selected: pressing it keeps them, so they can be dragged.
+  const activateUnlessGrouped = () => {
+    if (!isInGroup({ type: "card", cardId })) activateCardInScene(cardId);
+  };
   const isSelected = useSelectionStore((state) =>
     state.selectedItems.some(
       (item) => item.type === "card" && item.cardId === cardId,
@@ -305,15 +311,24 @@ export function BrowserCard({ card, projectedLayout }: Props) {
         origX: card.x,
         origY: card.y,
       };
+      // One of several selected: they all come along.
+      const group = isInGroup({ type: "card", cardId: `browser:${card.id}` }) ? startGroupMove(useSelectionStore.getState().selectedItems) : null;
+      let by = { x: 0, y: 0 };
       const handleMove = (ev: MouseEvent) => {
         if (!dragRef.current) return;
+        by = { x: (ev.clientX - dragRef.current.startX) / scale, y: (ev.clientY - dragRef.current.startY) / scale };
+        if (group) {
+          group.shift(by.x, by.y);
+          return;
+        }
         updateBrowserCardInScene(card.id, {
-          x: dragRef.current.origX + (ev.clientX - dragRef.current.startX) / scale,
-          y: dragRef.current.origY + (ev.clientY - dragRef.current.startY) / scale,
+          x: dragRef.current.origX + by.x,
+          y: dragRef.current.origY + by.y,
         });
       };
       const handleUp = () => {
         dragRef.current = null;
+        group?.drop(by.x, by.y);
         window.removeEventListener("mousemove", handleMove);
         window.removeEventListener("mouseup", handleUp);
       };
@@ -394,6 +409,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       <div
         className="pointer-events-none absolute"
         data-scene-box-select-block
+        data-scene-card={cardId}
+        data-scene-card-handle=""
         style={{ left: card.x, top: card.y, width: card.w, height: card.h }}
       >
         <div className="pointer-events-auto">
@@ -402,14 +419,14 @@ export function BrowserCard({ card, projectedLayout }: Props) {
             width={card.w}
             title={card.title || card.url}
             onPointerDown={(e) => {
-              activateCardInScene(cardId);
+              activateUnlessGrouped();
               handleDragStart(e);
             }}
             onOpen={() => flyToBounds(card.x, card.y, card.w, card.h)}
           />
           <TileMoveSurface
             onPointerDown={(e) => {
-              activateCardInScene(cardId);
+              activateUnlessGrouped();
               handleDragStart(e);
             }}
             onOpen={() => flyToBounds(card.x, card.y, card.w, card.h)}
@@ -422,6 +439,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     <>
     <div
       data-scene-box-select-block
+      data-scene-card={projectedLayout ? undefined : cardId}
       data-connect-kind="browser"
       data-connect-id={card.id}
       className="absolute rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-col overflow-hidden"
@@ -445,7 +463,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       // data-scene-box-select-block attribute above).
       onMouseDown={(e) => {
         e.stopPropagation();
-        activateCardInScene(cardId);
+        activateUnlessGrouped();
       }}
       // Typing in its address bar, or using its page, is being on this
       // browser too: the page's clicks never reach this window, but its
@@ -471,6 +489,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     >
       <div
         className="flex-none flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg)] border-b border-[var(--border)] cursor-grab active:cursor-grabbing select-none"
+        data-scene-card-handle=""
         onMouseDown={projectedLayout ? undefined : handleDragStart}
       >
         <button

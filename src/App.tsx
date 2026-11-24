@@ -25,7 +25,6 @@ import { initUpdaterListeners } from "./stores/updaterStore";
 import { ComposerBar } from "./components/ComposerBar";
 import { HandoffDragChip } from "./components/HandoffDragChip";
 import { usePreferencesStore, hydrateApiKey } from "./stores/preferencesStore";
-import { DrawingPanel } from "./toolbar/DrawingPanel";
 import { ShortcutHints } from "./components/ShortcutHints";
 import { DiscoveryCue } from "./components/DiscoveryCue";
 import { StatusDigest } from "./components/StatusDigest";
@@ -379,7 +378,6 @@ export function App() {
   const composerEnabled = usePreferencesStore((s) => s.composerEnabled);
   const gridMode = useWorkdeskViewStore((s) => s.mode === "grid");
   const globalSearchEnabled = usePreferencesStore((s) => s.globalSearchEnabled);
-  const drawingEnabled = usePreferencesStore((s) => s.drawingEnabled);
   const summaryEnabled = usePreferencesStore((s) => s.summaryEnabled);
   const completionGlowEnabled = usePreferencesStore(
     (s) => s.completionGlowEnabled,
@@ -1273,7 +1271,6 @@ export function App() {
       <Navigator />
       <WorkspaceManagerPill />
       <ManagerSetupCard />
-      {drawingEnabled && <DrawingPanel />}
       {/* Canvas-only overlays: the grid has none of what they point at. */}
       {!gridMode && completionGlowEnabled && <CompletionGlow />}
       {!gridMode && <ShortcutHints />}

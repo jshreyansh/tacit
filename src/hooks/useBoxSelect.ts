@@ -2,121 +2,28 @@ import { useCallback } from "react";
 import {
   activateCardInScene,
   activateAnnotationInScene,
+  activatePinInScene,
   activateTerminalInScene,
   activateWorktreeInScene,
+  clearSceneFocus,
   setSceneSelection,
   setSceneSelectionRect,
 } from "../actions/sceneSelectionActions";
-import {
-  getDrawingElementBounds,
-  resolveDrawingElementForRender,
-} from "../canvas/annotationGeometry";
+import { drawingAt, isInGroup, itemsInBox, pressOn, toggleItem, unionItems } from "../canvas/canvasSelection";
+import { sameSelectedItems } from "../canvas/sceneState";
+import { useBoardStore } from "../stores/boardStore";
 import { useCanvasStore } from "../stores/canvasStore";
-import { useProjectStore } from "../stores/projectStore";
-import {
-  useCardLayoutStore,
-  resolveAllCardPositions,
-} from "../stores/cardLayoutStore";
-import { useDrawingStore } from "../stores/drawingStore";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
-import { type SelectedItem } from "../stores/selectionStore";
+import { useDrawingStore } from "../stores/drawingStore";
+import { useSelectionStore, type SelectedItem } from "../stores/selectionStore";
 import { screenPointToCanvasPoint } from "../canvas/viewportBounds";
+import { hasPrimaryModifier } from "./shortcutTarget";
 
-const BOX_SELECT_BLOCK_SELECTOR = "[data-scene-box-select-block]";
-
-function rectsIntersect(
-  a: { x: number; y: number; w: number; h: number },
-  b: { x: number; y: number; w: number; h: number },
-): boolean {
-  return (
-    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
-  );
-}
-
-export function shouldIgnoreBoxSelectTarget(
-  target: EventTarget | null,
-): boolean {
-  if (typeof Element === "undefined") {
-    return false;
-  }
-  return (
-    target instanceof Element && !!target.closest(BOX_SELECT_BLOCK_SELECTOR)
-  );
-}
-
-export function prioritizeBoxSelectionItems(
-  items: SelectedItem[],
-): SelectedItem[] {
-  const annotationItems = items.filter((item) => item.type === "annotation");
-  if (annotationItems.length > 0) {
-    return annotationItems;
-  }
-
-  const cardItems = items.filter((item) => item.type === "card");
-  if (cardItems.length > 0) {
-    return cardItems;
-  }
-
-  return items;
-}
+/** How far the pointer goes (on screen) before a press is a drag. */
+const DRAG_FROM = 4;
 
 function screenToCanvas(clientX: number, clientY: number) {
   return screenPointToCanvasPoint(clientX, clientY, useCanvasStore.getState().viewport);
-}
-
-function getItemsInRect(rect: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}): SelectedItem[] {
-  const nr = {
-    x: rect.w < 0 ? rect.x + rect.w : rect.x,
-    y: rect.h < 0 ? rect.y + rect.h : rect.y,
-    w: Math.abs(rect.w),
-    h: Math.abs(rect.h),
-  };
-
-  const items: SelectedItem[] = [];
-  const { projects } = useProjectStore.getState();
-
-  // Iterate all non-stashed terminals across all projects/worktrees.
-  // Each terminal has absolute x, y, width, height on the canvas.
-  for (const p of projects) {
-    for (const wt of p.worktrees) {
-      for (const t of wt.terminals) {
-        if (t.stashed) continue;
-        const termRect = { x: t.x, y: t.y, w: t.width, h: t.height };
-        if (rectsIntersect(nr, termRect)) {
-          items.push({
-            type: "terminal",
-            projectId: p.id,
-            worktreeId: wt.id,
-            terminalId: t.id,
-          });
-        }
-      }
-    }
-  }
-
-  const cards = useCardLayoutStore.getState().cards;
-  const resolved = resolveAllCardPositions(cards);
-  for (const [cardId, entry] of Object.entries(cards)) {
-    const pos = resolved[cardId];
-    if (!pos) continue;
-    if (rectsIntersect(nr, { x: pos.x, y: pos.y, w: entry.w, h: entry.h })) {
-      items.push({ type: "card", cardId });
-    }
-  }
-
-  for (const element of useDrawingStore.getState().elements) {
-    const renderedElement = resolveDrawingElementForRender(element, projects);
-    if (rectsIntersect(nr, getDrawingElementBounds(renderedElement))) {
-      items.push({ type: "annotation", annotationId: element.id });
-    }
-  }
-
-  return prioritizeBoxSelectionItems(items);
 }
 
 export function activateSingleBoxSelectionItem(item: SelectedItem): void {
@@ -130,74 +37,133 @@ export function activateSingleBoxSelectionItem(item: SelectedItem): void {
     activateCardInScene(item.cardId);
   } else if (item.type === "annotation") {
     activateAnnotationInScene(item.annotationId);
+  } else if (item.type === "pin") {
+    activatePinInScene(item.pinId);
+  } else {
+    setSceneSelection([item]);
   }
 }
 
+function select(items: SelectedItem[]): void {
+  if (!sameSelectedItems(useSelectionStore.getState().selectedItems, items)) setSceneSelection(items);
+}
+
+/** Several things selected: nothing is typed into, so ⌫ and Escape are the canvas's. */
+function leaveTyping(): void {
+  clearSceneFocus();
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body) active.blur();
+}
+
+/** The click that ends this press isn't a click on what's under it. */
+function swallowNextClick(): void {
+  const swallow = (ev: MouseEvent) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+  };
+  window.addEventListener("click", swallow, { capture: true, once: true });
+  window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+}
+
+/**
+ * Selecting on the canvas, as in tldraw and Excalidraw
+ * (docs/architecture/workdesk-board.md, "Selecting several"):
+ * - in Select, a drag on empty canvas draws a box; what it touches is
+ *   selected as it goes;
+ * - ⌘ or Shift with a drag adds to what's selected, from anywhere, Hand
+ *   included; with a click it adds one thing, or takes it out;
+ * - a plain click on one of several selected leaves just that one.
+ */
 export function useBoxSelect() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    if (shouldIgnoreBoxSelectTarget(e.target)) return;
+    if (e.button !== 0 || e.altKey) return;
+    if (!(e.target instanceof Element)) return;
     // Canvas-navigation gestures (including marquee select) are inert while
     // focus view is active — the camera only moves via swipe/Cmd+Arrow.
     if (useCanvasStore.getState().focusMode.active) return;
 
     // Don't activate in drawing mode
     if (useDrawingStore.getState().tool !== "select") return;
-    // Hand tool / Space-held panning takes precedence over marquee.
-    if (
-      useCanvasToolStore.getState().tool === "hand" ||
-      useCanvasToolStore.getState().spaceHeld
-    ) {
-      return;
-    }
+    if (useBoardStore.getState().tool || useBoardStore.getState().editingId) return;
+    if (useCanvasToolStore.getState().spaceHeld) return;
 
-    // If the press starts on a node, hand the gesture to React Flow so
-    // a plain drag moves the terminal (Move-tool semantics in Figma).
-    // Shift+drag still falls through to marquee for the "add to
-    // selection" gesture.
-    const target = e.target;
-    if (
-      target instanceof Element &&
-      target.closest(".react-flow__node") &&
-      !e.shiftKey
-    ) {
+    const press = pressOn(e.target);
+    if (!press) return;
+    const hand = useCanvasToolStore.getState().tool === "hand";
+    const adding = e.shiftKey || hasPrimaryModifier(e.nativeEvent);
+    const sx = e.clientX;
+    const sy = e.clientY;
+
+    if (!adding) {
+      if (hand) return;
+      if (press.on === "item") {
+        if (isInGroup(press.item)) {
+          // Its own drag moves the group; a click without one leaves just it.
+          const item = press.item;
+          const up = (ev: MouseEvent) => {
+            window.removeEventListener("mouseup", up, true);
+            if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_FROM) activateSingleBoxSelectionItem(item);
+          };
+          window.addEventListener("mouseup", up, true);
+        } else if (press.item.type === "file") {
+          select([press.item]);
+        }
+        return;
+      }
+    } else if (press.on === "item" && !press.handle) {
+      // Inside it: ⌘ and Shift are the terminal's, the page's or the text's.
       return;
     }
 
     e.preventDefault();
     e.stopPropagation();
 
-    const start = screenToCanvas(e.clientX, e.clientY);
-    setSceneSelectionRect({ x: start.x, y: start.y, w: 0, h: 0 });
+    const start = screenToCanvas(sx, sy);
+    const base = adding ? useSelectionStore.getState().selectedItems.filter((i) => i.type !== "project" && i.type !== "worktree") : [];
+    let dragging = false;
+    let frame = 0;
+    let last = { x: sx, y: sy };
+
+    const update = () => {
+      frame = 0;
+      const to = screenToCanvas(last.x, last.y);
+      const rect = { x: start.x, y: start.y, w: to.x - start.x, h: to.y - start.y };
+      setSceneSelectionRect(rect);
+      const box = { x: Math.min(start.x, to.x), y: Math.min(start.y, to.y), w: Math.abs(rect.w), h: Math.abs(rect.h) };
+      select(unionItems(base, itemsInBox(box)));
+    };
 
     const handleMove = (ev: MouseEvent) => {
-      const current = screenToCanvas(ev.clientX, ev.clientY);
-      setSceneSelectionRect({
-        x: start.x,
-        y: start.y,
-        w: current.x - start.x,
-        h: current.y - start.y,
-      });
+      last = { x: ev.clientX, y: ev.clientY };
+      if (!dragging) {
+        if (Math.hypot(last.x - sx, last.y - sy) < DRAG_FROM) return;
+        dragging = true;
+      }
+      if (!frame) frame = requestAnimationFrame(update);
     };
 
     const handleUp = (ev: MouseEvent) => {
-      const end = screenToCanvas(ev.clientX, ev.clientY);
-      const rect = {
-        x: start.x,
-        y: start.y,
-        w: end.x - start.x,
-        h: end.y - start.y,
-      };
-
-      const items = getItemsInRect(rect);
-      setSceneSelection(items);
-      if (items.length === 1) {
-        activateSingleBoxSelectionItem(items[0]);
-      }
-      setSceneSelectionRect(null);
-
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      if (frame) cancelAnimationFrame(frame);
+      if (dragging) {
+        last = { x: ev.clientX, y: ev.clientY };
+        update();
+        setSceneSelectionRect(null);
+      } else if (adding) {
+        const item = press.on === "item" ? press.item : hand ? drawingAt(start) : null;
+        if (item) select(toggleItem(base, item));
+      } else {
+        // A click on empty canvas: the canvas clears the selection itself.
+        return;
+      }
+      swallowNextClick();
+
+      const items = useSelectionStore.getState().selectedItems;
+      if (items.length === 1) activateSingleBoxSelectionItem(items[0]);
+      else if (items.length > 1) leaveTyping();
+      // Selected in Hand: over to Select, so it can be moved.
+      if (hand && items.length > 0) useCanvasToolStore.getState().setTool("select");
     };
 
     window.addEventListener("mousemove", handleMove);

@@ -81,6 +81,9 @@ export function filterValidSelectedItems(
       // not found when the selection is read.
       case "pin":
         return true;
+      // File tiles too: a removed one drops itself (fileTileStore).
+      case "file":
+        return true;
     }
   });
 }
@@ -124,6 +127,8 @@ export function sameSelectedItems(
         );
       case "pin":
         return other.type === "pin" && item.pinId === other.pinId;
+      case "file":
+        return other.type === "file" && item.tileId === other.tileId;
     }
   });
 }

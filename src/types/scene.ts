@@ -1,3 +1,4 @@
+import type { BoardElement } from "./board";
 import type { PersistedProjectData, PersistedStashedTerminal } from "./index";
 import type { BrowserCardData } from "../stores/browserCardStore";
 import type { ConnectionData } from "../stores/connectionStore";
@@ -108,6 +109,12 @@ export interface SceneDocument {
   fileTiles?: Record<string, FileTileData>;
   connections?: Record<string, ConnectionData>;
   annotations: AnnotationElement[];
+  /**
+   * The workdesk board (docs/architecture/workdesk-board.md). When present
+   * it's the whole board, and `annotations` only repeats what an older build
+   * can show of it; when absent, the board is made from `annotations`.
+   */
+  board?: BoardElement[];
   stashedTerminals?: PersistedStashedTerminal[];
   /** The worktree this workdesk's side panel shows (projectStore.panelWorktreeId). */
   sidePanelWorktreeId?: string;

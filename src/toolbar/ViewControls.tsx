@@ -17,10 +17,9 @@ const platform = window.tacit?.app.platform ?? "darwin";
 const isMac = platform === "darwin";
 
 /**
- * How you are looking at the canvas: zoom, Fit and Focus, then Canvas or
- * Grid, at the foot of the left bar above Settings. They used to float on
- * their own at the bottom right; in the bar they sit with every other
- * control and leave the canvas's corner clear.
+ * How you are looking at the canvas: Focus, then Canvas or Grid, at the foot
+ * of the left bar above Settings. Zoom and Fit sit with the board's tools at
+ * the bottom right (board/BoardChrome.tsx), where Figma and tldraw keep them.
  */
 
 const buttonCls =
@@ -68,27 +67,7 @@ export function ViewControls() {
   const mode = useWorkdeskViewStore((s) => s.mode);
   const setMode = useWorkdeskViewStore((s) => s.setMode);
   const gridShortcut = useShortcutStore((s) => s.shortcuts.toggleWorkdeskView);
-  const viewport = useCanvasStore((s) => s.viewport);
   const focusModeActive = useCanvasStore((s) => s.focusMode.active);
-  const zoomPercent = `${Math.round(viewport.scale * 100)}%`;
-  const [zoomOpen, setZoomOpen] = useState(false);
-  const zoomWrapRef = useRef<HTMLDivElement>(null);
-  const zoomTriggerRef = useRef<HTMLButtonElement>(null);
-  const zoomPopoverRef = useRef<HTMLDivElement>(null);
-  const closeZoom = useCallback(() => setZoomOpen(false), []);
-  useCloseOnOutsideClick(zoomOpen, zoomWrapRef, closeZoom);
-  usePopoverKeyboardNav({
-    open: zoomOpen,
-    close: closeZoom,
-    popoverRef: zoomPopoverRef,
-    triggerRef: zoomTriggerRef,
-    itemCount: ZOOM_PRESETS.length + 3,
-  });
-  const applyPreset = useCallback((scale: number) => {
-    const state = useCanvasStore.getState();
-    state.setViewport({ ...state.viewport, scale: clampScale(scale) });
-  }, []);
-
 
   // One button for the view: it shows the one it switches to, and keeps you
   // on the node you're on (workdeskModeSwitch.ts).
@@ -114,105 +93,6 @@ export function ViewControls() {
             adjustments you make to what you are already looking at, so they
             belong at the end rather than in front of it. */}
         <div className="relative flex shrink-0 flex-col items-center gap-0.5">
-          <div className="relative" ref={zoomWrapRef}>
-            <button
-              ref={zoomTriggerRef}
-              className={`${buttonCls} text-[10px] font-medium tabular-nums`}
-              style={{ fontFamily: '"Geist Mono", monospace' }}
-              onClick={() => setZoomOpen((v) => !v)}
-              title={t.canvas_zoom_to}
-              aria-haspopup="menu"
-              aria-expanded={zoomOpen}
-              data-on={zoomOpen ? "" : undefined}
-            >
-              {zoomPercent}
-            </button>
-            {zoomOpen && (
-              <div
-                ref={zoomPopoverRef}
-                role="menu"
-                aria-label={t.canvas_zoom_to}
-                // Opens beside the bar and rises from the trigger: it sits near
-                // the bar's foot, so a menu anchored to its top would run off
-                // the bottom of the window.
-                className={`absolute bottom-0 left-full z-50 ml-3 max-h-[min(22rem,60vh)] min-w-[170px] overflow-y-auto py-1.5 ${PILL_GLASS}`}
-                style={{ borderRadius: 14, cornerShape: "squircle" } as React.CSSProperties}
-              >
-                {/* Step controls live here rather than as two more 40px targets
-                    in the rail: they are the pair best covered by the keyboard
-                    and by pinch, so they cost one click and save a permanent
-                    slot on an edge that is already eleven buttons long. */}
-                <div className="flex items-center justify-between px-2 pb-1.5">
-                  <button
-                    data-popover-item
-                    tabIndex={-1}
-                    className="tc-rail-btn inline-flex h-7 w-7 items-center justify-center text-[15px] leading-none text-[var(--text-secondary)]"
-                    onClick={() => stepZoomAtCenter("out")}
-                    aria-label={t.zoom_out}
-                  >
-                    &minus;
-                  </button>
-                  <span
-                    className="text-[12px] tabular-nums text-[var(--text-primary)]"
-                    style={{ fontFamily: '"Geist Mono", monospace' }}
-                  >
-                    {zoomPercent}
-                  </span>
-                  <button
-                    data-popover-item
-                    tabIndex={-1}
-                    className="tc-rail-btn inline-flex h-7 w-7 items-center justify-center text-[15px] leading-none text-[var(--text-secondary)]"
-                    onClick={() => stepZoomAtCenter("in")}
-                    aria-label={t.zoom_in}
-                  >
-                    +
-                  </button>
-                </div>
-                <div className="mx-2 mb-1 h-px bg-[var(--border)] opacity-60" />
-                {ZOOM_PRESETS.map((preset) => (
-                  <button
-                    key={preset.scale}
-                    data-popover-item
-                    role="menuitem"
-                    tabIndex={-1}
-                    className="flex w-full items-center justify-between px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] focus:outline-none"
-                    onClick={() => {
-                      applyPreset(preset.scale);
-                      setZoomOpen(false);
-                    }}
-                  >
-                    <span>{preset.label}</span>
-                    <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                      {preset.hint ?? ""}
-                    </span>
-                  </button>
-                ))}
-                <div className="mx-2 my-1 h-px bg-[var(--border)] opacity-60" />
-                <button
-                  data-popover-item
-                  role="menuitem"
-                  tabIndex={-1}
-                  className="flex w-full items-center px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] hover:text-[var(--text-primary)] focus:outline-none"
-                  onClick={() => {
-                    useCanvasStore.getState().resetViewport();
-                    setZoomOpen(false);
-                  }}
-                >
-                  {t.reset}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button
-            className={buttonCls}
-            onClick={fitAllProjects}
-            title={`${t.fit} (${KEY_HINT.fit})`}
-            aria-label={t.fit}
-          >
-            <FitIcon />
-          </button>
-
           <button
             className={buttonCls}
             onClick={() => {

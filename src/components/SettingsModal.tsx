@@ -816,8 +816,6 @@ export function SettingsModal({ onClose }: Props) {
     setTerminalRenderer,
     composerEnabled,
     setComposerEnabled,
-    drawingEnabled,
-    setDrawingEnabled,
     browserEnabled,
     setBrowserEnabled,
     summaryEnabled,
@@ -1452,15 +1450,6 @@ export function SettingsModal({ onClose }: Props) {
                       <OnOffSegment
                         value={composerEnabled}
                         onChange={setComposerEnabled}
-                      />
-                    </SettingsRow>
-                    <SettingsRow
-                      label={t.drawing_toggle}
-                      description={t.drawing_toggle_desc}
-                    >
-                      <OnOffSegment
-                        value={drawingEnabled}
-                        onChange={setDrawingEnabled}
                       />
                     </SettingsRow>
                     <SettingsRow

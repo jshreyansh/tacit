@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useSelectionStore } from "./selectionStore";
 import { useWorkspaceStore } from "./workspaceStore";
 
 /**
@@ -50,6 +51,11 @@ export const useFileTileStore = create<FileTileStore>((set, get) => ({
       const { [id]: _gone, ...rest } = s.tiles;
       return { tiles: rest };
     });
+    useSelectionStore.setState((s) =>
+      s.selectedItems.some((i) => i.type === "file" && i.tileId === id)
+        ? { selectedItems: s.selectedItems.filter((i) => i.type !== "file" || i.tileId !== id) }
+        : s,
+    );
     useWorkspaceStore.getState().markDirty();
   },
   restore: (tiles) => set({ tiles }),

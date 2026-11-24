@@ -27,7 +27,6 @@ import { getStashedTerminalIds } from "./sceneState";
 import { useProjectStore } from "../stores/projectStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { usePinStore } from "../stores/pinStore";
-import { useDrawingStore } from "../stores/drawingStore";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { WallpaperLayers } from "./WallpaperLayers";
@@ -39,9 +38,19 @@ import { useT } from "../i18n/useT";
 import { FamilyTreeOverlay } from "../components/FamilyTreeOverlay";
 import { FocusCaretOverlay } from "../components/FocusCaretOverlay";
 import { BoxSelectOverlay } from "./BoxSelectOverlay";
+import { SelectionRings } from "./SelectionRings";
+import { hasItem, itemForTile } from "./canvasSelection";
+import { placeTile, registerLiveTiles, startGroupMove, type GroupMove } from "./groupMove";
+import { useSelectionStore } from "../stores/selectionStore";
 import { LayerErrorBoundary } from "../components/LayerErrorBoundary";
 import { CanvasCardLayer } from "./CanvasCardLayer";
-import { DrawingLayer } from "./DrawingLayer";
+import { BoardLayer, boardElementAt } from "../board/BoardLayer";
+import { BoardDrawOverlay } from "../board/BoardDrawOverlay";
+import { BoardChrome } from "../board/BoardChrome";
+import { useBoardKeys } from "../board/useBoardKeys";
+import { createText, tileDropped } from "../board/boardActions";
+import { mediaFiles, placeMediaFiles } from "../board/boardMedia";
+import { useBoardStore } from "../stores/boardStore";
 import { PetOverlay } from "../pet/PetOverlay";
 import { useBoxSelect } from "../hooks/useBoxSelect";
 import { useTrackpadSwipeFocus } from "./trackpadSwipeFocus";
@@ -90,7 +99,7 @@ import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
 import { ContextMenu } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import { addBrowserCardToScene } from "../actions/sceneCardActions";
-import { createNoteInScene, createTaskInScene, updatePinInScene } from "../actions/scenePinActions";
+import { createNoteInScene, createTaskInScene } from "../actions/scenePinActions";
 import type { TerminalType, Pin } from "../types";
 
 const EMPTY_EDGES: never[] = [];
@@ -332,7 +341,6 @@ function XyFlowCanvasInner() {
   const rightPanelWidth = useCanvasStore((state) => state.rightPanelWidth);
   const pinsByProject = usePinStore((state) => state.pinsByProject);
   const projects = useProjectStore((state) => state.projects);
-  const drawingEnabled = usePreferencesStore((state) => state.drawingEnabled);
   const petEnabled = usePreferencesStore((state) => state.petEnabled);
   const activityHeatmapEnabled = usePreferencesStore(
     (state) => state.activityHeatmapEnabled,
@@ -341,7 +349,6 @@ function XyFlowCanvasInner() {
   const canvasBackgroundImage = usePreferencesStore(
     (state) => state.canvasBackgroundImage,
   );
-  const drawingTool = useDrawingStore((state) => state.tool);
   const canvasTool = useCanvasToolStore((state) => state.tool);
   const spaceHeld = useCanvasToolStore((state) => state.spaceHeld);
   const { handleMouseDown: handleBoxSelectMouseDown } = useBoxSelect();
@@ -354,12 +361,14 @@ function XyFlowCanvasInner() {
   );
   const pinLayoutKey = useMemo(() => buildPinLayoutKey(allPins), [allPins]);
   const fileTiles = useFileTileStore((state) => state.tiles);
-  const isDrawing = drawingEnabled && drawingTool !== "select";
+  const boardTool = useBoardStore((state) => state.tool);
+  const isDrawing = !!boardTool;
   const isPanMode = canvasTool === "hand" || spaceHeld;
   const [isPanning, setIsPanning] = useState(false);
   const previousAnimatingRef = useRef(isAnimating);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   useTrackpadSwipeFocus(canvasContainerRef);
+  useBoardKeys();
 
   const focusMode = useCanvasStore((state) => state.focusMode);
   const browserCardMap = useBrowserCardStore((state) => state.cards);
@@ -472,6 +481,12 @@ function XyFlowCanvasInner() {
   const modifiersRef = useRef({ shift: false, meta: false });
   const dragStartRef = useRef(new Map<string, { x: number; y: number }>());
   const snappedRef = useRef(new Map<string, { x: boolean; y: boolean }>());
+  // Several selected, moved by dragging this one of them (groupMove.ts).
+  const groupRef = useRef<{ leader: string; at: { x: number; y: number }; move: GroupMove } | null>(null);
+  useEffect(() => {
+    registerLiveTiles((places) => reactFlow.setNodes((ns) => ns.map((n) => (places.has(n.id) ? { ...n, position: places.get(n.id)! } : n))));
+    return () => registerLiveTiles(null);
+  }, [reactFlow]);
   useEffect(() => {
     const track = (e: KeyboardEvent) => {
       modifiersRef.current = { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey };
@@ -491,6 +506,7 @@ function XyFlowCanvasInner() {
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
       let nextGuides: AlignGuide[] | null = null;
+      const group = groupRef.current;
       const adjusted = changes.map((change) => {
         if (change.type !== "position" || !change.dragging || !change.position) return change;
         const node = reactFlow.getNode(change.id);
@@ -513,7 +529,7 @@ function XyFlowCanvasInner() {
         const size = (n: { measured?: { width?: number; height?: number }; width?: number; height?: number }) => ({ w: n.measured?.width ?? n.width ?? 0, h: n.measured?.height ?? n.height ?? 0 });
         const others = reactFlow
           .getNodes()
-          .filter((n) => n.id !== change.id && !n.hidden)
+          .filter((n) => n.id !== change.id && !n.hidden && !group?.move.moving.tiles.has(n.id))
           .map((n) => ({ x: n.position.x, y: n.position.y, ...size(n) }))
           .filter((r) => r.w > 0 && r.h > 0);
         const aligned = alignRect({ x, y, ...size(node) }, others, ALIGN_SNAP / reactFlow.getViewport().zoom, axes);
@@ -522,6 +538,14 @@ function XyFlowCanvasInner() {
         return { ...change, position: { x: aligned.x, y: aligned.y } };
       });
       if (nextGuides) setGuides(nextGuides);
+      // The rest of what's selected follows, in the same frame.
+      const lead = group && adjusted.find((c) => c.type === "position" && c.id === group.leader && c.dragging);
+      const from = group && dragStartRef.current.get(group.leader);
+      if (group && from && lead?.type === "position" && lead.position) {
+        group.at = lead.position;
+        const places = group.move.shift(lead.position.x - from.x, lead.position.y - from.y, group.leader);
+        for (const [id, position] of places) adjusted.push({ id, type: "position", position, dragging: true });
+      }
       onNodesChange(adjusted);
     },
     [onNodesChange, reactFlow],
@@ -742,22 +766,44 @@ function XyFlowCanvasInner() {
   const handleNodeDragStart = useCallback<OnNodeDrag<CanvasFlowNode>>((_event, node) => {
     dragStartRef.current.set(node.id, { ...node.position });
     snappedRef.current.delete(node.id);
+    const item = itemForTile(node.id);
+    const items = useSelectionStore.getState().selectedItems;
+    if (!item || items.length === 0) return;
+    if (!hasItem(items, item)) useSelectionStore.getState().setSelectedItems([item]);
+    else if (items.length > 1) groupRef.current = { leader: node.id, at: { ...node.position }, move: startGroupMove(items, { live: false }) };
   }, []);
 
   const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
     (_event, node) => {
+      const group = groupRef.current;
+      if (group && group.leader === node.id) {
+        const start = dragStartRef.current.get(node.id) ?? group.at;
+        const to = dropPosition(group.at, SNAP_GRID[0], snappedRef.current.get(node.id) ?? null);
+        groupRef.current = null;
+        dragStartRef.current.delete(node.id);
+        snappedRef.current.delete(node.id);
+        setGuides([]);
+        const dx = to.x - start.x;
+        const dy = to.y - start.y;
+        // Where they're let go, at once: the drop saves them there.
+        group.move.shift(dx, dy);
+        group.move.drop(dx, dy);
+        return;
+      }
       // On the grid, except along an axis it snapped to a neighbour.
       const dropped = dropPosition(node.position, SNAP_GRID[0], snappedRef.current.get(node.id) ?? null);
       dragStartRef.current.delete(node.id);
       snappedRef.current.delete(node.id);
       setGuides([]);
-      if (node.type === "file") {
-        useFileTileStore.getState().update(node.data.tileId, dropped);
-        return;
-      }
-      if (node.type === "pin") {
-        const { pinId, projectPath } = node.data;
-        updatePinInScene(projectPath, pinId, dropped);
+      // Dropped into a board section, or out of one.
+      tileDropped(node.id, {
+        x: dropped.x,
+        y: dropped.y,
+        w: node.measured?.width ?? node.width ?? 0,
+        h: node.measured?.height ?? node.height ?? 0,
+      });
+      if (node.type === "file" || node.type === "pin") {
+        placeTile(node.id, dropped);
         return;
       }
 
@@ -818,10 +864,15 @@ function XyFlowCanvasInner() {
       if (files.length === 0) {
         return;
       }
+      // Read now: after the first await the drop's items are gone.
+      const media = mediaFiles(files, event.dataTransfer.items);
+      const at = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
       const file = files[0];
       const dirPath = window.tacit.fs.getFilePath(file);
       if (!dirPath) {
+        // A picture dragged out of a web page has no path, only its bytes.
+        if (media.length > 0) await placeMediaFiles(media, at);
         return;
       }
 
@@ -831,6 +882,13 @@ function XyFlowCanvasInner() {
       if (info?.ok) {
         const paths = files.map((f) => window.tacit.fs.getFilePath(f)).filter((p): p is string => !!p);
         await showFilesOnCanvas(paths, reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        return;
+      }
+
+      // A file from elsewhere (a screenshot, a download) is saved in the
+      // workdesk and shown as a tile where it's let go. A folder is added.
+      if (media.length > 0) {
+        await placeMediaFiles(media, at);
         return;
       }
 
@@ -1024,6 +1082,19 @@ function XyFlowCanvasInner() {
     };
   }, [handleWheelCapture]);
 
+  // A double-click on empty canvas, in Select: text, written where you clicked.
+  const handleContainerDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (isPanMode || useBoardStore.getState().tool) return;
+      const target = event.target as Element;
+      if (!target.closest(".react-flow__pane") || target.closest(".react-flow__node, [data-board-el], [data-scene-box-select-block]")) return;
+      const at = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      if (boardElementAt(at)) return;
+      createText(at);
+    },
+    [isPanMode, reactFlow],
+  );
+
   const handleContainerMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (isPanMode && event.button === 0) {
@@ -1087,6 +1158,7 @@ function XyFlowCanvasInner() {
       className={`fixed inset-0 overflow-hidden canvas-bg ${cursorClass} ${gridMode ? "[&>*:not(#canvas-card-layer):not(#canvas-wallpaper)]:invisible" : ""}`}
       data-activity-heatmap={activityHeatmapEnabled ? "true" : undefined}
       onMouseDownCapture={handleContainerMouseDown}
+      onDoubleClick={handleContainerDoubleClick}
       onDragEnter={dragOverHandlers.onDragEnter}
       onDragOver={handleContainerDragOver}
       onDragLeave={dragOverHandlers.onDragLeave}
@@ -1120,12 +1192,18 @@ function XyFlowCanvasInner() {
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={false}
+        // Shift and ⌘ are ours (useBoxSelect), not React Flow's own selecting.
+        selectionKeyCode={null}
+        multiSelectionKeyCode={null}
         selectNodesOnDrag={false}
         // In Hand mode (or Space-held), left+middle both pan. In Move
         // mode, only middle-button pans — the left button is reserved
         // for marquee on empty canvas (handled by useBoxSelect) and
         // node drag (handled by React Flow's nodesDraggable).
         panOnDrag={isPanMode ? [0, 1] : [1]}
+        // In Select, a double-click on empty canvas writes text (as in
+        // tldraw); in Hand it still zooms in.
+        zoomOnDoubleClick={isPanMode}
         snapToGrid
         snapGrid={SNAP_GRID}
         zoomOnScroll={false}
@@ -1141,6 +1219,9 @@ function XyFlowCanvasInner() {
       >
         {(!canvasBackgroundImage || wallpaperLook.showGrid) && <Background gap={20} size={2} color="var(--border)" />}
         <AlignmentGuides guides={guides} />
+        <LayerErrorBoundary name="Board">
+          <BoardLayer />
+        </LayerErrorBoundary>
       </ReactFlow>
 
       {contextMenu && (
@@ -1182,6 +1263,7 @@ function XyFlowCanvasInner() {
           themselves are NOT wrapped here — they live in TerminalRuntimeLayer
           above, and a boundary around that would unmount live PTY views. */}
       <LayerErrorBoundary name="Selection">
+        {!gridMode && <SelectionRings />}
         <BoxSelectOverlay />
       </LayerErrorBoundary>
       <LayerErrorBoundary name="Browser cards">
@@ -1190,9 +1272,10 @@ function XyFlowCanvasInner() {
       <LayerErrorBoundary name="Connections">
         <ConnectionLayer />
       </LayerErrorBoundary>
-      {drawingEnabled && (
-        <LayerErrorBoundary name="Drawings">
-          <DrawingLayer />
+      {!gridMode && !focusMode.active && (
+        <LayerErrorBoundary name="Board tools">
+          <BoardDrawOverlay />
+          <BoardChrome />
         </LayerErrorBoundary>
       )}
       {petEnabled && (

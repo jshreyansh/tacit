@@ -7,7 +7,9 @@ export type SelectedItem =
   | { type: "card"; cardId: string }
   | { type: "annotation"; annotationId: string }
   /** A task or note on the canvas, clicked: the node you're on, for the grid to open. */
-  | { type: "pin"; pinId: string };
+  | { type: "pin"; pinId: string }
+  /** A file tile. */
+  | { type: "file"; tileId: string };
 
 interface SelectionRect {
   x: number;

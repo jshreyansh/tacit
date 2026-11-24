@@ -46,7 +46,7 @@ function installSceneDeleteGlobals() {
   return mockWindow;
 }
 
-test("deleteSelectedSceneItems removes selected annotations and cards", async () => {
+test("deleteSelectedSceneItems removes selected drawings, and closes browsers only when nothing but browsers is selected", async () => {
   installSceneDeleteGlobals();
   const { useDrawingStore } = await import("../src/stores/drawingStore.ts");
   const { useSelectionStore } = await import("../src/stores/selectionStore.ts");
@@ -100,6 +100,21 @@ test("deleteSelectedSceneItems removes selected annotations and cards", async ()
 
     assert.equal(deleteSelectedSceneItems(), true);
     assert.deepEqual(useDrawingStore.getState().elements, []);
+    assert.deepEqual(Object.keys(useBrowserCardStore.getState().cards), ["browser-card-1"]);
+    // Let go of, so pressing ⌫ again can't close it.
+    assert.deepEqual(useSelectionStore.getState().selectedItems, []);
+    assert.equal(deleteSelectedSceneItems(), false);
+    assert.equal(Object.keys(useBrowserCardStore.getState().cards).length, 1);
+
+    // With a terminal it stays open too; on its own it closes.
+    const card = { type: "card" as const, cardId: "browser:browser-card-1" };
+    useSelectionStore.setState({
+      selectedItems: [card, { type: "terminal", projectId: "p", worktreeId: "w", terminalId: "t" }],
+    });
+    assert.equal(deleteSelectedSceneItems(), false);
+    assert.equal(Object.keys(useBrowserCardStore.getState().cards).length, 1);
+    useSelectionStore.setState({ selectedItems: [card] });
+    assert.equal(deleteSelectedSceneItems(), true);
     assert.deepEqual(useBrowserCardStore.getState().cards, {});
     assert.deepEqual(useSelectionStore.getState().selectedItems, []);
   } finally {

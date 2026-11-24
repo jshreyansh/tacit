@@ -27,6 +27,7 @@ import {
 import type { useProjectStore } from "./stores/projectStore";
 import type { useCanvasStore } from "./stores/canvasStore";
 import type { useDrawingStore } from "./stores/drawingStore";
+import { coerceBoardElements } from "./board/boardMigration";
 import { coerceFileTiles } from "./stores/fileTileStore";
 import type { useBrowserCardStore } from "./stores/browserCardStore";
 import { normalizeProjectsFocus } from "./stores/projectFocus";
@@ -684,6 +685,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
         : {},
     ...(Object.keys(fileTiles).length > 0 ? { fileTiles } : {}),
     annotations,
+    ...(Array.isArray(record.board) ? { board: coerceBoardElements(record.board) } : {}),
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),
     ...(typeof record.sidePanelWorktreeId === "string"
       ? { sidePanelWorktreeId: record.sidePanelWorktreeId }

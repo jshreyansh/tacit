@@ -1,10 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  activateSingleBoxSelectionItem,
-  prioritizeBoxSelectionItems,
-} from "../src/hooks/useBoxSelect.ts";
+import { activateSingleBoxSelectionItem } from "../src/hooks/useBoxSelect.ts";
 
 function installBoxSelectGlobals() {
   const storage = new Map<string, string>();
@@ -49,25 +46,6 @@ function installBoxSelectGlobals() {
     value: mockWindow,
   });
 }
-
-test("prioritizeBoxSelectionItems prefers annotations over parent scene containers", () => {
-  const items = prioritizeBoxSelectionItems([
-    { type: "project", projectId: "project-1" },
-    { type: "worktree", projectId: "project-1", worktreeId: "worktree-1" },
-    { type: "annotation", annotationId: "annotation-1" },
-  ]);
-
-  assert.deepEqual(items, [{ type: "annotation", annotationId: "annotation-1" }]);
-});
-
-test("prioritizeBoxSelectionItems prefers cards over project hits", () => {
-  const items = prioritizeBoxSelectionItems([
-    { type: "project", projectId: "project-1" },
-    { type: "card", cardId: "browser:card-1" },
-  ]);
-
-  assert.deepEqual(items, [{ type: "card", cardId: "browser:card-1" }]);
-});
 
 test("activateSingleBoxSelectionItem clears focus when selecting a single card", async () => {
   installBoxSelectGlobals();

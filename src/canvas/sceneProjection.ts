@@ -16,6 +16,7 @@ import type {
   SceneSelection,
 } from "../types/scene";
 import type { DrawingElement } from "../stores/drawingStore";
+import type { BoardElement } from "../types/board";
 import type { SelectedItem } from "../stores/selectionStore";
 import {
   restorePersistedProjectData,
@@ -37,6 +38,7 @@ interface SceneDocumentState {
   projects?: PersistedProjectData[] | null;
   annotations?: AnnotationElement[] | null;
   drawings?: DrawingElement[] | null;
+  board?: BoardElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
   fileTiles?: Record<string, FileTileData> | null;
   connections?: Record<string, ConnectionData> | null;
@@ -233,8 +235,9 @@ export function selectionToSceneSelection(
       case "annotation":
         selection.annotationIds.push(item.annotationId);
         break;
-      // A pin isn't a scene element: nothing for scene commands to act on.
+      // A pin or a file isn't a scene element: nothing for scene commands to act on.
       case "pin":
+      case "file":
         break;
     }
   }
@@ -277,6 +280,7 @@ export function buildSceneDocument(
     connections: state.connections ?? {},
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),
+    ...(state.board ? { board: state.board } : {}),
     stashedTerminals: state.stashedTerminals ?? undefined,
     ...(state.sidePanelWorktreeId
       ? { sidePanelWorktreeId: state.sidePanelWorktreeId }

@@ -26,6 +26,9 @@ import { useFileTileStore } from "../stores/fileTileStore";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useDrawingStore } from "../stores/drawingStore";
+import { useBoardStore } from "../stores/boardStore";
+import { boardToDrawings, drawingsToBoard } from "../board/boardMigration";
+import { resolveDrawingElementForRender } from "./annotationGeometry";
 import { useProjectStore } from "../stores/projectStore";
 import { useStashStore } from "../stores/stashStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
@@ -132,7 +135,9 @@ export function captureLiveCanvasScene(): SceneDocument {
   return buildSceneDocument({
     viewport: useCanvasStore.getState().viewport,
     projects,
-    drawings: useDrawingStore.getState().elements,
+    // The board, and the part of it an older build can show, the old way.
+    board: useBoardStore.getState().elements,
+    drawings: boardToDrawings(useBoardStore.getState().elements),
     browserCards: useBrowserCardStore.getState().cards,
     fileTiles: useFileTileStore.getState().tiles,
     connections: useConnectionStore.getState().connections,
@@ -163,7 +168,17 @@ export function applyCanvasSceneToLive(scene: SceneDocument) {
     ...focus,
     panelWorktreeId: scene.sidePanelWorktreeId ?? focus.focusedWorktreeId,
   });
-  useDrawingStore.setState({ elements: restored.drawings });
+  // A workdesk saved before the board gets one made from its drawings, placed
+  // where they were drawn. The old drawing store stays empty from then on.
+  useBoardStore
+    .getState()
+    .restore(
+      scene.board ??
+        drawingsToBoard(
+          restored.drawings.map((d) => resolveDrawingElementForRender(d, restoredProjects)),
+        ),
+    );
+  useDrawingStore.setState({ elements: [] });
   restoreBrowserCardsInScene(restored.browserCards);
   useFileTileStore.getState().restore(scene.fileTiles ?? {});
   restoreConnectionsInScene(restored.connections);

@@ -1,0 +1,209 @@
+/* The workdesk board (docs/architecture/workdesk-board.md).
+   Motion is Tacit's: enter cubic-bezier(.05,.7,.1,1) 240ms, exit
+   cubic-bezier(.3,0,.8,.15) 150ms, moves settle without overshoot. Under
+   Reduce Motion only fades remain. */
+
+:root,
+[data-theme="dark"] {
+  --board-ink: #ecebe7;
+  --board-clay: #e0906b;
+  --board-amber: #e0b75b;
+  --board-green: #5fbf7f;
+  --board-teal: #6cc4b0;
+  --board-blue: #7fb4e8;
+  --board-violet: #b889f6;
+  --board-pink: #ec7aa8;
+  --board-sel: #e6d6bd;
+  --board-sticky-paper: #f3eee4;
+  --board-sticky-ink: #1f1d1a;
+}
+[data-theme="light"] {
+  --board-ink: #262421;
+  --board-clay: #c2643c;
+  --board-amber: #b7841c;
+  --board-green: #2f8f52;
+  --board-teal: #23866f;
+  --board-blue: #2f6fb5;
+  --board-violet: #7a4bd0;
+  --board-pink: #c43f78;
+  --board-sel: #8a6a3c;
+  --board-sticky-paper: #fffaf0;
+  --board-sticky-ink: #1f1d1a;
+}
+
+/* ---------- on the canvas ---------- */
+
+.tc-board { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; font-family: "Geist", ui-sans-serif, system-ui, sans-serif; }
+/* Behind the tiles: sections, frames, shapes, text. In front: stickies, images, arrows, ink. */
+.tc-board-back { position: absolute; left: 0; top: 0; z-index: -1; }
+.tc-board-top { position: absolute; left: 0; top: 0; z-index: 10; }
+.tc-board-ink { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+
+.tc-board.is-interactive .tc-bd-el,
+.tc-board.is-interactive .tc-bd-title,
+.tc-board.is-interactive .tc-bd-handle,
+.tc-board.is-interactive .tc-bd-qc { pointer-events: auto; }
+.tc-board.is-interactive .tc-bd-hit { pointer-events: stroke; cursor: move; }
+.tc-board.is-interactive .tc-bd-end { pointer-events: all; cursor: grab; }
+.tc-board { --inv: 1; }
+.tc-bd-hit { fill: none; stroke: transparent; stroke-width: calc(14px * var(--inv)); stroke-linecap: round; stroke-linejoin: round; }
+
+.tc-bd-el { position: absolute; cursor: move; box-sizing: border-box; }
+
+.tc-bd-shape {
+  isolation: isolate; display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 6px 10px; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em;
+  color: var(--text-primary); white-space: pre-line; overflow-wrap: anywhere;
+  border: 2px solid var(--c); border-radius: 12px; background: color-mix(in srgb, var(--c) 12%, transparent);
+  transition: background-color 140ms, border-color 140ms, border-radius 200ms cubic-bezier(0.2, 0, 0, 1), color 140ms;
+}
+.tc-bd-shape.w-thin { border-width: 1.5px; }
+.tc-bd-shape.w-bold { border-width: 3.5px; }
+.tc-bd-shape > span { position: relative; }
+.tc-bd-shape.k-ellipse { border-radius: 50%; }
+.tc-bd-shape.sharp { border-radius: 3px; }
+.tc-bd-shape.fill-none { background: transparent; }
+.tc-bd-shape.fill-solid { background: var(--c); color: var(--bg); }
+.tc-bd-shape.dash { border-style: dashed; }
+.tc-bd-shape.k-diamond { border-color: transparent; background: none; padding: 6px 22%; }
+.tc-bd-diamond { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: -1; }
+.tc-bd-diamond polygon { fill: color-mix(in srgb, var(--c) 12%, transparent); stroke: var(--c); stroke-width: 2; stroke-linejoin: round; }
+.tc-bd-shape.fill-none .tc-bd-diamond polygon { fill: none; }
+.tc-bd-shape.fill-solid .tc-bd-diamond polygon { fill: var(--c); }
+.tc-bd-shape.dash .tc-bd-diamond polygon { stroke-dasharray: 7 5; }
+.tc-bd-shape.cell { border-radius: 4px; border-width: 1px; border-color: var(--border); background: color-mix(in srgb, var(--text-primary) 3%, transparent); font-weight: 500; font-size: 14px; color: var(--text-secondary); }
+.tc-bd-shape.cell.head { background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--text-primary); font-weight: 600; }
+
+.tc-bd-text { white-space: pre; font-weight: 650; line-height: 1.15; letter-spacing: -0.015em; min-width: 8px; transition: color 140ms; }
+.tc-bd-text.tc-bd-size-S { font-weight: 500; letter-spacing: 0; }
+.tc-bd-text.tc-bd-size-XL { letter-spacing: -0.03em; }
+
+.tc-bd-sticky {
+  padding: 16px 16px 18px; border-radius: 3px 3px 3px 16px;
+  background: color-mix(in srgb, var(--c) 70%, var(--board-sticky-paper)); color: var(--board-sticky-ink);
+  font-size: 16px; font-weight: 500; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 30px rgba(0, 0, 0, 0.38); transition: background-color 140ms;
+}
+.tc-bd-placeholder { color: color-mix(in srgb, var(--board-sticky-ink) 42%, transparent); }
+
+
+.tc-bd-section, .tc-bd-frame { position: absolute; border-radius: 18px; pointer-events: none; }
+.tc-bd-section { background: color-mix(in srgb, var(--c) 6%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 38%, transparent); }
+.tc-bd-frame { background: color-mix(in srgb, var(--bg) 72%, transparent); border: 1.5px dashed color-mix(in srgb, var(--c) 55%, transparent); }
+.tc-bd-title-anchor { position: absolute; width: 0; height: 0; }
+.tc-bd-title {
+  position: absolute; left: 0; bottom: 0; padding-bottom: 7px; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  transform: scale(var(--inv)); transform-origin: 0 100%; cursor: grab;
+}
+.tc-bd-title.is-sel .tc-bd-title-text { box-shadow: 0 0 0 1.5px var(--board-sel); }
+.tc-bd-title-text { display: inline-block; padding: 4px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: var(--text-primary); font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+.tc-bd-byline { font-size: 12px; color: var(--text-secondary); }
+
+/* Selected, hovered, being typed in. Outlines stay one screen pixel at any zoom. */
+.tc-bd-el.is-sel, .tc-bd-section.is-sel, .tc-bd-frame.is-sel { outline: calc(1.5px * var(--inv)) solid var(--board-sel); outline-offset: calc(4px * var(--inv)); }
+.tc-bd-section.is-sel, .tc-bd-frame.is-sel { outline-offset: calc(3px * var(--inv)); }
+.tc-bd-el.is-hov { outline: calc(1px * var(--inv)) solid color-mix(in srgb, var(--board-sel) 42%, transparent); outline-offset: calc(3px * var(--inv)); }
+.tc-bd-editing { outline: none; cursor: text; min-width: 4px; display: inline-block; white-space: inherit; user-select: text; -webkit-user-select: text; caret-color: var(--board-sel); }
+.tc-bd-text .tc-bd-editing { white-space: pre; }
+.tc-bd-handle {
+  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; transform: scale(var(--inv));
+  border-radius: 4px; background: var(--text-primary); box-shadow: 0 0 0 1.5px var(--bg), 0 2px 6px rgba(0, 0, 0, 0.4); cursor: nwse-resize;
+}
+.tc-bd-halo { fill: none; stroke: var(--board-sel); stroke-opacity: 0.32; stroke-linecap: round; stroke-linejoin: round; }
+.tc-bd-end { fill: var(--text-primary); stroke: var(--bg); r: calc(5.5px * var(--inv)); stroke-width: calc(1.5px * var(--inv)); }
+.tc-bd-end:hover { fill: var(--board-sel); }
+.tc-bd-label rect { fill: var(--surface); stroke-opacity: 0.45; }
+.tc-bd-label text { font-size: 12.5px; font-weight: 600; fill: var(--text-primary); font-family: "Geist", sans-serif; }
+.tc-bd-draft { stroke: var(--board-sel); }
+
+/* Quick connect: four arrows around a shape, as in draw.io. */
+.tc-bd-qc {
+  position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 11px; display: grid; place-items: center;
+  color: var(--text-primary); background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--border-hover), 0 4px 12px rgba(0, 0, 0, 0.45);
+  cursor: pointer; transform: scale(var(--inv)); animation: tc-bd-qc-in 200ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+  transition: background-color 80ms, color 80ms;
+}
+.tc-bd-qc:hover { background: var(--text-primary); color: var(--bg); }
+@keyframes tc-bd-qc-in { from { opacity: 0; transform: scale(calc(var(--inv) * 0.6)); } }
+
+/* What's new comes in one piece at a time. */
+.is-born { animation: tc-bd-born 300ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+@keyframes tc-bd-born { from { opacity: 0; transform: scale(0.94); } }
+.tc-bd-arrow.is-born { animation: none; }
+.tc-bd-arrow.is-born .tc-bd-line[pathLength] { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tc-bd-draw 360ms cubic-bezier(0.05, 0.7, 0.1, 1) forwards; }
+.tc-bd-arrow.is-born .tc-bd-head, .tc-bd-arrow.is-born .tc-bd-label { animation: tc-bd-fade 200ms ease-out 240ms both; }
+.tc-bd-arrow.is-born.dashed { animation: tc-bd-fade 300ms ease-out both; }
+@keyframes tc-bd-draw { to { stroke-dashoffset: 0; } }
+@keyframes tc-bd-fade { from { opacity: 0; } }
+
+/* While a drawing tool is in hand, the canvas is paper. */
+.tc-board-paper { position: absolute; inset: 0; z-index: 35; touch-action: none; }
+
+/* ---------- chrome: the rail, its options, zoom ---------- */
+
+.tc-bd-rail { position: fixed; z-index: 55; width: 48px; padding: 5px; display: flex; flex-direction: column; align-items: center; gap: 2px; transform: translateY(-50%); border-radius: 16px; }
+.tc-bd-rail-ind { position: absolute; left: 5px; top: 0; width: 38px; height: 38px; border-radius: 11px; corner-shape: squircle; background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent); transition: transform 220ms cubic-bezier(0.2, 0, 0, 1); pointer-events: none; }
+.tc-bd-tool { position: relative; z-index: 1; width: 38px; height: 38px; border-radius: 11px; corner-shape: squircle; display: grid; place-items: center; color: var(--text-muted); transition: color 80ms, background-color 80ms; }
+.tc-bd-tool:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.tc-bd-tool[aria-pressed="true"] { color: var(--text-primary); background: none; }
+.tc-bd-tool svg { transition: transform 140ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+.tc-bd-tool:active svg { transform: scale(0.9); }
+.tc-bd-more { position: absolute; right: 4px; bottom: 4px; width: 0; height: 0; border-left: 4px solid transparent; border-bottom: 4px solid currentColor; opacity: 0.55; }
+.tc-bd-rail-sep { width: 22px; height: 1px; margin: 3px 0; background: color-mix(in srgb, var(--border) 80%, transparent); flex: none; }
+
+.tc-bd-tip {
+  position: fixed; z-index: 60; transform: translateY(-50%); display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 10px;
+  border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border), 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: var(--text-primary); font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none; animation: tc-bd-tip-in 140ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.tc-bd-tip kbd { font: 500 10.5px "Geist Mono", ui-monospace, monospace; color: var(--text-muted); background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-radius: 5px; padding: 1px 5px; }
+@keyframes tc-bd-tip-in { from { opacity: 0; transform: translate(4px, -50%); } }
+
+.tc-bd-options {
+  position: fixed; z-index: 54; width: 212px; overflow-y: auto; padding: 10px; border-radius: 16px; scrollbar-width: thin;
+  /* In from the rail on its right; out the same way. */
+  opacity: 0; transform: translateX(24px); pointer-events: none; visibility: hidden;
+  transition: opacity 160ms cubic-bezier(0.3, 0, 0.8, 0.15), transform 160ms cubic-bezier(0.3, 0, 0.8, 0.15), visibility 0s linear 160ms;
+}
+.tc-bd-options.is-open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity 220ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 280ms cubic-bezier(0.05, 0.7, 0.1, 1), visibility 0s; }
+/* Open already: moving to another tool glides to its height. */
+.tc-bd-options.is-open.is-settled { transition: opacity 220ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 280ms cubic-bezier(0.05, 0.7, 0.1, 1), top 220ms cubic-bezier(0.2, 0, 0, 1), visibility 0s; }
+.tc-bd-options-body { animation: tc-bd-swap 180ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+@keyframes tc-bd-swap { from { opacity: 0; transform: translateX(6px); } }
+.tc-bd-options-body { display: flex; flex-direction: column; gap: 8px; }
+.tc-bd-opt-head { display: flex; align-items: center; justify-content: space-between; height: 20px; padding: 0 2px; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.tc-bd-opt-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-bd-opt-head kbd { font: 500 10.5px "Geist Mono", ui-monospace, monospace; color: var(--text-muted); background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-radius: 5px; padding: 1px 5px; }
+.tc-bd-line { display: flex; gap: 6px; }
+.tc-bd-caption { margin-top: 2px; padding: 8px 2px 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.tc-bd-seg { position: relative; flex: 1 1 0; min-width: 0; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--bg) 70%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent); }
+.tc-bd-seg-thumb { position: absolute; left: 0; top: 3px; bottom: 3px; border-radius: 7px; background: var(--surface-hover); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), width 220ms cubic-bezier(0.2, 0, 0, 1); pointer-events: none; }
+.tc-bd-seg.noanim .tc-bd-seg-thumb { transition: none; }
+.tc-bd-seg button { position: relative; z-index: 1; flex: 1; min-width: 0; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-muted); transition: color 140ms; }
+.tc-bd-seg button:hover, .tc-bd-seg button[aria-pressed="true"] { color: var(--text-primary); }
+.tc-bd-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.tc-bd-swatches button { aspect-ratio: 1; border-radius: 50%; position: relative; display: grid; place-items: center; }
+.tc-bd-swatches i { width: 16px; height: 16px; border-radius: 50%; background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); transition: transform 140ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+.tc-bd-swatches button::after { content: ""; position: absolute; inset: 1px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--text-primary); opacity: 0; transform: scale(0.8); transition: opacity 140ms, transform 200ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+.tc-bd-swatches button:hover i { transform: scale(1.12); }
+.tc-bd-swatches button[aria-pressed="true"]::after { opacity: 1; transform: none; }
+.tc-bd-actions { display: flex; align-items: center; gap: 4px; margin-top: 2px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.tc-bd-actions-end { display: flex; gap: 2px; margin-left: auto; }
+.tc-bd-action { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--text-secondary); transition: background-color 80ms, color 80ms; }
+.tc-bd-action:hover, .tc-bd-icon-btn:hover { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-primary); }
+.tc-bd-icon-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--text-muted); transition: background-color 80ms, color 80ms; }
+.tc-bd-icon-btn.danger:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+/* Q: the tool stays after drawing; a small lock mark on it says so. */
+.tc-bd-kept { position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--board-sel); box-shadow: 0 0 0 2px var(--surface); }
+
+.tc-bd-zoom { position: fixed; z-index: 55; display: flex; align-items: center; gap: 1px; padding: 4px; border-radius: 14px; }
+.tc-bd-zoom button { height: 30px; min-width: 30px; padding: 0 6px; border-radius: 8px; color: var(--text-secondary); font-size: 13px; display: inline-flex; align-items: center; justify-content: center; transition: background-color 80ms, color 80ms; }
+.tc-bd-zoom button:hover { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-primary); }
+.tc-bd-zoom .tc-bd-pct { min-width: 48px; font: 500 12px "Geist Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-board *, .tc-bd-rail *, .tc-bd-options, .tc-bd-options * , .tc-bd-tip {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-property: opacity, background-color, color !important; transition-duration: 150ms !important;
+  }
+}

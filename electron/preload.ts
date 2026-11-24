@@ -942,6 +942,11 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("file-tile:open-in-app", filePath) as Promise<void>,
     quickLook: (filePath: string) =>
       ipcRenderer.invoke("file-tile:quick-look", filePath) as Promise<void>,
+    saveMedia: (folder: string, bytes: Uint8Array, name: string) =>
+      ipcRenderer.invoke("file-tile:save-media", folder, bytes, name) as Promise<
+        | { ok: true; path: string }
+        | { ok: false; reason: "not_a_folder" | "empty" | "unsupported" | "too_large" }
+      >,
   },
   memory: {
     /** Tacit's memory for a workdesk or a folder (shared/memory.ts). */

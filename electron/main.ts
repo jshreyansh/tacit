@@ -20,6 +20,7 @@ import https from "https";
 import path from "path";
 import fs from "fs";
 import { randomUUID } from "node:crypto";
+import { saveWorkdeskMedia } from "./workdesk-media";
 import AdmZip from "adm-zip";
 import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -2638,6 +2639,13 @@ function setupIpc() {
   // Only the app's own window may change the run, not a browser tile.
   const isMainWindowSender = (event: Electron.IpcMainInvokeEvent) =>
     !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
+
+  // A picture, video, sound or PDF pasted or dropped from outside: saved in
+  // one of this workdesk's folders (workdesk-media.ts), then shown as a file tile.
+  ipcMain.handle("file-tile:save-media", (event, folder: unknown, bytes: unknown, name: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("file-tile:save-media is only for the app's window");
+    return saveWorkdeskMedia(statePersistence.workdeskFolders(), folder, bytes, name);
+  });
 
   // Whether the window is full screen, for the renderer's first layout; later
   // changes arrive as "window:full-screen".
