@@ -36,14 +36,17 @@ import {
   type WireDirection,
   type WireEnd,
   type WireSender,
+  wireMessageText,
 } from "./wire-message";
-import { WireAsks, interruptedText, type PendingAsk } from "./wire-asks";
+import { WireAsks, interruptedText, questionText, type PendingAsk } from "./wire-asks";
+import { notManagerText } from "../shared/manager-role";
 import { TrackedHandoffs, restartReminder, trackedNotice, type TrackedHandoff } from "./tracked-handoff";
 import { WireStateFile, WIRE_STATE_VERSION, type WireState } from "./wire-state";
 import { trustHydraFolder } from "./agent-folder-trust";
 import { loadRole } from "../hydra/src/roles/loader";
 import { HydraStatusFeed, readHydraStatus, workerNeedsYou } from "./hydra-wire-status";
 import { readFinalAssistantReply } from "./reply-transcript";
+import type { Reach } from "../shared/task";
 import { canReadFinalReply } from "../shared/agent-reply";
 import { snapshotSaysBusy, WireMailbox, type MailItem } from "./wire-mailbox";
 import { envelopePreview, stepFromMessage } from "../shared/wire-envelope";
@@ -845,6 +848,13 @@ export class ApiServer {
       throw Object.assign(new Error("worktree path is required"), {
         status: 400,
       });
+    // An agent running `tacit terminal create` is held to what its tools are:
+    // the manager only, and within the limit. A person's own shell isn't, and
+    // Hydra's workers are its Lead's (workflow, assignment and repo).
+    const requester = typeof body?.requester === "string" ? await this.taskTerminal(body.requester) : null;
+    const byAgent = requester !== null && findAgentAdapter(requester.type) !== null && !(workflowId && assignmentId && repoPath);
+    if (byAgent) await this.requireWorkspaceManager(requester.id);
+    const admit = <R>(open: () => Promise<R>): Promise<R> => (byAgent ? this.workerAdmission.admit("terminals", requester.id, open) : open());
 
     const projects = await this.execRenderer(`window.__tcApi.getProjects()`);
     let projectId: string | null = null;
@@ -877,8 +887,11 @@ export class ApiServer {
       console.warn(`[folder-trust] couldn't trust ${worktree} for ${type}: ${folderTrust.detail}`);
     }
 
-    const terminal = await this.execRenderer(
-      `window.__tcApi.addTerminal(${JSON.stringify(projectId)}, ${JSON.stringify(worktreeId)}, ${JSON.stringify(type)}, ${JSON.stringify(prompt)}, ${JSON.stringify(!!autoApprove)}, ${JSON.stringify(parentTerminalId ?? null)}, ${JSON.stringify(workflowId && assignmentId && repoPath ? { workflowId, assignmentId, repoPath } : null)})`,
+    const parent = parentTerminalId ?? (byAgent ? requester.id : null);
+    const terminal = await admit(() =>
+      this.execRenderer(
+        `window.__tcApi.addTerminal(${JSON.stringify(projectId)}, ${JSON.stringify(worktreeId)}, ${JSON.stringify(type)}, ${JSON.stringify(prompt)}, ${JSON.stringify(!!autoApprove)}, ${JSON.stringify(parent)}, ${JSON.stringify(workflowId && assignmentId && repoPath ? { workflowId, assignmentId, repoPath } : null)})`,
+      ),
     );
     if (prompt) this.deps.noteLaunchPrompt(terminal.id, prompt);
     this.deps.telemetryService.registerTerminal({
@@ -1052,6 +1065,59 @@ export class ApiServer {
     return { status: sent.queued ? "queued" : sent.ok ? "delivered" : "failed", ...(sent.detail ? { detail: sent.detail } : {}) };
   }
 
+  /** Why an agent can't be opened here, as the dock says it; null when it can, or isn't known. */
+  async cantOpenAgent(type: string): Promise<string | null> {
+    return (await this.execRenderer(`window.__tcApi.agentMissing(${JSON.stringify(type)})`)) as string | null;
+  }
+
+  /** An agent that asked another over a wire, and hasn't its answer yet. */
+  awaitsAnswer(terminalId: string): boolean {
+    return this.wireAsks.awaitedBy(terminalId);
+  }
+
+  async reachesAgent(from: string, to: string): Promise<boolean> {
+    return (await this.wiresOf(from))?.ends.some((e) => e.id === to && (e.can ?? []).includes("ask")) ?? false;
+  }
+
+  /**
+   * You approved an agent's request for another (TaskRunner.doReach). The
+   * words it's opened with, or sent, are the ones you were shown.
+   */
+  async reachForTask(requester: string, what: Reach): Promise<string> {
+    const wires = await this.wiresOf(requester);
+    if (!wires) throw new Error("The agent that asked isn't on the open workdesk");
+    if (what.open) {
+      const type = what.open;
+      const back = what.answer && canReadFinalReply(type);
+      const prompt = back ? questionText(wires.sender, what.message) : wireMessageText(what.message, wires.sender, type);
+      const id = await this.openWorker(requester, { type, prompt });
+      const at = await this.findNode(id);
+      if (back) {
+        const ask = { id: randomUUID(), askerId: requester, askerTitle: wires.sender.title, targetId: id, targetTitle: what.name, question: what.message, cwd: at?.worktreePath ?? "", at: Date.now() };
+        // It starts with the question, so its first turn is the answer.
+        this.wireAsks.register(ask);
+        this.wireAsks.started(ask.id);
+      }
+      return `${what.name} is open as terminal ${id}, wired from you, and has your message. ${back ? "Its answer arrives here as a message." : what.answer ? "Tacit can't read this kind of agent's answer, so it won't come back by itself." : ""}`.trim();
+    }
+    const to = what.to!;
+    const wired = (await this.execRenderer(`window.__tcApi.wireForTask(${JSON.stringify(requester)}, ${JSON.stringify(to)})`)) as { ok: boolean; error?: string };
+    if (!wired.ok) throw new Error(wired.error ?? `${what.name} couldn't be wired`);
+    if (!(await this.reachesAgent(requester, to))) throw new Error(`They're joined by a plain link, which carries nothing. Make it live first.`);
+    const sent = what.answer
+      ? ((await this.askConnected(requester, { to, question: what.message })) as { ok: boolean; reason?: string; answer?: string })
+      : ((await this.sendToConnected(requester, { to, message: what.message })) as { ok: boolean; delivered: Array<{ reason?: string }> });
+    if (!sent.ok) throw new Error(`Wired, but not sent: ${("reason" in sent ? sent.reason : "delivered" in sent ? sent.delivered[0]?.reason : "") || "its terminal refused it"}`);
+    return `You're wired to ${what.name} now. ${"answer" in sent && sent.answer ? sent.answer : `${what.name} has your message.`}`;
+  }
+
+  /** Opens a terminal as one agent's worker, within the limit, with the first words it's given. */
+  private async openWorker(requester: string, opts: { type: string; prompt?: string; position?: unknown; connectTo?: unknown }): Promise<string> {
+    const result = await this.spawnWorker(requester, opts);
+    if (!result?.ok || typeof result.id !== "string") throw new Error(result?.reason ?? "It couldn't be opened");
+    return result.id;
+  }
+
   /** Backs the task tools: everything is checked in the runner against the terminal's own workdesk and try. */
   private async terminalTasks(method: string, terminalId: string, ref: string | null, act: string | null, body: any) {
     const { tasks } = this.deps;
@@ -1071,6 +1137,8 @@ export class ApiServer {
             return await tasks.agentAsk(terminalId, ref, body, "decide");
           case "approve":
             return await tasks.agentAsk(terminalId, ref, body, "approve");
+          case "request-agent":
+            return await tasks.agentRequest(terminalId, ref, body);
           case "withdraw":
             return await tasks.agentWithdraw(terminalId, ref, body?.request);
           case "suggest":
@@ -1709,7 +1777,7 @@ export class ApiServer {
   private async workspaceNodeState(kind: string, id: string) {
     if (kind === "pin" || kind === "task" || kind === "note") {
       const task = kind === "note" ? null : this.deps.taskStore.all().find((t) => t.id === id);
-      if (task) return { kind: "task", column: columnOf(task), ...task };
+      if (task) return { ...task, kind: "task", work: task.kind, column: columnOf(task) };
       return this.execRenderer(`window.__tcApi.getNodeState("note", ${JSON.stringify(id)})`);
     }
     if (kind !== "terminal" && kind !== "browser") {
@@ -1904,12 +1972,8 @@ export class ApiServer {
       `window.__tcApi.isWorkspaceManager(${JSON.stringify(terminalId)})`,
     )) as boolean;
     if (!isManager) {
-      throw Object.assign(
-        new Error(
-          "This terminal is not the workdesk manager of the canvas on screen. Either the role belongs to another terminal (ask the user to assign it from the Project chat pill), or your canvas isn't the active one; manager tools only reach the canvas that is currently open.",
-        ),
-        { status: 403, code: "not_workspace_manager" },
-      );
+      const { here, manager } = (await this.execRenderer(`window.__tcApi.workdeskManager(${JSON.stringify(terminalId)})`)) as { here: boolean; manager: string | null };
+      throw Object.assign(new Error(notManagerText(here, manager)), { status: 403, code: "not_workspace_manager" });
     }
   }
 
@@ -1968,6 +2032,8 @@ export class ApiServer {
       }
       target = { ptyId: node.ptyId, terminalType: node.terminalType, worktreePath: node.worktreePath };
     }
+    // Said before it goes in: its turn starts as soon as it has.
+    if (!item.tag) this.deps.tasks.spokenTo(item.terminalId);
     const result = await this.submitToTerminal({
       terminalId: item.terminalId,
       ptyId: target.ptyId,
@@ -2379,17 +2445,13 @@ export class ApiServer {
         { status: 400, code: "prompt_not_supported" },
       );
     }
+    return this.spawnWorker(terminalId, { type: body?.type, prompt, position: body?.position, connectTo: body?.connectTo });
+  }
+
+  private async spawnWorker(terminalId: string, { type, prompt, position, connectTo }: { type?: string; prompt?: string; position?: unknown; connectTo?: unknown }): Promise<{ ok?: boolean; id?: unknown; reason?: string }> {
     const result = (await this.workerAdmission.admit("terminals", terminalId, () =>
-      this.execRenderer(
-        `window.__tcApi.spawnTerminal(${JSON.stringify({
-          requesterTerminalId: terminalId,
-          type: body?.type,
-          prompt,
-          position: body?.position,
-          connectTo: body?.connectTo,
-        })})`,
-      ),
-    )) as { ok?: boolean; id?: unknown };
+      this.execRenderer(`window.__tcApi.spawnTerminal(${JSON.stringify({ requesterTerminalId: terminalId, type, prompt, position, connectTo })})`),
+    )) as { ok?: boolean; id?: unknown; reason?: string };
     // The opening prompt is the manager speaking, as with send_prompt_to_node.
     // Recorded here, attributed to it; the worker's prompt hook (Claude,
     // Codex) then drops its echo instead of filing it as the user's.

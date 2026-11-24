@@ -126,7 +126,7 @@ export async function sendAlongWires(
   if (typeof to === "string") {
     const end = ends.find((e) => e.id === to);
     if (!end) {
-      fail(403, "not_wired", `Nothing wired to you has the id "${to}". Ask the user to draw a wire from you to it on the canvas. list_nodes shows what you're wired to.`);
+      fail(403, "not_wired", `Nothing wired to you has the id "${to}". On a task, request_agent asks the user for it; or they can draw a wire from you to it on the canvas. list_nodes shows what you're wired to.`);
     }
     if (end.direction === "from_it") {
       fail(403, "wrong_direction", `The wire between you and ${describe(end)} runs the other way: it sends to you. Ask the user to turn the wire round or make it two-way.`);
@@ -212,7 +212,7 @@ function oneTarget(ends: WireEnd[], to: unknown, ability: "ask" | "hand_off"): W
   }
   const end = ends.find((e) => e.id === to);
   if (!end) {
-    fail(403, "not_wired", `Nothing wired to you has the id "${to}". Ask the user to draw a wire from you to it on the canvas. list_nodes shows what you're wired to.`);
+    fail(403, "not_wired", `Nothing wired to you has the id "${to}". On a task, request_agent asks the user for it; or they can draw a wire from you to it on the canvas. list_nodes shows what you're wired to.`);
   }
   if (end.direction === "from_it") {
     fail(403, "wrong_direction", `The wire between you and ${describe(end)} runs the other way: it reaches you, you can't start anything there. Ask the user to turn the wire round or make it two-way.`);

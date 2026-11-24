@@ -34,6 +34,9 @@ Working on one:
 - Need a decision only the user can make: \`tacit task ask <id> "<question>" [--option "<answer>"]...\`.
   Before anything that can't be undone or leaves this machine:
   \`tacit task approve <id> "<what you'd do>"\`. Their answer arrives here.
+- Need another agent and you aren't the manager: \`tacit task request-agent <id> --open codex --message "<what to ask>"\`
+  (or \`--to <terminal>\`). The user approves the words; its answer comes back.
+  Don't open agents another way.
 - Parts: \`tacit task part <id> <part-id> doing|done\`.
 - **Ending your turn isn't finishing.** When it's done:
   \`tacit task finish <id> --summary "<what you did>" --checked "<line-id>=<how you checked>"... [--unchecked "<line-id>=<why>"]... [--left "<what's left>"] [--unsure "<what>"]\`.

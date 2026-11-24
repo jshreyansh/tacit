@@ -20,6 +20,8 @@ import {
   type ConnectionEndpoint,
 } from "../stores/connectionStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
+import { agentNames, agentsIn } from "../tasks/agentNames";
+import { useProjectStore } from "../stores/projectStore";
 import { getTerminalDisplayTitle } from "../stores/terminalState";
 import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
 import { noteEnd, noteEndTitle } from "./noteEnds";
@@ -61,7 +63,8 @@ export interface WireEndView {
 export function nodeTitle(kind: ConnectionEndpointKind, id: string): string | null {
   if (kind === "terminal") {
     const found = findTerminal(id);
-    return found ? getTerminalDisplayTitle(found.terminal) : null;
+    // Agents as their tiles name them: two of a kind are told apart.
+    return found ? (agentNames(agentsIn(useProjectStore.getState().projects)).get(id) ?? getTerminalDisplayTitle(found.terminal)) : null;
   }
   if (kind === "browser") {
     const card = useBrowserCardStore.getState().cards[id];

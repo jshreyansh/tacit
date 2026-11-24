@@ -105,6 +105,21 @@ export interface Option {
   detail?: string;
   recommended?: boolean;
 }
+/**
+ * What Tacit does when you say Go ahead: opens an agent or wires one that's
+ * here, and passes the asker's words on. Never a shell, which would run them.
+ */
+export interface Reach {
+  /** The agent to open (shared/agent-adapters.ts). */
+  open?: string;
+  /** Or the terminal that's here. */
+  to?: string;
+  name: string;
+  message: string;
+  /** Its answer comes back to the asker. */
+  answer: boolean;
+}
+
 export interface TaskRequest {
   id: string;
   kind: RequestKind;
@@ -123,7 +138,9 @@ export interface TaskRequest {
   /** What carries on meanwhile. */
   meanwhile?: string;
   /** Answered, on its way: it leaves Needs you when it's delivered. */
-  answer?: { text: string; at: string; failed?: string };
+  answer?: { text: string; at: string; failed?: string; /** What Tacit did on it, as the asker is told. */ did?: string };
+  /** Approving it has Tacit do this. */
+  does?: Reach;
 }
 
 export interface Decision {
@@ -418,22 +435,27 @@ export const wantsNudge = (before: Task, after: Task, tryId: string) => tryOf(be
 export function askPerson(
   task: Task,
   ctx: Ctx,
-  q: { kind: "decide" | "approve"; try?: string; byName: string; text: string; why?: string; options?: Option[]; multi?: boolean; meanwhile?: string },
+  q: { kind: "decide" | "approve"; try?: string; byName: string; text: string; why?: string; options?: Option[]; multi?: boolean; meanwhile?: string; does?: Reach },
 ): Task {
   open(task);
   const text = q.text.trim().slice(0, 500);
   if (!text) throw new TaskError("A question needs words");
   const t = q.try ? live(task, q.try) : null;
-  const options = q.kind === "approve" ? [{ label: "Go ahead" }, { label: "Don't", recommended: false }] : (q.options ?? []).slice(0, 8).filter((o) => o.label.trim());
+  if (q.does && task.requests.some((r) => r.does && r.try === q.try && !r.answer)) throw new TaskError("You've asked for one already. Wait for the answer, or withdraw it.", 409);
+  const options = q.kind === "approve" ? [{ label: GO_AHEAD }, { label: "Don't", recommended: false }] : (q.options ?? []).slice(0, 8).filter((o) => o.label.trim());
   return say(
-    ask(task, ctx, { kind: q.kind, by: ctx.by, byName: q.byName, text, ...(t ? { try: t.id, part: t.part } : {}), ...(q.why ? { why: q.why.slice(0, 500) } : {}), ...(options.length ? { options } : {}), ...(q.multi ? { multi: true } : {}), ...(q.meanwhile ? { meanwhile: q.meanwhile.slice(0, 200) } : {}) }),
+    ask(task, ctx, { kind: q.kind, by: ctx.by, byName: q.byName, text, ...(t ? { try: t.id, part: t.part } : {}), ...(q.why ? { why: q.why.slice(0, 500) } : {}), ...(options.length ? { options } : {}), ...(q.multi ? { multi: true } : {}), ...(q.meanwhile ? { meanwhile: q.meanwhile.slice(0, 200) } : {}), ...(q.does ? { does: q.does } : {}) }),
     ctx,
     `asked: ${text}`,
   );
 }
 
 /** The person's answer. It's a decision at once; the request stays until its answer is delivered. */
-export function answer(task: Task, ctx: Ctx, requestId: string, text: string): Task {
+export const GO_AHEAD = "Go ahead";
+/** Whether an answer approves: the choice itself, with or without words after it. */
+export const approves = (text: string) => text.trim() === GO_AHEAD || text.trim().startsWith(`${GO_AHEAD}. `);
+
+export function answer(task: Task, ctx: Ctx, requestId: string, text: string, did?: string): Task {
   open(task);
   const r = task.requests.find((x) => x.id === requestId);
   if (!r) throw new TaskError("That question has been answered or withdrawn", 409);
@@ -445,7 +467,7 @@ export function answer(task: Task, ctx: Ctx, requestId: string, text: string): T
   const kept = { ...task, decisions: [...task.decisions.filter((d) => d.id !== r.id), decided] };
   // Nobody to send it to: it's kept, and goes with the next brief. One that was interrupted may be back.
   if (!asker || !(isLive(asker.state) || canResume(asker.state)) || !currentTries(task).includes(asker)) return say(keepForBrief(kept, r.id), ctx, `answered “${r.text}”: ${words}`);
-  return say({ ...kept, requests: kept.requests.map((x) => (x.id === r.id ? { ...x, answer: { text: words, at: ctx.at } } : x)) }, ctx, `answered “${r.text}”: ${words}`);
+  return say({ ...kept, requests: kept.requests.map((x) => (x.id === r.id ? { ...x, answer: { text: words, at: ctx.at, ...(did ? { did } : {}) } } : x)) }, ctx, `answered “${r.text}”: ${words}`);
 }
 
 /** An answer with nobody to hear it now: it goes in the next brief. */

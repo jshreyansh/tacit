@@ -139,6 +139,7 @@ export function setConnectionTwoWayInScene(
   id: string,
   twoWay: boolean,
   by: CaptureActor = "user",
+  announce = true,
 ): void {
   const store = useConnectionStore.getState();
   const existing = store.connections[id];
@@ -147,7 +148,7 @@ export function setConnectionTwoWayInScene(
   recordRedirect(id, by);
   // Only the end that gained something hears about it: the head of a wire
   // that just became two-way.
-  if (twoWay) void notifyWireEnds(id, existing.to);
+  if (twoWay && announce) void notifyWireEnds(id, existing.to);
 }
 
 /**

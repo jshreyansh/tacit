@@ -47,3 +47,10 @@ test("something the user actually wrote is not mistaken for the briefing", () =>
   assert.equal(isWorkspaceManagerBriefing(null), false);
   assert.equal(isWorkspaceManagerBriefing(undefined), false);
 });
+
+test("a refused manager tool says why as it is, and what to do instead", async () => {
+  const { notManagerText } = await import("../shared/manager-role.ts");
+  assert.match(notManagerText(true, null), /This workdesk has no manager\. .*request_agent/);
+  assert.match(notManagerText(true, "Codex"), /Codex is the manager here\. .*request_agent/);
+  assert.match(notManagerText(false, null), /isn't the one open/);
+});

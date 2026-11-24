@@ -190,3 +190,10 @@ export function isWorkspaceManagerBriefing(text: string | null | undefined): boo
   const head = text.trimStart();
   return BRIEFING_OPENERS.some((opener) => head.startsWith(opener));
 }
+
+/** Why a manager's tool was refused, as it is, and what the agent can do instead. */
+export function notManagerText(here: boolean, manager: string | null): string {
+  if (!here) return "Only the workdesk manager can do this, and your workdesk isn't the one open in Tacit.";
+  const who = manager ? `${manager} is the manager here.` : "This workdesk has no manager.";
+  return `Only the workdesk manager can do this. ${who} To have another agent opened or reached, use request_agent on a task you're on (create_task with take: true makes one): the user approves it and Tacit does it. Otherwise ask the user, who can open and wire it, or make you the manager.`;
+}

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
 import type { Task } from "../types";
-import { canResume, carriesOn, isActive, tryOf, type TaskRequest } from "../../shared/task";
+import { canResume, carriesOn, isActive, tryOf, type Reach, type TaskRequest } from "../../shared/task";
 import { answerTask, changeTask, goToTerminal, handOver, sayOnTask, stopTask } from "./taskActions";
 import { HandOverButton } from "./HandOver";
 import { findTerminal } from "../actions/terminalLookup";
@@ -23,9 +23,11 @@ export function RequestBlock({ task, request }: { task: Task; request: TaskReque
           {request.byName}, {t.tb.waited(ago(request.at, now))}
         </span>
       </p>
-      <p className="tc-tk-req-text">{request.text}</p>
+      {/* Its words are whole below when they're long, not cut here as well. */}
+      <p className="tc-tk-req-text">{request.does && isLong(request.does) ? `${request.text.split(": “")[0]}:` : request.text}</p>
       {request.why && request.kind !== "check" && <p className="tc-tk-req-why">{request.why}</p>}
-      {request.said && <Said words={request.said} />}
+      {request.said && <Said words={t.tb.itSaid(request.said)} />}
+      {request.does && <Does does={request.does} />}
       {(request.kind === "decide" || request.kind === "approve") && <Answer key={request.id} task={task} request={request} />}
       {request.kind === "allow" && <Allow task={task} request={request} />}
       {request.kind === "stuck" && <Stuck task={task} request={request} />}
@@ -35,7 +37,20 @@ export function RequestBlock({ task, request }: { task: Task; request: TaskReque
   );
 }
 
-/** What the agent said as it stopped: the start of it, and all of it when asked for. */
+const isLong = (does: Reach) => does.message.replace(/\s+/g, " ").trim().length > 140;
+
+/** What Tacit does on Go ahead: the very words that go, when the line above couldn't hold them, and what stays. */
+function Does({ does }: { does: Reach }) {
+  const t = useT();
+  return (
+    <>
+      {isLong(does) && <Said words={`“${does.message}”`} />}
+      <p className="tc-tk-req-why">{does.open ? t.tb.doesOpen(does.name) : t.tb.doesReach(does.name)}</p>
+    </>
+  );
+}
+
+/** Someone's words: the start of them, and all when asked for. */
 function Said({ words }: { words: string }) {
   const t = useT();
   const ref = useRef<HTMLParagraphElement>(null);
@@ -52,8 +67,8 @@ function Said({ words }: { words: string }) {
   }, [words, all]);
   return (
     <div className="flex flex-col items-start">
-      <p ref={ref} className="tc-tk-req-why tc-tk-said" data-all={all || undefined}>
-        {t.tb.itSaid(words)}
+      <p ref={ref} className="tc-tk-req-why tc-tk-said whitespace-pre-wrap" data-all={all || undefined}>
+        {words}
       </p>
       {(long || all) && (
         <button type="button" className="tc-tk-more !px-0" aria-expanded={all} onClick={() => setAll(!all)}>
@@ -71,8 +86,10 @@ function Answer({ task, request }: { task: Task; request: TaskRequest }) {
   const [sending, setSending] = useState(false);
   const given = request.answer;
   const text = [picked.join(", "), words.trim()].filter(Boolean).join(". ");
+  // Tacit acts on this one, so it takes a choice, not words that might be one.
+  const ready = !!text && (!request.does || picked.length > 0);
   const send = async (answer = text) => {
-    if (!answer || sending) return;
+    if (!answer || sending || (answer === text && !ready)) return;
     setSending(true);
     await answerTask(task, request.id, answer);
     setSending(false);
@@ -118,7 +135,7 @@ function Answer({ task, request }: { task: Task; request: TaskRequest }) {
       })}
       <span className="flex gap-1.5">
         <input className="tc-tk-input min-w-0 flex-1" aria-label={t.tb.ownWords} placeholder={t.tb.ownWords} maxLength={900} value={words} onChange={(e) => setWords(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-        <button type="submit" className="tc-tk-btn" data-strong={!!text} disabled={!text || sending}>
+        <button type="submit" className="tc-tk-btn" data-strong={ready} disabled={!ready || sending}>
           {t.tb.send}
         </button>
       </span>

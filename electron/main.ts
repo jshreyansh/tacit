@@ -886,6 +886,10 @@ const taskRunner: TaskRunner = new TaskRunner({
   tokens: (terminal) => telemetryService.tokensUsed(terminal),
   observe: (terminal, dir, since) => taskEvidence.of(terminal, dir, since),
   landed: landedState,
+  awaits: (terminal) => apiServer.awaitsAnswer(terminal),
+  cantOpen: (type) => apiServer.cantOpenAgent(type),
+  reaches: (from, to) => apiServer.reachesAgent(from, to),
+  reach: (from, what) => apiServer.reachForTask(from, what),
   now: () => Date.now(),
 });
 taskStore.on("changed", ({ task, before }) => {

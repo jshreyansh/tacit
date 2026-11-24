@@ -208,6 +208,7 @@ const TASK_USAGE =
   "  task say <id> <text>\n" +
   "  task ask <id> <question> [--option <answer>]... [--why <w>] [--meanwhile <m>]\n" +
   "  task approve <id> <what you'd do> [--why <w>]\n" +
+  "  task request-agent <id> --open claude|codex|opencode|antigravity | --to <terminal>  --message <m> [--no-answer] [--why <w>]\n" +
   "  task suggest <id> [--title <t>] [--body <b>] [--done-when <line>]... [--leave-alone <l>]\n" +
   "  task finish <id> --summary <s> [--checked <line>=<how>]... [--how <how you checked, with no lines>] [--unchecked <line>=<why>]... [--left <l>] [--unsure <u>] [--sensitive <s>] [--taste] [--check]\n" +
   "  task going <id>                          (your turn ended, but something you started is still running)\n" +
@@ -276,6 +277,7 @@ async function runTaskCommand(command: string | undefined, rest: string[]): Prom
     const choices = flagOf(rest, "--choices")?.split(",").map((c) => c.trim()).filter(Boolean) ?? [];
     show(await call("ask", { question: words ?? stop(TASK_USAGE), options: [...flagsOf(rest, "--option"), ...choices], why: flagOf(rest, "--why"), meanwhile: flagOf(rest, "--meanwhile") }));
   } else if (command === "approve") show(await call("approve", { what: words ?? stop(TASK_USAGE), why: flagOf(rest, "--why"), meanwhile: flagOf(rest, "--meanwhile") }));
+  else if (command === "request-agent") show(await call("request-agent", { open: flagOf(rest, "--open"), to: flagOf(rest, "--to"), message: flagOf(rest, "--message") ?? stop("--message is required: what to send it"), answer: !rest.includes("--no-answer"), why: flagOf(rest, "--why"), meanwhile: flagOf(rest, "--meanwhile") }));
   else if (command === "suggest") show(await call("suggest", { title: flagOf(rest, "--title"), body: flagOf(rest, "--body"), leave_alone: flagOf(rest, "--leave-alone"), ...(flagsOf(rest, "--done-when").length ? { done_when: flagsOf(rest, "--done-when") } : {}) }));
   else if (command === "finish" || command === "done") {
     show(
@@ -688,6 +690,8 @@ async function main() {
           ...(assignmentId ? { assignmentId } : {}),
           ...(repoPath ? { repoPath } : {}),
           ...(resumeSessionId ? { resumeSessionId } : {}),
+          // Whose terminal this was run in: an agent's is held to the manager rule.
+          ...(process.env.TACIT_TERMINAL_ID?.trim() ? { requester: process.env.TACIT_TERMINAL_ID.trim() } : {}),
         });
         if (jsonFlag) console.log(JSON.stringify(result, null, 2));
         else

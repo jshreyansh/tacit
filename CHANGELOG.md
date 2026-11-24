@@ -11,15 +11,21 @@ All notable changes to Tacit will be documented in this file.
 - **Needs you says what to do**: Decide, Approve first, Allow (in its terminal), Stuck (quiet, out of usage, interrupted, stopped without a report), Check. Several can wait at once, and an answer stays until it arrives.
 - **Ending a turn isn't finishing.** Agents report each Done when line; every line is marked Tacit saw, Agent says or Not checked. A clean report goes to Done, otherwise it comes to you with the reason.
 - **Notes are stickies**: the first line is the name, a page when opened, and agents wired to one can read and add to it. **Start a task from it** keeps the note.
-- **Claude uses the task tools without asking**, as it does memory: reading tasks, reporting, asking you. Handing work to another agent still asks. Your Claude settings aren't touched.
+- **Claude uses the task tools without asking**, as it does memory: reading tasks and what's on the workdesk, reporting, asking you. Handing work to another agent still asks. Your Claude settings aren't touched.
 - **One way to pick an agent**: agents that are here as rows with who's free, a new one as a tile. Handing a task over, a folder's +, the grid's + and choosing a manager. Arrow keys work, and nothing is cut off.
 - **A column on the board keeps a width its cards can be read at**, and the board scrolls sideways. An empty one gives up its room.
+- **An agent can ask for another**: one that isn't the manager asks you on its task, with the words it would send. Go ahead, and Tacit opens the agent or reaches one that's here, wires it and sends them; the answer goes back.
 - **The old tasks and notes are gone from the app**, with `tacit pin render`. `tacit task` and `tacit note` are new; `tacit pin` still adds a task.
 - **Drawings resize from any side or corner**; Shift keeps the proportions, Option resizes from the middle, and the size shows.
 - **Resizing a section** takes in what it now covers and lets go of what's left outside. What a section will hold is ringed as you draw or resize it.
 - **A tile opened inside a section joins it**: terminals, tasks, notes, files and browsers.
 
 ### Fixed
+- Another agent's question no longer wakes a task its terminal once had, and a task you left for later stays there.
+- Messages between agents name them as their tiles do.
+- A refused manager tool says why: no manager, another one, or the workdesk isn't open.
+- `tacit terminal create` run by an agent follows the manager rule and the limit. Hydra's workers and your own shell are as before.
+- An agent that ends its turn to wait for another's answer isn't asked whether it finished.
 - A task with no Done when lines has a place for the agent to say how it checked, so one that did is no longer sent to you for not saying.
 - Stuck shows what the agent said as it stopped.
 - A folder's Files list in the navigator is as tall as its files, not a fixed block.

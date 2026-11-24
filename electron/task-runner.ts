@@ -10,6 +10,7 @@
  */
 import type { Task, TaskRequest, Try } from "../shared/task.js";
 import * as T from "../shared/task.js";
+import { findAgentAdapter } from "../shared/agent-adapters.js";
 import { parseNewTask, type NewTask } from "../shared/task-ops.js";
 import type { Observed } from "../shared/task.js";
 import type { TaskChange, TaskStore } from "./task-store";
@@ -60,6 +61,14 @@ export interface RunnerDeps {
   tokens: (terminal: string) => number | null;
   observe: (terminal: string, dir: string | null, since: number) => Promise<Observed>;
   landed: (dir: string, files: string[], since: number) => Promise<T.Landed["state"] | null>;
+  /** Whether it waits for another agent's answer, over a wire. */
+  awaits: (terminal: string) => boolean;
+  /** Why an agent can't be opened on this workdesk (not installed), or null. */
+  cantOpen: (type: string) => Promise<string | null>;
+  /** Whether one can already message the other over a wire. */
+  reaches: (from: string, to: string) => Promise<boolean>;
+  /** Opens or wires it, passes the words on, and says what it did. Throws with words to show when it can't. */
+  reach: (from: string, what: T.Reach) => Promise<string>;
   now: () => number;
 }
 
@@ -100,6 +109,8 @@ export class TaskRunner {
   private readonly last = new Map<string, { turn?: string; error?: string }>();
   private readonly settling = new Map<string, ReturnType<typeof setTimeout>>();
   /** Edits waiting to be told, with the task as its agents know it. */
+  /** Requests Tacit is acting on now. */
+  private readonly reaching = new Set<string>();
   private readonly telling = new Map<string, { from: Task; timer: ReturnType<typeof setTimeout> }>();
   /** Started again with the app: nothing is typed into one until it has had a turn. */
   private readonly held = new Map<string, { started: boolean }>();
@@ -225,6 +236,10 @@ export class TaskRunner {
   private isAbout(terminal: string, task: Pick<Task, "workdesk" | "id">): void {
     this.about.set(terminal, { task: `${task.workdesk}/${task.id}`, at: this.deps.now() });
   }
+  /** Tacit is typing something in that's about no task: another agent's question, say. */
+  spokenTo(terminal: string): void {
+    this.about.set(terminal, { task: "", at: this.deps.now() });
+  }
   private delivered(task: Pick<Task, "workdesk" | "id">, tryId: string): void {
     const t = this.deps.store.get(task.workdesk, task.id);
     if (!t) return;
@@ -316,7 +331,8 @@ export class TaskRunner {
 
   async answer(workdesk: string, id: string, requestId: string, text: string, by: T.Actor): Promise<Task> {
     const asked = this.deps.store.get(workdesk, id)?.requests.find((r) => r.id === requestId);
-    const saved = this.deps.store.change(workdesk, id, by, (t, ctx) => T.answer(t, ctx, requestId, text));
+    const did = asked?.does && T.approves(text) ? (asked.answer?.did ?? (await this.doReach(workdesk, id, asked))) : undefined;
+    const saved = this.deps.store.change(workdesk, id, by, (t, ctx) => T.answer(t, ctx, requestId, text, did));
     const r = saved.requests.find((x) => x.id === requestId);
     if (r) await this.deliverAnswer(saved, r);
     else if (asked) {
@@ -327,10 +343,27 @@ export class TaskRunner {
     }
     return this.deps.store.get(workdesk, id) ?? saved;
   }
+  /** You said Go ahead: Tacit does it, once. Refused, the request stays as it was. */
+  private async doReach(workdesk: string, id: string, r: TaskRequest): Promise<string> {
+    if (this.reaching.has(r.id)) throw new T.TaskError("Tacit is doing it", 409);
+    const task = this.deps.store.get(workdesk, id);
+    const t = task && T.tryOf(task, r.try);
+    const asker = t && (await this.deps.terminal(t.terminal));
+    if (!task || !t || !asker?.running || !T.currentTries(task).includes(t) || !(T.isLive(t.state) || T.canResume(t.state))) throw new T.TaskError(`${r.byName} isn't on it any more. Choose Don't, or hand the task over again.`, 409);
+    if (!asker.here) throw new T.TaskError("Open the workdesk it's on first", 409);
+    this.reaching.add(r.id);
+    try {
+      return await this.deps.reach(asker.id, r.does!);
+    } catch (err) {
+      throw err instanceof T.TaskError ? err : new T.TaskError(err instanceof Error ? err.message : String(err), 409);
+    } finally {
+      this.reaching.delete(r.id);
+    }
+  }
   private async deliverAnswer(task: Task, r: TaskRequest): Promise<void> {
     const t = T.tryOf(task, r.try);
     if (!t || !r.answer) return;
-    const text = r.kind === "approve" ? `You asked before: “${one(r.text, 500)}”. The user says: ${r.answer.text}` : `You asked: “${one(r.text, 500)}”. The user's answer: ${r.answer.text}`;
+    const text = r.kind === "approve" ? `You asked before: “${one(r.text, 500)}”. The user says: ${r.answer.text}${r.answer.did ? `. ${r.answer.did}` : ""}` : `You asked: “${one(r.text, 500)}”. The user's answer: ${r.answer.text}`;
     const sent = await this.tell(t.terminal, `Task T-${task.n}. ${text}`, task, `answer|${r.id}`);
     if (sent.waiting) return;
     // It isn't there to be told, and nothing says it will be.
@@ -459,8 +492,13 @@ export class TaskRunner {
     this.about.delete(terminal);
     const x = this.at(terminal);
     if (!x) return;
-    // A message about something else doesn't pick this up again.
-    if (about && this.deps.now() - about.at < ABOUT_MS && !T.isLive(x.try.state) && x.try.state !== "sending" && about.task !== `${x.task.workdesk}/${x.task.id}`) return;
+    // One that's over is picked up again by what you say on it, or by what you
+    // type while it's stuck; not by a message about something else, and not once
+    // you've left it for later.
+    if (!T.isLive(x.try.state) && x.try.state !== "sending") {
+      const told = about && this.deps.now() - about.at < ABOUT_MS;
+      if (told ? about.task !== `${x.task.workdesk}/${x.task.id}` : !x.task.requests.some((r) => r.kind === "stuck" && r.try === x.try.id)) return;
+    }
     // A terminal that began with the brief as its prompt: its first turn is the delivery.
     if (x.try.state === "sending") this.delivered(x.task, x.try.id);
     const now = this.deps.store.get(x.task.workdesk, x.task.id);
@@ -475,8 +513,9 @@ export class TaskRunner {
     if (snap.last_hook_error) {
       const why = one(snap.last_hook_error, 300);
       this.signal(x.task, x.try.id, LIMIT.test(why) ? { saw: "limit", why } : { saw: "failed", why });
-    } else if (snap.turn_state === "turn_aborted") {
-      // Stopped by hand, most likely to say something: it isn't asked anything.
+    } else if (snap.turn_state === "turn_aborted" || this.deps.awaits(terminal)) {
+      // Stopped by hand, most likely to say something; or it ended its turn to wait for
+      // another agent's answer, which wakes it. It isn't asked anything.
       this.signal(x.task, x.try.id, { saw: "quiet" });
     } else {
       const before = this.deps.store.get(x.task.workdesk, x.task.id)!;
@@ -662,6 +701,44 @@ export class TaskRunner {
       T.askPerson(x, ctx, { kind, try: t.id, byName: me.name, text: str(body.question) || str(body.what), ...(str(body.why) ? { why: str(body.why) } : {}), options, ...(body.multi === true ? { multi: true } : {}), ...(str(body.meanwhile) ? { meanwhile: str(body.meanwhile) } : {}) }),
     );
     return { asked: saved.requests.at(-1)!.id, note: kind === "approve" ? "Don't do it until the user's answer arrives here as a message." : "Their answer arrives here as a message. Carry on with what doesn't depend on it, or end your turn." };
+  }
+  /**
+   * An agent that isn't the manager asking for another: opened, or reached
+   * where it is. You see the very words it would be sent; nothing is done
+   * until you say Go ahead.
+   */
+  async agentRequest(terminal: string, ref: string, raw: unknown): Promise<unknown> {
+    const { me, task } = await this.mine(terminal, ref);
+    const t = this.speaking(task, me);
+    if (me.manager) throw new T.TaskError("You're the workdesk manager: use spawn_terminal, or send_prompt_to_node.", 409);
+    if (!me.here) throw new T.TaskError("Your workdesk isn't the one open in Tacit, so nothing can be opened on it now.", 409);
+    const body = (raw ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const message = str(body.message);
+    if (!message) throw new T.TaskError("Say what to send it, in message");
+    if (message.length > 2000) throw new T.TaskError("That message is too long to check on a card (2000 characters). Put the rest in a file and send its path.");
+    const open = str(body.open), to = str(body.to);
+    if (!!open === !!to) throw new T.TaskError("Say which agent to open, or the terminal to reach: one of them");
+    const answer = body.answer !== false;
+    let does: T.Reach;
+    if (open) {
+      const adapter = findAgentAdapter(open);
+      if (!adapter || adapter.retired) throw new T.TaskError("Only an agent can be opened: claude, codex, opencode or antigravity");
+      const missing = await this.deps.cantOpen(open);
+      if (missing !== null) throw new T.TaskError(missing || `${adapter.displayName} isn't installed`, 409);
+      does = { open, name: adapter.displayName, message, answer };
+    } else {
+      const target = await this.deps.terminal(to);
+      if (!target || target.workdesk !== me.workdesk || !target.here) throw new T.TaskError("There's no such terminal on this workdesk. list_nodes with all: true shows what is.", 404);
+      if (target.id === me.id) throw new T.TaskError("That's you");
+      if (!target.agent) throw new T.TaskError(`${target.name} isn't an agent. The user can draw a wire to it.`);
+      if (await this.deps.reaches(me.id, to)) throw new T.TaskError(`You're wired to ${target.name} already: use ask or send_to_connected.`, 409);
+      does = { to, name: target.name, message, answer };
+    }
+    const words = `“${one(message, 140)}${one(message, 2000).length > 140 ? "…" : ""}”`;
+    const text = `${does.open ? `Open ${does.name} and` : `Reach ${does.name} and`} ${answer ? "ask" : "tell"} it: ${words}`;
+    const saved = this.change(task, `terminal:${me.id}`, (x, ctx) => T.askPerson(x, ctx, { kind: "approve", try: t.id, byName: me.name, text, does, ...(str(body.why) ? { why: str(body.why) } : {}), ...(str(body.meanwhile) ? { meanwhile: str(body.meanwhile) } : {}) }));
+    return { asked: saved.requests.at(-1)!.id, note: "The user decides. Their answer arrives here as a message, saying what was done; don't do it another way meanwhile." };
   }
   async agentWithdraw(terminal: string, ref: string, request: unknown): Promise<unknown> {
     const { me, task } = await this.mine(terminal, ref);

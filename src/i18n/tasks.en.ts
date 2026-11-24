@@ -57,6 +57,8 @@ export const taskWords = {
   giveTime: "Give it more time",
   leaveIt: "Leave it for now",
   itSaid: (words: string) => `It said: “${words}”`,
+  doesOpen: (name: string) => `Go ahead and Tacit opens ${name}, wires it to this agent and sends those words. The wire stays, so they can message each other.`,
+  doesReach: (name: string) => `Go ahead and Tacit draws a wire to ${name} and sends those words. The wire stays, so it can message it again.`,
   showAll: "Show all",
   showLess: "Show less",
   carryOn: "Tell it to carry on",

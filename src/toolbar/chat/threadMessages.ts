@@ -186,6 +186,8 @@ export function taskTool(toolName: string, args: JsonObject): TaskToolView | nul
         question: str(args.question) || str(args.what),
         choices: Array.isArray(args.options) ? args.options.map((o) => (typeof o === "string" ? o : str((o as JsonObject | null)?.label))).filter(Boolean) : [],
       };
+    case "request_agent":
+      return { kind: "ask", taskId, question: [str(args.open) || str(args.to), str(args.message)].filter(Boolean).join(": "), choices: [] };
     case "report_part":
       return { kind: "update", taskId, text: str(args.say) || str(args.state) || null };
     case "take_part":

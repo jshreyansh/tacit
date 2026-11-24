@@ -22,7 +22,9 @@ function world(t: { after: (fn: () => void) => void; mock: { timers: { enable: (
   const busy = new Set<string>();
   const mail = new Set<string>();
   const snaps = new Map<string, SnapshotView>();
+  const reach: Array<{ from: string; what: object }> = [];
   const w = {
+    reach, awaits: false, missing: null as string | null, wired: false, refuse: null as string | null, hold: null as Promise<void> | null,
     store, terminals, sent, interrupted, unsent, busy, mail, snaps, now: Date.now(), result: "delivered" as "delivered" | "queued" | "failed",
     seen: { files: [], known: true, shared: false } as Observed, tokens: 100 as number | null, landed: null as "committed" | null,
     tick: (ms: number) => t.mock.timers.tick(ms),
@@ -60,6 +62,15 @@ function world(t: { after: (fn: () => void) => void; mock: { timers: { enable: (
     tokens: () => w.tokens,
     observe: async () => w.seen,
     landed: async () => w.landed,
+    awaits: () => w.awaits,
+    cantOpen: async () => w.missing,
+    reaches: async () => w.wired,
+    reach: async (from, what) => {
+      await w.hold;
+      if (w.refuse) throw new Error(w.refuse);
+      reach.push({ from, what });
+      return "Codex is open as terminal c1, wired from you.";
+    },
     now: () => w.now,
   });
   t.after(() => runner.stop());
@@ -471,4 +482,117 @@ test("saved, read back, and counted: T-numbers are never given twice, and a bad 
 test("only a change the board makes gets in", () => {
   for (const bad of [null, {}, { op: "text", field: "history", value: "x" }, { op: "set", settings: { priority: "max" } }, { op: "set", settings: { folder: "../x" } }, { op: "wait", wait: "done" }, { op: "part-state", id: "a b", state: "done" }, { op: "ref", add: { kind: "exec", label: "x", target: "y" } }, { op: "line", change: { op: "wipe" } }, { op: "text", field: "body", value: "x".repeat(60_000) }]) assert.throws(() => parseTaskOp(bad), undefined, JSON.stringify(bad)?.slice(0, 60));
   for (const bad of [null, {}, { title: " " }, { title: "x", parts: "a" }, { title: "x", startFrom: [{ kind: "chat" }] }]) assert.throws(() => parseNewTask(bad));
+});
+
+test("an agent that isn't the manager asks for another; only Go ahead does it, once", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  await x.give(task.id);
+  await x.turn("a", { turn_state: "in_turn" });
+  const ask = (over: object = {}) => x.runner.agentRequest("a", task.id, { open: "codex", message: "hi", ...over });
+  await ask({ why: "to say hi" });
+  const r = x.get(task.id).requests[0];
+  assert.deepEqual([columnOf(x.get(task.id)), r.kind, r.text, r.does], ["needs", "approve", "Open Codex and ask it: “hi”", { open: "codex", name: "Codex", message: "hi", answer: true }]);
+  assert.equal(x.reach.length, 0, "nothing until you say so");
+  await assert.rejects(ask(), /asked for one already/);
+  // Two presses at once open one.
+  let release = () => {};
+  x.w.hold = new Promise<void>((go) => (release = go));
+  const first = x.runner.answer("w", task.id, r.id, "Go ahead", "user");
+  await settle();
+  await assert.rejects(x.runner.answer("w", task.id, r.id, "Go ahead", "user"), /doing it/);
+  release();
+  await first;
+  assert.deepEqual(x.reach, [{ from: "a", what: r.does }]);
+  assert.match(x.sent.at(-1)!.text, /The user says: Go ahead\. Codex is open as terminal c1/);
+  assert.equal(x.get(task.id).requests.length, 0);
+});
+
+test("Don't, words that aren't the choice, and a refusal open nothing", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  await x.give(task.id);
+  await x.turn("a", { turn_state: "in_turn" });
+  const ask = async () => ((await x.runner.agentRequest("a", task.id, { open: "codex", message: "hi" })) as { asked: string }).asked;
+  await x.runner.answer("w", task.id, await ask(), "Don't", "user");
+  await x.runner.answer("w", task.id, await ask(), "Going ahead would be wrong", "user");
+  assert.equal(x.reach.length, 0);
+  // Refused (the limit, say): it's still asked, and you can answer again.
+  const id = await ask();
+  x.w.refuse = "Not opened: 8 are open";
+  await assert.rejects(x.runner.answer("w", task.id, id, "Go ahead", "user"), /8 are open/);
+  assert.equal(x.get(task.id).requests[0].id, id);
+  assert.equal(x.get(task.id).requests[0].answer, undefined);
+  x.w.refuse = null;
+  // Its answer couldn't be typed in: sending that again doesn't open another.
+  x.w.result = "failed";
+  await x.runner.answer("w", task.id, id, "Go ahead", "user");
+  assert.ok(x.get(task.id).requests[0].answer?.failed);
+  x.w.result = "delivered";
+  await x.runner.answer("w", task.id, id, "Go ahead", "user");
+  assert.equal(x.reach.length, 1);
+});
+
+test("what can be asked for: an agent, on this workdesk, not wired yet, by one on the task", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  const ask = (by: string, over: object) => x.runner.agentRequest(by, task.id, { message: "hi", ...over });
+  await assert.rejects(ask("a", { open: "codex" }), /take_part first/);
+  await x.give(task.id);
+  await assert.rejects(ask("a", { open: "shell" }), /Only an agent/);
+  await assert.rejects(ask("a", { open: "gemini" }), /Only an agent/);
+  await assert.rejects(ask("a", {}), /one of them/);
+  await assert.rejects(ask("a", { open: "codex", to: "b" }), /one of them/);
+  await assert.rejects(ask("a", { open: "codex", message: " " }), /Say what/);
+  await assert.rejects(ask("a", { open: "codex", message: "x".repeat(2001) }), /too long/);
+  await assert.rejects(ask("a", { to: "sh" }), /isn't an agent/);
+  await assert.rejects(ask("a", { to: "far" }), /no such terminal/);
+  await assert.rejects(ask("a", { to: "a" }), /That's you/);
+  x.w.missing = "Codex isn't on this Mac";
+  await assert.rejects(ask("a", { open: "codex" }), /isn't on this Mac/);
+  x.w.missing = null;
+  x.w.wired = true;
+  await assert.rejects(ask("a", { to: "b" }), /wired to B already/);
+  x.w.wired = false;
+  await ask("a", { to: "b", answer: false });
+  assert.match(x.get(task.id).requests[0].text, /^Reach B and tell it: “hi”$/);
+  // The asker has gone by the time you answer.
+  x.terminals.set("a", { ...x.terminals.get("a")!, running: false });
+  await assert.rejects(x.runner.answer("w", task.id, x.get(task.id).requests[0].id, "Go ahead", "user"), /isn't on it any more/);
+  assert.equal(x.reach.length, 0);
+  const mgr = x.make();
+  await x.give(mgr.id, "m");
+  await assert.rejects(x.runner.agentRequest("m", mgr.id, { open: "codex", message: "hi" }), /You're the workdesk manager/);
+});
+
+test("a turn that ends to wait for another agent's answer isn't asked whether it finished", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  await x.give(task.id);
+  x.w.awaits = true;
+  await x.turn("a");
+  assert.deepEqual([state(x.get(task.id)), x.sent.length], ["quiet", 1]);
+  // The answer woke it, and now it just stopped.
+  x.w.awaits = false;
+  await x.turn("a");
+  assert.equal(state(x.get(task.id)), "nudged");
+});
+
+test("another agent's question doesn't wake a task that's over, nor does typing once you've left it", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  await x.give(task.id);
+  await x.turn("a");
+  await x.turn("a");
+  assert.equal(x.get(task.id).requests[0]?.kind, "stuck");
+  x.runner.spokenTo("a");
+  await x.turn("a");
+  assert.deepEqual([state(x.get(task.id)), x.sent.length], ["ended", 2], "a question over a wire");
+  x.op(task.id, { op: "dismiss", request: x.get(task.id).requests[0].id });
+  await x.turn("a");
+  assert.deepEqual([columnOf(x.get(task.id)), x.sent.length], ["next", 2], "left for later, and you typed something else");
+  // What you say on the task itself does.
+  await x.runner.say("w", task.id, "go on", "user", "You", x.get(task.id).tries[0].id);
+  x.snap("a", { turn_state: "in_turn" });
+  assert.equal(state(x.get(task.id)), "working");
 });

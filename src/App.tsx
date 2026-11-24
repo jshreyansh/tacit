@@ -16,7 +16,7 @@ import { NotificationToast } from "./components/NotificationToast";
 import { useAttention } from "./attention/useAttention";
 import { AgentApprovalDialog } from "./terminal/AgentApprovalDialog";
 import { useNotificationStore } from "./stores/notificationStore";
-import { startAgentAvailability } from "./stores/agentAvailabilityStore";
+import { startAgentAvailability, useAgentAvailabilityStore } from "./stores/agentAvailabilityStore";
 import { useIdentityStore } from "./stores/identityStore";
 import { useIdentityManagerStore } from "./stores/identityManagerStore";
 import { FileEditorDrawer } from "./components/FileEditorDrawer";
@@ -91,6 +91,7 @@ import {
 import {
   createConnectionInScene,
   wireSpawnedBrowser,
+  setConnectionTwoWayInScene,
 } from "./actions/sceneConnectionActions";
 import type { ConnectionEndpoint } from "./stores/connectionStore";
 import type { HydraIdentity, TerminalType } from "./types";
@@ -1070,6 +1071,33 @@ export function App() {
       },
 
       getActiveCanvasId: () => getActiveCanvas().id,
+
+      // Why a manager's tool was refused (notManagerText in shared/manager-role.ts).
+      workdeskManager: (terminalId: string) => {
+        const id = getWorkspaceManagerTerminalId();
+        const manager = id ? findTerminal(id) : null;
+        return { here: findTerminal(terminalId) !== null, manager: manager ? (agentNames(agentsIn(useProjectStore.getState().projects)).get(manager.terminal.id) ?? manager.terminal.title) : null };
+      },
+
+      // An agent's CLI that was looked for and not found: why. Null when it's
+      // there, or hasn't been looked for.
+      agentMissing: (type: string) => {
+        const found = useAgentAvailabilityStore.getState().byId[type];
+        return found && !found.installed ? (found.reason ?? "") : null;
+      },
+
+      // You approved one agent reaching another (electron/api-server.ts): a
+      // wire from it, or one that ran the other way made two-way. Neither is
+      // told by a message of its own; the answer says so.
+      wireForTask: (from: string, to: string) => {
+        const a = { kind: "terminal" as const, id: from }, b = { kind: "terminal" as const, id: to };
+        const missing = [a, b].find((end) => !isOnCanvas(end));
+        if (missing) return { ok: false, error: "That terminal isn't on the workdesk any more" };
+        const id = createConnectionInScene(a, b, { by: `terminal:${from}`, announce: false });
+        if (!id) return { ok: false, error: "They couldn't be wired" };
+        if (useConnectionStore.getState().connections[id]?.from.id !== from) setConnectionTwoWayInScene(id, true, `terminal:${from}`, false);
+        return { ok: true };
+      },
 
       // Backs tasks (electron/task-runner.ts): a terminal on any workdesk, the
       // open one or one whose agents are stopped until it's opened.

@@ -37,6 +37,11 @@ shipped.
    tracks a hand-off that will change code, goes to a role, asks for a typed
    result, or comes from a Lead.
 
+Added 24 Nov 2026, with the task board: an agent that isn't the manager can ask
+for another to be opened or wired (`request_agent`), and you approve each one.
+Opening freely stays the manager's. `tacit terminal create` from an agent's
+terminal follows the same rule and the worker limit, except Hydra's workers.
+
 ## Steps
 
 Each step ships on its own, with unit tests, a live check in the dev app,

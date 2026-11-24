@@ -57,6 +57,8 @@ export const taskWords: TaskWords = {
   giveTime: "再给它一些时间",
   leaveIt: "先放着",
   itSaid: (words) => `它说：“${words}”`,
+  doesOpen: (name) => `同意后，Tacit 会打开 ${name}，把它连到这个智能体并发送上面的话。连线会保留，之后它们可以互发消息。`,
+  doesReach: (name) => `同意后，Tacit 会连线到 ${name} 并发送上面的话。连线会保留，之后它还可以再发消息。`,
   showAll: "显示全部",
   showLess: "收起",
   carryOn: "让它继续",

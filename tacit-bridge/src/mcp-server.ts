@@ -540,6 +540,25 @@ export function createTacitBridgeServer(): McpServer {
   );
 
   server.registerTool(
+    "request_agent",
+    {
+      title: "Ask the user for another agent",
+      description:
+        "When your task needs another agent and you aren't the workdesk manager: asks the user to let you. They see exactly what you'd send; if they say Go ahead, Tacit opens the agent (or reaches the one you name), wires it to you and sends your message, and its answer comes back here. Offer this rather than telling the user what you can't do. Don't open agents another way (a command, a script) when this is refused or waiting. If you're already wired to it, use ask.",
+      inputSchema: {
+        id: taskId.describe("The task you're on. None? create_task with take: true"),
+        open: z.enum(["claude", "codex", "opencode", "antigravity"]).optional().describe("The agent to open, when none here will do"),
+        to: z.string().optional().describe("Or the id of an agent's terminal on this workdesk (list_nodes with all: true)"),
+        message: z.string().describe("Exactly what to send it, complete enough to answer without you. The user reads this. Up to 2000 characters"),
+        answer: z.boolean().optional().describe("false when you need nothing back"),
+        why: z.string().optional().describe("Why you need it, in one line"),
+        meanwhile: z.string().optional().describe("What you'll do while you wait, in a few words"),
+      },
+    },
+    async ({ id, ...body }) => taskCall("POST", id, "request-agent", body),
+  );
+
+  server.registerTool(
     "withdraw_question",
     {
       title: "Take back a question you asked",
@@ -793,7 +812,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Spawn a new terminal (workdesk manager only)",
       description:
-        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the agent's first message (agent types only: a shell or lazygit takes no opening prompt; spawn it, then use send_prompt_to_node). Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workdesk manager can call this.",
+        "Creates a new terminal on the canvas, running the given agent type. If a prompt is given, it's auto-submitted as the agent's first message (agent types only: a shell or lazygit takes no opening prompt; spawn it, then use send_prompt_to_node). Auto-placed near this terminal and linked to it in the family-tree view unless an explicit position is given. There is a limit on how many terminals agents can have open at once, counting any an earlier manager or another agent left (set by this machine's memory); at the limit the call is refused, and closing a finished worker with close_node frees a slot. Only the workdesk manager can call this; anyone else: request_agent.",
       inputSchema: {
         type: z
           .enum(SPAWNABLE_TERMINAL_TYPES)

@@ -131,7 +131,9 @@ from its first action.
 - **After a restart, or when you open another workdesk** (its agents stop until
   you're back), its tries show as interrupted, saying which.
 - **Typing "go on"** in its terminal picks the same try up, and it can report.
-  A turn that a message about another task started doesn't.
+  A turn that a message about another task, or another agent's question,
+  started doesn't; nor does anything once you've left it for later, but what
+  you say on the task itself.
 - **Given back to it, it can't finish** until it has read why.
 - **An answer** leaves Needs you when it's delivered. If the asker has closed,
   it goes with the next brief.
@@ -212,9 +214,15 @@ arrows, undo and selecting are the board's. Wires end at them as at tiles
   `update_task` is gone: it could say done with nothing behind it.
 - Always the agent's own workdesk, and only its own try. An agent can't set what
   it's allowed, or loosen a check; changing a brief is a suggestion.
+- `request_agent`: one that isn't the manager asks for another, opened or where
+  it is. It's an Approve first that Tacit acts on (`TaskRequest.does`): you see
+  the exact words, nothing happens until you pick Go ahead, and it happens once
+  (`TaskRunner.doReach`). Agents only, never a shell; within the worker limit;
+  the wire stays. A guardrail, not a sandbox: an agent's own shell can do what
+  its CLI allows.
 - `tacit task` does the same from a terminal. In a plain shell it reads and adds.
 - Claude uses them without asking (`TACIT_TASK_TOOLS`, allowed per launch), all
-  but `hand_over_task`. Codex already ran Tacit's tools without asking.
+  but `hand_over_task`, and reads the workdesk (`TACIT_READ_TOOLS`). Codex already ran Tacit's tools without asking.
 - Instructions are `electron/task-instructions.ts`; projects set up before are
   offered the new section.
 

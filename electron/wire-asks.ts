@@ -208,6 +208,11 @@ export class WireAsks {
     }
   }
 
+  /** Whether this agent is waiting for another's answer. */
+  awaitedBy(askerId: string): boolean {
+    return [...this.queued.values(), ...this.active.values()].some((ask) => ask.askerId === askerId);
+  }
+
   activeFor(targetId: string): PendingAsk | null {
     return this.active.get(targetId) ?? null;
   }

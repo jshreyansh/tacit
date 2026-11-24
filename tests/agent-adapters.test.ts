@@ -1,6 +1,6 @@
 import test from "node:test";
 
-const CLAUDE_ALLOW = "--allowedTools=mcp__tacit__recall,mcp__tacit__remember,mcp__tacit__forget,mcp__tacit__update_handover,mcp__tacit__query_memory,mcp__tacit__list_tasks,mcp__tacit__get_task,mcp__tacit__create_task,mcp__tacit__take_part,mcp__tacit__report_part,mcp__tacit__finish_task,mcp__tacit__ask_user,mcp__tacit__ask_approval,mcp__tacit__withdraw_question,mcp__tacit__suggest_task_text";
+const CLAUDE_ALLOW = "--allowedTools=mcp__tacit__recall,mcp__tacit__remember,mcp__tacit__forget,mcp__tacit__update_handover,mcp__tacit__query_memory,mcp__tacit__list_tasks,mcp__tacit__get_task,mcp__tacit__create_task,mcp__tacit__take_part,mcp__tacit__report_part,mcp__tacit__finish_task,mcp__tacit__ask_user,mcp__tacit__ask_approval,mcp__tacit__request_agent,mcp__tacit__withdraw_question,mcp__tacit__suggest_task_text,mcp__tacit__list_nodes,mcp__tacit__get_node_state";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";

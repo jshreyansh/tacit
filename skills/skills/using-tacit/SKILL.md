@@ -49,7 +49,8 @@ separate tester — dev owns its own test surface.
 - Do not describe Hydra workflows as automatic parallelism unless multiple
   spawned workers are actually involved.
 - When launching Claude/Codex tasks via Tacit CLI, use
-  `tacit terminal create --prompt "..."` rather than `tacit terminal input`.
+  `tacit terminal create --prompt "..."` rather than `tacit terminal input`
+  (the workdesk manager only; on a task, `tacit task request-agent` asks the user).
 - After `hydra dispatch`, immediately start `hydra watch` — do not ask whether to watch.
 - Use `hydra watch` / `hydra status` / `hydra ledger` / `hydra list --workflows`
   for workflows created by `hydra init`.

@@ -27,7 +27,7 @@ Core rules:
 - **No silent fallbacks** or swallowed errors. Surface failure with `outcome=stuck` or `outcome=error`.
 
 Agent launch rule:
-- When dispatching Claude/Codex through Tacit, start a fresh agent terminal with `tacit terminal create --prompt "..."`.
+- When dispatching Claude/Codex through Tacit, start a fresh agent terminal with `tacit terminal create --prompt "..."` (the workdesk manager only).
 - Do not use `tacit terminal input` for task dispatch — it is not a supported automation path.
 
 Telemetry polling:

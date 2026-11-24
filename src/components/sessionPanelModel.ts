@@ -103,8 +103,8 @@ const VAGUE_TERMS = new Set([
   "help", "this", "that", "hey", "hi", "ok", "yes", "no",
 ]);
 
-/** What Tacit types to an agent for a task (briefText in shared/task.ts, and what's said on it after). */
-export const isTaskBrief = (text: string) => /^\s*(?:<pasted_content[^>]*>\s*)?(?:Tacit task T-\d+ \(|Task T-\d+[. (])/.test(text);
+/** What Tacit types to an agent: for a task (briefText in shared/task.ts, and what's said on it after), or from another agent. */
+export const isTaskBrief = (text: string) => /^\s*(?:<pasted_content[^>]*>\s*)?(?:Tacit task T-\d+ \(|Task T-\d+[. (]|\[(?:Question from|Handed off by|Answer from) )/.test(text);
 
 export function extractIntent(
   raw: string | undefined,
