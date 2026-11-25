@@ -4,6 +4,8 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.14] - 2026-11-25
+
 ### Changed
 - **First run** shows the workdesk you're about to open beside your choices, filling in as you add folders and agents. Folders can be dropped in, show where they are, and stay in reach however many you add. You can choose the manager and which folder the agents open in. The "Who runs this workdesk?" card matches it.
 - **The installer window** has Tacit's canvas look, and an Applications folder that shows even when macOS 26 Finder doesn't draw it.
