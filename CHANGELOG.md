@@ -4,6 +4,8 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.15] - 2026-11-25
+
 ### Fixed
 - A browser tab keeps its page's address when a frame inside the page moves. Excel Online's hidden sign-in frame replaced it, and the tab then reopened that frame alone after a restart.
 - **Check for updates** while an update is downloading shows the download instead of "Couldn't check".
