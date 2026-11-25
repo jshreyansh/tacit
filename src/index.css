@@ -577,9 +577,8 @@ body.tc-canvas-dragging webview { pointer-events: none !important; }
   opacity: 1;
 }
 
-.tc-xyflow .react-flow__viewport {
-  will-change: transform;
-}
+/* No will-change here: it keeps the drawings at zoomed-in detail after zooming
+   out, and on a large canvas that runs out of tile memory. */
 
 .tc-xyflow .react-flow__attribution {
   background: color-mix(in srgb, var(--bg) 82%, transparent);
