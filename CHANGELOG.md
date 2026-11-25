@@ -4,6 +4,21 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.16] - 2026-11-26
+
+### Added
+- **A drawing request goes on its agent's task.** When an agent working on a task asks to change one of your drawings, the request shows on that task's card (and its page and canvas tile), with Allow once, Always allow and Deny, and the task waits in Needs you until you answer. The request stays with that task even if the agent moves on.
+- **The Hub lists what's waiting on you**, under each workdesk: a task's question or approval, a drawing request, an agent waiting. Press a line to go to that workdesk and its card.
+- **Activity records drawing requests**: one line each, saying who asked to do what and how it ended. Allowed once or always, denied with your words, allowed but it couldn't be done, or its agent closed first. Show takes you to the drawing.
+- **An agent waiting on you with no task gets a card in Needs you.** A chat's question or permission is answered on the card; a terminal's card takes you to its terminal.
+
+### Changed
+- **Every number that says something waits on you agrees.** The workdesk menu, the Hub, the left bar, the Tasks row and the dock now all count the cards in Needs you, the workdesk you're on included. A drawing request left on another workdesk counts there too.
+- Going to a request on the Tasks board clears a search, folder or reason filter that would hide it.
+
+### Fixed
+- An agent waiting on you stopped being counted while its tile was focused or minimized, and an agent that had failed was counted as waiting.
+
 ## [0.44.15] - 2026-11-25
 
 ### Fixed
