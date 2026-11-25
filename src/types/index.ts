@@ -1095,6 +1095,8 @@ export interface TacitAPI {
   /** What agents ask to change on the canvas, that isn't theirs. */
   canvasRequests: {
     list: () => Promise<import("../../shared/canvas-ops").CanvasRequest[]>;
+    /** Whether what was waiting before couldn't be read. True once. */
+    unread: () => Promise<boolean>;
     answer: (id: string, decision: import("../../shared/canvas-ops").CanvasDecision, note?: string) => Promise<{ ok: true } | { ok: false; error: string }>;
     drop: (id: string) => Promise<void>;
     onChanged: (callback: (list: import("../../shared/canvas-ops").CanvasRequest[]) => void) => () => void;

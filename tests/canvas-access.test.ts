@@ -8,7 +8,7 @@ import { buildChanges, buildDelete, buildDrawing, type AgentAuthor, type Drawing
 import { accessOf, mayChange, mayDelete } from "../src/board/boardAccess";
 import { isBoxed } from "../src/board/boardModel";
 import { partOf, readPart } from "../src/board/boardRead";
-import { CanvasRequests } from "../electron/canvas-requests";
+import { CanvasRequests, REQUESTS_MAX } from "../electron/canvas-requests";
 import { answerWords, registerCanvasIpc } from "../electron/canvas-ipc";
 import { parseCanvasDraw, type CanvasAsk, type CanvasDraw, type CanvasRequest } from "../shared/canvas-ops";
 
@@ -106,8 +106,37 @@ test("one request for one thing: more of the same joins it, and it's kept across
   const again = x.make();
   assert.equal(again.all().length, 3);
   assert.equal(again.ask(ask({ targets: ["z"], titles: ["Z"] })).id, "cr-4", "ids aren't given twice");
-  fs.writeFileSync(x.file, "{ broken");
-  assert.deepEqual(x.make().all(), []);
+  assert.deepEqual(fs.readdirSync(x.dir).filter((f) => f.endsWith(".tmp")), [], "saved whole, beside it, then put in its place");
+  fs.rmSync(x.dir, { recursive: true });
+});
+
+test("what can't be read is kept aside, said once, and its ids aren't given again", () => {
+  for (const damage of [(raw: string) => raw.slice(0, raw.length >> 1), () => "", () => "null", () => '{"counter":7}']) {
+    const x = requests();
+    for (let i = 0; i < 5; i++) x.list.ask(ask({ targets: [`d${i}`] }));
+    assert.equal(x.list.takeUnread(), false);
+    assert.match(fs.readFileSync(x.file, "utf8"), /^\{"counter":5,/);
+    const raw = damage(fs.readFileSync(x.file, "utf8"));
+    fs.writeFileSync(x.file, raw);
+    const again = x.make();
+    assert.deepEqual([again.all().length, again.takeUnread(), again.takeUnread()], [0, true, false]);
+    const aside = fs.readdirSync(x.dir).filter((f) => f.includes(".unreadable-"));
+    assert.equal(fs.readFileSync(`${x.dir}/${aside[0]}`, "utf8"), raw);
+    const seen = Math.max(0, ...[...raw.matchAll(/cr-(\d+)|"counter":(\d+)/g)].map((m) => Number(m[1] ?? m[2])));
+    assert.equal(again.ask(ask())!.id, `cr-${seen + 1}`);
+    fs.rmSync(x.dir, { recursive: true });
+  }
+});
+
+test("when no more can wait, the next is refused and none is dropped", () => {
+  const x = requests();
+  for (let i = 0; i < REQUESTS_MAX; i++) assert.ok(x.list.ask(ask({ targets: [`d${i}`] })));
+  assert.equal(x.list.ask(ask({ targets: ["more"] })), null);
+  assert.equal(x.list.all()[0].id, "cr-1");
+  assert.equal(x.asked.length, REQUESTS_MAX, "nobody is told of one that wasn't added");
+  assert.equal(x.list.ask(ask({ targets: ["d0"] }))!.id, "cr-1", "more of one that's waiting still joins it");
+  x.list.remove("cr-1");
+  assert.equal(x.list.ask(ask({ targets: ["more"] }))!.id, `cr-${REQUESTS_MAX + 1}`);
   fs.rmSync(x.dir, { recursive: true });
 });
 

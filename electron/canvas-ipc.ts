@@ -30,6 +30,7 @@ export function registerCanvasIpc({ handle, allowed, requests, apply, tell }: De
   /** Being answered: a second press does nothing. */
   const answering = new Set<string>();
   handle("canvas-requests:list", (event) => (allowed(event) ? requests.all() : []));
+  handle("canvas-requests:unread", (event) => allowed(event) && requests.takeUnread());
   handle("canvas-requests:answer", async (event, rawId, decision, rawNote) => {
     const which = id(rawId);
     if (!allowed(event) || !which || (decision !== "once" && decision !== "always" && decision !== "deny")) return { ok: false, error: "Not allowed" };

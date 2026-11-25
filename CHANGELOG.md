@@ -10,6 +10,8 @@ All notable changes to Tacit will be documented in this file.
 - **Who may change what**: agents read everything and change each other's drawings; yours they ask about first. It waits in Needs you, in the canvas and the grid alike, with a mark on the agent in Chats, a strip on its terminal (a card in its chat), a small marker on the drawing, and a Mac notification when Tacit isn't in front: you see it as it is and as it would be, and Allow once, Always allow, or Deny with a word. Answered in one place, it goes from all of them. Each drawing can be set to Ask first, Can edit or Only me, and a section covers what's in it. Deleting what isn't an agent's own always asks. A change waits while you're typing. ⌘Z undoes only what you did.
 
 ### Fixed
+- When 100 canvas requests already wait, an agent is told the next wasn't added; none is dropped. If the saved ones can't be read, they're kept aside and you're told.
+- An update whose download fails its check is logged as failed.
 - A large canvas no longer runs out of drawing memory after zooming in and back out, which could leave parts of it blank.
 
 ## [0.44.12] - 2026-11-25

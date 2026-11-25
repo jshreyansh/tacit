@@ -715,6 +715,7 @@ export const zh = {
   canvas_ask_rename: (from: string, to: string) => (from ? `“${from}” → “${to}”` : `“${to}”`),
   canvas_ask_show: "在画布上查看",
   canvas_ask_details: "详情",
+  canvas_ask_unread: "无法读取智能体之前请求的画布修改，因此已从“需要你”中移除。请让它们重新提出。",
   canvas_ask_on_task: (task: string) => `正在处理 ${task}`,
   canvas_ask_several: (n: number) => `${n} 个图`,
   canvas_ask_move: "移动",

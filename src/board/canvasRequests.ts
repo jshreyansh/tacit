@@ -55,6 +55,9 @@ export function startCanvasRequests(): () => void {
   if (started || !window.tacit?.canvasRequests) return () => {};
   started = true;
   void window.tacit.canvasRequests.list().then(take);
+  void window.tacit.canvasRequests.unread().then((unread) => {
+    if (unread) useNotificationStore.getState().notify("warn", getTranslations().canvas_ask_unread);
+  });
   const off = window.tacit.canvasRequests.onChanged(take);
   return () => {
     started = false;

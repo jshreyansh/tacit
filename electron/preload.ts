@@ -1562,6 +1562,7 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   canvasRequests: {
     list: () => ipcRenderer.invoke("canvas-requests:list"),
+    unread: () => ipcRenderer.invoke("canvas-requests:unread"),
     answer: (id: string, decision: "once" | "always" | "deny", note?: string) => ipcRenderer.invoke("canvas-requests:answer", id, decision, note),
     drop: (id: string) => ipcRenderer.invoke("canvas-requests:drop", id),
     onChanged: (callback: (list: unknown[]) => void) => {

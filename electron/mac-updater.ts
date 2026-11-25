@@ -651,6 +651,12 @@ export class MacCustomUpdater {
       });
       return "newer";
     } catch (error) {
+      this.log.record({
+        outcome: "skipped",
+        reason: downloadStarted ? "download-failed" : "check-failed",
+        currentVersion,
+        detail: error instanceof Error ? error.message : String(error),
+      });
       // If we already have a valid pending update (e.g. offline), surface it
       // instead of showing an error so users can still install it
       if (this.pendingUpdate) {
@@ -666,12 +672,6 @@ export class MacCustomUpdater {
           message: error instanceof Error ? error.message : String(error),
         });
       }
-      this.log.record({
-        outcome: "skipped",
-        reason: downloadStarted ? "download-failed" : "check-failed",
-        currentVersion,
-        detail: error instanceof Error ? error.message : String(error),
-      });
       return "skipped";
     }
   }
@@ -828,9 +828,8 @@ export class MacCustomUpdater {
           // Ignore cleanup errors
         }
       }
-      emitUpdaterEvent(this.window, "updater:error", {
-        message: error instanceof Error ? error.message : String(error),
-      });
+      // Said and logged by checkForUpdates, which must not call this finished.
+      throw error;
     } finally {
       this.downloading = false;
     }

@@ -722,6 +722,7 @@ export const en = {
   canvas_ask_rename: (from: string, to: string) => (from ? `"${from}" → "${to}"` : `"${to}"`),
   canvas_ask_show: "Show on canvas",
   canvas_ask_details: "Details",
+  canvas_ask_unread: "What agents had asked to change on the canvas couldn't be read, so it's gone from Needs you. Ask them to ask again.",
   canvas_ask_on_task: (task: string) => `Working on ${task}`,
   canvas_ask_several: (n: number) => `${n} drawings`,
   canvas_ask_move: "Move it",
