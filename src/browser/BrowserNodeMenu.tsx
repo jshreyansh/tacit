@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { PickerPopover } from "../agents/AgentPicker";
+import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
 import { getBrowserWebview } from "../canvas/browserWebviewRegistry";
 import { useT } from "../i18n/useT";
 import { useBrowserCardStore } from "../stores/browserCardStore";
@@ -18,33 +20,13 @@ import { DEFAULT_BROWSER_ZOOM, clampBrowserZoom, formatBrowserZoom } from "./pag
 export function BrowserNodeMenu({ cardId, connected }: { cardId: string; connected: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const card = useBrowserCardStore((s) => s.cards[cardId]);
   const tab = useBrowserTabState(cardId);
   const downloads = useBrowserTabStateStore((s) => s.downloads);
   const syncing = useChromeSyncStore((s) => s.syncing);
   const hasImportedProfile = useIdentityStore((s) => Object.values(s.identities).some((i) => i.provenance?.source === "chrome"));
   const inGrid = useWorkdeskViewStore((s) => s.mode === "grid");
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    // A click in a page goes to the page, not this window; it blurs it.
-    const blur = () => setOpen(false);
-    document.addEventListener("mousedown", close);
-    window.addEventListener("keydown", esc);
-    window.addEventListener("blur", blur);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", esc);
-      window.removeEventListener("blur", blur);
-    };
-  }, [open]);
 
   if (!card) return null;
   const zoom = clampBrowserZoom(card.pageZoom ?? DEFAULT_BROWSER_ZOOM);
@@ -55,27 +37,34 @@ export function BrowserNodeMenu({ cardId, connected }: { cardId: string; connect
   };
 
   return (
-    <div ref={ref} className="relative shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="shrink-0" onMouseDown={(e) => e.stopPropagation()}>
       <button
+        ref={button}
         type="button"
-        className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        className="tc-br-btn"
         aria-label={t.browser_menu}
         title={t.browser_menu}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="12" cy="5" r="2" />
-          <circle cx="12" cy="12" r="2" />
-          <circle cx="12" cy="19" r="2" />
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="3.5" r="1.3" />
+          <circle cx="8" cy="8" r="1.3" />
+          <circle cx="8" cy="12.5" r="1.3" />
         </svg>
       </button>
-      {open && (
-        <div
+      {open && button.current && (
+        <PickerPopover
+          anchor={button.current}
+          align="right"
           role="menu"
-          className="tc-float tc-enter-fade-quick absolute right-0 top-full z-30 mt-1 w-[248px] p-1.5"
-          style={{ borderRadius: 10 }}
+          width={264}
+          label={t.browser_menu}
+          onClose={(refocus) => {
+            setOpen(false);
+            if (refocus) button.current?.focus();
+          }}
         >
           {!connected && (
             <>
@@ -155,7 +144,9 @@ export function BrowserNodeMenu({ cardId, connected }: { cardId: string; connect
               <Item label={t.browser_menu_devtools} onClick={run(() => webview()?.openDevTools())} />
             </>
           )}
-        </div>
+          <Divider />
+          <Item label={t.browser_menu_close} danger onClick={run(() => removeBrowserCardFromScene(cardId))} />
+        </PickerPopover>
       )}
     </div>
   );
@@ -172,13 +163,14 @@ export function setBrowserNodeMuted(cardId: string, muted: boolean): void {
   }
 }
 
-function Item({ label, hint, onClick, disabled }: { label: string; hint?: string; onClick: () => void; disabled?: boolean }) {
+function Item({ label, hint, onClick, disabled, danger }: { label: string; hint?: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
   return (
     <button
       type="button"
       role="menuitem"
+      data-pick=""
       disabled={disabled}
-      className="tc-rail-btn flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-[var(--text-primary)] disabled:opacity-50"
+      className={`tc-rail-btn flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] disabled:opacity-50 ${danger ? "text-[var(--red)]" : "text-[var(--text-primary)]"}`}
       onClick={onClick}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>

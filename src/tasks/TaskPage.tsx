@@ -9,21 +9,22 @@ import { goToNote, useNotes } from "../board/notes";
 import { useProjectStore } from "../stores/projectStore";
 import { useRecordPlaceStore } from "../stores/recordPlaceStore";
 import { attachToTask, changeTask, deleteTask, goToTerminal, openTask, sayOnTask, sendTaskNow, showTaskOnCanvas, stopTask, takeOffCanvas } from "./taskActions";
-import { HandOverButton } from "./HandOver";
-import { ReportFacts, RequestBlock } from "./RequestBlock";
-import { Dot, useFolderName } from "./TaskCard";
+import { AskButton, AskFoot, AskHead, AskWords } from "../components/ask/AskCard";
+import { useAutoGrow } from "../hooks/useAutoGrow";
+import { AgentMark, HandOverButton } from "./HandOver";
+import { ReportFacts, TaskAsks } from "./TaskAsks";
+import { Dot, RunRow, useFolderName } from "./TaskCard";
 import { useTaskStore } from "./taskStore";
-import { ago, partTry, readiness, runLines, sortRequests, timeAndUse, waitsForYou } from "./taskWords";
+import { ago, partTry, runLines, sortRequests, timeAndUse, waitsForYou } from "./taskWords";
 import { useAgents } from "./useAgents";
 import { useNow } from "./useNow";
 import { useTaskText } from "./useTaskText";
 import "./tasks.css";
 
-/** One task: the brief an agent works from, then the record of what it did. */
+/** One task: the brief an agent works from, then what came of it, then a line to say something. */
 export function TaskPage({ task, onBack }: { task: Task; onBack?: () => void }) {
   const t = useT();
   const column = columnOf(task);
-  const runs = runLines(task);
   const requests = sortRequests(task);
   // Looked at: no longer new.
   useEffect(() => {
@@ -33,56 +34,43 @@ export function TaskPage({ task, onBack }: { task: Task; onBack?: () => void }) 
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="tc-tk-head">
         {onBack && (
-          <button type="button" className="tc-tk-btn" data-quiet="true" onClick={onBack}>
-            ‹ {t.tb.back}
+          <button type="button" className="tc-tk-btn !gap-1 !pl-2" data-quiet="true" onClick={onBack}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 3L5 8l5 5" />
+            </svg>
+            {t.tb.back}
           </button>
         )}
         <span className="tc-tk-id">{`T-${task.n}`}</span>
-        <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-primary)]">
+        <span className="tc-tk-state">
           <Dot column={column} />
           {t.tb.columns[column]}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-metadata)]">{runs.map((r) => `${r.name}, ${r.waits ? t.tb.waitsForYou : t.tb.runs[r.state]}`).join(" · ")}</span>
+        <span className="flex-1" />
         <HeadActions task={task} />
       </div>
       <div className="tc-tk-scroll">
-        <div className="tc-tk-page">
-          <div className="tc-tk-main">
-            <div>
-              <TitleField task={task} />
-              <DescriptionField task={task} />
-            </div>
-            {task.suggestion && <SuggestionBlock task={task} />}
-            {requests.map((r) => (
-              <RequestBlock key={r.id} task={task} request={r} />
-            ))}
-            {task.report && <ReportSection task={task} />}
-            <DoneWhen task={task} />
-            <Section title={t.tb.leaveAlone}>
-              <TextArea task={task} field="leaveAlone" label={t.tb.leaveAlone} hint={t.tb.leaveAloneHint} min={44} />
-            </Section>
-            <StartFrom task={task} />
-            <Parts task={task} />
-            <Work task={task} />
-            {task.decisions.length > 0 && (
-              <Section title={t.tb.decisions}>
-                {task.decisions.map((d) => (
-                  <div key={d.id} className="tc-tk-line flex-col !items-start !gap-0.5">
-                    <span>{d.text}</span>
-                    <span className="text-[var(--cyan)]">
-                      {d.answer}
-                      {d.pending && <span className="text-[var(--text-metadata)]"> · {t.tb.decisionWaits}</span>}
-                    </span>
-                  </div>
-                ))}
-              </Section>
-            )}
-            <Conversation task={task} />
-            <History task={task} />
+        <div className="tc-tk-doc">
+          <div className="flex flex-col gap-2.5">
+            <TitleField task={task} />
+            <Chips task={task} />
+            <Meta task={task} />
           </div>
-          <Details task={task} />
+          <Runs task={task} />
+          {requests.length > 0 && (
+            <div className="tc-tk-card tc-tk-asks">
+              <TaskAsks task={task} requests={requests} />
+            </div>
+          )}
+          {task.suggestion && <SuggestionBlock task={task} />}
+          {task.report && <ReportSection task={task} />}
+          <DescriptionField task={task} />
+          <Fields key={task.id} task={task} />
+          <Decisions task={task} />
+          <Activity task={task} />
         </div>
       </div>
+      <TaskComposer task={task} />
     </div>
   );
 }
@@ -116,7 +104,6 @@ function HeadActions({ task }: { task: Task }) {
     return () => window.removeEventListener("mousedown", away);
   }, [menu]);
   const on = activeTries(task);
-  const only = on.length === 1 && isLive(on[0].state) && findTerminal(on[0].terminal) ? on[0] : null;
   const item = (label: string, run: () => void, danger = false) => (
     <button
       type="button"
@@ -132,11 +119,6 @@ function HeadActions({ task }: { task: Task }) {
   );
   return (
     <>
-      {only && (
-        <button type="button" className="tc-tk-btn" onClick={() => goToTerminal(only.terminal)}>
-          {t.tb.openTerminal}
-        </button>
-      )}
       {!task.closed && on.length === 0 && task.requests.length === 0 && <HandOverButton task={task} className="tc-tk-btn tc-tk-strong" />}
       {task.closed && (
         <button type="button" className="tc-tk-btn" onClick={() => void changeTask(task, { op: "reopen" })}>
@@ -242,14 +224,14 @@ function TitleField({ task }: { task: Task }) {
   );
 }
 
-function TextArea({ task, field, label, hint, min }: { task: Task; field: TextField; label: string; hint: string; min: number }) {
+function TextArea({ task, field, label, hint, min, focus }: { task: Task; field: TextField; label: string; hint: string; min: number; focus?: boolean }) {
   const text = useTaskText(task, field);
   const ref = useGrow(text.value);
   return (
     <>
       <label className="block">
         <span className="sr-only">{label}</span>
-        <textarea ref={ref} className="tc-tk-input w-full resize-none overflow-hidden" style={{ minHeight: min }} value={text.value} placeholder={hint} onChange={(e) => text.change(e.target.value)} onBlur={text.save} onKeyDown={(e) => e.stopPropagation()} />
+        <textarea ref={ref} autoFocus={focus} className="tc-tk-input w-full resize-none overflow-hidden" style={{ minHeight: min }} value={text.value} placeholder={hint} onChange={(e) => text.change(e.target.value)} onBlur={text.save} onKeyDown={(e) => e.stopPropagation()} />
       </label>
       <Conflict text={text} />
     </>
@@ -320,28 +302,21 @@ function DescriptionField({ task }: { task: Task }) {
 function SuggestionBlock({ task }: { task: Task }) {
   const t = useT();
   const s = task.suggestion!;
+  const words = [s.title, s.body, s.doneWhen?.length ? `${t.tb.doneWhen}:\n${s.doneWhen.map((l) => `- ${l}`).join("\n")}` : "", s.leaveAlone ? `${t.tb.leaveAlone}: ${s.leaveAlone}` : ""].filter(Boolean).join("\n\n");
   return (
-    <section className="tc-tk-req" data-kind="check" aria-label={t.tb.suggestion(s.byName)}>
-      <p className="tc-tk-req-text">{t.tb.suggestion(s.byName)}</p>
-      {s.title && <p className="text-[13px]">{s.title}</p>}
-      {s.body && <p className="whitespace-pre-wrap text-[13px]">{s.body}</p>}
-      {s.doneWhen && (
-        <ul className="list-disc pl-5 text-[13px]">
-          {s.doneWhen.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      )}
-      {s.leaveAlone && <p className="text-[13px]">{`${t.tb.leaveAlone}: ${s.leaveAlone}`}</p>}
-      <div className="flex gap-1.5">
-        <button type="button" className="tc-tk-btn" data-strong="true" onClick={() => void changeTask(task, { op: "suggestion", take: true })}>
+    <div className="tc-tk-card tc-tk-asks">
+      <AskHead kind="suggestion" label={t.tb.suggestionLabel} title={t.tb.suggestion(s.byName)} />
+      <AskWords mono={false}>{words}</AskWords>
+      <AskFoot>
+        <AskButton tone="primary" onClick={() => void changeTask(task, { op: "suggestion", take: true })}>
           {t.tb.accept}
-        </button>
-        <button type="button" className="tc-tk-btn" onClick={() => void changeTask(task, { op: "suggestion", take: false })}>
+        </AskButton>
+        <span className="flex-1" />
+        <AskButton tone="quiet" onClick={() => void changeTask(task, { op: "suggestion", take: false })}>
           {t.tb.turnDown}
-        </button>
-      </div>
-    </section>
+        </AskButton>
+      </AskFoot>
+    </div>
   );
 }
 
@@ -374,7 +349,7 @@ function LineField({ value, label, onSave, done }: { value: string; label: strin
     />
   );
 }
-function AddLine({ placeholder, onAdd }: { placeholder: string; onAdd: (text: string) => Promise<unknown> }) {
+function AddLine({ placeholder, onAdd, focus }: { placeholder: string; focus?: boolean; onAdd: (text: string) => Promise<unknown> }) {
   const [text, setText] = useState("");
   return (
     <form
@@ -386,7 +361,7 @@ function AddLine({ placeholder, onAdd }: { placeholder: string; onAdd: (text: st
         void onAdd(line).then((ok) => ok || setText(line));
       }}
     >
-      <input className="tc-tk-input w-full" aria-label={placeholder} placeholder={placeholder} value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+      <input autoFocus={focus} className="tc-tk-input w-full" aria-label={placeholder} placeholder={placeholder} value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
     </form>
   );
 }
@@ -408,7 +383,54 @@ function LineTools({ onUp, onDown, onRemove }: { onUp?: () => void; onDown?: () 
   );
 }
 
-function DoneWhen({ task }: { task: Task }) {
+/** The brief's other fields: those with something in them, and the rest one press away. */
+const FIELDS = ["doneWhen", "leaveAlone", "startFrom", "parts", "allowed"] as const;
+type Field = (typeof FIELDS)[number];
+function Fields({ task }: { task: Task }) {
+  const t = useT();
+  const [opened, setOpened] = useState<readonly Field[]>([]);
+  const has: Record<Field, boolean> = {
+    doneWhen: task.doneWhen.length > 0,
+    leaveAlone: task.leaveAlone.trim() !== "",
+    startFrom: task.startFrom.length > 0,
+    parts: task.parts.length > 0,
+    allowed: task.allowed.trim() !== "",
+  };
+  const shows = (f: Field) => has[f] || opened.includes(f);
+  const rest = FIELDS.filter((f) => !shows(f));
+  return (
+    <>
+      {shows("doneWhen") && <DoneWhen task={task} focus={!has.doneWhen} />}
+      {shows("leaveAlone") && (
+        <Section title={t.tb.leaveAlone}>
+          <TextArea task={task} field="leaveAlone" label={t.tb.leaveAlone} hint={t.tb.leaveAloneHint} min={40} focus={!has.leaveAlone} />
+        </Section>
+      )}
+      {shows("startFrom") && <StartFrom task={task} focus={!has.startFrom} />}
+      {shows("parts") && <Parts task={task} focus={!has.parts} />}
+      {shows("allowed") && (
+        <Section title={t.tb.allowedTitle}>
+          <TextArea task={task} field="allowed" label={t.tb.allowedTitle} hint={t.tb.allowedHint} min={40} focus={!has.allowed} />
+          <p className="pt-1.5 text-[12px] text-[var(--text-metadata)]">{t.tb.allowedNote}</p>
+        </Section>
+      )}
+      {!task.closed && rest.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t.tb.details}>
+          {rest.map((f) => (
+            <button key={f} type="button" className="tc-tk-pill" onClick={() => setOpened([...opened, f])}>
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+              {t.tb.addField[f]}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DoneWhen({ task, focus }: { task: Task; focus?: boolean }) {
   const t = useT();
   const change = (c: Parameters<typeof changeTask>[1]) => changeTask(task, c);
   return (
@@ -434,8 +456,7 @@ function DoneWhen({ task }: { task: Task }) {
           />
         </div>
       ))}
-      {task.doneWhen.length === 0 && !task.closed && <p className="pb-1.5 text-[13px] text-[var(--text-metadata)]">{t.tb.doneWhenNone}</p>}
-      <AddLine placeholder={t.tb.doneWhenAdd} onAdd={(text) => change({ op: "line", change: { op: "add", text } })} />
+      <AddLine focus={focus} placeholder={t.tb.doneWhenAdd} onAdd={(text) => change({ op: "line", change: { op: "add", text } })} />
     </Section>
   );
 }
@@ -452,7 +473,7 @@ export function refFrom(text: string): Omit<Ref, "id"> {
   return { kind: "link", label: s.slice(0, 120), target: s };
 }
 
-function StartFrom({ task }: { task: Task }) {
+function StartFrom({ task, focus }: { task: Task; focus?: boolean }) {
   const t = useT();
   const notes = useNotes();
   const agents = useAgents();
@@ -487,7 +508,7 @@ function StartFrom({ task }: { task: Task }) {
       )}
       <div className="flex flex-wrap gap-2">
         <div className="min-w-[180px] flex-1">
-          <AddLine placeholder={t.tb.startFromAdd} onAdd={(text) => changeTask(task, { op: "ref", add: refFrom(text) })} />
+          <AddLine focus={focus} placeholder={t.tb.startFromAdd} onAdd={(text) => changeTask(task, { op: "ref", add: refFrom(text) })} />
         </div>
         {choices.length > 1 && (
           <Dropdown
@@ -507,7 +528,7 @@ function StartFrom({ task }: { task: Task }) {
   );
 }
 
-function Parts({ task }: { task: Task }) {
+function Parts({ task, focus }: { task: Task; focus?: boolean }) {
   const t = useT();
   const change = (c: Parameters<typeof changeTask>[1]) => changeTask(task, c);
   return (
@@ -516,7 +537,7 @@ function Parts({ task }: { task: Task }) {
         <PartRow key={p.id} task={task} part={p} first={i === 0} last={i === task.parts.length - 1} change={change} />
       ))}
       {task.parts.length === 0 && <p className="pb-1.5 text-[13px] text-[var(--text-metadata)]">{t.tb.partsHint}</p>}
-      <AddLine placeholder={t.tb.partsAdd} onAdd={(text) => change({ op: "part", change: { op: "add", text } })} />
+      <AddLine focus={focus} placeholder={t.tb.partsAdd} onAdd={(text) => change({ op: "part", change: { op: "add", text } })} />
     </Section>
   );
 }
@@ -556,34 +577,40 @@ function PartRow({ task, part, first, last, change }: { task: Task; part: Part; 
 
 /* ---------- the work ---------- */
 
-function Work({ task }: { task: Task }) {
+/** Who has it now, with what you can do about each. */
+function Runs({ task }: { task: Task }) {
   const t = useT();
-  const now = useNow();
-  if (task.tries.length === 0) return null;
+  const on = activeTries(task);
+  if (on.length === 0) return null;
+  const lines = runLines(task);
   return (
-    <Section title={t.tb.work}>
-      {[...task.tries].reverse().map((x) => (
-        <div key={x.id} className="tc-tk-line flex-wrap">
-          <span className="w-12 shrink-0 text-[13px] font-medium">{t.tb.tryN(x.n)}</span>
-          <button type="button" className="text-left text-[13px] hover:underline" onClick={() => goToTerminal(x.terminal)}>
-            {x.name}
-          </button>
-          <span className="min-w-[120px] flex-1 text-[13px] text-[var(--text-metadata)]">
-            {[task.parts.find((p) => p.id === x.part)?.text, t.tb.runs[x.state], x.why, t.tb.waited(ago(x.ended ?? x.at, now)), x.tokens ? t.tb.tokens(x.tokens) : ""].filter(Boolean).join(" · ")}
-          </span>
-          {x.state === "queued" && (
-            <button type="button" className="tc-tk-btn tc-tk-quiet" onClick={() => void sendTaskNow(task, x.id)}>
-              {t.tb.sendNow}
-            </button>
-          )}
-          {isActive(x.state) && (
-            <button type="button" className="tc-tk-btn tc-tk-quiet" onClick={() => void stopTask(task, x.id)}>
-              {t.tb.stop}
-            </button>
-          )}
-        </div>
-      ))}
-    </Section>
+    <div className="flex flex-col gap-1">
+      {on.map((x) => {
+        const run = lines.find((r) => r.id === x.id);
+        return (
+          <div key={x.id} className="tc-tk-runline">
+            {run && <RunRow run={run} />}
+            {run?.part && <span className="min-w-0 truncate text-[12.5px] text-[var(--text-metadata)]">{run.part}</span>}
+            <span className="flex-1" />
+            {x.state === "queued" && (
+              <button type="button" className="tc-tk-btn" data-quiet="true" onClick={() => void sendTaskNow(task, x.id)}>
+                {t.tb.sendNow}
+              </button>
+            )}
+            {findTerminal(x.terminal) && isLive(x.state) && (
+              <button type="button" className="tc-tk-btn" data-quiet="true" onClick={() => goToTerminal(x.terminal)}>
+                {t.tb.openTerminal}
+              </button>
+            )}
+            {isActive(x.state) && (
+              <button type="button" className="tc-tk-btn" data-quiet="true" onClick={() => void stopTask(task, x.id)}>
+                {t.tb.stop}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -596,7 +623,7 @@ function ReportSection({ task }: { task: Task }) {
   const top = task.tries.find((x) => x.id === report.try)?.worktree;
   return (
     <Section title={t.tb.report}>
-      <p className="whitespace-pre-wrap text-[14px] leading-relaxed">{report.summary}</p>
+      <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed">{report.summary}</p>
       {report.left && <p className="mt-1.5 whitespace-pre-wrap text-[13px] text-[var(--text-metadata)]">{report.left}</p>}
       {task.closed?.as === "done" && <p className="mt-1.5 text-[13px] text-[var(--text-metadata)]">{task.closed.by === "user" ? task.closed.how : t.tb.wentStraight(task.closed.how)}</p>}
       {/* While it's being checked, the facts are with the question. */}
@@ -625,69 +652,126 @@ function ReportSection({ task }: { task: Task }) {
   );
 }
 
-function Conversation({ task }: { task: Task }) {
+/** What you decided, as the chat keeps your answers. */
+function Decisions({ task }: { task: Task }) {
   const t = useT();
-  const now = useNow();
-  const [text, setText] = useState("");
-  const on = activeTries(task).filter((x) => isLive(x.state));
-  const [to, setTo] = useState<string | null>(null);
-  const target = on.find((x) => x.id === to) ?? on[0] ?? null;
+  if (task.decisions.length === 0) return null;
   return (
-    <Section title={t.tb.conversation}>
-      {task.messages.map((m) => (
-        <div key={m.id} className="py-1.5">
-          <p className="text-[12.5px] text-[var(--text-metadata)]">
-            {m.by === "user" ? t.tb.actors.user : m.byName} · {t.tb.waited(ago(m.at, now))}
-            {t.tb.said[m.state] && <span className={m.state === "failed" ? "text-[var(--red)]" : ""}> · {t.tb.said[m.state]}</span>}
-          </p>
-          <p className="whitespace-pre-wrap text-[14px]">{m.text}</p>
-        </div>
-      ))}
-      <form
-        className="flex flex-wrap gap-2 pt-1"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const words = text.trim();
-          if (!words) return;
-          setText("");
-          void sayOnTask(task, words, target?.id).then((ok) => ok || setText(words));
-        }}
-      >
-        {on.length > 1 && <Dropdown label={t.tb.conversation} value={target?.id ?? ""} options={on.map((x) => ({ value: x.id, label: x.name }))} size="md" onChange={setTo} />}
-        <input className="tc-tk-input min-w-[160px] flex-1" aria-label={target ? t.tb.sayTo(target.name) : t.tb.sayNote} placeholder={target ? t.tb.sayTo(target.name) : t.tb.sayNote} maxLength={8000} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-        <button type="submit" className="tc-tk-btn" data-strong={!!text.trim()} disabled={!text.trim()}>
-          {t.tb.send}
-        </button>
-      </form>
+    <Section title={t.tb.decisions}>
+      <div className="flex flex-col items-start gap-1.5">
+        {task.decisions.map((d) => (
+          <span key={d.id} className="tc-tk-receipt" title={d.text}>
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}>
+              <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" aria-hidden="true">
+                <path d="M3.5 8.5l3 3 6-7" />
+              </svg>
+            </span>
+            <span className="min-w-0 truncate text-[var(--text-metadata)]">{d.text}</span>
+            <span className="max-w-[50%] shrink-0 truncate">{d.answer}</span>
+            {d.pending && <span className="shrink-0 text-[var(--text-metadata)]">{t.tb.decisionWaits}</span>}
+          </span>
+        ))}
+      </div>
     </Section>
   );
 }
 
-function History({ task }: { task: Task }) {
+/** How much of what happened shows at first. */
+const SHOWN = 10;
+
+/** What happened and what was said, in order, as a chat is. */
+function Activity({ task }: { task: Task }) {
   const t = useT();
   const now = useNow();
   const [all, setAll] = useState(false);
-  const entries = [...task.history].reverse();
-  const shown = all ? entries : entries.slice(0, 5);
   const who = (by: string) => (by === "user" ? t.tb.actors.user : by === "tacit" ? t.tb.actors.tacit : (task.tries.find((x) => `terminal:${x.terminal}` === by)?.name ?? nameOf(by)));
+  const items = [
+    ...task.history.map((h, i) => ({ key: `h${i}`, at: h.at, line: h, message: null })),
+    ...task.messages.map((m) => ({ key: m.id, at: m.at, line: null, message: m })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const shown = all ? items : items.slice(-SHOWN);
   return (
-    <Section title={t.tb.history}>
-      {shown.map((h, i) => (
-        <p key={`${h.at}-${i}`} className="tc-tk-hist">
-          <span>
-            {who(h.by)}: {h.text}
-          </span>
-          <span className="shrink-0 text-[var(--text-metadata)]">{t.tb.waited(ago(h.at, now))}</span>
-        </p>
-      ))}
-      {entries.length > shown.length && (
-        <button type="button" className="tc-tk-btn tc-tk-quiet" onClick={() => setAll(true)}>
-          {t.tb.historyMore(entries.length - shown.length)}
-        </button>
-      )}
+    <Section title={t.tb.activity}>
+      <div className="flex flex-col gap-1.5">
+        {items.length > shown.length && (
+          <button type="button" className="tc-tk-more !px-0" onClick={() => setAll(true)}>
+            {t.tb.earlier(items.length - shown.length)}
+          </button>
+        )}
+        {shown.map(({ key, line, message: m }) =>
+          m ? (
+            <div key={key} className={`flex flex-col gap-1 py-1 ${m.by === "user" ? "items-end" : "items-start"}`}>
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text-metadata)]">
+                {m.by !== "user" && <AgentMark type={typeOf(m.by)} size={14} />}
+                {m.by === "user" ? "" : `${m.byName} `}
+                {t.tb.waited(ago(m.at, now))}
+                {t.tb.said[m.state] && <span className={m.state === "failed" ? "text-[var(--red)]" : ""}>{t.tb.said[m.state]}</span>}
+              </span>
+              <p className={m.by === "user" ? "tc-tk-bubble" : "whitespace-pre-wrap text-[13.5px] leading-relaxed [overflow-wrap:anywhere]"}>{m.text}</p>
+            </div>
+          ) : (
+            line && (
+              <p key={key} className="tc-tk-event">
+                <span className="min-w-0">
+                  <span className="text-[var(--text-primary)]">{who(line.by)}</span> {line.text}
+                </span>
+                <span className="shrink-0">{t.tb.waited(ago(line.at, now))}</span>
+              </p>
+            )
+          ),
+        )}
+      </div>
     </Section>
   );
 }
+const typeOf = (by: string) => (by.startsWith("terminal:") ? (findTerminal(by.slice("terminal:".length))?.terminal.type ?? "") : "");
+
+/** Saying something on it: to whoever has it, or a note for the next one. The chat's own box. */
+function TaskComposer({ task }: { task: Task }) {
+  const t = useT();
+  const [text, setText] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(ref, text);
+  const on = activeTries(task).filter((x) => isLive(x.state));
+  const [to, setTo] = useState<string | null>(null);
+  const target = on.find((x) => x.id === to) ?? on[0] ?? null;
+  const ready = text.trim() !== "";
+  const send = () => {
+    const words = text.trim();
+    if (!words) return;
+    setText("");
+    void sayOnTask(task, words, target?.id).then((ok) => ok || setText(words));
+  };
+  return (
+    <div className="shrink-0 px-4 pb-3 pt-1">
+      <div className="tc-tk-composer">
+        {on.length > 1 && <Dropdown label={t.tb.conversation} value={target?.id ?? ""} options={on.map((x) => ({ value: x.id, label: x.name }))} onChange={setTo} />}
+        <textarea
+          ref={ref}
+          rows={1}
+          maxLength={8000}
+          value={text}
+          aria-label={target ? t.tb.sayTo(target.name) : t.tb.sayNote}
+          placeholder={target ? t.tb.sayTo(target.name) : t.tb.sayNote}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <button type="button" className="tc-sq-ctl inline-flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--accent-foreground)" }} disabled={!ready} aria-label={t.tb.send} title={t.tb.send} onClick={send}>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 13V3.5M4 7.5l4-4 4 4" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function nameOf(by: string): string {
   const found = by.startsWith("terminal:") ? findTerminal(by.slice("terminal:".length)) : null;
   return found ? found.terminal.customTitle?.trim() || found.terminal.title : "Agent";
@@ -695,88 +779,53 @@ function nameOf(by: string): string {
 
 /* ---------- its details ---------- */
 
-function Details({ task }: { task: Task }) {
+/** What kind of work, how urgent, where, and whether you look at the end. */
+function Chips({ task }: { task: Task }) {
   const t = useT();
-  const now = useNow();
   const projects = useProjectStore((s) => s.projects);
-  const tasks = useTaskStore((s) => s.tasks);
   const folderName = useFolderName(task.folder);
-  const ready = readiness(task);
-  const use = timeAndUse(task, now);
-  const waiting = !task.closed && task.tries.length === 0;
   const folders = [
     { value: "", label: t.tb.noFolder },
     ...projects.flatMap((p) => p.worktrees.map((w) => ({ value: w.path, label: w.isPrimary || p.worktrees.length === 1 ? p.name : `${p.name} · ${w.name}`, detail: w.path }))),
     ...(task.folder && !projects.some((p) => p.worktrees.some((w) => w.path === task.folder)) ? [{ value: task.folder, label: folderName, detail: task.folder }] : []),
   ];
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Dropdown label={t.tb.kind} value={task.kind} options={WORK_KINDS.map((k) => ({ value: k, label: t.tb.kinds[k] }))} onChange={(kind) => void changeTask(task, { op: "set", settings: { kind } })} />
+      <Dropdown label={t.tb.priority} value={task.priority} options={PRIORITIES.map((p) => ({ value: p, label: p === "none" ? t.tb.noPriority : t.tb.priorities[p] }))} onChange={(priority) => void changeTask(task, { op: "set", settings: { priority } })} />
+      <Dropdown label={t.tb.folder} value={task.folder ?? ""} options={folders} onChange={(f) => void changeTask(task, { op: "set", settings: { folder: f || null } })} />
+      <Dropdown label={t.tb.check} value={task.check} options={CHECK_RULES.map((c) => ({ value: c, label: t.tb.checkChips[c] }))} onChange={(check) => void changeTask(task, { op: "set", settings: { check } })} />
+    </div>
+  );
+}
+
+/** Where it came from and what it's cost, in a line. */
+function Meta({ task }: { task: Task }) {
+  const t = useT();
+  const now = useNow();
+  const tasks = useTaskStore((s) => s.tasks);
+  const use = timeAndUse(task, now);
   const made = task.madeFrom;
   const parent = made?.kind === "task" && made.target ? tasks[made.target] : null;
   return (
-    <aside aria-label={t.tb.details} className="tc-tk-side">
-      {waiting && (!ready.described || !ready.doneWhen || !ready.folder) && (
-        <section className="tc-tk-ready">
-          <h3>{t.tb.ready}</h3>
-          {(
-            [
-              [ready.described, t.tb.readyDescription],
-              [ready.doneWhen, t.tb.readyDoneWhen],
-              [ready.folder, t.tb.readyFolder],
-            ] as const
-          ).map(([yes, label]) => (
-            <p key={label} className={yes ? "" : "text-[var(--text-metadata)]"}>
-              <Dot column={yes ? "done" : "later"} hollow={!yes} /> {label}
-            </p>
-          ))}
-        </section>
+    <p className="tc-tk-meta">
+      <span>{t.tb.addedAgo(t.tb.waited(ago(task.created, now)))}</span>
+      {made && made.kind !== "you" && (
+        <span>
+          {`${t.tb.madeFrom} `}
+          {parent ? (
+            <button type="button" onClick={() => openTask(parent.id)}>{`T-${parent.n} ${parent.title}`}</button>
+          ) : made.kind === "note" && made.target ? (
+            <button type="button" onClick={() => goToNote(made.target!)}>{made.label}</button>
+          ) : (
+            `${t.tb.madeFromKind[made.kind]}${made.label ? ` ${made.label}` : ""}`
+          )}
+        </span>
       )}
-      <Row label={t.tb.kind}>
-        <Dropdown label={t.tb.kind} value={task.kind} options={WORK_KINDS.map((k) => ({ value: k, label: t.tb.kinds[k] }))} onChange={(kind) => void changeTask(task, { op: "set", settings: { kind } })} />
-      </Row>
-      <Row label={t.tb.priority}>
-        <Dropdown label={t.tb.priority} value={task.priority} options={PRIORITIES.map((p) => ({ value: p, label: t.tb.priorities[p] }))} onChange={(priority) => void changeTask(task, { op: "set", settings: { priority } })} />
-      </Row>
-      <Row label={t.tb.folder}>
-        <Dropdown label={t.tb.folder} value={task.folder ?? ""} options={folders} onChange={(f) => void changeTask(task, { op: "set", settings: { folder: f || null } })} />
-      </Row>
-      <Row label={t.tb.check}>
-        <Dropdown label={t.tb.check} value={task.check} options={CHECK_RULES.map((c) => ({ value: c, label: t.tb.checks[c] }))} onChange={(check) => void changeTask(task, { op: "set", settings: { check } })} />
-      </Row>
-      <section className="flex flex-col gap-1 border-t border-[var(--border)] pt-3">
-        <span className="text-[13px] text-[var(--text-metadata)]">{t.tb.allowedTitle}</span>
-        <TextArea task={task} field="allowed" label={t.tb.allowedTitle} hint={t.tb.allowedHint} min={38} />
-        <span className="text-[12px] text-[var(--text-metadata)]">{t.tb.allowedNote}</span>
-      </section>
-      <section className="flex flex-col gap-0.5 border-t border-[var(--border)] pt-3">
-        {task.landed && t.tb.landed[task.landed.state] && <Row label={t.tb.landedLabel}>{t.tb.landed[task.landed.state]}</Row>}
-        {made && (
-          <Row label={t.tb.madeFrom}>
-            {parent ? (
-              <button type="button" className="text-left hover:underline" onClick={() => openTask(parent.id)}>{`T-${parent.n} ${parent.title}`}</button>
-            ) : made.kind === "note" && made.target ? (
-              <button type="button" className="text-left hover:underline" onClick={() => goToNote(made.target!)}>{`${t.tb.madeFromKind.note}: ${made.label}`}</button>
-            ) : (
-              `${t.tb.madeFromKind[made.kind]}${made.label ? ` ${made.label}` : ""}`
-            )}
-          </Row>
-        )}
-        {task.ledTo.length > 0 && (
-          <Row label={t.tb.ledTo}>
-            <span className="flex flex-col items-start">
-              {task.ledTo.map((id) => (tasks[id] ? <button key={id} type="button" className="text-left hover:underline" onClick={() => openTask(id)}>{`T-${tasks[id].n} ${tasks[id].title}`}</button> : null))}
-            </span>
-          </Row>
-        )}
-        {(use.minutes > 0 || use.tokens > 0) && <Row label={t.tb.time}>{[use.minutes ? t.tb.minutes(use.minutes) : "", use.tokens ? t.tb.tokens(use.tokens) : ""].filter(Boolean).join(", ")}</Row>}
-        <Row label={t.tb.created}>{t.tb.waited(ago(task.created, now))}</Row>
-      </section>
-    </aside>
-  );
-}
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="tc-tk-detail">
-      <span className="text-[var(--text-metadata)]">{label}</span>
-      <span className="min-w-0">{children}</span>
-    </div>
+      {task.ledTo.map((id) => (tasks[id] ? <span key={id}>{`${t.tb.ledTo} `}<button type="button" onClick={() => openTask(id)}>{`T-${tasks[id].n} ${tasks[id].title}`}</button></span> : null))}
+      {use.minutes > 0 && <span>{t.tb.worked(t.tb.minutes(use.minutes))}</span>}
+      {use.tokens > 0 && <span>{t.tb.tokens(use.tokens)}</span>}
+      {task.landed && t.tb.landed[task.landed.state] && <span>{t.tb.landed[task.landed.state]}</span>}
+    </p>
   );
 }

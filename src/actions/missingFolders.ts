@@ -44,6 +44,12 @@ export function folderIsThere(path: string): Promise<boolean> {
   return known;
 }
 
+/** The same, asked now: for starting something new, long after the launch's answer. */
+export function folderIsThereNow(path: string): Promise<boolean> {
+  checked.delete(path);
+  return folderIsThere(path);
+}
+
 /** Called when starting failed because the folder isn't there after all. */
 export function isMissingFolderError(message: string): boolean {
   return message.includes("Directory does not exist") || message.includes("folder doesn't exist");

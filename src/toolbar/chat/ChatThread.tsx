@@ -20,6 +20,7 @@ import { createdTaskId, memoryTool, spawnedTerminalId, taskTool, toolRunSummary,
 import { currentFolderPath, openFolderTool, workdeskMemoryTool } from "../../actions/folderTools";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { askedView, isAskedTool, type AskedView } from "./askedModel";
+import { AskHead, AskReply, AskWords, askButtonClass, askButtonStyle } from "../../components/ask/AskCard";
 import { openTask } from "../../tasks/taskActions";
 import { useTaskStore } from "../../tasks/taskStore";
 import { parseAnswerMessage } from "../../tasks/taskWords";
@@ -255,7 +256,7 @@ function TaskToolCard({ props, view, t }: { props: ToolCardProps; view: TaskTool
     return (
       <div
         className="my-1 flex flex-col gap-1.5 tc-sq-card border px-3 py-2.5"
-        style={{ borderColor: ask ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
+        style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
       >
         <span className="flex items-center gap-2 text-[13px]">
           <span className="text-[var(--text-muted)]">{taskIcon}</span>
@@ -728,33 +729,18 @@ const PLAN_GO_MODES: Record<string, { go: string; ask?: string }> = {
   opencode: { go: "build" },
 };
 
-/** A card's kind, as a small tinted badge by its title: an approval amber, a plan teal. */
-function KindBadge({ kind }: { kind: "approval" | "plan" }) {
-  const color = kind === "approval" ? "var(--amber)" : "var(--cyan)";
-  return (
-    <span className="tc-sq-sm flex h-6 w-6 shrink-0 items-center justify-center" style={{ color, background: `color-mix(in srgb, ${color} 15%, transparent)` }}>
-      {kind === "approval" ? (
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-          <path d="M8 2l5.5 2.5v3.5c0 3.2-2.4 5.3-5.5 6-3.1-.7-5.5-2.8-5.5-6V4.5z" />
-        </svg>
-      ) : (
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-          <path d="M6 4h7M6 8h7M6 12h7M3 4h.01M3 8h.01M3 12h.01" />
-        </svg>
-      )}
-    </span>
-  );
-}
-
-const CARD_BUTTON = "tc-sq-ctl inline-flex h-8 items-center gap-1.5 px-3 text-[12.5px]";
-const PRIMARY = { background: "var(--text-primary)", color: "var(--bg)" } as const;
-const SECONDARY = { background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", color: "var(--text-primary)" } as const;
-
 /**
  * The frame both cards share: behind the message box when docked, or a
  * glass card above the pill when floating over the canvas.
  */
-function CardFrame({ floating, glass, label, children }: PropsWithChildren<{ floating: boolean; glass: string; label: string }>) {
+function CardFrame({ floating, glass, label, inline, children }: PropsWithChildren<{ floating: boolean; glass: string; label: string; inline?: boolean }>) {
+  // Inside something else, as on a task: no frame of its own.
+  if (inline)
+    return (
+      <div role="alertdialog" aria-label={label}>
+        {children}
+      </div>
+    );
   return floating ? (
     <div role="alertdialog" aria-label={label} className={`tc-enter-fade-up tc-sq-card border px-0 pb-0 pt-0 ${glass}`} style={{ borderColor: "var(--border-hover)", borderRadius: 16 }}>
       {children}
@@ -777,9 +763,11 @@ function PlanCard({
   glass,
   onGo,
   canAsk,
+  inline,
   onKeepPlanning,
 }: {
   plan: string;
+  inline?: boolean;
   floating: boolean;
   glass: string;
   onGo: (how: "go" | "ask") => void;
@@ -792,14 +780,8 @@ function PlanCard({
   const [note, setNote] = useState("");
   const send = () => onKeepPlanning(note.trim() || undefined);
   return (
-    <CardFrame floating={floating} glass={glass} label={t.chat_plan_ready}>
-      <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
-        <KindBadge kind="plan" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--cyan)" }}>{t.chat_card_plan}</span>
-          <span className="text-[13.5px] font-semibold text-[var(--text-primary)]">{t.chat_plan_ready}</span>
-        </span>
-      </div>
+    <CardFrame floating={floating} glass={glass} inline={inline} label={t.chat_plan_ready}>
+      <AskHead kind="plan" label={t.chat_card_plan} title={t.chat_plan_ready} />
       {plan && (
         <div
           className={`${markdownClassName} tc-sq-ctl mx-3 max-h-64 overflow-y-auto bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2`}
@@ -831,26 +813,26 @@ function PlanCard({
             style={{ boxShadow: "inset 0 0 0 1px var(--border-hover)" }}
           />
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={send}>
+            <button type="button" className={askButtonClass("primary")} style={askButtonStyle("primary")} onClick={send}>
               {t.chat_plan_keep}
             </button>
-            <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)]`} onClick={() => setKeeping(false)}>
+            <button type="button" className={askButtonClass("quiet")} onClick={() => setKeeping(false)}>
               {t.chat_plan_back}
             </button>
           </div>
         </div>
       ) : (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] px-3 py-2.5">
-          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={() => onGo("go")}>
+          <button type="button" className={askButtonClass("primary")} style={askButtonStyle("primary")} onClick={() => onGo("go")}>
             {canAsk ? t.chat_plan_go_accept : t.chat_plan_go}
           </button>
           {canAsk && (
-            <button type="button" className={CARD_BUTTON} style={SECONDARY} onClick={() => onGo("ask")}>
+            <button type="button" className={askButtonClass("secondary")} style={askButtonStyle("secondary")} onClick={() => onGo("ask")}>
               {t.chat_plan_go_ask}
             </button>
           )}
           <span className="flex-1" />
-          <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)] hover:text-[var(--text-primary)]`} onClick={() => setKeeping(true)}>
+          <button type="button" className={askButtonClass("quiet")} onClick={() => setKeeping(true)}>
             {t.chat_plan_keep}
           </button>
         </div>
@@ -868,11 +850,13 @@ function ApprovalCard({
   more,
   floating,
   glass,
+  inline,
   onAnswer,
   onSwitchToAuto,
   onFollowUp,
 }: {
   approval: PendingApproval;
+  inline?: boolean;
   /** How many more wait behind this one. */
   more: number;
   floating: boolean;
@@ -884,7 +868,6 @@ function ApprovalCard({
   const t = useT();
   const [alwaysOpen, setAlwaysOpen] = useState(false);
   const [denying, setDenying] = useState(false);
-  const [reason, setReason] = useState("");
   const menuRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!alwaysOpen) return;
@@ -899,56 +882,23 @@ function ApprovalCard({
   const what =
     typeof input.command === "string" ? input.command : typeof input.summary === "string" ? input.summary : subjectOf(input) || JSON.stringify(approval.input).slice(0, 200);
   const title = approval.toolName === "Permissions" ? t.chat_approval_permissions : t.chat_approval_title(toolVerb(approval.toolName));
-  const deny = () => {
-    const said = reason.trim();
+  const deny = (said: string) => {
     onAnswer(approval.requestId, "deny", said || undefined);
     if (said) onFollowUp?.(said);
   };
   return (
-    <CardFrame floating={floating} glass={glass} label={title}>
-      <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
-        <KindBadge kind="approval" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--amber)" }}>{t.chat_card_approval}</span>
-          <span className="truncate text-[13.5px] font-semibold text-[var(--text-primary)]">{title}</span>
-        </span>
-        {more > 0 && <span className="shrink-0 text-[11.5px] text-[var(--text-muted)]">{t.chat_approval_more(more)}</span>}
-      </div>
-      <pre className="tc-mono tc-sq-ctl mx-3 max-h-28 overflow-auto whitespace-pre-wrap break-all bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2.5 py-2 text-[12px] text-[var(--text-primary)]" style={{ boxShadow: "inset 0 0 0 1px var(--border)" }}>
-        {what}
-      </pre>
+    <CardFrame floating={floating} glass={glass} inline={inline} label={title}>
+      <AskHead kind="approval" label={t.chat_card_approval} title={title} meta={more > 0 ? t.chat_approval_more(more) : undefined} />
+      <AskWords>{what}</AskWords>
       {denying ? (
-        <div className="flex items-center gap-1.5 px-3 pb-3 pt-2.5">
-          <input
-            autoFocus
-            value={reason}
-            placeholder={t.chat_approval_deny_placeholder}
-            aria-label={t.chat_approval_deny_placeholder}
-            onChange={(e) => setReason(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                deny();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setDenying(false);
-              }
-            }}
-            className="tc-sq-ctl h-8 min-w-0 flex-1 bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] px-2.5 text-[12.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-            style={{ boxShadow: "inset 0 0 0 1px var(--border-hover)" }}
-          />
-          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={deny}>
-            {t.chat_approval_deny}
-          </button>
-        </div>
+        <AskReply placeholder={t.chat_approval_deny_placeholder} action={t.chat_approval_deny} onSend={deny} onBack={() => setDenying(false)} />
       ) : (
         <div className="mt-2.5 flex items-center gap-1.5 border-t border-[var(--border)] px-3 py-2.5">
-          <button type="button" className={`${CARD_BUTTON} font-medium`} style={PRIMARY} onClick={() => onAnswer(approval.requestId, "allow_once")}>
+          <button type="button" className={askButtonClass("primary")} style={askButtonStyle("primary")} onClick={() => onAnswer(approval.requestId, "allow_once")}>
             {t.chat_approval_allow_once}
           </button>
           <span ref={menuRef} className="relative">
-            <button type="button" className={CARD_BUTTON} style={SECONDARY} aria-haspopup="menu" aria-expanded={alwaysOpen} onClick={() => setAlwaysOpen((v) => !v)}>
+            <button type="button" className={askButtonClass("secondary")} style={askButtonStyle("secondary")} aria-haspopup="menu" aria-expanded={alwaysOpen} onClick={() => setAlwaysOpen((v) => !v)}>
               {t.chat_approval_always_menu}
               <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="opacity-60">
                 <path d="M4 6l4 4 4-4" />
@@ -992,7 +942,7 @@ function ApprovalCard({
             )}
           </span>
           <span className="flex-1" />
-          <button type="button" className={`${CARD_BUTTON} text-[var(--text-muted)] hover:text-[var(--text-primary)]`} onClick={() => setDenying(true)}>
+          <button type="button" className={askButtonClass("quiet")} onClick={() => setDenying(true)}>
             {t.chat_approval_deny_more}
           </button>
         </div>
@@ -1007,6 +957,7 @@ export function ApprovalCards({
   onAnswer,
   floating = false,
   glass = "",
+  inline = false,
   onPlanMode,
   onSwitchToAuto,
   onFollowUp,
@@ -1018,6 +969,8 @@ export function ApprovalCards({
   /** Above the pill, over the canvas: the first request only, on glass. */
   floating?: boolean;
   glass?: string;
+  /** Inside something else, as on a task. */
+  inline?: boolean;
   /** A plan accepted with how to go on: the mode to work in from here. */
   onPlanMode?: (mode: string) => void;
   /**
@@ -1045,6 +998,7 @@ export function ApprovalCards({
         plan={typeof input.plan === "string" ? input.plan : ""}
         floating={floating}
         glass={glass}
+        inline={inline}
         canAsk={PLAN_GO_MODES[agent]?.ask !== undefined}
         onGo={(how) => {
           onAnswer(a.requestId, "allow_once");
@@ -1059,6 +1013,7 @@ export function ApprovalCards({
     <ApprovalCard
       key={a.requestId}
       approval={a}
+      inline={inline}
       more={approvals.length - 1}
       floating={floating}
       glass={glass}

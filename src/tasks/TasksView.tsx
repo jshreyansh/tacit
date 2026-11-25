@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { clearTaskToasts } from "../attention/attentionToasts";
 import { useT } from "../i18n/useT";
 import { Dropdown, Segmented } from "../components/ui/parts";
 import type { Task } from "../types";
@@ -39,6 +40,7 @@ export function TasksView() {
   const here = open && open.workdesk === workdesk ? open : null;
   useEffect(() => {
     void window.tacit.tasks.landed(workdesk);
+    clearTaskToasts();
   }, [workdesk]);
   if (composing)
     return (

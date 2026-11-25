@@ -2406,6 +2406,28 @@ a.tc-kbd[data-dragover="true"] {
   overflow: hidden;
 }
 
+/* A browser's header (BrowserCard): round buttons, one pill for the address
+   and what's true of the page, whose profile it is, the menu and close. */
+.tc-br-head { position: relative; display: flex; flex: none; height: 44px; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.tc-br-btn { display: inline-flex; width: 30px; height: 30px; flex: none; align-items: center; justify-content: center; border-radius: 999px; color: var(--text-metadata); transition: background-color var(--duration-instant) var(--ease-out-soft); }
+.tc-br-btn:hover:not(:disabled), .tc-br-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-primary); }
+.tc-br-btn:disabled { color: var(--text-faint); cursor: default; }
+.tc-br-address { display: flex; min-width: 0; height: 32px; flex: 1; align-items: center; gap: 8px; margin: 0 6px; padding: 0 6px 0 11px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px transparent; cursor: text; }
+.tc-br-address:hover { background: color-mix(in srgb, var(--bg) 88%, var(--text-primary)); }
+.tc-br-address:focus-within { background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--border-hover); }
+.tc-br-url { display: block; min-width: 0; height: 100%; flex: 1; overflow: hidden; border: 0; background: none; padding: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-metadata); outline: none; cursor: text; }
+input.tc-br-url { color: var(--text-primary); }
+input.tc-br-url::placeholder { color: var(--text-muted); }
+.tc-br-in { display: inline-flex; height: 24px; min-width: 24px; flex: none; align-items: center; justify-content: center; border-radius: 999px; padding: 0 6px; font-size: 12px; color: var(--text-metadata); }
+button.tc-br-in:hover { background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-primary); }
+.tc-br-profile { display: inline-flex; height: 30px; min-width: 30px; flex: none; align-items: center; justify-content: center; gap: 7px; border-radius: 999px; font-size: 12px; color: var(--text-metadata); }
+.tc-br-profile[data-wide] { max-width: 170px; padding: 0 10px 0 4px; }
+.tc-br-profile:hover { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
+.tc-br-loading { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
+.tc-br-loading::after { content: ""; position: absolute; inset: 0; width: 32%; background: var(--accent); animation: tc-br-load 1.1s var(--ease-out-soft) infinite; }
+@keyframes tc-br-load { from { transform: translateX(-100%); } to { transform: translateX(320%); } }
+@media (prefers-reduced-motion: reduce) { .tc-br-loading::after { width: 100%; animation: none; opacity: 0.5; } }
+
 /* Dropdown chip and menu (Dropdown in parts.tsx): Tacit's own, not the
    system's <select> menu. Menus share the overlay glass. */
 .tc-dropdown {

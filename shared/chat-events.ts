@@ -101,7 +101,9 @@ export interface ChatQuestion {
   header: string;
   question: string;
   /** null: answered in the person's own words. */
-  options: { label: string; description?: string }[] | null;
+  options: { label: string; description?: string; recommended?: boolean }[] | null;
+  /** What turns on it, said under the question. */
+  why?: string;
   multiSelect: boolean;
   /** An "Other" answer in the person's own words is allowed. */
   allowOther: boolean;

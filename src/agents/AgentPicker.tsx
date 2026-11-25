@@ -14,7 +14,7 @@ import "./agent-picker.css";
 const EDGE = 8;
 
 /** A small panel by what opened it: below if it fits, else above; never off the window, never cut short while there's room. */
-export function PickerPopover({ anchor, label, width = 320, role = "dialog", onClose, onEscape, children }: { anchor: HTMLElement; label: string; width?: number; role?: "dialog" | "menu"; onClose: (refocus: boolean) => void; onEscape?: () => boolean; children: ReactNode }) {
+export function PickerPopover({ anchor, label, width = 320, align = "left", role = "dialog", onClose, onEscape, children }: { anchor: HTMLElement; label: string; width?: number; /** Which of its edges lines up with what opened it. */ align?: "left" | "right"; role?: "dialog" | "menu"; onClose: (refocus: boolean) => void; onEscape?: () => boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
@@ -27,7 +27,7 @@ export function PickerPopover({ anchor, label, width = 320, role = "dialog", onC
       const under = height <= below || below >= above;
       const maxHeight = Math.max(160, under ? below : above);
       const shown = Math.min(height, maxHeight);
-      setPlace({ left: Math.max(EDGE, Math.min(a.left, window.innerWidth - width - EDGE)), top: Math.max(EDGE, under ? a.bottom + 6 : a.top - 6 - shown), maxHeight });
+      setPlace({ left: Math.max(EDGE, Math.min(align === "right" ? a.right - width : a.left, window.innerWidth - width - EDGE)), top: Math.max(EDGE, under ? a.bottom + 6 : a.top - 6 - shown), maxHeight });
     };
     put();
     const observer = new ResizeObserver(put);
@@ -37,14 +37,20 @@ export function PickerPopover({ anchor, label, width = 320, role = "dialog", onC
       observer.disconnect();
       window.removeEventListener("resize", put);
     };
-  }, [anchor, width]);
+  }, [anchor, width, align]);
   useEffect(() => {
     const away = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !anchor.contains(target)) onClose(false);
     };
+    // A press in a browser's page goes to the page, not this window; it blurs it.
+    const blur = () => onClose(false);
     window.addEventListener("mousedown", away, true);
-    return () => window.removeEventListener("mousedown", away, true);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("mousedown", away, true);
+      window.removeEventListener("blur", blur);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Once it's shown: what's hidden can't be focused.
   const placed = place !== null;
@@ -58,6 +64,8 @@ export function PickerPopover({ anchor, label, width = 320, role = "dialog", onC
       role={role}
       aria-label={label}
       className="tc-menu-pop tc-ap"
+      // It's in the page, but what opened it is still above it to React: pressing here isn't pressing there.
+      onMouseDown={(e) => e.stopPropagation()}
       style={{ width, maxWidth: `calc(100vw - ${EDGE * 2}px)`, ...(place ?? { left: 0, top: 0, visibility: "hidden" as const }) }}
       onKeyDown={(e) => {
         e.stopPropagation();

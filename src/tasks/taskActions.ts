@@ -11,7 +11,7 @@ import { flyToBounds } from "../utils/panToTerminal";
 import { visibleCanvasCenter } from "../actions/dockActions";
 import { tileDropped } from "../board/boardMembership";
 import { activeWorkdesk, useTaskStore } from "./taskStore";
-import { TASK_TILE } from "./taskWords";
+import { TASK_TILE, tileSize } from "./taskWords";
 import { notes } from "../board/noteStore";
 import { tileRects } from "../board/boardTargets";
 import { freeSpot } from "../board/boardModel";
@@ -117,13 +117,15 @@ export function showTaskOnCanvas(id: string): void {
   useSelectionStore.getState().clearSelection();
   if (had) return void flyToBounds(had.x, had.y, had.w ?? TASK_TILE.w, had.h ?? TASK_TILE.h, { scale: 1 });
   const c = visibleCanvasCenter();
-  const at = freeSpot({ x: c.x - TASK_TILE.w / 2, y: c.y - TASK_TILE.h / 2, ...TASK_TILE }, [...tileRects(), ...notes()]);
-  placeTask(id, at);
-  flyToBounds(at.x, at.y, TASK_TILE.w, TASK_TILE.h, { scale: 1 });
+  const size = tileSize(useTaskStore.getState().tasks[id]);
+  const at = freeSpot({ x: c.x - size.w / 2, y: c.y - size.h / 2, ...size }, [...tileRects(), ...notes()]);
+  placeTask(id, { x: at.x, y: at.y });
+  flyToBounds(at.x, at.y, size.w, size.h, { scale: 1 });
 }
 export function placeTask(id: string, at: { x: number; y: number }): void {
-  useRecordPlaceStore.getState().place(id, at);
-  tileDropped(id, { ...at, ...TASK_TILE });
+  const size = tileSize(useTaskStore.getState().tasks[id]);
+  useRecordPlaceStore.getState().place(id, size === TASK_TILE ? at : { ...at, ...size });
+  tileDropped(id, { ...at, ...size });
 }
 export function takeOffCanvas(id: string): void {
   useRecordPlaceStore.getState().forget(id);

@@ -1,3 +1,4 @@
+import { keepToast } from "./attentionToasts";
 import { useEffect, useMemo } from "react";
 
 import type { AttentionNotice, AttentionTarget } from "../../shared/attention";
@@ -51,10 +52,6 @@ function isViewing(target: AttentionTarget): boolean {
   return board && (open === target.taskId || open === null) && activeIs(target.workdesk);
 }
 
-/** A burst of agents shows the latest few, not a column up the window. */
-const MAX_ATTENTION_TOASTS = 3;
-const attentionToasts: string[] = [];
-
 function showToast(notice: AttentionNotice, text: { title: string; body: string }, t: ReturnType<typeof useT>): void {
   const { notify, dismiss } = useNotificationStore.getState();
   const type = notice.kind === "failed" ? "error" : notice.kind === "finished" ? "info" : "warn";
@@ -76,8 +73,7 @@ function showToast(notice: AttentionNotice, text: { title: string; body: string 
     },
     label,
   );
-  attentionToasts.push(id);
-  while (attentionToasts.length > MAX_ATTENTION_TOASTS) dismiss(attentionToasts.shift()!);
+  keepToast(id, notice.kind === "needs_you");
 }
 
 /** Brings the clicked notification's agent or task into view. */

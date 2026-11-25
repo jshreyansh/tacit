@@ -4,6 +4,21 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The task board looks and works like the chat.** Questions, approvals, stuck agents and finishes are the chat's own cards: number keys, several questions as one stack, "Let Claude decide", Deny with a reason. A chat's permission or question can be answered on its task.
+- **A task's page is a conversation**: the brief, what it needs from you, one activity feed, and the message box at the bottom. Empty fields are small + chips. New task is a composer.
+- **Task cards** show what kind of work it is, how long, its checks, parts as a bar, and each agent with what it's doing and the tool in its hand. The same on the board and the canvas.
+- **The browser's header**: round buttons that say when there's nowhere to go, one address pill that reads as the site and opens whole when pressed, search from the address bar, your profile as its initial, and a line while a page loads. Close is in its ⋮ menu. The tile still drags from anywhere in it.
+
+### Fixed
+- The number keys answer a question while the canvas is open; they used to pick a drawing tool.
+- A chat agent waiting on a permission shows as needing you on its task.
+- Opening the board clears the notifications that would cover it.
+- A local address (localhost) opens over http and isn't called not secure.
+- A browser's profile list and ⋮ menu no longer open over each other, and aren't cut off by the tile.
+- A chat agent with a task isn't taken for closed: it has no terminal process, and its task said it failed.
+- A task isn't handed to a new agent in a folder that's gone. An agent that isn't running says so in the list.
+
 ## [0.44.11] - 2026-11-24
 
 ### Changed

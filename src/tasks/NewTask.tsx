@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/useT";
-import { WORK_KINDS, type WorkKind } from "../../shared/task";
+import { Dropdown } from "../components/ui/parts";
+import { useAutoGrow } from "../hooks/useAutoGrow";
+import { PRIORITIES, WORK_KINDS, type Priority, type WorkKind } from "../../shared/task";
+import { AgentMark } from "./HandOver";
 import type { NewTask as NewTaskInput } from "../../shared/task-ops";
 import { useProjectStore } from "../stores/projectStore";
 import { useNotificationStore } from "../stores/notificationStore";
@@ -23,13 +26,14 @@ export function NewTask({ from }: { from: Partial<NewTaskInput> }) {
   const name = useRef<HTMLInputElement>(null);
   const read = useMemo(() => readName(text, { folders: projects.map((p) => ({ name: p.name, path: p.path })), terminals: agents.map((a) => ({ id: a.id, name: a.name })) }), [text, projects, agents]);
   const agent = agents.find((a) => a.id === read.terminal);
-  // One folder on the workdesk is where it works, unless you say.
-  const folder = read.folder ?? from.folder ?? (projects.length === 1 ? projects[0].path : null);
-  const chips = [
-    read.folder && { label: t.tb.folder, value: projects.find((p) => p.path === read.folder)?.name ?? "" },
-    read.priority && { label: t.tb.priority, value: t.tb.priorities[read.priority] },
-    agent && { label: t.tb.handTitle, value: agent.name },
-  ].filter((c): c is { label: string; value: string } => !!c);
+  // One folder on the workdesk is where it works, unless you say. What you type in the name comes first.
+  const [where, setFolder] = useState<string | null>(from.folder ?? (projects.length === 1 ? projects[0].path : null));
+  const folder = read.folder ?? (where || null);
+  const [picked, setPicked] = useState<Priority>(from.priority ?? "none");
+  const priority = read.priority ?? picked;
+  const [more, setMore] = useState({ doneWhen: !!from.doneWhen?.length, leaveAlone: !!from.leaveAlone });
+  const desc = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(desc, body);
 
   const add = async (wait: "next" | "later", hand: boolean) => {
     if (saving) return;
@@ -48,7 +52,7 @@ export function NewTask({ from }: { from: Partial<NewTaskInput> }) {
       doneWhen: doneWhen.split("\n").map((l) => l.replace(/^[-*•]\s*/, "").trim()).filter(Boolean),
       leaveAlone: leaveAlone.trim(),
       wait,
-      ...(read.priority ? { priority: read.priority } : {}),
+      ...(priority !== "none" ? { priority } : {}),
       madeFrom: from.madeFrom ?? { kind: "you", label: "" },
     });
     setSaving(false);
@@ -76,57 +80,62 @@ export function NewTask({ from }: { from: Partial<NewTaskInput> }) {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void add("next", !!agent);
       }}
     >
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-[13px] text-[var(--text-metadata)]">{t.tb.add}</span>
-          <input ref={name} autoFocus className="tc-tk-name" value={text} maxLength={400} placeholder={t.tb.namePlaceholder} onChange={(e) => setText(e.target.value)} />
+      <input ref={name} autoFocus className="tc-tk-title" aria-label={t.tb.namePlaceholder} value={text} maxLength={400} placeholder={t.tb.namePlaceholder} onChange={(e) => setText(e.target.value)} />
+      <div className="tc-tk-box">
+        <textarea ref={desc} rows={3} aria-label={t.tb.description} value={body} placeholder={t.tb.prompts[kind]} onChange={(e) => setBody(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Dropdown label={t.tb.kind} value={kind} options={WORK_KINDS.map((k) => ({ value: k, label: t.tb.kinds[k] }))} onChange={setKind} />
+          <Dropdown label={t.tb.priority} value={priority} options={PRIORITIES.map((p) => ({ value: p, label: p === "none" ? t.tb.noPriority : t.tb.priorities[p] }))} onChange={setPicked} />
+          <Dropdown label={t.tb.folder} value={folder ?? ""} options={[{ value: "", label: t.tb.noFolder }, ...projects.map((p) => ({ value: p.path, label: p.name, detail: p.path }))]} onChange={setFolder} />
+          {agent && (
+            <span className="tc-tk-chip">
+              <AgentMark type={agent.type} size={14} />
+              {agent.name}
+            </span>
+          )}
+        </div>
+      </div>
+      {more.doneWhen ? (
+        <label className="tc-tk-field">
+          <span>{t.tb.doneWhen}</span>
+          <textarea autoFocus={!from.doneWhen?.length} className="tc-tk-input resize-y" value={doneWhen} placeholder={t.tb.doneWhenAdd} onChange={(e) => setDoneWhen(e.target.value)} />
         </label>
-        <p className="text-[12.5px] text-[var(--text-metadata)]">{t.tb.nameHint}</p>
-        {chips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" aria-live="polite">
-            {chips.map((c) => (
-              <span key={c.label} className="tc-tk-chip">
-                <span className="text-[var(--text-metadata)]">{c.label}</span> {c.value}
-              </span>
-            ))}
-          </div>
+      ) : null}
+      {more.leaveAlone ? (
+        <label className="tc-tk-field">
+          <span>{t.tb.leaveAlone}</span>
+          <textarea autoFocus={!from.leaveAlone} className="tc-tk-input resize-y" data-short="true" value={leaveAlone} placeholder={t.tb.leaveAloneHint} onChange={(e) => setLeaveAlone(e.target.value)} />
+        </label>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(["doneWhen", "leaveAlone"] as const).map((f) =>
+          more[f] ? null : (
+            <button key={f} type="button" className="tc-tk-pill" onClick={() => setMore({ ...more, [f]: true })}>
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+              {t.tb.addField[f]}
+            </button>
+          ),
         )}
+        <span className="min-w-0 text-[12px] text-[var(--text-metadata)]">{t.tb.nameHint}</span>
       </div>
-      <div role="group" aria-label={t.tb.kind} className="flex flex-wrap gap-1.5">
-        {WORK_KINDS.map((k) => (
-          <button key={k} type="button" className="tc-tk-pill" aria-pressed={k === kind} onClick={() => setKind(k)}>
-            {t.tb.kinds[k]}
-          </button>
-        ))}
-      </div>
-      <label className="tc-tk-field">
-        <span>{t.tb.description}</span>
-        <textarea className="tc-tk-input resize-y" data-tall="true" value={body} placeholder={t.tb.prompts[kind]} onChange={(e) => setBody(e.target.value)} />
-      </label>
-      <label className="tc-tk-field">
-        <span>{t.tb.doneWhen}</span>
-        <textarea className="tc-tk-input resize-y" value={doneWhen} placeholder={t.tb.doneWhenAdd} onChange={(e) => setDoneWhen(e.target.value)} />
-      </label>
-      <label className="tc-tk-field">
-        <span>{t.tb.leaveAlone}</span>
-        <textarea className="tc-tk-input resize-y" data-short="true" value={leaveAlone} placeholder={t.tb.leaveAloneHint} onChange={(e) => setLeaveAlone(e.target.value)} />
-      </label>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="tc-tk-btn" data-quiet="true" onClick={() => useTaskStore.getState().compose(null)}>
-          {t.tb.cancel}
-        </button>
-        <span className="flex-1" />
-        <button type="button" className="tc-tk-btn" disabled={saving} onClick={() => void add("later", false)}>
-          {t.tb.addLater}
-        </button>
-        <button type="submit" className="tc-tk-btn" data-strong={!agent} disabled={saving}>
-          {t.tb.addAction}
-        </button>
-        {agent && (
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] pt-3">
+        {agent ? (
           <button type="button" className="tc-tk-btn" data-strong="true" disabled={saving} onClick={() => void add("next", true)}>
             {t.tb.addAndHand(agent.name)}
           </button>
-        )}
+        ) : null}
+        <button type="submit" className="tc-tk-btn" data-strong={!agent} disabled={saving}>
+          {t.tb.addAction}
+        </button>
+        <button type="button" className="tc-tk-btn" disabled={saving} onClick={() => void add("later", false)}>
+          {t.tb.addLater}
+        </button>
+        <span className="flex-1" />
+        <button type="button" className="tc-tk-btn" data-quiet="true" onClick={() => useTaskStore.getState().compose(null)}>
+          {t.tb.cancel}
+        </button>
       </div>
     </form>
   );

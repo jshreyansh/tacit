@@ -61,6 +61,8 @@ export interface RunnerDeps {
   tokens: (terminal: string) => number | null;
   observe: (terminal: string, dir: string | null, since: number) => Promise<Observed>;
   landed: (dir: string, files: string[], since: number) => Promise<T.Landed["state"] | null>;
+  /** In chat mode: it has no terminal process, so one having ended says nothing. */
+  inChat: (terminal: string) => boolean;
   /** Whether it waits for another agent's answer, over a wire. */
   awaits: (terminal: string) => boolean;
   /** Why an agent can't be opened on this workdesk (not installed), or null. */
@@ -74,6 +76,8 @@ export interface RunnerDeps {
 
 export const QUIET_MS = 10 * 60_000;
 export const START_MS = 2 * 60_000;
+/** How long a chat and its terminal take to change places. */
+export const MOVE_MS = 5_000;
 /** A message starts its turn within this, or it isn't what started it. */
 export const ABOUT_MS = 20_000;
 /** A turn's end is believed once it has stayed ended this long. */
@@ -109,6 +113,8 @@ export class TaskRunner {
   private readonly last = new Map<string, { turn?: string; error?: string }>();
   private readonly settling = new Map<string, ReturnType<typeof setTimeout>>();
   /** Edits waiting to be told, with the task as its agents know it. */
+  /** What each chat waits on you for. */
+  private readonly chatWaits = new Map<string, Set<string>>();
   /** Requests Tacit is acting on now. */
   private readonly reaching = new Set<string>();
   private readonly telling = new Map<string, { from: Task; timer: ReturnType<typeof setTimeout> }>();
@@ -432,7 +438,7 @@ export class TaskRunner {
   onSnapshot(terminal: string, snap: SnapshotView): void {
     if (this.paused) return;
     const was = this.last.get(terminal);
-    if (snap.derived_status === "exited") {
+    if (snap.derived_status === "exited" && !this.deps.inChat(terminal)) {
       this.last.delete(terminal);
       this.unsettle(terminal);
       void this.exited(terminal);
@@ -468,6 +474,13 @@ export class TaskRunner {
     }
   }
   /** Its process ended: closed, stopped with its workdesk, or its agent quit. */
+  /** A chat ended: closed, or its agent quit, unless it's only moving to its terminal. */
+  chatExited(terminal: string): void {
+    const timer = setTimeout(() => {
+      if (!this.deps.inChat(terminal)) void this.deps.terminal(terminal).then((to) => (to?.running ? undefined : this.exited(terminal)));
+    }, MOVE_MS);
+    timer.unref?.();
+  }
   private async exited(terminal: string): Promise<void> {
     const to = await this.deps.terminal(terminal).catch(() => null);
     if (this.paused) return;
@@ -486,6 +499,25 @@ export class TaskRunner {
     const t = this.settling.get(terminal);
     if (t) clearTimeout(t);
     this.settling.delete(terminal);
+  }
+  /** A chat waits on you: for a permission, or its own question. */
+  chatAsks(terminal: string, request: string, text: string): void {
+    if (this.paused) return;
+    const waiting = this.chatWaits.get(terminal) ?? new Set<string>();
+    this.chatWaits.set(terminal, waiting.add(request));
+    const x = this.at(terminal);
+    if (x && T.isLive(x.try.state)) this.signal(x.task, x.try.id, { saw: "permission", text: one(text, 200) });
+  }
+  /** Answered (null: all of it, the turn is over). When nothing waits any more, it's working again. */
+  chatSettled(terminal: string, request: string | null): void {
+    const waiting = this.chatWaits.get(terminal);
+    if (!waiting) return;
+    if (request === null) waiting.clear();
+    else waiting.delete(request);
+    if (waiting.size > 0) return;
+    this.chatWaits.delete(terminal);
+    const x = this.at(terminal);
+    if (x && x.try.state === "paused") this.signal(x.task, x.try.id, { saw: "working" });
   }
   private working(terminal: string): void {
     const about = this.about.get(terminal);

@@ -32,6 +32,8 @@ const DIRS: Record<string, Direction> = { ArrowRight: "right", ArrowLeft: "left"
 const LETTERS: Record<string, Parameters<typeof pickTool>[0]> = { v: "select", h: "hand", t: "text", n: "sticky", s: "section", r: "shape", a: "arrow", p: "pen", f: "file" };
 const SHAPES: Record<string, "rect" | "ellipse" | "diamond"> = { r: "rect", o: "ellipse", d: "diamond" };
 
+const OWN_KEYS = "[role=form],[role=dialog],[role=alertdialog],[role=menu],[role=listbox]";
+
 let clipboard: BoardElement[] = [];
 
 export function useBoardKeys(): void {
@@ -41,6 +43,8 @@ export function useBoardKeys(): void {
       if (useWorkdeskViewStore.getState().mode === "grid" || useCanvasStore.getState().focusMode.active) return;
       if (e.defaultPrevented || isEditableTarget(e.target) || isTerminalShortcutTarget(e.target)) return;
       const mod = hasPrimaryModifier(e);
+      // Answering something, or in a menu: its own keys (1 to 9 pick an answer) come first.
+      if (!mod && e.target instanceof Element && e.target.closest(OWN_KEYS)) return;
       const board = useBoardStore.getState();
       const consume = () => {
         e.preventDefault();

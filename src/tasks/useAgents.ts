@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import { isActive } from "../../shared/task";
-import { findTerminal } from "../actions/terminalLookup";
+import { folderIsThereNow } from "../actions/missingFolders";
+import { findTerminal, getLivePtyId } from "../actions/terminalLookup";
+import { getTranslations } from "../i18n/useT";
 import { deriveTerminalState, isCanvasTerminal } from "../components/sessionPanelModel";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore, createTerminal } from "../stores/projectStore";
@@ -22,6 +24,8 @@ export interface AgentChoice {
   worktree: string;
   manager: boolean;
   busy: boolean;
+  /** Its agent is there to be typed to. */
+  running: boolean;
   /** What it's on, and how many wait for it. */
   task: Task | null;
   queued: number;
@@ -66,12 +70,13 @@ export function useAgents(): AgentChoice[] {
             folder: project.name,
             worktree: worktree.path,
             manager: terminal.id === manager,
+            running: !!terminal.chatMode || getLivePtyId(terminal.id) !== null,
             busy: state === "active" || state === "attention" || on.has(terminal.id),
             task: on.get(terminal.id) ?? null,
             queued: queued.get(terminal.id) ?? 0,
           });
         }
-    return out.sort((a, b) => Number(b.manager) - Number(a.manager) || Number(a.busy) - Number(b.busy) || a.name.localeCompare(b.name));
+    return out.sort((a, b) => Number(b.running) - Number(a.running) || Number(b.manager) - Number(a.manager) || Number(a.busy) - Number(b.busy) || a.name.localeCompare(b.name));
   }, [projects, runtimes, canvases, active, tasks]);
 }
 
@@ -84,6 +89,11 @@ export async function startAgentOn(task: Task, entry: DockEntry, name: string, w
   const project = useProjectStore.getState().projects.find((p) => p.id === where.projectId);
   const worktree = project?.worktrees.find((w) => w.id === where.worktreeId);
   if (!project || !worktree) return false;
+  // Nothing starts in a folder that isn't there.
+  if (!(await folderIsThereNow(worktree.path))) {
+    useNotificationStore.getState().notify("warn", getTranslations().tb.folderGone(where.label));
+    return false;
+  }
   const terminal = createTerminal(entry.terminalType);
   // What it will be called once it's there, beside the others.
   name = agentNames([...agentsIn(useProjectStore.getState().projects), terminal]).get(terminal.id) ?? name;

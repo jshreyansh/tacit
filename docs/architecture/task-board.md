@@ -8,7 +8,7 @@ One board for the whole workdesk. A task is the brief an agent works from, and
 then the record of what it did. The board answers three questions: what needs
 me, what's running, what's next.
 
-**Built** 24 Nov 2026, all six steps; not yet released. Changed on the way, by
+**Built** 24 Nov 2026, all six steps, in 0.44.11. Changed on the way, by
 the user: no migration (nobody was using the old tasks and notes), no Tasks
 under each folder, and the old tasks and notes are gone from the app. Their
 files (`~/.tacit/pins`) are left where they are.
@@ -53,6 +53,12 @@ Work with a clear end that you'd mind losing.
 
 ## The board
 
+What waits on you is the chat's own cards, shared (`src/components/ask`,
+`src/tasks/TaskAsks.tsx`): one anatomy, colour in the badge only.
+
+- A card: its kind, name, folder, how long, checks and priority; parts as a bar;
+  each agent with what it's doing. One head for the board and the canvas
+  (`TaskHead`).
 - Columns: **Later, Next, Working, Needs you, Done.** Dropped is kept, and
   filtered out until asked for.
 - **One Needs you column**, filtered by reason. No separate In review.
@@ -112,8 +118,8 @@ The column is worked out, never stored:
 Requests, each with who asked, since when, and what carries on:
 
 - **Decide:** a question with options, a recommendation, and your own words.
-- **Allow:** the agent's CLI is waiting on a permission. The card takes you to
-  its terminal; it isn't answered on the board.
+- **Allow:** the agent's CLI is waiting on a permission. A chat's is answered on
+  the card, as in the chat; a terminal's card takes you to its terminal.
 - **Approve first:** before something that can't be undone.
 - **Stuck:** not delivered, quiet for 10 minutes, out of usage, closed,
   interrupted, or stopped without a report.
@@ -257,5 +263,5 @@ folder's +); Tacit's own sentences in a task's history are in English only.
 
 - Issues coming in and going out (T19, SHR-153) build on this.
 - People sharing a board.
-- Answering a permission on the board.
+- Answering a terminal's permission on the board.
 - Scheduled tasks (SHR-175).

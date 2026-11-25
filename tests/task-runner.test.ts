@@ -22,9 +22,10 @@ function world(t: { after: (fn: () => void) => void; mock: { timers: { enable: (
   const busy = new Set<string>();
   const mail = new Set<string>();
   const snaps = new Map<string, SnapshotView>();
+  const chats = new Set<string>();
   const reach: Array<{ from: string; what: object }> = [];
   const w = {
-    reach, awaits: false, missing: null as string | null, wired: false, refuse: null as string | null, hold: null as Promise<void> | null,
+    chats, reach, awaits: false, missing: null as string | null, wired: false, refuse: null as string | null, hold: null as Promise<void> | null,
     store, terminals, sent, interrupted, unsent, busy, mail, snaps, now: Date.now(), result: "delivered" as "delivered" | "queued" | "failed",
     seen: { files: [], known: true, shared: false } as Observed, tokens: 100 as number | null, landed: null as "committed" | null,
     tick: (ms: number) => t.mock.timers.tick(ms),
@@ -62,6 +63,7 @@ function world(t: { after: (fn: () => void) => void; mock: { timers: { enable: (
     tokens: () => w.tokens,
     observe: async () => w.seen,
     landed: async () => w.landed,
+    inChat: (id) => chats.has(id),
     awaits: () => w.awaits,
     cantOpen: async () => w.missing,
     reaches: async () => w.wired,
@@ -595,4 +597,44 @@ test("another agent's question doesn't wake a task that's over, nor does typing 
   await x.runner.say("w", task.id, "go on", "user", "You", x.get(task.id).tries[0].id);
   x.snap("a", { turn_state: "in_turn" });
   assert.equal(state(x.get(task.id)), "working");
+});
+
+test("a chat's permission holds its task up until the last one is answered", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  await x.give(task.id);
+  x.snap("a", { turn_state: "in_turn" });
+  x.runner.chatAsks("a", "r1", "Wants to use Bash");
+  x.runner.chatAsks("a", "r2", "Which one first?");
+  assert.deepEqual([columnOf(x.get(task.id)), x.get(task.id).requests.map((r) => r.kind)], ["needs", ["allow"]]);
+  x.runner.chatSettled("a", "r1");
+  assert.equal(columnOf(x.get(task.id)), "needs");
+  x.runner.chatSettled("a", "r2");
+  assert.deepEqual([columnOf(x.get(task.id)), state(x.get(task.id))], ["working", "working"]);
+  x.runner.chatSettled("b", "r9");
+});
+
+test("an agent in chat mode has no terminal process, and that isn't its ending", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make();
+  x.chats.add("a");
+  await x.give(task.id);
+  x.snap("a", { derived_status: "exited", turn_state: "in_turn" });
+  await settle();
+  assert.deepEqual([state(x.get(task.id)), x.get(task.id).requests.length], ["working", 0]);
+  x.snap("a", { derived_status: "exited", turn_state: "turn_complete" });
+  x.tick(4_000);
+  await settle();
+  assert.equal(state(x.get(task.id)), "nudged", "its turns are seen");
+  // It moves to its terminal: not an ending. It quits: one.
+  x.chats.delete("a");
+  x.runner.chatExited("a");
+  x.tick(6_000);
+  await settle();
+  assert.equal(state(x.get(task.id)), "nudged");
+  x.terminals.set("a", { ...x.terminals.get("a")!, running: false });
+  x.runner.chatExited("a");
+  x.tick(6_000);
+  await settle();
+  assert.equal(state(x.get(task.id)), "failed");
 });

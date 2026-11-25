@@ -170,9 +170,9 @@ export function AgentMark({ type, size = 16 }: { type: string; size?: number }) 
 
 export function AgentLoad({ agent }: { agent: AgentChoice }) {
   const t = useT();
-  const words = agent.task ? t.tb.onIt(`T-${agent.task.n}`) : agent.busy ? t.tb.busyShort : t.tb.idle;
+  const words = !agent.running ? t.tb.notRunning : agent.task ? t.tb.onIt(`T-${agent.task.n}`) : agent.busy ? t.tb.busyShort : t.tb.idle;
   return (
-    <span className="tc-ap-state" data-state={agent.task ? "on" : agent.busy ? "busy" : "free"}>
+    <span className="tc-ap-state" data-state={!agent.running ? "off" : agent.task ? "on" : agent.busy ? "busy" : "free"}>
       {agent.queued ? `${words} +${agent.queued}` : words}
     </span>
   );

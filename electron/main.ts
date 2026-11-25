@@ -593,6 +593,12 @@ const chatEngine = new ChatEngine({
       telemetryService.attachSessionSource({ terminalId, provider: "opencode", sessionId: event.sessionId, confidence: "strong", sessionFile: sessionFile ?? undefined });
     }
     sendToWindow(mainWindow, "chat:event", { terminalId, event });
+    // A permission or a question in a chat holds up the task it's on, as one in a terminal does.
+    if (event.kind === "approval_request") taskRunner.chatAsks(terminalId, event.requestId, `Wants to use ${event.toolName}`);
+    else if (event.kind === "question_request") taskRunner.chatAsks(terminalId, event.requestId, event.questions[0]?.question ?? "Has a question");
+    else if (event.kind === "approval_settled" || event.kind === "question_settled") taskRunner.chatSettled(terminalId, event.requestId);
+    else if (event.kind === "exited" || event.kind === "turn_ended") taskRunner.chatSettled(terminalId, null);
+    if (event.kind === "exited") taskRunner.chatExited(terminalId);
   },
   // Stream-json fires no Stop hook; the turn's end is the stream's own.
   onTurnEnded: (terminalId, sessionId) =>
@@ -886,6 +892,7 @@ const taskRunner: TaskRunner = new TaskRunner({
   tokens: (terminal) => telemetryService.tokensUsed(terminal),
   observe: (terminal, dir, since) => taskEvidence.of(terminal, dir, since),
   landed: landedState,
+  inChat: (terminal) => chatEngine.isRunning(terminal),
   awaits: (terminal) => apiServer.awaitsAnswer(terminal),
   cantOpen: (type) => apiServer.cantOpenAgent(type),
   reaches: (from, to) => apiServer.reachesAgent(from, to),

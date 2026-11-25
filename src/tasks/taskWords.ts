@@ -4,6 +4,8 @@ import { activeTries, currentTries, type Column, type Priority, type RequestKind
 /** How tasks read: sizes, colours and the short lines on a card. Pure, so it's tested without React. */
 
 export const TASK_TILE = { w: 320, h: 200 };
+/** Tall enough to answer in, when it needs you. */
+export const tileSize = (task: Task | undefined) => (task?.requests.length ? { w: 380, h: 400 } : TASK_TILE);
 
 export const COLUMN_COLOR: Record<Column, string> = {
   later: "var(--text-faint)",

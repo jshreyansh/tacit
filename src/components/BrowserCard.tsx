@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { browserConsoleError } from "../canvas/wireRules";
-import {
-  removeBrowserCardFromScene,
-  updateBrowserCardInScene,
-} from "../actions/sceneCardActions";
+import { updateBrowserCardInScene } from "../actions/sceneCardActions";
 import { activateCardInScene } from "../actions/sceneSelectionActions";
 import { isInGroup } from "../canvas/canvasSelection";
 import { beginCanvasDrag } from "../canvas/canvasDrag";
@@ -24,7 +21,8 @@ import { useSelectionStore } from "../stores/selectionStore";
 import { useIdentityStore, partitionForIdentity } from "../stores/identityStore";
 import { isAgentAllowed } from "../types/workspace";
 import { isGuestProfile, profileSwatch } from "../browser/profileColor";
-import { ProfileDot } from "./ProfileDot";
+import { PickerHeading, PickerPopover } from "../agents/AgentPicker";
+import { addressFor, shownAddress } from "../browser/address";
 import { managedBrowserBinding } from "../../shared/browser-controller";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import { useT } from "../i18n/useT";
@@ -109,29 +107,10 @@ export function BrowserCard({ card, projectedLayout }: Props) {
   const syncingFromChrome = useChromeSyncStore((s) => s.syncing);
   const tab = useBrowserTabState(card.id);
   const onGuestProfile = !connectedBinding && isGuestProfile(card.identityId);
-  const identitySwatch = profileSwatch(card.identityId);
-  const identityChipBorder = connectedBinding || onGuestProfile
-    ? "var(--border)"
-    : `color-mix(in srgb, ${identitySwatch.color} 45%, var(--border))`;
-  const identityChipBackground = connectedBinding || onGuestProfile
-    ? "transparent"
-    : identitySwatch.soft;
+  // Whether there's anywhere to go: a button that does nothing says so.
+  const [history, setHistory] = useState({ back: false, forward: false });
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
-  const identityMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!identityMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        identityMenuRef.current &&
-        !identityMenuRef.current.contains(e.target as Node)
-      ) {
-        setIdentityMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [identityMenuOpen]);
+  const identityButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const wv = webviewRef.current;
@@ -162,6 +141,11 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     const NAVIGATION_DEDUPE_MS = 1_500;
 
     const onNavigate = ((e: Event & { url: string }) => {
+      try {
+        setHistory({ back: wv.canGoBack(), forward: wv.canGoForward() });
+      } catch {
+        // Detached meanwhile.
+      }
       setUrlInput(e.url);
       setLoadError(null);
       updateBrowserCardInScene(card.id, { url: e.url });
@@ -395,9 +379,8 @@ export function BrowserCard({ card, projectedLayout }: Props) {
   }, [card.id, connectedBinding]);
 
   const handleUrlSubmit = () => {
-    let url = urlInput.trim();
+    const url = addressFor(urlInput);
     if (!url) return;
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
     updateBrowserCardInScene(card.id, { url });
     setUrlInput(url);
     if (connectedBinding) void runConnectedAction("navigate", { url });
@@ -497,221 +480,158 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       }}
     >
       <div
-        className="flex-none flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg)] border-b border-[var(--border)] cursor-grab active:cursor-grabbing select-none"
+        className="tc-br-head cursor-grab select-none active:cursor-grabbing"
         data-scene-card-handle=""
         onMouseDown={projectedLayout ? undefined : handleDragStart}
       >
-        <button
-          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          onClick={() => connectedBinding ? void runConnectedAction("back") : webviewRef.current?.goBack()}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <button type="button" className="tc-br-btn" title={t.browser_back} aria-label={t.browser_back} disabled={!connectedBinding && !history.back} onClick={() => (connectedBinding ? void runConnectedAction("back") : webviewRef.current?.goBack())}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M13 8H3.5M7.5 4l-4 4 4 4" />
           </svg>
         </button>
-        <button
-          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          onClick={() => connectedBinding ? void runConnectedAction("forward") : webviewRef.current?.goForward()}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <button type="button" className="tc-br-btn" title={t.browser_forward} aria-label={t.browser_forward} disabled={!connectedBinding && !history.forward} onClick={() => (connectedBinding ? void runConnectedAction("forward") : webviewRef.current?.goForward())}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 8h9.5M8.5 4l4 4-4 4" />
           </svg>
         </button>
         {/* Stop while the page loads, as in a browser; reload otherwise. */}
         {!connectedBinding && tab.loading ? (
-          <button
-            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title={t.browser_stop}
-            aria-label={t.browser_stop}
-            onClick={() => webviewRef.current?.stop()}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <button type="button" className="tc-br-btn" title={t.browser_stop} aria-label={t.browser_stop} onClick={() => webviewRef.current?.stop()}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>
         ) : (
-          <button
-            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title={t.browser_reload}
-            aria-label={t.browser_reload}
-            onClick={() => connectedBinding ? void runConnectedAction("reload") : webviewRef.current?.reload()}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M1.5 6a4.5 4.5 0 1 1 1 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M1.5 10.5V6H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <button type="button" className="tc-br-btn" title={t.browser_reload} aria-label={t.browser_reload} onClick={() => (connectedBinding ? void runConnectedAction("reload") : webviewRef.current?.reload())}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M13 8a5 5 0 11-1.6-3.7M13 2.5V5h-2.5" />
             </svg>
           </button>
         )}
 
-        {/* The address: the page's icon and whether the connection is
-            private, then the URL. */}
-        <label className="flex flex-1 min-w-0 items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] focus-within:border-[var(--text-secondary)]">
+        {/* The address, and what's true of this page, in one pill. */}
+        <div className="tc-br-address">
           <SiteBadge url={card.url} favicon={card.favicon} loading={!connectedBinding && tab.loading} t={t} />
-          <input
-            className="tc-meta tc-mono flex-1 min-w-0 bg-transparent text-[var(--text-primary)] outline-none"
+          <AddressField
+            url={card.url}
             value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleUrlSubmit();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
+            label={t.browser_address}
+            placeholder={t.browser_address_hint}
+            onChange={setUrlInput}
+            onGo={handleUrlSubmit}
+            onLeave={() => setUrlInput(card.url)}
           />
-        </label>
-
-        {!connectedBinding && (tab.audible || tab.muted) && (
-          <button
-            type="button"
-            className="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute}
-            aria-label={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => setBrowserNodeMuted(card.id, !tab.muted)}
-          >
-            <SpeakerIcon muted={tab.muted} />
-          </button>
-        )}
-
-        {/* Only while zoom is off default — otherwise it is a permanent "100%"
-            badge on every node, which is chrome charging rent. Clicking it is
-            the discoverable way back, for the user who zoomed a page days ago
-            and no longer remembers why it looks like that. */}
-        {!connectedBinding && !isDefaultBrowserZoom(pageZoom) && (
-          <button
-            type="button"
-            className="tc-meta tc-mono shrink-0 px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]"
-            title="Reset page zoom to 100%"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => resetBrowserNodeZoom(card.id)}
-          >
-            {formatBrowserZoom(pageZoom)}
-          </button>
-        )}
-
-        {/* Sync from Chrome: Google signs in only in a real Chrome, so the
-            way to a signed-in node is to sign in there and copy the logins
-            over again (SHR-132). It syncs every imported profile at once. */}
-        {/* Sync from Chrome lives in the ⋯ menu now; while it runs, this
-            says so, since it takes a few seconds. */}
-        {!connectedBinding && syncingFromChrome && (
-          <span className="shrink-0 p-0.5 text-[var(--text-muted)]" title={t.browser_chrome_sync_running} aria-label={t.browser_chrome_sync_running}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden className="animate-spin">
-              <path d="M10 6a4 4 0 0 1-6.8 2.85M2 6a4 4 0 0 1 6.8-2.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-          </span>
-        )}
-
-        <div className="relative" ref={identityMenuRef}>
-          {/* Which profile this node is signed in as, legible at canvas zoom:
-              a colour you can tell apart when the label is too small to read,
-              and a hollow dot with a dashed outline when it is Guest — the one
-              case where the node is signed into nothing at all, and the one a
-              user must never mistake for their own account. */}
-          <button
-            type="button"
-            className={`tc-meta flex items-center gap-1.5 px-1.5 py-0.5 rounded border max-w-[170px] hover:border-[var(--border-hover)] ${
-              onGuestProfile ? "border-dashed" : ""
-            }`}
-            style={{
-              borderColor: identityChipBorder,
-              background: identityChipBackground,
-              color: onGuestProfile ? "var(--text-faint)" : "var(--text-secondary)",
-            }}
-            title={
-              connectedBinding
-                ? "Connected system-browser profile"
-                : onGuestProfile
-                  ? t.browser_identity_guest_hint
-                  : t.browser_identity_picker_title
-            }
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => { if (!connectedBinding) setIdentityMenuOpen((v) => !v); }}
-          >
-            {!connectedBinding && <ProfileDot identityId={card.identityId} />}
-            <span className="truncate">
-              {connectedBinding
-                ? `${connectedBinding.browser} · ${connectedBinding.profileLabel}`
-                : currentIdentity?.name ?? t.browser_identity_unknown}
+          {!connectedBinding && (tab.audible || tab.muted) && (
+            <button type="button" className="tc-br-in" title={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute} aria-label={tab.muted ? t.browser_menu_unmute : t.browser_menu_mute} onClick={() => setBrowserNodeMuted(card.id, !tab.muted)}>
+              <SpeakerIcon muted={tab.muted} size={14} />
+            </button>
+          )}
+          {/* Only while zoom is off default: otherwise it is a permanent "100%" on
+              every node. Pressing it is the way back. */}
+          {!connectedBinding && !isDefaultBrowserZoom(pageZoom) && (
+            <button type="button" className="tc-br-in tabular-nums" title={t.browser_zoom_reset} onClick={() => resetBrowserNodeZoom(card.id)}>
+              {formatBrowserZoom(pageZoom)}
+            </button>
+          )}
+          {/* Sync from Chrome is in the ⋯ menu; while it runs, this says so,
+              since it takes a few seconds. */}
+          {!connectedBinding && syncingFromChrome && (
+            <span className="tc-br-in" title={t.browser_chrome_sync_running} aria-label={t.browser_chrome_sync_running}>
+              <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" aria-hidden="true" />
             </span>
-            {/* Said in words as well as in colour: a node signed into nothing
-                is the one state a user must never read as their own account. */}
-            {onGuestProfile && (
-              <span
-                className="shrink-0 text-[10px] uppercase tracking-wide"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {t.browser_identity_signed_out}
-              </span>
-            )}
-          </button>
-          {identityMenuOpen && !connectedBinding && (
-            <div
-              className="absolute right-0 top-full mt-1 w-[200px] max-h-52 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-lg z-20 tc-enter-fade-quick"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {Object.values(identities).map((identity) => (
-                <button
-                  key={identity.id}
-                  type="button"
-                  className={`w-full flex items-center gap-1.5 text-left px-2.5 py-1.5 tc-meta transition-colors duration-quick ${
-                    identity.id === card.identityId
-                      ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
-                  }`}
-                  title={
-                    isAgentAllowed(identity)
-                      ? undefined
-                      : t.browser_identity_agent_withheld
-                  }
-                  onClick={() => {
-                    updateBrowserCardInScene(card.id, {
-                      identityId: identity.id,
-                      backend: managedBrowserBinding(identity.id),
-                    });
-                    setIdentityMenuOpen(false);
-                  }}
-                >
-                  <ProfileDot identityId={identity.id} size={6} />
-                  <span className="truncate flex-1">{identity.name}</span>
-                  {/* The user may open any profile; only agents are held back,
-                      so this is a note on the row, not a disabled state. */}
-                  {!isAgentAllowed(identity) && (
-                    <span
-                      className="shrink-0 text-[10px] uppercase tracking-wide"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {t.browser_identity_agent_withheld_short}
-                    </span>
-                  )}
-                </button>
-              ))}
-              <div className="border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  className="w-full text-left px-2.5 py-1.5 tc-meta text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors duration-quick"
-                  onClick={() => {
-                    setIdentityMenuOpen(false);
-                    useIdentityManagerStore.getState().openManager();
-                  }}
-                >
-                  {t.browser_identity_manage}
-                </button>
-              </div>
-            </div>
           )}
         </div>
 
+        <>
+          {/* Which profile this node is signed in as: its initial in its own
+              colour, told apart when zoomed out. Guest is hollow, and says it's
+              signed out: the one that must never be mistaken for your account. */}
+          <button
+            ref={identityButton}
+            type="button"
+            className="tc-br-profile"
+            data-wide={connectedBinding || onGuestProfile ? "" : undefined}
+            aria-haspopup={connectedBinding ? undefined : "menu"}
+            aria-expanded={connectedBinding ? undefined : identityMenuOpen}
+            aria-label={connectedBinding ? `${connectedBinding.browser} ${connectedBinding.profileLabel}` : (currentIdentity?.name ?? t.browser_identity_unknown)}
+            title={
+              connectedBinding
+                ? t.browser_connected_hint
+                : onGuestProfile
+                  ? t.browser_identity_guest_hint
+                  : `${currentIdentity?.name ?? t.browser_identity_unknown}. ${t.browser_identity_picker_title}`
+            }
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              if (!connectedBinding) setIdentityMenuOpen((v) => !v);
+            }}
+          >
+            {!connectedBinding && <ProfileAvatar identityId={card.identityId} name={currentIdentity?.name ?? ""} />}
+            {connectedBinding && <span className="truncate">{`${connectedBinding.browser}, ${connectedBinding.profileLabel}`}</span>}
+            {onGuestProfile && <span className="truncate">{t.browser_identity_signed_out}</span>}
+          </button>
+          {identityMenuOpen && !connectedBinding && identityButton.current && (
+            <PickerPopover
+              anchor={identityButton.current}
+              align="right"
+              role="menu"
+              width={256}
+              label={t.browser_identity_picker_title}
+              onClose={(refocus) => {
+                setIdentityMenuOpen(false);
+                if (refocus) identityButton.current?.focus();
+              }}
+            >
+              <PickerHeading>{t.browser_browse_as}</PickerHeading>
+              <div className="max-h-[min(372px,52vh)] overflow-y-auto">
+                {Object.values(identities).map((identity) => (
+                  <button
+                    key={identity.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={identity.id === card.identityId}
+                    data-pick=""
+                    data-first={identity.id === card.identityId ? "" : undefined}
+                    className="tc-ap-row"
+                    title={isAgentAllowed(identity) ? undefined : t.browser_identity_agent_withheld}
+                    onClick={() => {
+                      updateBrowserCardInScene(card.id, { identityId: identity.id, backend: managedBrowserBinding(identity.id) });
+                      setIdentityMenuOpen(false);
+                    }}
+                  >
+                    <ProfileAvatar identityId={identity.id} name={identity.name} size={24} />
+                    <span className="min-w-0 flex-1 truncate">{identity.name}</span>
+                    {/* You may open any profile; only agents are held back, so
+                        this is a note on the row, not a disabled state. */}
+                    {!isAgentAllowed(identity) && <span className="tc-ap-detail shrink-0">{t.browser_identity_agent_withheld_short}</span>}
+                    {identity.id === card.identityId && (
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+                        <path d="M3.5 8.5l3 3 6-7" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="tc-ap-rule" />
+              <button
+                type="button"
+                role="menuitem"
+                data-pick=""
+                className="tc-ap-row"
+                onClick={() => {
+                  setIdentityMenuOpen(false);
+                  useIdentityManagerStore.getState().openManager();
+                }}
+              >
+                {t.browser_identity_manage}
+              </button>
+            </PickerPopover>
+          )}
+        </>
+
         <BrowserNodeMenu cardId={card.id} connected={!!connectedBinding} />
 
-        <button
-          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          title={t.close}
-          aria-label={t.close}
-          onClick={() => removeBrowserCardFromScene(card.id)}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
+        {!connectedBinding && tab.loading && <span className="tc-br-loading" aria-hidden="true" />}
       </div>
 
       <div className="flex-1 min-h-0 relative">
@@ -772,19 +692,97 @@ export function BrowserCard({ card, projectedLayout }: Props) {
 type Dict = ReturnType<typeof useT>;
 
 /**
+ * The address: read, it's the site and then the rest, without https:// and
+ * www.; pressed, the whole of it selected, to change or copy.
+ */
+function AddressField({ url, value, label, placeholder, onChange, onGo, onLeave }: { url: string; value: string; label: string; placeholder: string; onChange: (text: string) => void; onGo: () => void; onLeave: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const shown = shownAddress(url);
+  const input = useRef<HTMLInputElement>(null);
+  // Pressed and let go, it's edited; pressed and moved, the tile was dragged by it.
+  const pressed = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (editing) input.current?.select();
+  }, [editing]);
+  if (!editing)
+    return (
+      <button type="button" className="tc-br-url" aria-label={`${label}: ${url}`} title={url} onMouseDown={(e) => (pressed.current = { x: e.clientX, y: e.clientY })} onClick={(e) => {
+          const at = pressed.current;
+          pressed.current = null;
+          if (!at || Math.hypot(e.clientX - at.x, e.clientY - at.y) < 4) setEditing(true);
+        }}>
+        {shown.site ? (
+          <>
+            <span className="text-[var(--text-primary)]">{shown.site}</span>
+            {shown.rest}
+          </>
+        ) : (
+          placeholder
+        )}
+      </button>
+    );
+  return (
+    <input
+      ref={input}
+      autoFocus
+      className="tc-br-url"
+      aria-label={label}
+      onMouseDown={(e) => e.stopPropagation()}
+      placeholder={placeholder}
+      spellCheck={false}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        onLeave();
+      }}
+      onKeyDown={(e) => {
+        // The canvas listens globally for single-key shortcuts.
+        e.stopPropagation();
+        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+          onGo();
+          setEditing(false);
+        } else if (e.key === "Escape") e.currentTarget.blur();
+      }}
+    />
+  );
+}
+
+/** A profile as its initial, in the colour it's known by everywhere. */
+function ProfileAvatar({ identityId, name, size = 24 }: { identityId: string; name: string; size?: number }) {
+  const swatch = profileSwatch(identityId);
+  const guest = isGuestProfile(identityId);
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.46,
+        ...(guest ? { border: "1.5px dashed var(--text-muted)", color: "var(--text-muted)" } : { background: `color-mix(in srgb, ${swatch.color} 30%, var(--surface))`, color: swatch.color, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${swatch.color} 45%, transparent)` }),
+      }}
+    >
+      {guest ? "" : (name.trim()[0] ?? "?").toUpperCase()}
+    </span>
+  );
+}
+
+/**
  * Before the address: the page's icon (a spinner while it loads), and a
  * plain "Not secure" for a page that isn't https, as Chrome says it.
  */
 function SiteBadge({ url, favicon, loading, t }: { url: string; favicon?: string; loading: boolean; t: Dict }) {
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [favicon]);
-  const insecure = /^http:\/\//i.test(url);
+  // This Mac's own servers never leave it.
+  const insecure = /^http:\/\//i.test(url) && !/^http:\/\/(?:localhost|[\w-]+\.localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::|\/|$)/i.test(url);
   return (
     <>
       {loading ? (
-        <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--text-muted)] border-t-transparent" aria-hidden="true" />
+        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--text-muted)] border-t-transparent" aria-hidden="true" />
       ) : favicon && !broken ? (
-        <img src={favicon} alt="" className="h-3 w-3 shrink-0 object-contain" draggable={false} onError={() => setBroken(true)} />
+        <img src={favicon} alt="" className="h-4 w-4 shrink-0 object-contain" draggable={false} onError={() => setBroken(true)} />
       ) : (
         <GlobeGlyph />
       )}
@@ -799,7 +797,7 @@ function SiteBadge({ url, favicon, loading, t }: { url: string; favicon?: string
 
 function GlobeGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" aria-hidden="true" className="shrink-0">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" aria-hidden="true" className="shrink-0">
       <circle cx="12" cy="12" r="9" />
       <path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" />
     </svg>
