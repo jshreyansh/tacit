@@ -8,6 +8,7 @@ import {
   type AttentionPrefs,
   type AttentionTarget,
 } from "../shared/attention";
+import type { CanvasRequest } from "../shared/canvas-ops";
 import type { Task } from "../shared/task";
 import { maskSecrets } from "../shared/secret-mask";
 import type { NodeEventKind } from "./node-events";
@@ -143,6 +144,17 @@ export class AttentionNotifier {
         question: clean(request.text, BODY_MAX),
       });
     }
+  }
+
+  /** An agent asked to change something on the canvas: told once, when it's asked. */
+  observeCanvasRequest(request: Pick<CanvasRequest, "id" | "workdesk" | "titles">): void {
+    if (!this.prefs.needsYou) return;
+    this.issue({
+      kind: "needs_you",
+      surface: this.deps.isFocused() ? "toast" : "banner",
+      target: { kind: "canvas", workdesk: request.workdesk, requestId: request.id },
+      detail: clean(request.titles.join(", "), TITLE_MAX),
+    });
   }
 
   /**

@@ -48,7 +48,7 @@ test("a drawing goes in its own frame, in free space beside the agent, and is th
   const arrows = d.elements.filter((e) => e.type === "arrow");
   assert.deepEqual(arrows.map((a) => [a.a, a.b]), [[{ ref: d.keys.a }, { ref: d.keys.b }], [{ ref: d.keys.b }, { ref: "u1" }], [{ ref: d.keys.b }, { ref: "browser:b9" }]]);
   assert.equal(arrows[1].parent, undefined, "an arrow out of the drawing isn't in the frame");
-  assert.match(drawnWords(d, "Login"), /Drawn "Login" \(id f\d+\).*\nIds: a b1, b b2/);
+  assert.match(drawnWords(d, "Login"), /Drawn "Login" \(id f\d+\).*\nIds \(x,y w×h\): a b1 \d+,\d+ \d+×\d+; b b2 /);
 });
 
 test("one thing needs no frame; a named one gets it", () => {
@@ -106,7 +106,7 @@ test("exact places, near something, into its own drawing", () => {
   assert.equal(three.parent, first.frame);
   for (const x of rects(first.elements.slice(1))) assert.ok(!overlaps(three, x));
   assert.ok(three.y + three.h <= grown.y + grown.h);
-  assert.match(refused({ into: "u1", items: [{ type: "rect", text: "x" }] }), /your own drawings/);
+  assert.match(refused({ into: "u1", items: [{ type: "rect", text: "x" }] }), /drawing an agent made/);
 });
 
 test("a flowchart and a table come out laid out, with nothing over anything", () => {
@@ -143,9 +143,11 @@ const change = (changes: object[]) => {
   return buildChanges((p as { changes: never[] }).changes, { elements: all, tiles, author: me });
 };
 
-test("an agent changes only its own", () => {
-  for (const id of ["u1", "u2", "o1", "mark"]) assert.match((change([{ id, text: "changed" }]) as { error: string }).error, /isn't yours to change/);
-  assert.match((change([{ id: "t1", x: 5 }]) as { error: string }).error, /no drawing/, "a terminal isn't a drawing");
+test("an agent changes its own and other agents' at once, and asks about the user's", () => {
+  for (const id of ["u1", "u2", "mark"]) assert.deepEqual((change([{ id, text: "changed" }]) as { ask: { targets: string[] } }).ask.targets, [id]);
+  const theirs = change([{ id: "o1", text: "changed" }]) as { patches: Record<string, Record<string, unknown>> };
+  assert.deepEqual([theirs.patches.o1.text, (theirs.patches.o1.editedBy as { name: string }).name], ["changed", "Claude Code"], "and says who");
+  assert.match((change([{ id: "t1", x: 5 }]) as { error: string }).error, /is a tile/, "a terminal isn't a drawing");
   const r = change([{ id: "m1", text: "A longer label that needs a bigger box than this", color: "green", size: "XL" }]) as { patches: Record<string, Record<string, unknown>> };
   assert.deepEqual([r.patches.m1.text, r.patches.m1.color, r.patches.m1.label], ["A longer label that needs a bigger box than this", "green", "XL"]);
   assert.ok((r.patches.m1.h as number) > 80);
@@ -153,7 +155,8 @@ test("an agent changes only its own", () => {
 });
 
 test("one change refused, none made; a kind of change it hasn't got is said", () => {
-  assert.ok("error" in change([{ id: "m1", text: "x" }, { id: "u1", text: "y" }]));
+  assert.deepEqual((change([{ id: "m1", text: "x" }, { id: "u1", text: "y" }]) as { ask: { targets: string[] } }).ask.targets, ["u1"], "one to ask about makes it all wait");
+  assert.ok("error" in change([{ id: "m1", text: "x" }, { id: "nope", text: "y" }]));
   assert.match((change([{ id: "m2", w: 50 }]) as { error: string }).error, /arrow has no w/);
   assert.match((change([{ id: "m1", from: "u1" }]) as { error: string }).error, /shape has no from/);
   assert.match((change([{ id: "m2", to: "m1" }]) as { error: string }).error, /itself/);
@@ -167,9 +170,9 @@ test("a moved frame brings what's in it", () => {
   assert.deepEqual((r.patches.p1.points as Array<{ x: number }>)[0], { x: 2200, y: 210 });
 });
 
-test("an agent deletes only its own; what's the user's in its frame stays", () => {
+test("an agent deletes its own at once and asks about the rest; what's the user's in its frame stays", () => {
   const del = (ids: string[]) => buildDelete((parseCanvasDelete({ ids }) as { ids: string[] }).ids, { elements: all, tiles, author: me });
-  for (const id of ["u1", "u2", "o1", "mark"]) assert.match((del([id]) as { error: string }).error, /isn't yours to delete/);
+  for (const id of ["u1", "u2", "o1", "mark"]) assert.deepEqual((del([id]) as { ask: { targets: string[] } }).ask.targets, [id]);
   assert.deepEqual((del(["f1"]) as { ids: string[] }).ids.sort(), ["f1", "m1", "p1"]);
 });
 

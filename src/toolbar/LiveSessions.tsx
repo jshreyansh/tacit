@@ -4,6 +4,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
 import { buildCanvasTerminalSections, buildProjectTree } from "../components/sessionPanelModel";
+import { useCanvasRequests, useWaitingAgents } from "../board/canvasRequests";
 import { useTasksNeedingYou } from "../tasks/taskStore";
 import { useMemoryPendingCount } from "../components/MemoryView";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
@@ -19,6 +20,7 @@ export function useLiveTree() {
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
   const seenTerminalIds = useCompletionSeenStore((s) => s.seenTerminalIds);
+  const waiting = useWaitingAgents();
   return useMemo(() => {
     const sessionsById = new Map<string, (typeof liveSessions)[number]>();
     for (const session of [...historySessions, ...liveSessions]) sessionsById.set(session.sessionId, session);
@@ -26,15 +28,25 @@ export function useLiveTree() {
     for (const [id, runtime] of Object.entries(runtimeTerminals)) telemetry.set(id, runtime.telemetry);
     const sections = buildCanvasTerminalSections(projects, telemetry, sessionsById);
     const tree = buildProjectTree(projects, telemetry, sessionsById, seenTerminalIds);
+    // One that asked you to allow something waits on you, whatever its turn is doing.
+    if (waiting.size) {
+      for (const p of tree.projects)
+        for (const w of p.worktrees)
+          for (const item of w.terminals)
+            if (waiting.has(item.terminalId) && item.state !== "attention") {
+              item.state = "attention";
+              item.attentionReason = "awaiting_input";
+            }
+    }
     return { attention: sections.attention, tree: tree.projects, stashed: tree.stashed, seenTerminalIds };
-  }, [projects, runtimeTerminals, liveSessions, historySessions, seenTerminalIds]);
+  }, [projects, runtimeTerminals, liveSessions, historySessions, seenTerminalIds, waiting]);
 }
 
 /** What's waiting on you (terminals, and tasks an agent asked about), for the amber dots. */
 export function useNeedsYouCount(): number {
   const projects = useProjectStore((s) => s.projects);
   const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
-  const tasks = useTasksNeedingYou().length;
+  const tasks = useTasksNeedingYou().length + useCanvasRequests().length;
   // Notes waiting for approval count too: nothing waits for you unseen.
   const notes = useMemoryPendingCount(useCanvasRegistryStore((s) => s.activeCanvasId));
   const terminals = useMemo(() => {

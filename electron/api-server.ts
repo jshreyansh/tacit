@@ -15,7 +15,8 @@ import {
 } from "../hydra/src/spawn";
 import type { TaskStore } from "./task-store";
 import type { TaskRunner, TaskTerminal } from "./task-runner";
-import { parseCanvasChange, parseCanvasDelete, parseCanvasDraw, parseCanvasRead } from "../shared/canvas-ops";
+import type { CanvasRequests } from "./canvas-requests";
+import { parseCanvasChange, parseCanvasDelete, parseCanvasDraw, parseCanvasRead, type CanvasAsk, type CanvasRequest } from "../shared/canvas-ops";
 import { TaskError, columnOf, sortTasks } from "../shared/task";
 import { parseNewTask } from "../shared/task-ops";
 import { sendToWindow } from "./window-events";
@@ -86,6 +87,8 @@ interface ApiServerDeps {
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
   /** A picture in one of the workdesk's folders, small, as a data URL; null when it isn't one. */
   pictureDataUrl: (filePath: string) => string | null;
+  /** What agents have asked the person to allow on the canvas. */
+  canvasRequests: CanvasRequests;
   /** Whether a file is in one of the workdesk's folders, so it may be shown on its canvas. */
   fileOnWorkdesk: (filePath: string) => boolean;
   /** Where the last picture of the canvas each agent asked for is kept. */
@@ -1799,16 +1802,21 @@ export class ApiServer {
 
   /**
    * Backs draw, change_drawing and delete_drawing. Any agent, on its own
-   * workdesk; it changes and deletes only what it drew (src/board/agentDraw.ts
-   * refuses the rest). Drawing new things doesn't ask: it can always be undone.
+   * workdesk. Drawing new things, and changing its own, doesn't ask: it can
+   * always be undone. Changing what isn't its own follows who may change it
+   * (src/board/boardAccess.ts), and may wait on the person.
    */
   private async changeCanvas(terminalId: string, what: "draw" | "change" | "delete", body: unknown) {
     const refuse = (message: string, status = 400) => Object.assign(new Error(message), { status });
     const run = async (fn: string, args: unknown) => {
       await this.requireOpenWorkdesk(terminalId);
-      const done = (await this.execRenderer(`window.__tcApi.${fn}(${JSON.stringify(terminalId)}, ${JSON.stringify(args)})`)) as { text: string } | { error: string };
+      const done = (await this.execRenderer(`window.__tcApi.${fn}(${JSON.stringify(terminalId)}, ${JSON.stringify(args)})`)) as { text: string } | { error: string } | { ask: CanvasAsk };
       if ("error" in done) throw refuse(done.error);
-      return done;
+      if (!("ask" in done)) return done;
+      // Not its own: the person is asked, and the agent told that. It hears the answer as a message.
+      const request = this.deps.canvasRequests.ask(done.ask);
+      const names = request.titles.slice(0, 3).map((t) => JSON.stringify(t)).join(", ");
+      return { text: `Not yet: ${request.kind === "delete" ? "deleting" : "changing"} ${names} needs the user's yes, and they've been asked (${request.id}). Nothing has changed. Their answer arrives here as a message, and the change is made for you if they allow it, so don't wait, ask again or do it another way. Tell the user you've asked.` };
     };
     if (what === "draw") {
       const req = parseCanvasDraw(body);
@@ -1853,6 +1861,16 @@ export class ApiServer {
     // Too far out to read the words: say how to get closer.
     const far = made.scale < CANVAS_PICTURE_FAR ? `\n\nThe picture is zoomed out to ${Math.round(made.scale * 100)}%. Read one section or drawing by its id for a closer one.` : "";
     return { canvas: `${read.canvas}${far}`, picture: { file, png: png.toString("base64") } };
+  }
+
+  /** You said yes to what an agent asked to do on the canvas. */
+  async applyCanvasRequest(request: CanvasRequest, always: boolean): Promise<{ text: string } | { error: string }> {
+    try {
+      await this.requireOpenWorkdesk(request.terminalId);
+      return (await this.execRenderer(`window.__tcApi.applyCanvasRequest(${JSON.stringify(request)}, ${JSON.stringify(always)})`)) as { text: string } | { error: string };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   /** Backs the get_node_state MCP tool — open to any terminal, no gating. */

@@ -5,6 +5,7 @@
  */
 import type { BoardElement, BoardEnd, BoardRect } from "../types/board";
 import { bounds, center, contentsOf, inside, isContainer, overlaps, unionRect, type TargetLookup } from "./boardModel";
+import { accessSet } from "./boardAccess";
 import { penWords, type PenThing } from "./penWords";
 import { CARD_PREFIX } from "./tileIds";
 
@@ -118,7 +119,11 @@ export function readPart(part: CanvasPart, all: readonly BoardElement[], me: str
     return under ? ` on ${ref(under.id)}` : "";
   };
   const line = (e: BoardElement): string => {
-    const by = e.author?.kind !== "agent" ? "" : e.author.terminalId === me ? " [yours]" : ` [by ${e.author.name}]`;
+    const set = accessSet(e, all);
+    const who = e.author?.kind !== "agent" ? [] : [e.author.terminalId === me ? "yours" : `by ${e.author.name}`];
+    // Only when it isn't the usual: theirs ask, agents' don't.
+    const may = set === "mine" ? ["the user's alone"] : set === "edit" && e.author?.kind !== "agent" ? ["you may change it"] : set === "ask" && e.author?.kind === "agent" ? ["asks the user"] : [];
+    const by = who.length + may.length ? ` [${[...who, ...may].join(", ")}]` : "";
     const color = e.color === "ink" ? "" : ` ${e.color}`;
     const where = at(bounds(e, lookup));
     switch (e.type) {
@@ -173,7 +178,7 @@ export function readPart(part: CanvasPart, all: readonly BoardElement[], me: str
   const more = visible.length - shown.length;
   const tiles = part.tiles.map((t) => `${tileIdFor(t.id)} ${t.kind} ${JSON.stringify(t.name)}${t.kind === "terminal" && t.id === me ? " (you)" : ""} ${at(t)}${t.path ? ` ${t.path}` : t.url ? ` ${t.url}` : ""}${t.kind === "task" && t.about ? ` ${t.about}` : ""}`);
   return [
-    out.length ? `Drawings (id, what, x,y w×h; the user's unless marked):\n${out.join("\n")}` : "Nothing is drawn here.",
+    out.length ? `Drawings (id, what, x,y w×h; the user's unless marked; changing the user's asks them):\n${out.join("\n")}` : "Nothing is drawn here.",
     ...(more > 0 ? [`${more} more drawings aren't listed. Read one section by its id.`] : []),
     ...(tiles.length ? [`Tiles:\n${tiles.join("\n")}`] : []),
   ].join("\n\n");

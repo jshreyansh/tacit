@@ -7,7 +7,8 @@ import { columnOf } from "../../shared/task";
 import { fileTileKindByName } from "../../shared/file-tiles";
 import { agentNames, agentsIn } from "../tasks/agentNames";
 import { placedTasks } from "../canvas/noteEnds";
-import { BOARD_COLORS, bounds, isContainer } from "./boardModel";
+import type { BoardElement } from "../types/board";
+import { BOARD_COLORS, bounds, isBoxed, isContainer, unionRect } from "./boardModel";
 import { CARD_PREFIX, boardTargetLookup } from "./boardTargets";
 import { partOf, pictureOf, readPart, type CanvasPart, type CanvasTile } from "./boardRead";
 import { PICTURE_MAX, partSvg, type PicturePalette } from "./boardPicture";
@@ -72,6 +73,22 @@ export function thumbnailOf(id: string): string | null {
   // Its own contents, not what its arrows reach.
   const own = isContainer(el) ? { ...found.part, elements: found.part.elements.filter((e) => e.id === id || found.part.elements.some((x) => x.id === e.parent) || e.type === "arrow"), tiles: [] } : { ...found.part, elements: [el], tiles: [] };
   const drawn = partSvg({ ...own, area: bounds(el, found.lookup) }, { palette: palette(), lookup: found.lookup, me: "" });
+  return drawn && `data:image/svg+xml;charset=utf-8,${encodeURIComponent(drawn.svg)}`;
+}
+
+/** Some drawings as a small picture, as they are or would be: an SVG data URL. `all` is what their arrows look their ends up in. */
+export function pictureOfElements(elements: readonly BoardElement[], all: readonly BoardElement[] = useBoardStore.getState().elements): string | null {
+  const tiles = canvasTiles();
+  const byId = new Map([...all, ...elements].map((e) => [e.id, e]));
+  const byTile = new Map(tiles.map((t) => [t.id, t]));
+  const lookup = (id: string) => {
+    const t = byTile.get(id);
+    if (t) return { rect: t };
+    const e = byId.get(id);
+    return e && isBoxed(e) ? { rect: e, shape: e.type === "shape" ? e.shape : undefined } : null;
+  };
+  const area = unionRect(elements.map((e) => bounds(e, lookup)));
+  const drawn = partSvg({ elements: [...elements], tiles: [], area }, { palette: palette(), lookup, me: "" });
   return drawn && `data:image/svg+xml;charset=utf-8,${encodeURIComponent(drawn.svg)}`;
 }
 

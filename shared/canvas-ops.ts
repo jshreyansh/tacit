@@ -56,8 +56,10 @@ export interface CanvasItem extends CanvasLook {
   key?: string;
   /** The key of a section in this call. */
   in?: string;
-  /** Put beside this thing on the canvas. */
+  /** Put beside this thing on the canvas, or above or below it, in its middle. */
   beside?: string;
+  above?: string;
+  below?: string;
   /** Pen: a loop round this thing, or a line under it. */
   around?: string;
   under?: string;
@@ -131,7 +133,7 @@ function parseLook(o: Record<string, unknown>, where: string): CanvasLook | Refu
   return out;
 }
 
-const ITEM_KEYS = [...LOOK_KEYS, "type", "key", "in", "beside", "around", "under", "points", "path"];
+const ITEM_KEYS = [...LOOK_KEYS, "type", "key", "in", "beside", "above", "below", "around", "under", "points", "path"];
 
 function parseItem(raw: unknown, i: number): CanvasItem | Refusal {
   const where = `items[${i}]`;
@@ -142,7 +144,7 @@ function parseItem(raw: unknown, i: number): CanvasItem | Refusal {
   const look = parseLook(raw, where);
   if ("error" in look) return look;
   const item: CanvasItem = { ...look, type: raw.type as ItemType };
-  for (const k of ["key", "in", "beside", "around", "under"] as const) {
+  for (const k of ["key", "in", "beside", "above", "below", "around", "under"] as const) {
     if (raw[k] === undefined) continue;
     if (typeof raw[k] !== "string" || !KEY.test(raw[k])) return no(`${where}: ${k} must be a key or an id`);
     item[k] = raw[k];
@@ -236,3 +238,25 @@ export function parseCanvasDelete(body: unknown): { ids: string[] } | Refusal {
   if (!isObject(body) || !Array.isArray(body.ids) || extra(body, ["ids"]).length || body.ids.length === 0 || body.ids.length > ITEMS_MAX || !body.ids.every(isRef)) return no(`Send ids: from 1 to ${ITEMS_MAX} ids of your drawings`);
   return { ids: [...new Set(body.ids)] };
 }
+
+/* ---------- asking ---------- */
+
+/** An agent asking to change or delete something that isn't its own. */
+export interface CanvasRequest {
+  id: string;
+  workdesk: string | null;
+  terminalId: string;
+  /** The agent's name and kind, as it was. */
+  name: string;
+  agent: string;
+  kind: "change" | "delete";
+  changes?: CanvasChange[];
+  ids?: string[];
+  /** The drawings it needs a yes for, and what they're called. */
+  targets: string[];
+  titles: string[];
+  at: number;
+}
+/** What the window says a call needs: a yes for these. */
+export type CanvasAsk = Omit<CanvasRequest, "id" | "at">;
+export type CanvasDecision = "once" | "always" | "deny";

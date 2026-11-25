@@ -15,6 +15,7 @@ import { useT } from "../i18n/useT";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useProjectStore } from "../stores/projectStore";
+import { useCanvasRequests } from "../board/canvasRequests";
 import { useTasksNeedingYou } from "../tasks/taskStore";
 import { agentIcon } from "./agentIcons";
 import { chatTitle, stamp, type ChatHistoryEntry } from "./chatHistoryModel";
@@ -134,7 +135,8 @@ export function ChatList() {
   const face = useChatDockStore((s) => s.face);
   // Lit while the manager's chat is open on its own face, not just remembered.
   const managerLit = useChatDockStore((s) => s.open) && (face === "chat" || face === "roster");
-  const tasksWaiting = useTasksNeedingYou().length;
+  // What agents ask to change on the canvas waits there too.
+  const tasksWaiting = useTasksNeedingYou().length + useCanvasRequests().length;
   const workdeskId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const memoryWaiting = useMemoryPendingCount(workdeskId);
   const memoryToolId = useCanvasPageStore((s) => (s.page === "tool" ? s.toolId : null));

@@ -754,7 +754,7 @@ export function createTacitBridgeServer(): McpServer {
     {
       title: "Draw on the canvas",
       description:
-        "Draws on your workdesk's canvas, where the user sees it at once. For a flow or any diagram of boxes and arrows, send `flowchart` (Mermaid: flowchart TD, A[Words] --> B{Question?}, B -->|yes| C((End)), subgraph x [Name] … end) and Tacit lays it out, arrows round the boxes; don't work out positions yourself, and keep the detail: big flows are fine. For a database, send Mermaid's erDiagram in `flowchart` (USERS { uuid id PK } USERS ||--o{ SESSIONS : has): each table gets a row for each field. For rows and columns, send `table`. For anything else send `items`, with x and y from the drawing's own corner (Tacit finds free space beside you), or without x and y to have them put in rows. To mark what's already there, use its id from read_canvas: a pen item with `around` (a hand-drawn loop) or `under`, a sticky with `beside`, an arrow to it. It's one call: send the whole drawing, with a short title. The result says if anything came out over something else. Only new things, so it doesn't ask; the user can undo it.",
+        "Draws on your workdesk's canvas, where the user sees it at once. For a flow or any diagram of boxes and arrows, send `flowchart` (Mermaid: flowchart TD, A[Words] --> B{Question?}, B -->|yes| C((End)), subgraph x [Name] … end) and Tacit lays it out, arrows round the boxes; don't work out positions yourself, and keep the detail: big flows are fine. For a database, send Mermaid's erDiagram in `flowchart` (USERS { uuid id PK } USERS ||--o{ SESSIONS : has): each table gets a row for each field. For rows and columns, send `table`. For anything else send `items`, with x and y from the drawing's own corner (Tacit finds free space beside you), or without x and y to have them put in rows. To mark what's already there, use its id from read_canvas: a pen item with `around` (a hand-drawn loop) or `under`, a sticky with `beside`, a heading with `above`, an arrow to it. It's one call: send the whole drawing, with a short title. The result says if anything came out over something else. Only new things, so it doesn't ask; the user can undo it.",
       inputSchema: {
         title: z.string().optional().describe("The drawing's name, shown above it"),
         flowchart: z.string().optional().describe("Mermaid flowchart or erDiagram text"),
@@ -767,6 +767,8 @@ export function createTacitBridgeServer(): McpServer {
               ...look,
               in: z.string().optional().describe("The key of a section in this call to put it in"),
               beside: z.string().optional().describe("The id of something on the canvas to put it beside"),
+              above: z.string().optional().describe("The id of something on the canvas to put it above, in its middle: a heading for a drawing. It moves with it"),
+              below: z.string().optional().describe("Or below it"),
               around: z.string().optional().describe("Pen: draw a loop round this id or key"),
               under: z.string().optional().describe("Pen: underline this id or key"),
               points: z.array(z.number()).optional().describe("Pen: x, y, x, y, … of a freehand stroke"),
@@ -775,7 +777,7 @@ export function createTacitBridgeServer(): McpServer {
           )
           .optional(),
         near: z.string().optional().describe("Draw beside this id, instead of beside you"),
-        into: z.string().optional().describe("Add to one of your own drawings, by its id"),
+        into: z.string().optional().describe("Add to a drawing you or another agent made, by its id"),
         size: sizes.optional().describe("Text size for all of it"),
         exact: z.boolean().optional().describe("x and y are exact places on the canvas, as read_canvas gives them"),
       },
@@ -786,8 +788,8 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "change_drawing",
     {
-      title: "Change what you drew",
-      description: "Moves, resizes, restyles, rewords or re-joins things you drew on the canvas, by id. All of them or none. Only your own: the user's and other agents' drawings are refused.",
+      title: "Change a drawing",
+      description: "Moves, resizes, restyles, rewords or re-joins drawings on the canvas, by id. All of them or none. What you drew, and what other agents drew, changes at once. The user's own asks them first, unless they've set it to Can edit: you're told it's waiting, and their answer arrives as a message. So when the user asks you to change something they drew, call this; don't tell them you can't.",
       inputSchema: { changes: z.array(z.object({ id: z.string(), ...look })).describe("What to change; only the fields given change") },
     },
     async (args) => canvasCall("change", args),
@@ -796,8 +798,8 @@ export function createTacitBridgeServer(): McpServer {
   server.registerTool(
     "delete_drawing",
     {
-      title: "Delete what you drew",
-      description: "Deletes things you drew on the canvas, by id; a drawing's id takes all of it. Only your own. The user can undo it.",
+      title: "Delete a drawing",
+      description: "Deletes drawings on the canvas, by id; a drawing's id takes all of it. Your own at once; anyone else's asks the user first, and their answer arrives as a message. The user can undo it.",
       inputSchema: { ids: z.array(z.string()) },
     },
     async (args) => canvasCall("delete", args),

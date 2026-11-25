@@ -3,6 +3,7 @@ import { useT } from "../i18n/useT";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
+import { useCanvasRequests } from "../board/canvasRequests";
 import { useNeedsYouOnOtherWorkdesks, useTasksNeedingYou } from "../tasks/taskStore";
 
 /**
@@ -20,7 +21,7 @@ export function WorkdeskMenu({ name }: { name: string }) {
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const liveProjects = useProjectStore((s) => s.projects);
-  const waitingHere = useTasksNeedingYou().length;
+  const waitingHere = useTasksNeedingYou().length + useCanvasRequests().length;
   const waitingElsewhere = useNeedsYouOnOtherWorkdesks();
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);

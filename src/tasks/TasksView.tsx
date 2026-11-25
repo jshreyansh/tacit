@@ -7,6 +7,9 @@ import { columnOf, type Column, type RequestKind } from "../../shared/task";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
 import { AgentLoad, AgentMark } from "./HandOver";
+import type { CanvasRequest } from "../../shared/canvas-ops";
+import { CanvasAskCard } from "../board/CanvasAskCard";
+import { useCanvasRequestStore, useCanvasRequests } from "../board/canvasRequests";
 import { changeTask, handOver, newTask, openTask } from "./taskActions";
 import { NewTask } from "./NewTask";
 import { Dot, TASK_DRAG, TaskCard, useFolderName } from "./TaskCard";
@@ -85,7 +88,14 @@ function Board() {
     }
     return out;
   }, [shown, reason]);
-  const reasons = REASONS.map((k) => ({ kind: k, n: shown.filter((x) => x.requests.some((r) => r.kind === k)).length })).filter((r) => r.n > 0);
+  // What agents ask to change on the canvas waits here too, though it's not a task.
+  const asks = useCanvasRequests();
+  const requests = useMemo(() => {
+    if (folder !== null || (reason && reason !== "approve")) return [];
+    const q = query.trim().toLowerCase();
+    return q ? asks.filter((x) => [x.name, ...x.titles].some((w) => w.toLowerCase().includes(q))) : asks;
+  }, [asks, folder, reason, query]);
+  const reasons = REASONS.map((k) => ({ kind: k, n: shown.filter((x) => x.requests.some((r) => r.kind === k)).length + (k === "approve" && folder === null ? asks.length : 0) })).filter((r) => r.n > 0);
   // Its last one was answered: back to all of them, not an empty column.
   useEffect(() => {
     if (reason && !reasons.some((r) => r.kind === reason)) setReason(null);
@@ -131,16 +141,16 @@ function Board() {
           {t.tb.add}
         </button>
       </div>
-      {loaded && tasks.length === 0 ? (
+      {loaded && tasks.length === 0 && asks.length === 0 ? (
         <p className="tc-tk-empty-board">{t.tb.emptyBoard}</p>
-      ) : loaded && shown.length === 0 ? (
+      ) : loaded && shown.length === 0 && requests.length === 0 ? (
         <p className="tc-tk-empty-board">{t.tb.noneMatch}</p>
       ) : list ? (
-        <List columns={columns} by={by} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
+        <List columns={columns} by={by} requests={requests} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
       ) : (
-        <Columns template={columns.map((c) => width(c, !by.get(c)?.length)).join(" ")}>
+        <Columns template={columns.map((c) => width(c, !by.get(c)?.length && !(c === "needs" && requests.length))).join(" ")}>
           {columns.map((c) => (
-            <ColumnView key={c} column={c} tasks={by.get(c) ?? []} dragging={dragging} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
+            <ColumnView key={c} column={c} tasks={by.get(c) ?? []} requests={c === "needs" ? requests : NONE} dragging={dragging} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
           ))}
         </Columns>
       )}
@@ -190,7 +200,27 @@ function Columns({ template, children }: { template: string; children: ReactNode
   );
 }
 
+const NONE: CanvasRequest[] = [];
+
+/** An agent asking to change something on the canvas. Brought into view when that's what you came for. */
+function RequestCard({ request }: { request: CanvasRequest }) {
+  const shown = useCanvasRequestStore((s) => s.shown === request.id);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!shown) return;
+    ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const timer = window.setTimeout(() => useCanvasRequestStore.setState({ shown: null }), 2_500);
+    return () => window.clearTimeout(timer);
+  }, [shown]);
+  return (
+    <div ref={ref} className="tc-tk-request" data-shown={shown || undefined}>
+      <CanvasAskCard request={request} />
+    </div>
+  );
+}
+
 interface ColumnProps {
+  requests: CanvasRequest[];
   reason: RequestKind | null;
   reasons: Array<{ kind: RequestKind; n: number }>;
   setReason: (reason: RequestKind | null) => void;
@@ -200,7 +230,7 @@ interface ColumnProps {
 /** Nothing is dragged into Needs you, and Working starts at an agent. */
 const ACCEPTS: ReadonlySet<Column> = new Set(["later", "next", "done", "dropped"]);
 
-function ColumnView({ column, tasks, dragging, reason, reasons, setReason, onDrag }: ColumnProps & { column: Column; tasks: Task[]; dragging: string | null }) {
+function ColumnView({ column, tasks, requests, dragging, reason, reasons, setReason, onDrag }: ColumnProps & { column: Column; tasks: Task[]; dragging: string | null }) {
   const t = useT();
   const [over, setOver] = useState(false);
   const all = useTaskStore((s) => s.tasks);
@@ -240,7 +270,7 @@ function ColumnView({ column, tasks, dragging, reason, reasons, setReason, onDra
       <header className="tc-tk-column-head">
         <Dot column={column} />
         <h3>{t.tb.columns[column]}</h3>
-        <span className="tc-tk-count">{tasks.length}</span>
+        <span className="tc-tk-count">{tasks.length + requests.length}</span>
         <span className="flex-1" />
         {(column === "later" || column === "next") && (
           <button type="button" className="tc-tk-add" aria-label={t.tb.addTo(t.tb.columns[column])} title={t.tb.addTo(t.tb.columns[column])} onClick={() => newTask({ wait: column })}>
@@ -253,10 +283,13 @@ function ColumnView({ column, tasks, dragging, reason, reasons, setReason, onDra
       {column === "needs" && reasons.length > 1 && <Reasons reason={reason} reasons={reasons} setReason={setReason} />}
       <div className="tc-tk-column-body">
         {held && over && !accepts && columnOf(held) !== column && <p className="tc-tk-hint">{column === "needs" ? t.tb.cantDropHere.needs : t.tb.cantDropHere.working}</p>}
+        {requests.map((x) => (
+          <RequestCard key={x.id} request={x} />
+        ))}
         {tasks.slice(0, column === "done" || column === "dropped" ? DONE_SHOWN : undefined).map((x) => (
           <TaskCard key={x.id} task={x} reason={column === "needs" ? reason : null} onDrag={onDrag} />
         ))}
-        {tasks.length === 0 && <p className="tc-tk-empty">{t.tb.empty[column]}</p>}
+        {tasks.length === 0 && requests.length === 0 && <p className="tc-tk-empty">{t.tb.empty[column]}</p>}
       </div>
     </section>
   );
@@ -278,7 +311,7 @@ function Reasons({ reason, reasons, setReason }: Pick<ColumnProps, "reason" | "r
   );
 }
 
-function List({ columns, by, reason, reasons, setReason, onDrag }: ColumnProps & { columns: readonly Column[]; by: Map<Column, Task[]> }) {
+function List({ columns, by, requests, reason, reasons, setReason, onDrag }: ColumnProps & { columns: readonly Column[]; by: Map<Column, Task[]> }) {
   const t = useT();
   // What needs you first, when there isn't room to see it all.
   const order = [...columns].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
@@ -286,17 +319,21 @@ function List({ columns, by, reason, reasons, setReason, onDrag }: ColumnProps &
     <div className="tc-tk-scroll px-3 pb-4">
       {order.map((c) => {
         const tasks = by.get(c) ?? [];
-        if (tasks.length === 0) return null;
+        const asks = c === "needs" ? requests : NONE;
+        if (tasks.length === 0 && asks.length === 0) return null;
         return (
           <section key={c} className="mb-4" aria-label={t.tb.columns[c]}>
             <header className="tc-tk-column-head">
               <Dot column={c} />
               <h3>{t.tb.columns[c]}</h3>
-              <span className="tc-tk-count">{tasks.length}</span>
+              <span className="tc-tk-count">{tasks.length + asks.length}</span>
             </header>
             {c === "needs" && reasons.length > 1 && <Reasons reason={reason} reasons={reasons} setReason={setReason} />}
             {c === "needs" ? (
               <div className="flex flex-col gap-2">
+                {asks.map((x) => (
+                  <RequestCard key={x.id} request={x} />
+                ))}
                 {tasks.map((x) => (
                   <TaskCard key={x.id} task={x} reason={reason} onDrag={onDrag} />
                 ))}

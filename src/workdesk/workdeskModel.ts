@@ -129,6 +129,8 @@ export interface WorkdeskSections {
 }
 
 export interface WorkdeskInputs {
+  /** Agents waiting on you to allow something. */
+  waiting?: ReadonlySet<string>;
   projects: readonly ProjectData[];
   telemetry: ReadonlyMap<string, TerminalTelemetrySnapshot | null | undefined>;
   browsers: ReadonlyArray<{ id: string; url: string; title: string; identityId: string; favicon?: string }>;
@@ -163,6 +165,8 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
         if (!isCanvasTerminal(terminal)) continue;
         const telemetry = input.telemetry.get(terminal.id) ?? null;
         const derived = deriveTerminalState(terminal, telemetry, undefined);
+        // It asked you to allow something, whatever its turn is doing.
+        const asked = derived.state !== "attention" && !!input.waiting?.has(terminal.id);
         const isAgent = findAgentAdapter(terminal.type) !== null;
         const first = telemetry?.first_user_prompt;
         const prompt = first && !isTaskBrief(first) ? first : undefined;
@@ -176,8 +180,8 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
           label:
             terminal.customTitle?.trim() ||
             (prompt && terminal.id !== input.managerTerminalId ? oneLine(prompt, 80) : isAgent && isPlainTitle(terminal.title, terminal.type) ? (names.get(terminal.id) ?? terminal.title) : terminal.title),
-          state: derived.state,
-          ...(derived.attentionReason ? { attentionReason: derived.attentionReason } : {}),
+          state: asked ? "attention" : derived.state,
+          ...(asked ? { attentionReason: "awaiting_input" as const } : derived.attentionReason ? { attentionReason: derived.attentionReason } : {}),
           ...(derived.state === "active" && derived.turnStartedAt ? { since: derived.turnStartedAt } : {}),
           isManager: terminal.id === input.managerTerminalId,
           chatMode: !!terminal.chatMode,

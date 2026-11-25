@@ -1,3 +1,5 @@
+import { drawingInView } from "../board/agentOps";
+import { changeWords, openCanvasRequest, startCanvasRequests, useCanvasRequestStore, wantsTo } from "../board/canvasRequests";
 import { keepToast } from "./attentionToasts";
 import { useEffect, useMemo } from "react";
 
@@ -47,6 +49,13 @@ function isViewing(target: AttentionTarget): boolean {
     if (mode === "grid") return openNode?.kind === "terminal" && openNode.id === target.terminalId;
     return !!findTerminal(target.terminalId)?.terminal.focused;
   }
+  if (target.kind === "canvas") {
+    const request = useCanvasRequestStore.getState().requests.find((x) => x.id === target.requestId);
+    if (!request || request.workdesk === null || !activeIs(request.workdesk)) return false;
+    const onBoard = mode === "grid" ? openNode?.kind === "tasks" : useCanvasPageStore.getState().page === "tasks";
+    // On the board, marked on its drawing, or on its agent in front of them.
+    return onBoard || drawingInView(request.targets[0]) || isViewing({ kind: "terminal", terminalId: request.terminalId });
+  }
   const { openTask: open } = useTaskStore.getState();
   const board = mode === "grid" ? openNode?.kind === "tasks" : useCanvasPageStore.getState().page === "tasks";
   return board && (open === target.taskId || open === null) && activeIs(target.workdesk);
@@ -63,7 +72,7 @@ function showToast(notice: AttentionNotice, text: { title: string; body: string 
         : t["attention.toastNeedsYou"];
   const id = notify(
     type,
-    (notice.kind === "needs_you" ? [notice.detail, text.body] : [text.title, text.body]).filter(Boolean).join(" · "),
+    (notice.kind === "needs_you" && notice.target.kind !== "canvas" ? [notice.detail, text.body] : [text.title, text.body]).filter(Boolean).join(" · "),
     {
       label: t["attention.open"],
       run: () => {
@@ -74,6 +83,16 @@ function showToast(notice: AttentionNotice, text: { title: string; body: string 
     label,
   );
   keepToast(id, notice.kind === "needs_you");
+}
+
+/** Who wants to do what on the canvas. */
+function canvasText(requestId: string, t: ReturnType<typeof useT>): { title: string; body: string } | null {
+  const request = useCanvasRequestStore.getState().requests.find((x) => x.id === requestId);
+  if (!request) return null;
+  const name = request.titles.length === 1 ? `"${request.titles[0]}"` : t.canvas_ask_several(request.titles.length);
+  const words = changeWords(request);
+  if (wantsTo(request) === "rename" && words.length === 1) return { title: t.canvas_ask_wants.rename(request.name), body: words[0] };
+  return { title: `${t.canvas_ask_wants[wantsTo(request)](request.name)} ${name}`, body: words.join(", ") };
 }
 
 /** Brings the clicked notification's agent or task into view. */
@@ -88,9 +107,11 @@ function openTarget(target: AttentionTarget): void {
   }
   // It may be on another workdesk; go there first.
   const registry = useCanvasRegistryStore.getState();
-  if (!registry.canvases.some((c) => c.id === target.workdesk)) return;
-  registry.switchCanvas(target.workdesk);
-  openTask(target.taskId);
+  const { workdesk } = target;
+  if (workdesk === null || !registry.canvases.some((c) => c.id === workdesk)) return;
+  registry.switchCanvas(workdesk);
+  if (target.kind === "canvas") openCanvasRequest(target.requestId);
+  else openTask(target.taskId);
 }
 const activeIs = (workdesk: string) => useCanvasRegistryStore.getState().activeCanvasId === workdesk;
 
@@ -103,7 +124,10 @@ const activeIs = (workdesk: string) => useCanvasRegistryStore.getState().activeC
 export function useAttention(): void {
   const t = useT();
   const prefs = usePreferencesStore((s) => s.attentionPrefs);
-  const needsYouTasks = useNeedsYouTaskCount();
+  // What agents ask to change on the canvas waits on you as a task does.
+  const asks = useCanvasRequestStore((s) => s.requests.length);
+  const needsYouTasks = useNeedsYouTaskCount() + asks;
+  useEffect(() => startCanvasRequests(), []);
 
   useEffect(() => {
     void window.tacit.attention.configure({ prefs, needsYouTasks });
@@ -113,7 +137,9 @@ export function useAttention(): void {
     () =>
       window.tacit.attention.onNotice((notice: AttentionNotice) => {
         const place = notice.target.kind === "terminal" ? placeOf(notice.target.terminalId) : { name: null };
-        const text = attentionText(notice, place, t);
+        const text = notice.target.kind === "canvas" ? canvasText(notice.target.requestId, t) : attentionText(notice, place, t);
+        // Answered before it could be said.
+        if (!text) return;
         if (notice.surface === "banner") void window.tacit.attention.answer(notice.id, text);
         else if (!isViewing(notice.target)) showToast(notice, text, t);
       }),

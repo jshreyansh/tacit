@@ -5,7 +5,7 @@
  * did has its own Undo. Main has checked the request and whose it is.
  */
 import { create } from "zustand";
-import type { CanvasChange, CanvasDraw } from "../../shared/canvas-ops";
+import type { CanvasAsk, CanvasChange, CanvasDraw, CanvasRequest } from "../../shared/canvas-ops";
 import { getTranslations } from "../i18n/useT";
 import { findTerminal } from "../actions/terminalLookup";
 import { agentNames, agentsIn } from "../tasks/agentNames";
@@ -18,10 +18,12 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
 import { useWorkdeskViewStore } from "../stores/workdeskViewStore";
-import type { BoardElement, BoardRect } from "../types/board";
+import type { BoardAgentAccess, BoardElement, BoardRect } from "../types/board";
 import { flyToBounds } from "../utils/panToTerminal";
 import { buildChanges, buildDelete, buildDrawing, drawnWords, shifted, type AgentAuthor } from "./agentDraw";
+import { accessOf } from "./boardAccess";
 import { canvasTiles } from "./boardForAgents";
+import { drawingName } from "./boardRead";
 import { useBoardDraft } from "./boardDraft";
 import { rerouteBroken } from "./boardReroute";
 import { bounds, cssColor } from "./boardModel";
@@ -119,6 +121,10 @@ function inView(r: BoardRect): boolean {
 
 /** One notice an agent: the latest thing it did. */
 const notices = new Map<string, string>();
+export const drawingInView = (id: string): boolean => {
+  const at = rectOf(id);
+  return at !== null && inView(at);
+};
 function tell(op: AgentOp): void {
   const found = findTerminal(op.terminalId);
   const at = op.focus ? rectOf(op.focus) : null;
@@ -169,10 +175,11 @@ export function agentDraws(terminalId: string, req: CanvasDraw): { text: string 
   const grown = changed[0] as (BoardElement & BoardRect) | undefined;
   amend((els) => {
     const at = grown && (els.find((e) => e.id === grown.id) as (BoardElement & BoardRect) | undefined);
-    const dx = grown && at ? at.x - grown.x : 0;
-    const dy = grown && at ? at.y - grown.y : 0;
+    const was = grown && (before[0] as BoardElement & BoardRect);
+    const dx = was && at ? at.x - was.x : 0;
+    const dy = was && at ? at.y - was.y : 0;
     const placed = dx || dy ? added.map((e) => (e.parent ? shifted(e, dx, dy) : e)) : added;
-    return [...els.map((e) => (grown && e.id === grown.id ? ({ ...e, w: grown.w, h: grown.h } as BoardElement) : e)), ...placed];
+    return [...els.map((e) => (grown && e.id === grown.id ? ({ ...e, x: grown.x + dx, y: grown.y + dy, w: grown.w, h: grown.h } as BoardElement) : e)), ...placed];
   });
   const files = made.files.map((f) => {
     const was = Object.values(useFileTileStore.getState().tiles).find((t) => t.path === f.path);
@@ -187,30 +194,57 @@ export function agentDraws(terminalId: string, req: CanvasDraw): { text: string 
   return { text: drawnWords(made, req.title, files.map((f) => f.id)) };
 }
 
-export function agentChanges(terminalId: string, changes: CanvasChange[]): { text: string } | { error: string } {
+/** Done, refused, or waiting on the user's yes. */
+type Outcome = { text: string } | { error: string } | { ask: CanvasAsk };
+
+/** While you're editing a thing, an agent's change to it waits, so nothing you type is lost. */
+async function notInHand(ids: () => readonly string[], most: number): Promise<boolean> {
+  const until = performance.now() + most;
+  while (inHand(ids())) {
+    if (performance.now() > until) return false;
+    await new Promise((done) => window.setTimeout(done, 300));
+  }
+  return true;
+}
+const EDIT_WAIT = 20_000;
+
+function asking(author: AgentAuthor, what: { targets: string[]; titles: string[] }, more: Pick<CanvasAsk, "kind" | "changes" | "ids">): { ask: CanvasAsk } {
+  return { ask: { workdesk: activeWorkdesk(), terminalId: author.terminalId, name: author.name, agent: author.agent, ...more, ...what } };
+}
+
+export async function agentChanges(terminalId: string, changes: CanvasChange[], allowed: string[] = []): Promise<Outcome> {
   const author = authorOf(terminalId);
-  const elements = useBoardStore.getState().elements;
-  const made = buildChanges(changes, { elements, tiles: canvasTiles(), author });
+  const work = () => buildChanges(changes, { elements: useBoardStore.getState().elements, tiles: canvasTiles(), author }, new Set(allowed));
+  const first = work();
+  if ("error" in first) return first;
+  if ("ask" in first) return asking(author, first.ask, { kind: "change", changes });
+  if (!(await notInHand(() => Object.keys(first.patches), EDIT_WAIT))) return BUSY;
+  // What you were doing may have changed it.
+  const made = work();
   if ("error" in made) return made;
-  const ids = Object.keys(made.patches);
-  if (inHand(ids)) return BUSY;
-  const before = elements.filter((e) => made.patches[e.id]);
+  if ("ask" in made) return asking(author, made.ask, { kind: "change", changes });
+  const before = useBoardStore.getState().elements.filter((e) => made.patches[e.id]);
   amend((els) => els.map((e) => (made.patches[e.id] ? ({ ...e, ...made.patches[e.id] } as BoardElement) : e)));
   rerouteBroken();
-  const op = remember({ kind: "change", terminalId, name: author.name, title: "", focus: changes[0].id, added: [], files: [], before });
+  const op = remember({ kind: "change", terminalId, name: author.name, title: before.length === 1 ? drawingName(before[0]) : "", focus: changes[0].id, added: [], files: [], before });
   tell(op);
   return { text: [`Changed ${changes.length === 1 ? "it" : `${changes.length} drawings`} (${op.id}).`, ...(made.notes.length ? [`Worth a look: ${made.notes.join(" ")}`] : [])].join("\n") };
 }
 
-export function agentDeletes(terminalId: string, ids: string[]): { text: string } | { error: string } {
+export async function agentDeletes(terminalId: string, ids: string[], allowed: string[] = []): Promise<Outcome> {
   const author = authorOf(terminalId);
-  const elements = useBoardStore.getState().elements;
-  const made = buildDelete(ids, { elements, tiles: canvasTiles(), author });
+  const work = () => buildDelete(ids, { elements: useBoardStore.getState().elements, tiles: canvasTiles(), author }, new Set(allowed));
+  const first = work();
+  if ("error" in first) return first;
+  if ("ask" in first) return asking(author, first.ask, { kind: "delete", ids });
+  if (!(await notInHand(() => first.ids, EDIT_WAIT))) return BUSY;
+  const made = work();
   if ("error" in made) return made;
-  if (inHand(made.ids)) return BUSY;
+  if ("ask" in made) return asking(author, made.ask, { kind: "delete", ids });
+  const elements = useBoardStore.getState().elements;
   const gone = new Set(made.ids);
   const own = (e: BoardElement) => e.author?.kind === "agent" && e.author.terminalId === terminalId;
-  // Its arrows on them go too. Yours stay, drawn to where they were.
+  // Its arrows on them go too. Others' stay, drawn to where they were.
   for (const e of elements) if (e.type === "arrow" && own(e) && [e.a, e.b].some((end) => "ref" in end && gone.has(end.ref))) gone.add(e.id);
   const lookup = boardTargetLookup();
   const at = new Map(elements.filter((e) => gone.has(e.id)).map((e) => [e.id, bounds(e, lookup)]));
@@ -233,9 +267,26 @@ export function agentDeletes(terminalId: string, ids: string[]): { text: string 
   const touched = elements.filter((e) => gone.has(e.id) || next.find((x) => x.id === e.id) !== e);
   amend(loose);
   useSelectionStore.setState((s) => ({ selectedItems: s.selectedItems.filter((i) => i.type !== "annotation" || !gone.has(i.annotationId)) }));
-  const op = remember({ kind: "delete", terminalId, name: author.name, title: "", focus: null, added: [], files: [], before: touched });
+  const op = remember({ kind: "delete", terminalId, name: author.name, title: touched.length === 1 ? drawingName(touched[0]) : "", focus: null, added: [], files: [], before: touched });
   tell(op);
   return { text: `Deleted ${gone.size === 1 ? "it" : `${gone.size} drawings`} (${op.id}).` };
+}
+
+/** You said yes to what an agent asked; `always` also lets agents change those drawings from here on. */
+export async function applyCanvasRequest(req: CanvasRequest, always: boolean): Promise<{ text: string } | { error: string }> {
+  if (always && req.kind === "change") setAccess(req.targets, "edit");
+  const done = req.kind === "change" ? await agentChanges(req.terminalId, req.changes ?? [], req.targets) : await agentDeletes(req.terminalId, req.ids ?? [], req.targets);
+  // It was about more than you were shown: the canvas has changed since.
+  return "ask" in done ? { error: "What it asked to change isn't the same any more. Ask again." } : done;
+}
+
+/** Who may change these drawings. Yours to undo. */
+export function setAccess(ids: readonly string[], agents: BoardAgentAccess): void {
+  const board = useBoardStore.getState();
+  const changes = Object.fromEntries(board.elements.filter((e) => ids.includes(e.id) && accessOf(e, board.elements) !== agents).map((e) => [e.id, { agents }]));
+  if (!Object.keys(changes).length) return;
+  board.checkpoint();
+  board.patch(changes);
 }
 
 /** Takes back one thing an agent did. Yours to undo in turn, with ⌘Z. */
@@ -280,5 +331,8 @@ export function showDrawing(id: string): void {
   useSelectionStore.setState({ selectedItems: [] });
   useAgentOps.setState((s) => ({ delays: { ...s.delays, [id]: 450 } }));
   useBoardStore.setState((s) => ({ bornAt: { ...s.bornAt, [id]: performance.now() + 450 } }));
-  flyToBounds(rect.x, rect.y - 40, Math.max(rect.w, 120), Math.max(rect.h, 120) + 40);
+  // A small thing with some of what's round it, not filling the window.
+  const w = Math.max(rect.w, 1100);
+  const h = Math.max(rect.h + 40, 700);
+  flyToBounds(rect.x - (w - rect.w) / 2, rect.y - 40 - (h - rect.h - 40) / 2, w, h);
 }

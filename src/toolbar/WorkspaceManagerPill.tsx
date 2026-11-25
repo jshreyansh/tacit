@@ -39,6 +39,7 @@ import { terminalName } from "../actions/terminalLookup";
 import { withMentions } from "../../shared/chat-attachments";
 import type { ChatAttachmentInfo } from "../../shared/chat-events";
 import { useManagerChatStore } from "../stores/managerChatStore";
+import { CanvasAsks } from "../board/CanvasAskCard";
 import { ApprovalCards, ChatThread } from "./chat/ChatThread";
 import { canSwitchToAuto } from "./chat/composerSettingsModel";
 import { QuestionForm } from "./chat/QuestionForm";
@@ -1317,6 +1318,7 @@ export function WorkspaceManagerPill() {
                       )
                     }
                   />
+                  <CanvasAsks terminalId={managerTerminal.id} />
                   <ApprovalCards
                     approvals={transcript.approvals}
                     onAnswer={(requestId, decision, note) => void answerManagerApproval(managerTerminal.id, requestId, decision, note)}

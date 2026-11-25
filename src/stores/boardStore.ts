@@ -11,6 +11,7 @@ import type {
   BoardTextSize,
   BoardWeight,
 } from "../types/board";
+import { agentsDefault } from "../board/accessDefault";
 import { contentsOf, type BoardColor } from "../board/boardModel";
 import { useSelectionStore } from "./selectionStore";
 import { useWorkspaceStore } from "./workspaceStore";
@@ -166,8 +167,11 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     return true;
   },
 
-  add: (...added) => {
+  add: (...fresh) => {
     const now = performance.now();
+    // Yours start as you've set; what's in a section or drawing follows that.
+    const start = agentsDefault();
+    const added = start === "ask" ? fresh : fresh.map((e) => (e.parent || e.agents || e.author?.kind === "agent" ? e : { ...e, agents: start }));
     set((s) => ({
       elements: [...s.elements, ...added],
       bornAt: { ...s.bornAt, ...Object.fromEntries(added.map((e) => [e.id, now])) },

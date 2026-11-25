@@ -228,3 +228,15 @@ test("a notification says who, what happened and where, in the person's language
   });
   assert.equal(attentionText({ id: "5", kind: "waiting", surface: "banner" as const, target: terminal }, place, { ...en, ...zh }).title, "Claude 需要你");
 });
+
+test("an agent asking about the canvas is told once, as a task is, and follows the same setting", () => {
+  const { notifier, requested, shown } = setup();
+  const request = { id: "cr-1", workdesk: "w", titles: ["Hello"] };
+  notifier.observeCanvasRequest(request);
+  assert.deepEqual([requested[0].kind, requested[0].surface, requested[0].target], ["needs_you", "banner", { kind: "canvas", workdesk: "w", requestId: "cr-1" }]);
+  assert.equal(notifier.answer(requested[0].id, { title: 'Claude wants to rename "Hello"', body: '"Hello" → "jazz"' }), true);
+  assert.equal(shown[0].title, 'Claude wants to rename "Hello"');
+  notifier.configure({ prefs: { ...DEFAULT_ATTENTION_PREFS, needsYou: false }, needsYouTasks: 1 });
+  notifier.observeCanvasRequest({ ...request, id: "cr-2" });
+  assert.equal(requested.length, 1);
+});

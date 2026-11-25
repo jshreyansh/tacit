@@ -134,6 +134,8 @@ export interface CanvasToolView {
   title: string;
   /** The drawing it made, or the thing it did, as the result names it. */
   id: string | null;
+  /** It waits on you: nothing has changed yet. */
+  asked: boolean;
 }
 
 /** A Tacit tool that draws, and what to show for it. */
@@ -143,7 +145,7 @@ export function canvasTool(toolName: string, args: JsonObject, result?: unknown)
   if (!kind) return null;
   const text = typeof result === "string" ? result : result === undefined ? "" : JSON.stringify(result);
   const id = kind === "draw" ? /\(id ([\w-]+)\)/.exec(text)?.[1] : /\((op-[\w-]+)\)/.exec(text)?.[1];
-  return { kind, title: typeof args.title === "string" ? args.title.slice(0, 140) : "", id: id ?? null };
+  return { kind, title: typeof args.title === "string" ? args.title.slice(0, 140) : "", id: id ?? null, asked: kind !== "draw" && /^Not yet: /.test(text) };
 }
 
 /** A Tacit tool that starts a worker, and what to show for it. */

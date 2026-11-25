@@ -44,7 +44,9 @@ export function sanitizeAttentionPrefs(value: unknown): AttentionPrefs {
 /** What a notification opens when clicked. */
 export type AttentionTarget =
   | { kind: "terminal"; terminalId: string }
-  | { kind: "task"; workdesk: string; taskId: string };
+  | { kind: "task"; workdesk: string; taskId: string }
+  /** An agent asking to change something on the canvas. */
+  | { kind: "canvas"; workdesk: string | null; requestId: string };
 
 /**
  * A notification main has decided to show, sent to the window for its

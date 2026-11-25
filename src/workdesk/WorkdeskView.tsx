@@ -19,6 +19,7 @@ import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { tabKey, useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import { closeTerminalInScene } from "../actions/terminalSceneActions";
+import { useWaitingAgents } from "../board/canvasRequests";
 import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddNodeMenu } from "./AddNodeMenu";
@@ -303,6 +304,7 @@ export function WorkdeskView() {
   const [tails, setTails] = useState<Record<string, string[]>>({});
   const fileTiles = useFileTiles();
   const [now, setNow] = useState(() => Date.now());
+  const waiting = useWaitingAgents();
 
   const managerTerminalId = (canvases.find((c) => c.id === activeCanvasId) ?? canvases[0])?.workspaceManagerTerminalId ?? null;
   const sections = useMemo(() => {
@@ -318,8 +320,9 @@ export function WorkdeskView() {
       tasks,
       notes,
       managerTerminalId,
+      waiting,
     });
-  }, [projects, runtimeTerminals, browserCards, identities, tasks, notes, managerTerminalId]);
+  }, [projects, runtimeTerminals, browserCards, identities, tasks, notes, managerTerminalId, waiting]);
 
   // The cards' last lines, read from each terminal's screen while the grid shows.
   const terminalIds = useMemo(

@@ -1,3 +1,4 @@
+import { CanvasAskStrip } from "../board/CanvasAskCard";
 import { useLayoutEffect, useState } from "react";
 import { StartedWithMemory } from "../components/StartedWithMemory";
 import { findAgentAdapter } from "../../shared/agent-adapters";
@@ -140,6 +141,7 @@ function TerminalTab({ card, t }: { card: TerminalCard; t: Dict }) {
         )
       )}
       {turnUndo.dialog}
+      {!card.chatMode && <CanvasAskStrip terminalId={card.id} />}
       {card.chatMode ? (
         card.isManager ? (
           // The manager's chat is the docked one.

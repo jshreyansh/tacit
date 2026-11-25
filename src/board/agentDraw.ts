@@ -6,13 +6,14 @@
 import type { CanvasChange, CanvasDraw, CanvasItem, CanvasLook, CanvasSize } from "../../shared/canvas-ops";
 import type { BoardArrow, BoardAuthor, BoardElement, BoardEnd, BoardPoint, BoardRect, BoardShapeKind } from "../types/board";
 import { LABEL_SIZES, STICKY_SIZE, arrowEnds, bounds, center, contentsOf, estimateTextRect, isBoxed, isContainer, overlaps, sectionAt, unionRect, viaNow, type Target, type TargetLookup } from "./boardModel";
+import { heldOnlyYours, isOwn, mayChange, mayDelete } from "./boardAccess";
 import { drawingName, tileIdFor, type CanvasTile } from "./boardRead";
 import { roomForWords, wordWidth } from "./boardText";
 import { isErDiagram, parseEr } from "./erDiagram";
 import { layoutFlow, layoutLayered, parseFlow, type FlowNode } from "./flowchart";
 import { routeArrows } from "./routeArrows";
 
-export type AgentAuthor = Extract<BoardAuthor, { kind: "agent" }>;
+export type AgentAuthor = Extract<BoardAuthor, { kind: "agent" }> & { terminalId: string };
 
 export interface DrawContext {
   elements: readonly BoardElement[];
@@ -40,7 +41,7 @@ const FRAME_COLORS: Record<string, string> = { claude: "clay", codex: "violet", 
 const SHAPES = new Set(["rect", "ellipse", "diamond"]);
 const MIN_BOX = { w: 170, h: 80 };
 
-const isMine = (e: BoardElement, author: AgentAuthor) => e.author?.kind === "agent" && e.author.terminalId === author.terminalId;
+const isMine = (e: BoardElement, author: AgentAuthor) => isOwn(e, author.terminalId);
 
 /** A tile or drawing by the id the agent was given for it: a browser's has a prefix here. */
 function realId(id: string, ctx: Pick<DrawContext, "elements" | "tiles">): string | null {
@@ -411,7 +412,8 @@ export function buildDrawing(req: CanvasDraw, ctx: DrawContext): Drawing | { err
   const outside: BoardElement[] = [];
 
   const into = req.into ? ctx.elements.find((e) => e.id === req.into) : null;
-  if (req.into && (!into || into.type !== "frame" || !isMine(into, author))) return { error: `into must be one of your own drawings; ${req.into} isn't.` };
+  if (req.into && (!into || into.type !== "frame")) return { error: `into must be the id of a drawing an agent made; ${req.into} isn't. To add beside something else, use near, beside, above or below.` };
+  if (into && mayChange(into, author.terminalId, ctx.elements) !== "edit") return { error: `${JSON.stringify(drawingName(into))} can't be added to without the user. Draw near it instead.` };
   const nearId = req.near ? realId(req.near, ctx) : null;
   if (req.near && !nearId) return { error: `There's nothing on the canvas with the id ${req.near} to draw near.` };
 
@@ -440,9 +442,10 @@ export function buildDrawing(req: CanvasDraw, ctx: DrawContext): Drawing | { err
     made.set(item, boxElement(item, id, { x: item.x ?? 0, y: item.y ?? 0 }, author, req.size));
   }
   // With no place given: rows, under what has one.
-  const loose = boxes.filter((x) => (x.x === undefined || x.y === undefined) && !x.beside);
+  const anchored = (x: CanvasItem) => !!(x.beside || x.above || x.below);
+  const loose = boxes.filter((x) => (x.x === undefined || x.y === undefined) && !anchored(x));
   if (loose.length) {
-    const placed = [...inside.filter(isBoxed), ...boxes.filter((x) => !loose.includes(x) && !x.beside).map((x) => made.get(x) as unknown as BoardRect)] as BoardRect[];
+    const placed = [...inside.filter(isBoxed), ...boxes.filter((x) => !loose.includes(x) && !anchored(x)).map((x) => made.get(x) as unknown as BoardRect)] as BoardRect[];
     const under = unionRect(placed);
     const spots = flowIntoRows(loose.map((x) => made.get(x) as unknown as BoardRect), under ? { x: under.x, y: under.y + under.h + 60 } : { x: 0, y: 0 });
     loose.forEach((x, i) => made.set(x, { ...(made.get(x) as BoardElement), ...spots[i] } as BoardElement));
@@ -455,6 +458,25 @@ export function buildDrawing(req: CanvasDraw, ctx: DrawContext): Drawing | { err
       if (!section || holder?.type !== "section") return { error: `in must be the key of a section in this drawing; ${item.in} isn't.` };
       if (item === holder) return { error: `${item.in} can't be in itself.` };
       e = { ...e, parent: section };
+    }
+    const edge = item.above ?? item.below;
+    if (edge) {
+      const target = realId(edge, ctx);
+      const el = target ? ctx.elements.find((x) => x.id === target) : undefined;
+      const at = target ? (before(target)?.rect ?? (el ? bounds(el, before) : null)) : null;
+      if (!at) return { error: `There's nothing on the canvas with the id ${edge} to put this ${item.above ? "above" : "below"}.` };
+      const r = e as unknown as BoardRect;
+      // Clear of a section's or drawing's own name, which is above it.
+      const name = el && isContainer(el) && item.above ? 48 : 0;
+      const x = Math.round(at.x + (at.w - r.w) / 2);
+      const y = Math.round(item.above ? at.y - r.h - 20 - name : at.y + at.h + 20);
+      // It goes along when that's moved: in it when it's a drawing or section, else in what that's in.
+      const parent = el && isContainer(el) ? el.id : el?.parent;
+      const placed = { ...e, x, y, ...(parent ? { parent } : {}) } as BoardElement;
+      const over = [...ctx.tiles.filter((t) => overlaps(t, placed as unknown as BoardRect)).map((t) => t.name), ...ctx.elements.filter((x2) => x2.id !== target && isBoxed(x2) && !isContainer(x2) && overlaps(x2, placed as unknown as BoardRect)).map(drawingName)];
+      if (over.length) notes.push(`${JSON.stringify(drawingName(placed))} is over ${over.slice(0, 3).map((n) => JSON.stringify(n)).join(", ")}: make it smaller, or move it with change_drawing.`);
+      outside.push(placed);
+      continue;
     }
     if (item.beside) {
       const target = realId(item.beside, ctx);
@@ -555,7 +577,20 @@ export function buildDrawing(req: CanvasDraw, ctx: DrawContext): Drawing | { err
   let frame: string | null = null;
   const taken = [...occupied(ctx, before), ...outside.filter((x) => x.type !== "arrow").map((x) => bounds(x, before))];
   let result: BoardElement[] = inside;
-  if (area && req.exact) {
+  if (area && req.exact && into) {
+    // Where it said, in that drawing, which grows to hold it.
+    const box = into as Extract<BoardElement, { type: "frame" }>;
+    const all = unionRect([box, { x: area.x - FRAME_PAD, y: area.y - FRAME_PAD, w: area.w + FRAME_PAD * 2, h: area.h + FRAME_PAD * 2 }])!;
+    frame = box.id;
+    result = [{ ...box, x: all.x, y: all.y, w: all.w, h: all.h }, ...inside.map((e) => (e.parent ? e : { ...e, parent: box.id }))];
+  } else if (area && req.exact && req.title !== null) {
+    frame = newId("f");
+    const head = inside.some((e) => e.type === "section") ? 64 : 0;
+    result = [
+      { id: frame, type: "frame", author, color: FRAME_COLORS[author.agent] ?? "ink", title: req.title, x: area.x - FRAME_PAD, y: area.y - FRAME_PAD - head, w: area.w + FRAME_PAD * 2, h: area.h + FRAME_PAD * 2 + head },
+      ...inside.map((e) => (e.parent ? e : { ...e, parent: frame! })),
+    ];
+  } else if (area && req.exact) {
     // Where it said. Nothing to frame: it's drawn among what's there.
   } else if (area && into) {
     const box = into as Extract<BoardElement, { type: "frame" }>;
@@ -597,27 +632,45 @@ export function buildDrawing(req: CanvasDraw, ctx: DrawContext): Drawing | { err
   return { elements: all, files: placedFiles, frame, keys, notes };
 }
 
-/** Its own drawings changed, as patches by id. Nothing of the user's, or of another agent's. */
-export function buildChanges(changes: readonly CanvasChange[], ctx: Omit<DrawContext, "newId">): { patches: Record<string, Partial<BoardElement>>; notes: string[] } | { error: string } {
+export interface Refusal {
+  error: string;
+}
+/** It needs the user's yes for these. */
+export interface NeedsYes {
+  ask: { targets: string[]; titles: string[] };
+}
+
+/**
+ * Drawings changed, as patches by id. `allowed` are the ones the user has said
+ * yes to. All of it or none: one that's the user's alone refuses the call, and
+ * one to ask about makes the whole call wait.
+ */
+export function buildChanges(changes: readonly CanvasChange[], ctx: Omit<DrawContext, "newId">, allowed: ReadonlySet<string> = new Set()): { patches: Record<string, Partial<BoardElement>>; notes: string[] } | Refusal | NeedsYes {
   const patches: Record<string, Partial<BoardElement>> = {};
+  const ask: BoardElement[] = [];
   for (const c of changes) {
     const e = ctx.elements.find((x) => x.id === c.id);
-    if (!e) return { error: `There's no drawing with the id ${c.id}.` };
-    if (!isMine(e, ctx.author)) return { error: `${JSON.stringify(drawingName(e))} (${c.id}) isn't yours to change: you can change only what you drew. You can draw something new beside it.` };
+    if (!e) return { error: ctx.tiles.some((t) => t.id === c.id || tileIdFor(t.id) === c.id) ? `${c.id} is a tile: those are the user's to move.` : `There's no drawing with the id ${c.id}.` };
+    const may = mayChange(e, ctx.author.terminalId, ctx.elements);
+    if (may === "mine") return { error: `${JSON.stringify(drawingName(e))} (${c.id}) is set to Only me: the user alone changes it, so don't ask. You can draw something new beside it.` };
+    if (may === "ask" && !allowed.has(c.id)) ask.push(e);
     const patch = changeFor(e, c, ctx);
     if (typeof patch === "string") return { error: patch };
     // A container's contents come along when it moves.
     if (isContainer(e) && isBoxed(e) && (patch.x !== undefined || patch.y !== undefined)) {
-      const dx = (patch.x as number | undefined ?? e.x) - e.x;
-      const dy = (patch.y as number | undefined ?? e.y) - e.y;
+      if (heldOnlyYours(e, ctx.elements)) return { error: `${JSON.stringify(drawingName(e))} holds something the user has set to Only me, so it can't be moved.` };
+      const dx = ((patch.x as number | undefined) ?? e.x) - e.x;
+      const dy = ((patch.y as number | undefined) ?? e.y) - e.y;
       for (const held of contentsOf(e, ctx.elements).elements) {
         if (patches[held.id] || changes.some((o) => o.id === held.id)) continue;
         const moved = shifted(held, dx, dy);
         patches[held.id] = held.type === "arrow" ? { a: (moved as BoardArrow).a, b: (moved as BoardArrow).b } : held.type === "pen" ? { points: (moved as typeof held).points } : { x: (moved as unknown as BoardRect).x, y: (moved as unknown as BoardRect).y };
       }
     }
-    patches[c.id] = patch;
+    // Who changed it last, when it isn't who drew it.
+    patches[c.id] = isMine(e, ctx.author) ? patch : { ...patch, editedBy: ctx.author };
   }
+  if (ask.length) return { ask: { targets: ask.map((e) => e.id), titles: ask.map(drawingName) } };
   const next = ctx.elements.map((e) => (patches[e.id] ? ({ ...e, ...patches[e.id] } as BoardElement) : e));
   const touched = next.filter((e) => patches[e.id] && !isContainer(e));
   const look = lookupIn(next, ctx.tiles);
@@ -687,18 +740,22 @@ function changeFor(e: BoardElement, c: CanvasLook, ctx: Omit<DrawContext, "newId
   return p as Partial<BoardElement> & Record<string, unknown>;
 }
 
-/** Which of its own go, with what a frame holds. Refuses anything that isn't its own. */
-export function buildDelete(ids: readonly string[], ctx: Omit<DrawContext, "newId">): { ids: string[] } | { error: string } {
+/** Which go, with what a frame holds. Its own at once; anything else needs the user's yes. */
+export function buildDelete(ids: readonly string[], ctx: Omit<DrawContext, "newId">, allowed: ReadonlySet<string> = new Set()): { ids: string[] } | Refusal | NeedsYes {
+  const ask: BoardElement[] = [];
   for (const id of ids) {
     const e = ctx.elements.find((x) => x.id === id);
-    if (!e) return { error: `There's no drawing with the id ${id}.` };
-    if (!isMine(e, ctx.author)) return { error: `${JSON.stringify(drawingName(e))} (${id}) isn't yours to delete: you can delete only what you drew.` };
+    if (!e) return { error: ctx.tiles.some((t) => t.id === id || tileIdFor(t.id) === id) ? `${id} is a tile: those are the user's to close.` : `There's no drawing with the id ${id}.` };
+    const may = mayDelete(e, ctx.author.terminalId, ctx.elements);
+    if (may === "mine") return { error: `${JSON.stringify(drawingName(e))} (${id}) is set to Only me: the user alone deletes it, so don't ask.` };
+    if (may === "ask" && !allowed.has(id)) ask.push(e);
   }
+  if (ask.length) return { ask: { targets: ask.map((e) => e.id), titles: ask.map(drawingName) } };
   const gone = new Set(ids);
   for (const id of ids) {
     const e = ctx.elements.find((x) => x.id === id)!;
-    // A frame is one drawing. What isn't its own in there stays.
-    if (e.type === "frame") for (const held of contentsOf(e, ctx.elements).elements) if (isMine(held, ctx.author)) gone.add(held.id);
+    // A frame is one drawing: what its agent drew in it goes. What anyone else put there stays.
+    if (e.type === "frame") for (const held of contentsOf(e, ctx.elements).elements) if (held.agents !== "mine" && (isMine(held, ctx.author) || (e.author?.kind === "agent" && isOwn(held, e.author.terminalId ?? "")))) gone.add(held.id);
   }
   return { ids: [...gone] };
 }
@@ -706,10 +763,14 @@ export function buildDelete(ids: readonly string[], ctx: Omit<DrawContext, "newI
 /** What the agent is told it drew. */
 export function drawnWords(d: Drawing, title: string | null, fileIds: readonly string[] = []): string {
   const named = Object.entries(d.keys);
+  const place = (id: string) => {
+    const e = d.elements.find((x) => x.id === id);
+    return e && isBoxed(e) ? ` ${Math.round(e.x)},${Math.round(e.y)} ${Math.round(e.w)}×${Math.round(e.h)}` : "";
+  };
   const at = d.frame ?? d.elements.find((e) => e.type !== "arrow")?.id ?? fileIds[0] ?? null;
   return [
     `Drawn${title ? ` ${JSON.stringify(title)}` : ""}${at ? ` (id ${at})` : ""}. The user sees it on the canvas.`,
-    ...(named.length ? [`Ids: ${named.map(([k, id]) => `${k} ${id}`).join(", ")}`] : []),
+    ...(named.length ? [`Ids${named.length <= 12 ? " (x,y w×h)" : ""}: ${named.map(([k, id]) => `${k} ${id}${named.length <= 12 ? place(id) : ""}`).join("; ")}`] : []),
     ...(d.notes.length ? [`Worth a look: ${d.notes.join(" ")}`] : []),
   ].join("\n");
 }

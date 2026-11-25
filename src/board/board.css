@@ -89,7 +89,21 @@
 
 .tc-bd-section, .tc-bd-frame { position: absolute; border-radius: 18px; pointer-events: none; }
 .tc-bd-section { background: color-mix(in srgb, var(--c) 6%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 38%, transparent); }
-.tc-bd-frame { background: color-mix(in srgb, var(--bg) 72%, transparent); border: 1.5px dashed color-mix(in srgb, var(--c) 55%, transparent); }
+.tc-bd-frame { background: color-mix(in srgb, var(--bg) 72%, transparent); border: 1.5px solid color-mix(in srgb, var(--c) 55%, transparent); }
+/* Dashed: agents may change it. Solid: they ask, or can't. */
+.tc-bd-frame.is-open { border-style: dashed; }
+.tc-bd-section.is-open { box-shadow: none; border: 1.5px dashed color-mix(in srgb, var(--c) 45%, transparent); }
+.tc-bd-accessbadge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 7px; corner-shape: squircle; background: color-mix(in srgb, var(--text-primary) 8%, var(--surface)); color: var(--text-secondary); font-size: 11.5px; white-space: nowrap; }
+.tc-bd-askpin { position: absolute; z-index: 6; width: 340px; transform-origin: 0 0; pointer-events: auto; border-radius: 14px; corner-shape: squircle; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38); }
+.tc-bd-askmark { position: absolute; z-index: 6; display: inline-flex; align-items: center; gap: 7px; transform-origin: 0 0; pointer-events: auto; padding: 3px 11px 3px 4px; border-radius: 11px; corner-shape: squircle; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border)); background: var(--surface); color: var(--text-primary); font-size: 12px; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
+.tc-bd-askmark:hover, .tc-bd-askmark[aria-expanded="true"] { border-color: var(--amber); }
+.tc-bd-askstrip { flex-shrink: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--amber) 7%, var(--surface)); cursor: default; }
+.tc-tk-request { border-radius: 14px; corner-shape: squircle; scroll-margin: 12px; }
+.tc-tk-request[data-shown="true"] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 60%, transparent); }
+.tc-bd-access { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--bg) 70%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent); }
+.tc-bd-access button { display: inline-flex; flex: 1; min-width: 0; height: 26px; align-items: center; justify-content: center; gap: 4px; border-radius: 7px; font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.tc-bd-access button:hover { color: var(--text-primary); }
+.tc-bd-access button[aria-checked="true"] { background: var(--surface-hover); color: var(--text-primary); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 3px rgba(0, 0, 0, 0.35); }
 .tc-bd-title-anchor { position: absolute; width: 0; height: 0; }
 .tc-bd-title {
   position: absolute; left: 0; bottom: 0; padding-bottom: 7px; display: flex; align-items: center; gap: 6px; white-space: nowrap;

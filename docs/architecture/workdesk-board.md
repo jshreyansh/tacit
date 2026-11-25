@@ -221,7 +221,7 @@ still lays out diagrams, which agents place badly by hand.
 |---|---|
 | `read_canvas({ id?, picture? })` | What's on the canvas, or one drawing or section, as structured content: text, shapes, arrows and what they join, stickies, sections and what they hold, pen strokes, and the tiles (terminals, tasks, browsers, files with their paths). With `picture`, also an image of it. Always allowed. |
 | `draw({ title?, flowchart?, table?, items?, near?, into?, size?, exact? })` | New things of its own. `items` are your tools: text, shape, sticky, section, arrow, pen. `flowchart` and `table` are laid out by Tacit. Returns the ids. |
-| `change_drawing({ changes })` | Moves, resizes, restyles, renames or joins. Its own freely; yours by Permissions. |
+| `change_drawing({ changes })` | Moves, resizes, restyles, renames or joins. Its own and other agents' at once; yours by Permissions. |
 | `delete_drawing({ ids })` | Its own. Yours always asks. |
 
 - **Asking first:** drawing new things doesn't ask each time. It can always be
@@ -346,8 +346,27 @@ minimum and can't be turned off; it's how an agent understands what you mean.
   default.
 - **A task started from a sticky** is its own record; the sticky stays a note.
 
-All enforcement is in the main process, before `execRenderer`. The renderer
-never decides whether an agent may change something.
+**Built** 25 Nov (T21.3). Where it is, and what differs from the above:
+
+- The rule is one file, `boardAccess.ts`: what's set on a drawing or round it
+  holds for everyone; with nothing set, yours ask and agents' are shared. Its
+  test walks every case. Agents reach the canvas only through the API server,
+  which checks what's sent and has no way to say what's allowed: the yes is the
+  request main keeps (`canvas-requests.ts`), applied as it was asked, once.
+- The scene lives in the window, so whose a drawing is is read there. (The plan
+  said main; main has no scene.)
+- A request is kept across a restart. More of the same from the same agent joins
+  it. **Needs you is its home** (a card on the board, not a task: a yes or no has no
+  end to track), the same on the canvas and in the grid. Everywhere else points
+  there or lets you answer: the count in the left panel, the agent's mark in Chats
+  and on its grid card, the strip on its terminal, the card in its chat, a marker
+  on the drawing that opens the card (never over the drawing by itself), and the
+  attention notices a task gets. Later: on its agent's task, other workdesks, the
+  Hub, Activity.
+- A whole call waits if any of it needs a yes. Only me refuses it.
+- The answer reaches the agent as a message when its turn is over.
+- Settings are at the foot of the rail (`AccessControls.tsx`); the default for
+  new drawings is this Mac's.
 
 ## Platform boundary
 
@@ -383,7 +402,7 @@ app.
    cursor, chat card, notices, Undo. Built 25 Nov: `shared/canvas-ops.ts`
    (what may be sent), `flowchart.ts` (Mermaid, layered layout), `agentDraw.ts`
    (what it becomes, and whose it is), `agentOps.ts` (onto the board, Undo).
-4. **Permissions** (T21.3):
+4. **Permissions** (T21.3). Built 25 Nov:
    - the Agents setting, defaults and inheritance;
    - approval cards and Needs you;
    - the wait-while-editing rule and delete rules.

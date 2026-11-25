@@ -87,6 +87,8 @@ import {
   isValidBrowserIdentityId,
   partitionForBrowserIdentity,
 } from "../shared/browser-profile-import";
+import { registerCanvasIpc } from "./canvas-ipc";
+import { CanvasRequests } from "./canvas-requests";
 import { TaskStore } from "./task-store";
 import { TaskRunner, type TaskTerminal } from "./task-runner";
 import { TaskEvidence } from "./task-evidence";
@@ -859,6 +861,8 @@ const taskEvidence = new TaskEvidence({
   othersChangedSince: (terminal, dir, since, except) => turnCheckpoints.othersChangedSince(terminal, dir, since, except),
   now: () => Date.now(),
 });
+/** What agents have asked to change on the canvas (electron/canvas-requests.ts). */
+const canvasRequests = new CanvasRequests(path.join(TACIT_DIR, "canvas-requests.json"), (list) => sendToWindow(mainWindow, "canvas-requests:changed", list), Date.now, (request) => attention.observeCanvasRequest(request));
 const taskRunner: TaskRunner = new TaskRunner({
   store: taskStore,
   terminal: async (id): Promise<TaskTerminal | null> => {
@@ -953,6 +957,7 @@ const apiServer = new ApiServer({
     const small = image.getSize().width > 700 ? image.resize({ width: 700 }) : image;
     return `data:image/jpeg;base64,${small.toJPEG(80).toString("base64")}`;
   },
+  canvasRequests,
   fileOnWorkdesk: (filePath) => fileTiles.inspect(filePath).ok,
   canvasPicturesDir: path.join(TACIT_DIR, "canvas-pictures"),
   recallService,
@@ -3002,6 +3007,21 @@ function setupIpc() {
 
   ipcMain.handle("state:load", () => {
     return statePersistence.open();
+  });
+
+  registerCanvasIpc({
+    handle: (channel, fn) => ipcMain.handle(channel, fn),
+    allowed: isMainWindowSender,
+    requests: canvasRequests,
+    apply: (request, always) => apiServer.applyCanvasRequest(request, always),
+    tell: async (terminalId, text) => {
+      if (chatEngine.isRunning(terminalId)) {
+        chatEngine.send(terminalId, text);
+        return;
+      }
+      const to = await apiServer.taskTerminal(terminalId);
+      if (to) await apiServer.deliverForTask({ ...to, running: to.ptyId != null, agent: true }, text, `canvas|${terminalId}`);
+    },
   });
 
   ipcMain.handle("state:opened", (event) => {

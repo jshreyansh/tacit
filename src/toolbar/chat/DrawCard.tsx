@@ -31,7 +31,7 @@ export function DrawCard({ view, running }: { view: CanvasToolView; running: boo
     } else setPicture(null);
   }, [view.kind, id, element, file, op?.undone]);
   const name = view.title || (element?.type === "frame" || element?.type === "section" ? element.title : "");
-  const words = running ? t.agent_canvas_drawing : { draw: name || t.agent_canvas_drew, change: t.agent_canvas_changed, delete: t.agent_canvas_deleted }[view.kind];
+  const words = running ? t.agent_canvas_drawing : view.asked ? t.agent_canvas_asked : { draw: name || t.agent_canvas_drew, change: t.agent_canvas_changed, delete: t.agent_canvas_deleted }[view.kind];
   return (
     <div className="my-1.5 overflow-hidden tc-sq-card border border-[var(--border)]">
       {picture && (

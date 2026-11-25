@@ -31,6 +31,10 @@ import {
   type TargetLookup,
 } from "./boardModel";
 import { rerouteBroken } from "./boardReroute";
+import { useT } from "../i18n/useT";
+import { AccessBadge } from "./AccessControls";
+import { accessOf } from "./boardAccess";
+import { CanvasAskPins } from "./CanvasAskPins";
 import { AgentCursors } from "./AgentCursors";
 import { useAgentOps } from "./agentOps";
 import { boardTargetLookup, collectTileRects, publishTileRects, tileRects } from "./boardTargets";
@@ -203,6 +207,7 @@ const Boxed = memo(function Boxed({
   editing,
   born,
   delay,
+  open = false,
   part = "body",
 }: {
   e: BoxedElement;
@@ -212,9 +217,12 @@ const Boxed = memo(function Boxed({
   editing: boolean;
   born: boolean;
   delay?: number;
+  /** Agents may change it at once: its edge is dashed. */
+  open?: boolean;
   /** A section or frame is drawn twice: its area behind the tiles, its name in front, so a tile never hides the handle you move it by. */
   part?: "body" | "title";
 }) {
+  const t = useT();
   const cls = `${selected ? " is-sel" : ""}${hovered ? " is-hov" : ""}${born ? " is-born" : ""}`;
   const pos = { left: e.x, top: e.y, width: e.w, height: e.h, "--c": cssColor(e.color), ...after(delay) } as React.CSSProperties;
   if (e.type === "text") return null;
@@ -229,13 +237,14 @@ const Boxed = memo(function Boxed({
             ) : (
               <span className="tc-bd-title-text">{e.title || (e.type === "section" ? "Section" : "Drawing")}</span>
             )}
-            {agent && !e.parent && <span className="tc-bd-byline">drawn by {agent.name}</span>}
+            {agent && !e.parent && <span className="tc-bd-byline">{e.editedBy?.kind === "agent" ? t.board_drawn_edited(agent.name, e.editedBy.name) : t.board_drawn_by(agent.name)}</span>}
+            <AccessBadge e={e} />
           </div>
         </div>
       );
     }
     return (
-      <div className={`tc-bd-${e.type}${cls}`} data-board-container={e.id} style={pos} />
+      <div className={`tc-bd-${e.type}${cls}${open ? " is-open" : ""}`} data-board-container={e.id} style={pos} />
     );
   }
   if (e.type === "sticky") {
@@ -434,7 +443,7 @@ export const BoardLayer = memo(function BoardLayer() {
     } else if (e.type === "text") {
       mid.push(<MeasuredText key={e.id} e={e} editing={editingId === e.id} selected={isSel} hovered={hoverId === e.id} born={born(e.id)} delay={delays[e.id]} />);
     } else {
-      const node = <Boxed key={e.id} e={e} selected={isSel} single={single} hovered={hoverId === e.id && !isSel} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} />;
+      const node = <Boxed key={e.id} e={e} selected={isSel} single={single} hovered={hoverId === e.id && !isSel} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} open={(e.type === "section" || e.type === "frame") && accessOf(e, elements) === "edit"} />;
       if (e.type === "section" || e.type === "frame") {
         back.push(node);
         titles.push(<Boxed key={`${e.id}-title`} e={e} part="title" selected={isSel} single={single} hovered={false} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} />);
@@ -692,6 +701,7 @@ export const BoardLayer = memo(function BoardLayer() {
           {titles}
           {top}
           <AgentCursors />
+          <CanvasAskPins />
           {resizable && <ResizeZones e={resizable} />}
           {qcSource &&
             DIRS.map((d) => {

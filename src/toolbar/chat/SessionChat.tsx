@@ -12,6 +12,7 @@ import {
   sendToManagerChat,
 } from "../../actions/managerChatMode";
 import { useNotificationStore } from "../../stores/notificationStore";
+import { CanvasAsks } from "../../board/CanvasAskCard";
 import { ApprovalCards, ChatThread } from "./ChatThread";
 import { canSwitchToAuto } from "./composerSettingsModel";
 import { QuestionForm } from "./QuestionForm";
@@ -163,6 +164,7 @@ export function SessionChatBody({ terminalId, agent, compact = false }: { termin
         behind={
           <>
             <QueuedMessages terminalId={terminalId} onSendNow={(text, attachments) => void sendNow(text, attachments).catch(notifyFailure)} />
+            <CanvasAsks terminalId={terminalId} />
             <ApprovalCards
               approvals={transcript.approvals}
               onAnswer={(id, decision, note) => void answerManagerApproval(terminalId, id, decision, note)}

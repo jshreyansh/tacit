@@ -1560,6 +1560,16 @@ contextBridge.exposeInMainWorld("tacit", {
       return () => ipcRenderer.removeListener("menu:select-all", listener);
     },
   },
+  canvasRequests: {
+    list: () => ipcRenderer.invoke("canvas-requests:list"),
+    answer: (id: string, decision: "once" | "always" | "deny", note?: string) => ipcRenderer.invoke("canvas-requests:answer", id, decision, note),
+    drop: (id: string) => ipcRenderer.invoke("canvas-requests:drop", id),
+    onChanged: (callback: (list: unknown[]) => void) => {
+      const listener = (_event: unknown, list: unknown[]) => callback(list);
+      ipcRenderer.on("canvas-requests:changed", listener);
+      return () => ipcRenderer.removeListener("canvas-requests:changed", listener);
+    },
+  },
   tasks: {
     list: () => ipcRenderer.invoke("tasks:list"),
     create: (workdesk: string, input: unknown) => ipcRenderer.invoke("tasks:create", workdesk, input),

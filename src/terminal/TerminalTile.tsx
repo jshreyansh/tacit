@@ -1,4 +1,6 @@
-﻿import { openFolderPlace } from "../actions/folderTools";
+﻿import { CanvasAskStrip } from "../board/CanvasAskCard";
+import { useCanvasRequests } from "../board/canvasRequests";
+import { openFolderPlace } from "../actions/folderTools";
 import { StartedWithMemory } from "../components/StartedWithMemory";
 import { lazy, Suspense, useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
@@ -299,6 +301,7 @@ export function TerminalTile({
   // own chat lives in the panel instead).
   const isManagerTile = useCanvasRegistryStore((s) => s.canvases.some((c) => c.workspaceManagerTerminalId === terminal.id));
   const chatSession = !!terminal.chatMode && !isManagerTile;
+  const asksYou = useCanvasRequests(terminal.id).length > 0;
   const chatNeedsYou = useManagerChatStore((s) => {
     if (!terminal.chatMode) return false;
     const transcript = s.transcripts[terminal.id];
@@ -907,7 +910,7 @@ export function TerminalTile({
           : undefined
       }
       data-overview={isOverviewMode ? "true" : undefined}
-      data-needs-you={chatNeedsYou ? "true" : undefined}
+      data-needs-you={chatNeedsYou || asksYou ? "true" : undefined}
       data-handoff-terminal-id={terminal.id}
       data-handoff-source={isHandoffSource ? "true" : undefined}
       data-handoff-target={isHandoffTarget ? "true" : undefined}
@@ -1240,6 +1243,9 @@ export function TerminalTile({
           </button>
         </div>
       )}
+
+      {/* In a chat it's a card above the message box. */}
+      {!terminal.chatMode && !terminal.minimized && <CanvasAskStrip terminalId={terminal.id} />}
 
       {pendingSwitch && !terminal.minimized && (
         <PendingSwitchLine terminalId={terminal.id} className="shrink-0 border-b border-[var(--border)] px-2.5 py-1 nopan" />

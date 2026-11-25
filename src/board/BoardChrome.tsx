@@ -7,6 +7,7 @@ import { deleteSelectedSceneItems } from "../actions/sceneDeleteActions";
 import { fitAllProjects, setZoomToHundred, stepZoomAtCenter } from "../canvas/zoomActions";
 import { CHROME_TOP } from "../canvas/floatingChrome";
 import { useT } from "../i18n/useT";
+import { AccessRow, AccessSettings } from "./AccessControls";
 import type { BoardElement, BoardTextSize } from "../types/board";
 import { BOARD_COLORS, BOARD_COLOR_NAMES, SIZE_STEPS, cssColor } from "./boardModel";
 import { BoardIcon, type BoardIconName } from "./BoardIcons";
@@ -156,7 +157,11 @@ function OptionsBody({ ctx }: { ctx: Ctx }) {
   // Tiles selected with drawings stay; only the drawings are deleted.
   const deleteLabel = ctx.kind === "many" && ctx.total > ctx.els.length ? t.board_delete_drawings : t.board_delete;
   // Selected things: what can be done with them, as small buttons at the foot.
+  // What's inside a section or drawing follows it until it's given its own.
+  const own = ctx.kind === "element" ? [ctx.el] : ctx.kind === "many" ? ctx.els : [];
   const actions = ctx.kind !== "tool" && (
+    <>
+    {own.length > 0 && <AccessRow els={own} />}
     <div className="tc-bd-actions">
       {el?.type === "sticky" && (
         <>
@@ -180,6 +185,7 @@ function OptionsBody({ ctx }: { ctx: Ctx }) {
         </button>
       </span>
     </div>
+    </>
   );
   const toolKey = ctx.kind === "tool" ? KEY_OF[ctx.tool] : undefined;
 
@@ -407,6 +413,7 @@ export const BoardChrome = memo(function BoardChrome() {
             </button>
           </div>
         ))}
+        <AccessSettings />
       </div>
 
       {/* Never over the options, which sit in the same place and name their tool. */}

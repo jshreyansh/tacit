@@ -1092,6 +1092,13 @@ export interface TacitAPI {
       total: number;
     }>;
   };
+  /** What agents ask to change on the canvas, that isn't theirs. */
+  canvasRequests: {
+    list: () => Promise<import("../../shared/canvas-ops").CanvasRequest[]>;
+    answer: (id: string, decision: import("../../shared/canvas-ops").CanvasDecision, note?: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+    drop: (id: string) => Promise<void>;
+    onChanged: (callback: (list: import("../../shared/canvas-ops").CanvasRequest[]) => void) => () => void;
+  };
   state: {
     load: () => Promise<PersistedCanvasState | null>;
     /** What was loaded is open. Until then nothing is saved. */

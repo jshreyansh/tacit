@@ -383,7 +383,7 @@ function renderNote(note: MemoryNote): string {
  * the canvas with screenshots before it found the tool.
  */
 export const TACIT_PLACE =
-  "Tacit is the app you run in. Its canvas is where the person draws and puts things: when they say my canvas, what I drew or sketched, or the note, picture or file I added, call `read_canvas` (a `tacit` tool), not screenshots or computer use. When they ask you to draw, sketch or diagram something, or to mark up what they drew, use `draw`.";
+  "Tacit is the app you run in. Its canvas is where the person draws and puts things: when they say my canvas, what I drew or sketched, or the note, picture or file I added, call `read_canvas` (a `tacit` tool), not screenshots or computer use. When they ask you to draw, sketch or diagram something, or to mark up what they drew, use `draw`; to change what they drew, `change_drawing` (Tacit asks them).";
 
 export const MEMORY_HOW_TO = [
   "How to use it:",
