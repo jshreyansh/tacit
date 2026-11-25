@@ -5,6 +5,7 @@ All notable changes to Tacit will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- A browser tab keeps its page's address when a frame inside the page moves. Excel Online's hidden sign-in frame replaced it, and the tab then reopened that frame alone after a restart.
 - **Check for updates** while an update is downloading shows the download instead of "Couldn't check".
 - An update check tries again when the network changes or drops mid-check (as when a VPN or Wi-Fi reconnects); half the checks on one Mac failed this way.
 - When Tacit runs from somewhere it can't update itself (the disk image, Downloads), it says to move it to Applications instead of "Couldn't reach the update server".

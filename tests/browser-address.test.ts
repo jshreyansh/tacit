@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addressFor, shownAddress } from "../src/browser/address";
+import { addressFor, shownAddress, tabAddressFrom } from "../src/browser/address";
 
 test("what's typed is an address, or a search for it", () => {
   assert.equal(addressFor("  "), null);
@@ -24,4 +24,12 @@ test("an address reads as the site, then the rest", () => {
   assert.deepEqual(shownAddress("http://localhost:3000/a"), { site: "localhost:3000", rest: "/a" });
   assert.deepEqual(shownAddress("about:blank"), { site: "about:blank", rest: "" });
   assert.deepEqual(shownAddress("nonsense"), { site: "nonsense", rest: "" });
+});
+
+test("a frame inside the page moving doesn't move the tab", () => {
+  const sheet = "https://swishintranet.sharepoint.com/:x:/s/team/IQB?e=0";
+  assert.equal(tabAddressFrom({ url: sheet, isMainFrame: true }), sheet);
+  assert.equal(tabAddressFrom({ url: "https://webshell.suite.office.com/iframe/TokenFactoryIframe", isMainFrame: false }), null);
+  // did-navigate has no isMainFrame: it's only ever the page.
+  assert.equal(tabAddressFrom({ url: sheet }), sheet);
 });

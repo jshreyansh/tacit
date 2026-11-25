@@ -27,3 +27,13 @@ export function shownAddress(url: string): { site: string; rest: string } {
     return { site: url, rest: "" };
   }
 }
+
+/**
+ * Where the tab now is, from a navigation event: null when it was a frame
+ * inside the page. `did-navigate-in-page` fires for frames too, and a page
+ * like Excel Online routes a hidden sign-in frame in place; taking its address
+ * replaced the tab's, and the saved tab then opened the frame alone.
+ */
+export function tabAddressFrom(event: { url: string; isMainFrame?: boolean }): string | null {
+  return event.isMainFrame === false ? null : event.url;
+}

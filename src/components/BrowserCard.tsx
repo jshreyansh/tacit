@@ -22,7 +22,7 @@ import { useIdentityStore, partitionForIdentity } from "../stores/identityStore"
 import { isAgentAllowed } from "../types/workspace";
 import { isGuestProfile, profileSwatch } from "../browser/profileColor";
 import { PickerHeading, PickerPopover } from "../agents/AgentPicker";
-import { addressFor, shownAddress } from "../browser/address";
+import { addressFor, shownAddress, tabAddressFrom } from "../browser/address";
 import { managedBrowserBinding } from "../../shared/browser-controller";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import { useT } from "../i18n/useT";
@@ -140,7 +140,10 @@ export function BrowserCard({ card, projectedLayout }: Props) {
     let lastRecordedAt = 0;
     const NAVIGATION_DEDUPE_MS = 1_500;
 
-    const onNavigate = ((e: Event & { url: string }) => {
+    const onNavigate = ((event: Event & { url: string; isMainFrame?: boolean }) => {
+      const url = tabAddressFrom(event);
+      if (url === null) return;
+      const e = { url };
       try {
         setHistory({ back: wv.canGoBack(), forward: wv.canGoForward() });
       } catch {
