@@ -785,6 +785,8 @@ contextBridge.exposeInMainWorld("tacit", {
   },
   state: {
     load: () => ipcRenderer.invoke("state:load"),
+    opened: () => ipcRenderer.invoke("state:opened"),
+    replace: () => ipcRenderer.invoke("state:replace"),
     save: (state: unknown) => ipcRenderer.invoke("state:save", state),
     // Backs the final-flush-before-quit fix in electron/main.ts's
     // "will-quit" handler: normal autosave is debounced (5s) or a 60s

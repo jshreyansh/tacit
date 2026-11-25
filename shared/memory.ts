@@ -377,9 +377,17 @@ function renderNote(note: MemoryNote): string {
   return `- **${note.description}**${from}${indented ? `\n  ${indented}` : ""}`;
 }
 
+/**
+ * Where an agent is, in one line: said first, since some CLIs show only the
+ * start of a server's instructions. Codex, told only about memory, looked for
+ * the canvas with screenshots before it found the tool.
+ */
+export const TACIT_PLACE =
+  "Tacit is the app you run in. Its canvas is where the person draws and puts things: when they say my canvas, what I drew or sketched, or the note, picture or file I added, call `read_canvas` (a `tacit` tool), not screenshots or computer use.";
+
 export const MEMORY_HOW_TO = [
   "How to use it:",
-  "- Before starting something, `recall` it: it searches these notes, the decision record and the workdesk's history.",
+  "- Before starting a piece of work (not a quick question), `recall` it: it searches these notes, the decision record and the workdesk's history.",
   "- Save as you go, with `remember`, in the same turn you learn it. Don't just keep it in mind: your context ends with this session, and the next agent may be a different CLI. Save when:",
   "  - the person corrects you, or says something in the repo (README, docs, a comment) is wrong or out of date;",
   "  - the person states a decision, a rule or a preference (\"we always…\", \"never…\", \"from now on…\");",
@@ -430,6 +438,8 @@ export function buildBrief(input: BriefInput): Brief {
   ];
 
   const head = [
+    TACIT_PLACE,
+    "",
     "# Tacit memory",
     "",
     "What Tacit's agents have learned about this person, this workdesk and this folder, shared by every agent whichever CLI it runs. Trust it like notes from a teammate: check anything that may have changed before relying on it.",

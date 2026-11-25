@@ -76,7 +76,7 @@
 
 .tc-bd-text { white-space: pre; font-weight: 650; line-height: 1.15; letter-spacing: -0.015em; min-width: 8px; transition: color 140ms; }
 .tc-bd-text.tc-bd-size-S { font-weight: 500; letter-spacing: 0; }
-.tc-bd-text.tc-bd-size-XL { letter-spacing: -0.03em; }
+.tc-bd-text.tc-bd-size-XL, .tc-bd-text[class*="tc-bd-size-2"], .tc-bd-text[class*="tc-bd-size-3"] { letter-spacing: -0.03em; }
 
 .tc-bd-sticky {
   padding: 16px 16px 18px; border-radius: 3px 3px 3px 16px;

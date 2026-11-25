@@ -28,6 +28,7 @@ import {
   type Point,
 } from "./boardModel";
 import { boardTargetLookup, tileRects } from "./boardTargets";
+import { roomForWords } from "./boardText";
 
 const board = () => useBoardStore.getState();
 const you = { kind: "you" } as const;
@@ -157,7 +158,7 @@ export function commitText(id: string, text: string): void {
     }
     board().patch({ [id]: { text: clean } });
   } else if (e.type === "shape" || e.type === "sticky") {
-    board().patch({ [id]: { text: clean } });
+    board().patch({ [id]: { text: clean, ...roomForWords({ ...e, text: clean }) } });
   } else if (e.type === "section" || e.type === "frame") {
     board().patch({ [id]: { title: clean.trim() || e.title || "Section" } });
   }
@@ -330,7 +331,8 @@ export function setStyleProp<K extends keyof BoardStyle>(prop: K, value: BoardSt
       (prop === "weight" && (e.type === "pen" || e.type === "arrow" || e.type === "shape")) ||
       ((prop === "label" || prop === "align") && (e.type === "shape" || e.type === "sticky")) ||
       (prop === "textColor" && e.type === "shape");
-    if (fits) changes[e.id] = { [prop]: value } as Partial<BoardElement>;
+    // Bigger words, or a shape with less room for them: it grows to fit.
+    if (fits) changes[e.id] = { [prop]: value, ...(prop === "label" || prop === "shape" ? roomForWords({ ...e, [prop]: value } as BoardElement) : null) } as Partial<BoardElement>;
   }
   if (Object.keys(changes).length === 0) return;
   board().checkpoint();

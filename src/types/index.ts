@@ -1094,6 +1094,10 @@ export interface TacitAPI {
   };
   state: {
     load: () => Promise<PersistedCanvasState | null>;
+    /** What was loaded is open. Until then nothing is saved. */
+    opened: () => Promise<void>;
+    /** Save what's open over what couldn't be opened, which is kept beside it. */
+    replace: () => Promise<void>;
     save: (state: unknown) => Promise<void>;
     onFlushBeforeQuit: (callback: () => void) => () => void;
     notifyFlushComplete: () => void;

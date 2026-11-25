@@ -32,7 +32,7 @@ export interface BoardRect {
 
 type Boxed = BoardBase & BoardRect;
 
-export type BoardTextSize = "S" | "M" | "L" | "XL";
+export type BoardTextSize = "S" | "M" | "L" | "XL" | "2XL" | "3XL";
 export type BoardShapeKind = "rect" | "ellipse" | "diamond";
 export type BoardFill = "none" | "soft" | "solid";
 export type BoardCorners = "round" | "sharp";
@@ -40,7 +40,7 @@ export type BoardRoute = "straight" | "curve" | "elbow";
 export type BoardArrowEnds = "none" | "end" | "both";
 export type BoardWeight = "thin" | "medium" | "bold";
 /** The size of the words inside a shape or sticky. */
-export type BoardLabelSize = "S" | "M" | "L" | "XL";
+export type BoardLabelSize = BoardTextSize;
 export type BoardAlign = "left" | "center" | "right";
 
 export interface BoardText extends Boxed {

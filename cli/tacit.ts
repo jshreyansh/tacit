@@ -293,6 +293,16 @@ async function runTaskCommand(command: string | undefined, rest: string[]): Prom
   else console.log(TASK_USAGE);
 }
 
+async function runCanvasCommand(command: string | undefined, rest: string[]): Promise<void> {
+  if (command !== "read") return console.log("Usage: tacit canvas read [<id>] [--picture]");
+  const terminal = process.env.TACIT_TERMINAL_ID?.trim() || stop("tacit canvas reads the canvas this terminal is on: run it in one of Tacit's terminals.");
+  const id = rest.find((a) => !a.startsWith("--"));
+  const read = await request("POST", `/terminal/${encodeURIComponent(terminal)}/canvas/read`, { ...(id ? { id } : {}), ...(rest.includes("--picture") ? { picture: true } : {}) });
+  console.log(read.canvas);
+  // The picture is a file to open; its bytes are no use in a terminal.
+  if (read.picture) console.log(`\nPicture: ${read.picture.file}`);
+}
+
 async function runNoteCommand(command: string | undefined, rest: string[]): Promise<void> {
   if (command === "add") {
     const title = flagOf(rest, "--title");
@@ -828,6 +838,8 @@ async function main() {
       }
     } else if (group === "note") {
       await runNoteCommand(command, rest);
+    } else if (group === "canvas") {
+      await runCanvasCommand(command, rest);
     } else if (group === "task" || group === "pin") {
       await runTaskCommand(command, rest);
     } else if (group === "browser") {
@@ -1008,6 +1020,7 @@ async function main() {
       console.log("  task add --title <t> [--body <b>] [--done-when <l>]...  Put a task on the workdesk's board");
       console.log("  task list | show <id>                      Read the board");
       console.log("  task take|part|say|ask|approve|finish <id> Work on one, from a terminal on the workdesk");
+      console.log("  canvas read [<id>] [--picture]             What's drawn on the canvas, from a terminal on it");
       console.log('  note add "<text>" | list | show <id>       Notes on the canvas');
       console.log(
         "  browser add <url> [--x N] [--y N]          Add a browser tile to the canvas",

@@ -7,8 +7,8 @@ import { deleteSelectedSceneItems } from "../actions/sceneDeleteActions";
 import { fitAllProjects, setZoomToHundred, stepZoomAtCenter } from "../canvas/zoomActions";
 import { CHROME_TOP } from "../canvas/floatingChrome";
 import { useT } from "../i18n/useT";
-import type { BoardElement } from "../types/board";
-import { BOARD_COLORS, BOARD_COLOR_NAMES, cssColor } from "./boardModel";
+import type { BoardElement, BoardTextSize } from "../types/board";
+import { BOARD_COLORS, BOARD_COLOR_NAMES, SIZE_STEPS, cssColor } from "./boardModel";
 import { BoardIcon, type BoardIconName } from "./BoardIcons";
 import { duplicate, pickTool, setStyleProp } from "./boardActions";
 import { openNote } from "./notes";
@@ -121,8 +121,8 @@ function OptionsBody({ ctx }: { ctx: Ctx }) {
   };
   const set = <K extends keyof BoardStyle>(k: K) => (val: BoardStyle[K]) => setStyleProp(k, val);
   const colour = <Swatches label={t.board_colour} value={kind === "sticky" && !el ? style.sticky : v("color")} onPick={(c) => setStyleProp("color", c)} />;
-  const sizes = (value: "S" | "M" | "L" | "XL", onPick: (s: "S" | "M" | "L" | "XL") => void) => (
-    <Seg label={t.board_size} value={value} onPick={onPick} options={(["S", "M", "L", "XL"] as const).map((s) => ({ v: s, text: s, title: `${t.board_size} ${s}` }))} />
+  const sizes = (value: BoardTextSize, onPick: (s: BoardTextSize) => void) => (
+    <Seg label={t.board_size} value={value} onPick={onPick} options={SIZE_STEPS.map((s) => ({ v: s, text: s, title: `${t.board_size} ${s}` }))} />
   );
   const line = (title: string) => (
     <Seg label={title} value={v("dash") ? "dashed" : "solid"} onPick={(d) => setStyleProp("dash", d === "dashed")} options={[{ v: "solid", icon: "solid", title: t.board_line_solid }, { v: "dashed", icon: "dashed", title: t.board_line_dashed }]} />
@@ -133,8 +133,8 @@ function OptionsBody({ ctx }: { ctx: Ctx }) {
   const wordRows = (withColour: boolean) => (
     <>
       <div className="tc-bd-caption">{t.board_text_inside}</div>
+      <Line>{sizes(words?.label ?? style.label, set("label"))}</Line>
       <Line>
-        {sizes(words?.label ?? style.label, set("label"))}
         <Seg
           label={t.board_align}
           value={words?.align ?? (kind === "sticky" ? "left" : style.align)}

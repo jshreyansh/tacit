@@ -699,6 +699,10 @@ export const zh = {
   search_action_tab_memory: "显示记忆",
 
   terminal_api_unavailable: "终端 API 不可用，未在 Electron 中运行。",
+  state_not_opened_label: "无法打开你的工作台",
+  state_not_opened_body: "它们仍已保存，不会被覆盖。重启 Tacit 也许能打开。你也可以回到较早的快照，或从空白开始；现有的保存都会保留。",
+  state_not_opened_history: "查看历史",
+  state_not_opened_empty: "从空白开始",
   folder_missing_label: "找不到文件夹",
   folder_missing_body: (name: string, agents: number, path: string) =>
     `${name} 的文件夹已不存在（${path}），所以没有重新打开它的 ${agents} 个智能体。如果它被移动了，请重新定位；否则可以把它从工作台移除。`,

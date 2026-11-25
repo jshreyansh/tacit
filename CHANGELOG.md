@@ -8,9 +8,13 @@ All notable changes to Tacit will be documented in this file.
 - **The task board looks and works like the chat.** Questions, approvals, stuck agents and finishes are the chat's own cards: number keys, several questions as one stack, "Let Claude decide", Deny with a reason. A chat's permission or question can be answered on its task.
 - **A task's page is a conversation**: the brief, what it needs from you, one activity feed, and the message box at the bottom. Empty fields are small + chips. New task is a composer.
 - **Task cards** show what kind of work it is, how long, its checks, parts as a bar, and each agent with what it's doing and the tool in its hand. The same on the board and the canvas.
+- **Agents can look at the canvas**: what you wrote, drew and sketched, what arrows join, what sections hold, and the files there. They can ask for a picture of it too; your view doesn't move. Any agent, its own workdesk only, and it changes nothing. A pen stroke is said in words too ("loop around Born"), for models that can't see pictures.
+- **Bigger text on the canvas**: every size is larger, with 2XL and 3XL, for text and for the words in boxes and stickies. A box or sticky grows to fit what's in it.
+- **Agents are told where they are** as they start: your canvas is Tacit's, and there's a tool for it.
 - **The browser's header**: round buttons that say when there's nowhere to go, one address pill that reads as the site and opens whole when pressed, search from the address bar, your profile as its initial, and a line while a page loads. Close is in its ⋮ menu. The tile still drags from anywhere in it.
 
 ### Fixed
+- **Workdesks that couldn't be opened are never saved over.** Tacit opened empty and then saved that over every workdesk. Now nothing is saved until you choose a snapshot or to start empty, and what was saved is kept.
 - The number keys answer a question while the canvas is open; they used to pick a drawing tool.
 - A chat agent waiting on a permission shows as needing you on its task.
 - Opening the board clears the notifications that would cover it.

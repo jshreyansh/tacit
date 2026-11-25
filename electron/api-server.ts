@@ -15,6 +15,7 @@ import {
 } from "../hydra/src/spawn";
 import type { TaskStore } from "./task-store";
 import type { TaskRunner, TaskTerminal } from "./task-runner";
+import { parseCanvasRead } from "../shared/canvas-ops";
 import { TaskError, columnOf, sortTasks } from "../shared/task";
 import { parseNewTask } from "../shared/task-ops";
 import { sendToWindow } from "./window-events";
@@ -83,6 +84,10 @@ interface ApiServerDeps {
   taskStore: TaskStore;
   tasks: TaskRunner;
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
+  /** A picture in one of the workdesk's folders, small, as a data URL; null when it isn't one. */
+  pictureDataUrl: (filePath: string) => string | null;
+  /** Where the last picture of the canvas each agent asked for is kept. */
+  canvasPicturesDir: string;
   recallService: RecallService;
   connectedBrowserBroker: ConnectedBrowserBroker;
   /**
@@ -119,7 +124,12 @@ interface ApiServerDeps {
 
 /** A connection quiet for this long is dropped; wait_for_nodes gets longer. */
 const API_IDLE_TIMEOUT_MS = 30_000;
+/** Below this a picture says how to get a closer one. */
+const CANVAS_PICTURE_FAR = 0.4;
+/** How many picture files are drawn into one picture of the canvas. */
+const CANVAS_PICTURES_MAX = 24;
 const WAIT_NODES_ROUTE = /^\/terminal\/[^/]+\/wait-nodes$/;
+const CANVAS_READ_ROUTE = /^\/terminal\/[A-Za-z0-9._-]{1,128}\/canvas\/read$/;
 const START_TASK_ROUTE = /^\/terminal\/[^/]+\/start-task$/;
 const END_TASK_ROUTE = /^\/terminal\/[^/]+\/end-task$/;
 
@@ -579,6 +589,9 @@ export class ApiServer {
         },
         body,
       );
+    }
+    if (method === "POST" && CANVAS_READ_ROUTE.test(pathname)) {
+      return this.readCanvas(pathname.split("/")[2], body);
     }
     // Tasks, for an agent: always its own workdesk's, and its changes are its own.
     const taskRoute = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/tasks(?:\/([A-Za-z0-9-]{1,128})(?:\/([a-z-]+))?)?$/.exec(pathname);
@@ -1771,6 +1784,36 @@ export class ApiServer {
     return this.execRenderer(
       `window.__tcApi.listWorkspaceNodes(${JSON.stringify(forTerminalId)}, ${JSON.stringify(everything)})`,
     );
+  }
+
+  /**
+   * Backs read_canvas: any agent, its own workdesk's canvas only. The picture
+   * is also kept as a file, one per terminal, for a CLI that can't show one.
+   */
+  private async readCanvas(terminalId: string, body: unknown) {
+    const ask = parseCanvasRead(body);
+    if ("error" in ask) throw Object.assign(new Error(ask.error), { status: 400 });
+    const me = JSON.stringify(terminalId);
+    const id = JSON.stringify(ask.id);
+    const { here } = (await this.execRenderer(`window.__tcApi.workdeskManager(${me})`)) as { here: boolean };
+    if (!here) throw Object.assign(new Error("Your workdesk isn't open in Tacit, so its canvas can't be read."), { status: 403 });
+    const read = (await this.execRenderer(`window.__tcApi.readCanvas(${me}, ${id})`)) as { canvas: string; pictures: Array<{ id: string; path: string }> } | null;
+    if (!read) throw Object.assign(new Error(`There's nothing on the canvas with the id ${ask.id}.`), { status: 404 });
+    if (!ask.picture) return { canvas: read.canvas };
+    const pictures: Record<string, string> = {};
+    for (const tile of read.pictures.slice(0, CANVAS_PICTURES_MAX)) {
+      const url = this.deps.pictureDataUrl(tile.path);
+      if (url) pictures[tile.id] = url;
+    }
+    const made = (await this.execRenderer(`window.__tcApi.pictureOfCanvas(${me}, ${id}, ${JSON.stringify(pictures)})`)) as { png: string; scale: number } | null;
+    if (!made) return { canvas: read.canvas, picture: null };
+    const png = this.deps.dataUrlToPngBuffer(made.png);
+    const file = path.join(this.deps.canvasPicturesDir, `${terminalId}.png`);
+    fs.mkdirSync(this.deps.canvasPicturesDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, png, { mode: 0o600 });
+    // Too far out to read the words: say how to get closer.
+    const far = made.scale < CANVAS_PICTURE_FAR ? `\n\nThe picture is zoomed out to ${Math.round(made.scale * 100)}%. Read one section or drawing by its id for a closer one.` : "";
+    return { canvas: `${read.canvas}${far}`, picture: { file, png: png.toString("base64") } };
   }
 
   /** Backs the get_node_state MCP tool — open to any terminal, no gating. */

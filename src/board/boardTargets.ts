@@ -6,6 +6,7 @@
  */
 import { useBoardStore } from "../stores/boardStore";
 import type { BoardRect } from "../types/board";
+import { CARD_PREFIX } from "./tileIds";
 import { isBoxed, type Target, type TargetLookup } from "./boardModel";
 
 export interface TileRect extends BoardRect {
@@ -14,8 +15,7 @@ export interface TileRect extends BoardRect {
   kind: string;
 }
 
-/** A browser isn't a React Flow node, so its id says what it is: `browser:<card id>`. */
-export const CARD_PREFIX = "browser:";
+export { CARD_PREFIX } from "./tileIds";
 
 interface FlowNode {
   id: string;

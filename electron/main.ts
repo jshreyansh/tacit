@@ -945,6 +945,15 @@ const apiServer = new ApiServer({
   tasks: taskRunner,
   taskStore,
   dataUrlToPngBuffer,
+  pictureDataUrl: (filePath) => {
+    const info = fileTiles.inspect(filePath);
+    if (!info.ok || info.kind !== "image" || info.size > 20 * 1024 * 1024) return null;
+    const image = nativeImage.createFromPath(filePath);
+    if (image.isEmpty()) return null;
+    const small = image.getSize().width > 700 ? image.resize({ width: 700 }) : image;
+    return `data:image/jpeg;base64,${small.toJPEG(80).toString("base64")}`;
+  },
+  canvasPicturesDir: path.join(TACIT_DIR, "canvas-pictures"),
   recallService,
   connectedBrowserBroker,
   recordDecision: (event) =>
@@ -2991,7 +3000,15 @@ function setupIpc() {
   );
 
   ipcMain.handle("state:load", () => {
-    return statePersistence.load();
+    return statePersistence.open();
+  });
+
+  ipcMain.handle("state:opened", (event) => {
+    if (isMainWindowSender(event)) statePersistence.opened();
+  });
+
+  ipcMain.handle("state:replace", (event) => {
+    if (isMainWindowSender(event)) statePersistence.replace();
   });
 
   ipcMain.handle("state:save", (_event, state: unknown) => {

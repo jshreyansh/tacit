@@ -49,7 +49,7 @@ export const TACIT_MEMORY_TOOLS: readonly string[] = ["recall", "remember", "for
 export const TACIT_TASK_TOOLS: readonly string[] = ["list_tasks", "get_task", "create_task", "take_part", "report_part", "finish_task", "ask_user", "ask_approval", "request_agent", "withdraw_question", "suggest_task_text"];
 
 /** What's on the workdesk, only read. Asking to reach another agent starts with looking. */
-export const TACIT_READ_TOOLS: readonly string[] = ["list_nodes", "get_node_state"];
+export const TACIT_READ_TOOLS: readonly string[] = ["list_nodes", "get_node_state", "read_canvas"];
 
 /** One MCP server as every agent format needs it: what to run, with what. */
 export interface BridgeDescriptor {

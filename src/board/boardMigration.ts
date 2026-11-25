@@ -9,10 +9,10 @@
  */
 import type { DrawingElement } from "../stores/drawingStore";
 import type { BoardElement, BoardEnd, BoardTextSize, BoardWeight } from "../types/board";
-import { BOARD_COLORS, estimateTextRect } from "./boardModel";
+import { BOARD_COLORS, SIZE_STEPS, TEXT_SIZES, estimateTextRect } from "./boardModel";
 
 const weightFor = (px: number): BoardWeight => (px <= 2 ? "thin" : px >= 5 ? "bold" : "medium");
-const sizeFor = (px: number): BoardTextSize => (px <= 18 ? "S" : px <= 30 ? "M" : px <= 56 ? "L" : "XL");
+const sizeFor = (px: number): BoardTextSize => SIZE_STEPS.find((s, i) => i === SIZE_STEPS.length - 1 || px <= (TEXT_SIZES[s] + TEXT_SIZES[SIZE_STEPS[i + 1]]) / 2)!;
 
 /**
  * Drawings from before the board, already placed in the world (their anchors
@@ -56,7 +56,7 @@ const px = (w: BoardWeight | undefined) => (w === "thin" ? 2 : w === "bold" ? 6 
 export function boardToDrawings(elements: readonly BoardElement[]): DrawingElement[] {
   return elements.flatMap((e): DrawingElement[] => {
     if (e.type === "pen") return [{ id: e.id, type: "pen", color: hex(e.color), size: px(e.weight), points: e.points }];
-    if (e.type === "text") return [{ id: e.id, type: "text", color: hex(e.color), x: e.x, y: e.y, content: e.text, fontSize: { S: 16, M: 24, L: 40, XL: 72 }[e.size] }];
+    if (e.type === "text") return [{ id: e.id, type: "text", color: hex(e.color), x: e.x, y: e.y, content: e.text, fontSize: TEXT_SIZES[e.size] }];
     if (e.type === "shape" && e.shape === "rect" && !e.parent) return [{ id: e.id, type: "rect", color: hex(e.color), x: e.x, y: e.y, w: e.w, h: e.h, strokeWidth: px(e.weight) }];
     if (e.type === "arrow" && !("ref" in e.a) && !("ref" in e.b)) {
       return [{ id: e.id, type: "arrow", color: hex(e.color), x1: e.a.x, y1: e.a.y, x2: e.b.x, y2: e.b.y, strokeWidth: px(e.weight) }];
@@ -108,6 +108,9 @@ export function coerceBoardElements(raw: unknown): BoardElement[] {
     } else {
       if (!hasBox(r)) continue;
       if ((r.type === "text" || r.type === "shape" || r.type === "sticky") && !isStr(r.text)) base.text = "";
+      // A size from a newer Tacit, or nobody's: the middle one.
+      if (r.type === "text") base.size = oneOf(r.size, SIZE_STEPS, "M");
+      if (r.label !== undefined) base.label = oneOf(r.label, SIZE_STEPS, "M");
       if ((r.type === "section" || r.type === "frame") && !isStr(r.title)) base.title = "";
       out.push(base as unknown as BoardElement);
     }

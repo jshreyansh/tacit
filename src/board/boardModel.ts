@@ -16,10 +16,12 @@ import type {
   BoxedElement,
 } from "../types/board";
 
-export const TEXT_SIZES: Record<BoardTextSize, number> = { S: 16, M: 24, L: 40, XL: 72 };
+/** Each step is clearly bigger than the last: a canvas is read zoomed out. */
+export const TEXT_SIZES: Record<BoardTextSize, number> = { S: 20, M: 32, L: 52, XL: 88, "2XL": 144, "3XL": 240 };
+export const SIZE_STEPS = Object.keys(TEXT_SIZES) as BoardTextSize[];
 export const WEIGHTS: Record<BoardWeight, number> = { thin: 2, medium: 3.4, bold: 6 };
 /** Words inside a shape or sticky: smaller steps than free text. */
-export const LABEL_SIZES = { S: 13, M: 15, L: 20, XL: 28 } as const;
+export const LABEL_SIZES: Record<BoardTextSize, number> = { S: 14, M: 18, L: 26, XL: 40, "2XL": 64, "3XL": 104 };
 
 /** The palette. Stored as these names so each theme can give them its own shade. */
 export const BOARD_COLORS = ["ink", "clay", "amber", "green", "teal", "blue", "violet", "pink"] as const;

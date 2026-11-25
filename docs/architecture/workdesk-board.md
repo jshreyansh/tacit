@@ -150,7 +150,7 @@ units.
 
 ```ts
 type BoardElement =
-  | { type: "text";    ...Box; text: string; size: "S" | "M" | "L" | "XL" }
+  | { type: "text";    ...Box; text: string; size: "S" | "M" | "L" | "XL" | "2XL" | "3XL" }
   | { type: "shape";   ...Box; shape: "rect" | "ellipse" | "diamond"; text: string;
       fill: "none" | "soft" | "solid"; dash: boolean; corners: "round" | "sharp" }
   | { type: "sticky";  ...Box; text: string }
@@ -211,50 +211,64 @@ The `...Box` fields are `x`, `y`, `w` and `h`.
 
 ## Agents draw
 
-Agents never draw freehand. They send content, and the board lays it out.
+Agreed 25 Nov 2026: any agent in the workdesk draws with the same tools you
+have, pen included. (On 23 Nov it was "never freehand"; that's replaced.) Tacit
+still lays out diagrams, which agents place badly by hand.
 
 **Bridge tools** (`tacit-bridge/src/mcp-server.ts`), any agent in the workdesk:
 
 | Tool | Does |
 |---|---|
-| `board_draw({ title, flowchart? , table?, boxes?, arrows?, near?, notes? })` | Makes a frame and returns its id and link. The layout options are below. |
-| `board_update({ id, ...same })` | Redraws an agent's frame, or changes one of yours (Permissions). |
-| `board_read({ id? })` | Returns the board, or one drawing, as structured content: text, shapes, arrows, stickies, and the file tiles they point to. You can always read; see Permissions. |
-| `board_delete({ id })` | Deletes its own drawing. Yours always asks. |
+| `read_canvas({ id?, picture? })` | What's on the canvas, or one drawing or section, as structured content: text, shapes, arrows and what they join, stickies, sections and what they hold, pen strokes, and the tiles (terminals, tasks, browsers, files with their paths). With `picture`, also an image of it. Always allowed. |
+| `draw({ title?, near?, items?, flowchart?, table? })` | New things of its own. `items` are your tools: text, shape, sticky, section, arrow, pen. `flowchart` and `table` are laid out by Tacit. Returns the ids. |
+| `change_drawing({ changes })` | Moves, resizes, restyles, renames or joins. Its own freely; yours by Permissions. |
+| `delete_drawing({ ids })` | Its own. Yours always asks. |
 
-`board_draw` takes one of these layouts:
+- **Asking first:** drawing new things doesn't ask each time. It can always be
+  undone, and nothing of yours can change until Permissions (step 4).
+- **Placing:** in free space near the agent's own tile, unless `near` names a
+  tile or a drawing. It never covers tiles or other drawings. Several items go
+  in one titled frame, so they can be deleted at once.
+- **Terminals and browsers are yours to move.**
 
-- `flowchart`: Mermaid-style text, for example `A --> B`, `A -- label --> B`
-  and `A{Decision}`.
-- `table`: rows of cells.
-- `boxes` + `arrows`: explicit items.
+**The picture** is drawn from the board's data, not from the screen: it doesn't
+move your view or show your pages. Tiles are labelled boxes; pictures on the
+canvas are drawn in. It shows the drawings and
+what's under them, not every far-off tile, at most 1,200 pixels. It's returned
+as an image, and saved as a file for the command line.
 
-It places the frame near the agent's own tile unless `near` names a tile or a
-drawing. A frame never covers tiles or other drawings.
+**Words first.** A read is one line a thing, not JSON: it's read by a model, and
+every word costs (80% shorter than the first version). Pen strokes are said in
+words too (`penWords.ts`), since some models can't see pictures. How real agents
+found it on 25 Nov: Claude at once; OpenCode after listing all 40 tools; Codex
+after 11 other calls, screenshots of the app among them. So `TACIT_PLACE`
+(`shared/memory.ts`) names the canvas and the tool at launch, first in the
+brief and in the bridge's instructions, which Codex shows only the start of.
 
-**CLI**, the same four as `tacit board draw|update|show|delete`, with JSON or
-flags. The instructions that explain `tacit task` to agents
-(`electron/pin-instructions.ts`) gain a short section on the board.
+**CLI**, the same as `tacit canvas read|draw|change|delete`. To agents it's "the
+canvas": "board" is their word for the task board.
 
 **Path.** A bridge tool or CLI call goes to the API server as
-`POST /terminal/:id/board/...`. The server checks the terminal belongs to the
-workdesk, as `requireWorkspaceManager` does but for any agent in the workdesk,
-and validates the content:
+`/terminal/:id/canvas/...`. The server checks the terminal belongs to the open
+workdesk and validates the content:
 
-- at most 200 items;
+- at most 200 items, 2,000 points in all pen strokes;
 - text up to 2,000 characters per item;
 - no HTML.
 
-Then `execRenderer` runs `window.__tcApi.board*`, as `spawnNote` does today.
-The renderer owns layout and the scene.
+Then `execRenderer` runs `window.__tcApi`. The renderer owns layout and
+the scene.
+
+**As it draws:** pieces arrive one at a time, with a small cursor carrying the
+agent's name. With Reduce Motion they fade in, with no cursor.
 
 **In the chat:**
 
-- The manager's reply carries a card with a thumbnail, the title, "Board ·
-  drawn by Claude" and **Show ›**. Show flies to the frame with the afterglow.
-- A drawing by a worker shows a notice ("Codex drew 'Rate limit tables'",
-  with Show) and a line in its chat or terminal transcript.
-- The canvas never jumps on its own. You get a link, not a jump.
+- The agent's reply carries a card with a thumbnail, the title and **Show ›**.
+  Show flies to it with the afterglow.
+- A drawing by an agent you aren't talking to shows a notice, with Show.
+- The canvas never jumps on its own.
+- ⌘Z undoes only your changes. Each agent drawing has its own **Undo**.
 
 ## Permissions
 
@@ -282,7 +296,7 @@ minimum and can't be turned off; it's how an agent understands what you mean.
   - in the options panel for anything selected;
   - by the border: dashed means agents can edit, solid means ask or mine.
 - **Asking:**
-  - `board_update` on an Ask first drawing returns `pending` at once, with a
+  - `change_drawing` on an Ask first drawing returns `pending` at once, with a
     request id.
   - The request appears as an approval card in the agent's chat, using Tacit's
     existing approval words (`chat_approval_*`):
@@ -291,7 +305,7 @@ minimum and can't be turned off; it's how an agent understands what you mean.
       Deny.
   - The request also appears in **Needs you**.
   - The answer reaches the agent's terminal, as `tacit task ask` answers do.
-    It is also available to `board_read({ request })`.
+    It is also available to `read_canvas({ request })`.
   - **Always allow** switches that drawing to Can edit.
 - **Deleting:**
   - an agent can delete its own drawings;
@@ -344,15 +358,14 @@ app.
      and dropped files as file tiles;
    - snapping, undo and keyboard;
    - it replaces `DrawingPanel`.
-2. **Agents draw** (T21.2):
-   - frames and layout (flowchart, table, boxes);
-   - the bridge tools, CLI and API endpoints;
-   - chat cards, notices and Show;
-   - instructions for agents.
-3. **Permissions** (T21.3):
+2. **Agents look** (T21.2a): `read_canvas`, the picture, the CLI. Built 25 Nov
+   (`boardRead.ts`, `penWords.ts`, `boardPicture.ts`, `boardForAgents.ts`).
+3. **Agents draw** (T21.2b): `draw` and changing their own, layout,
+   cursor, chat card, notices, Undo.
+4. **Permissions** (T21.3):
    - the Agents setting, defaults and inheritance;
    - approval cards and Needs you;
-   - per-agent Undo, the wait-while-editing rule and delete rules.
+   - the wait-while-editing rule and delete rules.
 
 ## Not in this
 

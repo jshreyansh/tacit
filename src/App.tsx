@@ -80,6 +80,8 @@ import { ABILITY_WORDS } from "../shared/node-contracts";
 import { startTasks } from "./tasks/taskStore";
 import { agentNames, agentsIn } from "./tasks/agentNames";
 import { noteEnd, noteEnds, placedTasks } from "./canvas/noteEnds";
+import { noteNotOpened, refusedUnopened } from "./actions/stateGuard";
+import { pictureOfCanvas, readCanvas } from "./board/boardForAgents";
 import { addNote, noteById, notes } from "./board/notes";
 import { columnOf } from "../shared/task";
 import { visibleCanvasCenter } from "./actions/dockActions";
@@ -229,19 +231,28 @@ function useStatePersistence() {
     if (!window.tacit) return;
     window.tacit.state
       .load()
-      .then((saved) => {
+      .then(async (saved) => {
         const restored = readWorkspaceSnapshot(saved);
-        if (!restored) return;
+        if (!restored) {
+          // Nothing saved yet is fine; something that can't be read isn't.
+          const empty = !saved || (typeof saved === "object" && Object.keys(saved).every((k) => k === "skipRestore"));
+          if (!empty) throw new Error("The saved workdesks aren't in a form this Tacit can read.");
+          await window.tacit.state.opened();
+          return;
+        }
         if (isSkipRestoreSnapshot(restored)) {
-          window.tacit.state.save({ skipRestore: false });
+          await window.tacit.state.opened();
+          await window.tacit.state.save({ skipRestore: false });
           return;
         }
         restoreWorkspaceSnapshot(restored);
         useWorkspaceStore.getState().setWorkspacePath(null);
         useWorkspaceStore.getState().markClean();
+        await window.tacit.state.opened();
       })
       .catch((err) => {
         console.error("[useStatePersistence] failed to load state:", err);
+        noteNotOpened();
       })
       // With the workdesk in place, what wires were waiting on before a
       // restart can be matched to its terminals.
@@ -271,6 +282,7 @@ function useAutoSave() {
         recordTopologyCheckpoint();
       } catch (err) {
         console.error("[useAutoSave] failed to save recovery snapshot:", err);
+        if (refusedUnopened(err)) noteNotOpened();
       } finally {
         logSlowRendererPath("App.autoSaveSnapshot", startedAt, {
           thresholdMs: 20,
@@ -835,6 +847,10 @@ export function App() {
       // one flat space, same as focusableNodes.ts's collector does for
       // focus view. Tasks that were never placed on the
       // canvas) are excluded, same as focusableNodes.ts excludes them.
+      // The canvas an agent reads (docs/architecture/workdesk-board.md).
+      readCanvas,
+      pictureOfCanvas,
+
       listWorkspaceNodes: (forTerminalId?: string | null, everything = true) => {
         // Seen from the asking terminal: itself, which way each node is
         // wired to it, what the wire is for and what it may do there.

@@ -706,6 +706,10 @@ export const en = {
 
   terminal_api_unavailable:
     "Terminal API not available. Not running in Electron.",
+  state_not_opened_label: "Your workdesks couldn't be opened",
+  state_not_opened_body: "They're still saved, and nothing will be saved over them. Restarting Tacit may open them. Or go back to an earlier snapshot, or start empty; what's saved now is kept either way.",
+  state_not_opened_history: "Show history",
+  state_not_opened_empty: "Start empty",
   folder_missing_label: "Folder not found",
   folder_missing_body: (name: string, agents: number, path: string) =>
     `${name}'s folder is gone (${path}), so ${agents === 1 ? "its agent wasn't" : `its ${agents} agents weren't`} reopened. Locate it if it moved, or remove it from the workdesk.`,

@@ -1,3 +1,4 @@
+import { saveWhatIsOpen } from "../actions/stateGuard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -233,6 +234,7 @@ export function SnapshotHistoryModal() {
         return;
       }
       restoreWorkspaceSnapshot(restored);
+      await saveWhatIsOpen();
       useWorkspaceStore.getState().setWorkspacePath(null);
       useWorkspaceStore.getState().markDirty();
       useNotificationStore
