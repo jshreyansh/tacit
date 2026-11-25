@@ -19,7 +19,8 @@ import { useLeftChromeInset, useLeftChromeShift } from "../stores/chromeLayout";
 import { useManagerChatStore } from "../stores/managerChatStore";
 import { tabKey, useWorkdeskViewStore, type OpenNode } from "../stores/workdeskViewStore";
 import { closeTerminalInScene } from "../actions/terminalSceneActions";
-import { useWaitingAgents } from "../board/canvasRequests";
+import { useWaitingAgents, wantsTo } from "../board/canvasRequests";
+import { useCanvasRequestsByTask } from "../attention/waiting";
 import { removeBrowserCardFromScene } from "../actions/sceneCardActions";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddNodeMenu } from "./AddNodeMenu";
@@ -305,6 +306,12 @@ export function WorkdeskView() {
   const fileTiles = useFileTiles();
   const [now, setNow] = useState(() => Date.now());
   const waiting = useWaitingAgents();
+  // Tasks whose agent asked to change a drawing while on them.
+  const { byTask } = useCanvasRequestsByTask(tasks);
+  const drawingAsks = useMemo(
+    () => new Map([...byTask].map(([id, [r]]) => [id, `${t.canvas_ask_wants[wantsTo(r)](r.name)} ${r.titles.length === 1 ? `"${r.titles[0]}"` : t.canvas_ask_several(r.titles.length)}`])),
+    [byTask, t],
+  );
 
   const managerTerminalId = (canvases.find((c) => c.id === activeCanvasId) ?? canvases[0])?.workspaceManagerTerminalId ?? null;
   const sections = useMemo(() => {
@@ -318,11 +325,12 @@ export function WorkdeskView() {
       browsers: Object.values(browserCards),
       identityNames,
       tasks,
+      drawingAsks,
       notes,
       managerTerminalId,
       waiting,
     });
-  }, [projects, runtimeTerminals, browserCards, identities, tasks, notes, managerTerminalId, waiting]);
+  }, [projects, runtimeTerminals, browserCards, identities, tasks, drawingAsks, notes, managerTerminalId, waiting]);
 
   // The cards' last lines, read from each terminal's screen while the grid shows.
   const terminalIds = useMemo(

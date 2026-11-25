@@ -3,8 +3,7 @@ import { useT } from "../i18n/useT";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
-import { useCanvasRequests } from "../board/canvasRequests";
-import { useNeedsYouOnOtherWorkdesks, useTasksNeedingYou } from "../tasks/taskStore";
+import { useWaitingByWorkdesk } from "../attention/waiting";
 
 /**
  * The workdesk's name at the top of the list, and its menu: every workdesk
@@ -21,8 +20,7 @@ export function WorkdeskMenu({ name }: { name: string }) {
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeId = useCanvasRegistryStore((s) => s.activeCanvasId);
   const liveProjects = useProjectStore((s) => s.projects);
-  const waitingHere = useTasksNeedingYou().length + useCanvasRequests().length;
-  const waitingElsewhere = useNeedsYouOnOtherWorkdesks();
+  const waiting = useWaitingByWorkdesk();
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [draft, setDraft] = useState("");
@@ -157,7 +155,7 @@ export function WorkdeskMenu({ name }: { name: string }) {
               </div>
               {canvases.map((canvas) => {
                 const active = canvas.id === activeId;
-                const waiting = active ? waitingHere : (waitingElsewhere[canvas.id] ?? 0);
+                const waitingThere = waiting[canvas.id] ?? 0;
                 return (
                   <button
                     key={canvas.id}
@@ -180,9 +178,9 @@ export function WorkdeskMenu({ name }: { name: string }) {
                       <span className="max-w-full truncate text-[13px] text-[var(--text-primary)]">{canvas.name}</span>
                       <span className="tc-menu-option-detail max-w-full truncate">{summary(canvas.id, canvas.scene?.projects ?? [])}</span>
                     </span>
-                    {waiting > 0 && (
-                      <span className="shrink-0 rounded-full px-1.5 text-[10.5px] font-semibold leading-[17px]" style={{ background: "color-mix(in srgb, var(--amber) 16%, transparent)", color: "var(--amber)" }} title={t["hub.canvases.needsYou"](waiting)}>
-                        {waiting}
+                    {waitingThere > 0 && (
+                      <span className="shrink-0 rounded-full px-1.5 text-[10.5px] font-semibold leading-[17px]" style={{ background: "color-mix(in srgb, var(--amber) 16%, transparent)", color: "var(--amber)" }} title={t["hub.canvases.needsYou"](waitingThere)}>
+                        {waitingThere}
                       </span>
                     )}
                     {active && (

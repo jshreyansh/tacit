@@ -18,7 +18,8 @@ import type { NodeEventKind } from "./node-events";
  * finishes, or fails, or a task moves to Needs you. While Tacit isn't the
  * focused app that's a system notification; while it is, a toast, which the
  * window skips if they're already looking at that agent or task. Also keeps
- * the dock badge: how many agents and tasks are waiting on the person.
+ * the dock badge: how many things are waiting on the person, which the window
+ * counts (src/attention/waitingCount.ts) so it's the number Tacit shows too.
  *
  * Main decides; the window writes the words, in the person's language,
  * for a notice main issued (`answer`), and main shows them. So the window
@@ -61,8 +62,13 @@ function clean(value: unknown, max: number): string {
 
 export class AttentionNotifier {
   private prefs: AttentionPrefs = DEFAULT_ATTENTION_PREFS;
-  private needsYouTasks = 0;
-  /** Agents blocked on an approval now: the badge's share from terminals. */
+  /**
+   * Everything waiting on the person, as the window counts it: agents, tasks
+   * and drawing requests. Null while there's no window to count (closed,
+   * reloading, or its tasks not loaded yet).
+   */
+  private needsYouTasks: number | null = null;
+  /** Agents waiting on the person now: the badge while the window can't count. */
   private readonly waiting = new Set<string>();
   /** Kinds already notified in each terminal's current turn. */
   private readonly notified = new Map<string, Set<AttentionKind>>();
@@ -79,13 +85,13 @@ export class AttentionNotifier {
     return this.deps.now?.() ?? Date.now();
   }
 
-  /** The window's settings and its count of tasks waiting on the person. */
+  /** The window's settings and its count of what waits on the person. */
   configure(state: unknown): void {
     const input = state && typeof state === "object" ? (state as Record<string, unknown>) : {};
     this.prefs = sanitizeAttentionPrefs(input.prefs);
     const count = input.needsYouTasks;
     this.needsYouTasks =
-      typeof count === "number" && Number.isInteger(count) && count >= 0 ? Math.min(count, MAX_TASK_COUNT) : 0;
+      count === null ? null : typeof count === "number" && Number.isInteger(count) && count >= 0 ? Math.min(count, MAX_TASK_COUNT) : 0;
     this.updateBadge();
   }
 
@@ -98,6 +104,7 @@ export class AttentionNotifier {
     const isAgent = this.isAgent(terminalId);
     if (isAgent && snapshot.pty_alive && snapshot.turn_state === "awaiting_input") this.waiting.add(terminalId);
     else this.waiting.delete(terminalId);
+    this.updateBadge();
 
     for (const event of events) {
       if (event.kind === "turn_started") {
@@ -175,7 +182,13 @@ export class AttentionNotifier {
   }
 
   badgeCount(): number {
-    return this.waiting.size + this.needsYouTasks;
+    return this.needsYouTasks ?? this.waiting.size;
+  }
+
+  /** The window closed or is reloading: until it counts again, the badge is the agents main sees waiting. */
+  windowGone(): void {
+    this.needsYouTasks = null;
+    this.updateBadge();
   }
 
   private isAgent(terminalId: string): boolean {

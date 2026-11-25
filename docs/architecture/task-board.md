@@ -62,6 +62,11 @@ What waits on you is the chat's own cards, shared (`src/components/ask`,
 - Columns: **Later, Next, Working, Needs you, Done.** Dropped is kept, and
   filtered out until asked for.
 - **One Needs you column**, filtered by reason. No separate In review.
+- **Every number counts its cards** (`src/attention/waitingCount.ts`): a task
+  once, with all it waits on; a drawing request no task keeps; an agent on no
+  task waiting at its terminal or chat (a card of its own, answered there for a
+  chat, in its terminal otherwise). The workdesk menu, the Hub, the left bar, the
+  Tasks row and the dock all show that number, so they agree.
 - Every folder of the workdesk, plus tasks with no folder. Board or List,
   search, folder filter. Order is by priority, then by how long it has waited.
 - Drag a card to Later, Next or Done. Dragging to Working asks which terminal.

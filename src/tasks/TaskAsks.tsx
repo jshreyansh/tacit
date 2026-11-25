@@ -182,8 +182,15 @@ const terminalOf = (task: Task, request: TaskRequest) => {
  * chat's own card; a terminal's is answered in the terminal.
  */
 function Allow({ task, request, meta }: { task: Task; request: TaskRequest; meta: string }) {
+  return <AgentAsk terminal={terminalOf(task, request)} byName={request.byName} text={request.text} meta={meta} />;
+}
+
+/**
+ * An agent waiting on you, on a task's card or on its own: a chat's permission
+ * or question answered here, as in the chat; a terminal's in its terminal.
+ */
+export function AgentAsk({ terminal, byName, text, meta }: { terminal: string | null; byName: string; text: string; meta: string }) {
   const t = useT();
-  const terminal = terminalOf(task, request);
   const chat = terminal ? !!findTerminal(terminal)?.terminal.chatMode : false;
   const agent = terminal ? (findTerminal(terminal)?.terminal.type ?? "") : "";
   const transcript = useManagerTranscript(chat ? terminal : null);
@@ -204,14 +211,14 @@ function Allow({ task, request, meta }: { task: Task; request: TaskRequest; meta
         key={transcript.questions[0].requestId}
         inline
         pending={transcript.questions[0]}
-        agentName={request.byName}
+        agentName={byName}
         onSubmit={(answers) => void answerChatQuestion(terminal, transcript.questions[0].requestId, answers)}
         onSkip={() => void answerChatQuestion(terminal, transcript.questions[0].requestId, null)}
       />
     );
   return (
     <>
-      <AskHead kind="permission" label={t.tb.reasons.allow} title={`${request.byName}: ${request.text}`} meta={meta} />
+      <AskHead kind="permission" label={t.tb.reasons.allow} title={`${byName}: ${text}`} meta={meta} />
       <Line>{t.tb.allowHint}</Line>
       {terminal && (
         <AskFoot>

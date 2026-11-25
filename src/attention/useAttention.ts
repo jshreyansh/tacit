@@ -16,17 +16,8 @@ import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
 import { panToTerminal } from "../utils/panToTerminal";
 import { attentionText, folderName } from "./attentionText";
-
-/** The tasks waiting on the person across every workdesk, each counted once. */
-function useNeedsYouTaskCount(): number {
-  const tasks = useTaskStore((s) => s.tasks);
-  const canvases = useCanvasRegistryStore((s) => s.canvases);
-  return useMemo(() => {
-    const here = new Set(canvases.map((c) => c.id));
-    // A permission is counted by its terminal.
-    return Object.values(tasks).filter((t) => here.has(t.workdesk) && t.requests.some((r) => r.kind !== "allow")).length;
-  }, [tasks, canvases]);
-}
+import { waitingTotal } from "./waitingCount";
+import { useWaitingItems } from "./waiting";
 
 /** A running agent's tile: its name, folder and workdesk. Only the open workdesk runs agents. */
 function placeOf(terminalId: string) {
@@ -124,9 +115,11 @@ const activeIs = (workdesk: string) => useCanvasRegistryStore.getState().activeC
 export function useAttention(): void {
   const t = useT();
   const prefs = usePreferencesStore((s) => s.attentionPrefs);
-  // What agents ask to change on the canvas waits on you as a task does.
-  const asks = useCanvasRequestStore((s) => s.requests.length);
-  const needsYouTasks = useNeedsYouTaskCount() + asks;
+  // Everything waiting on the person, every workdesk added up (attention/waitingCount.ts): the dock's number.
+  const waitingItems = useWaitingItems();
+  // Not until the tasks are loaded: a count of half of them is wrong, and main has its own until then.
+  const loaded = useTaskStore((s) => s.loaded);
+  const needsYouTasks = useMemo(() => (loaded ? waitingTotal(waitingItems) : null), [waitingItems, loaded]);
   useEffect(() => startCanvasRequests(), []);
 
   useEffect(() => {

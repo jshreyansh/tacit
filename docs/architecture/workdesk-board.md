@@ -367,8 +367,24 @@ minimum and can't be turned off; it's how an agent understands what you mean.
   there or lets you answer: the count in the left panel, the agent's mark in Chats
   and on its grid card, the strip on its terminal, the card in its chat, a marker
   on the drawing that opens the card (never over the drawing by itself), and the
-  attention notices a task gets. Later: on its agent's task, other workdesks, the
-  Hub, Activity.
+  attention notices a task gets.
+- **On its agent's task.** An agent working on a task when it asks: the request
+  keeps that task (`CanvasRequest.task`, from `TaskRunner.workingOn`), and shows
+  on the task's card, not a card of its own. The task waits in Needs you while it
+  does. If the agent moves on before you answer, the request stays with the task
+  it was asked for. A closed task, or one that's gone, lets it stand alone again.
+- **Other workdesks.** Only the open workdesk runs agents, so a request on another
+  one was left there when you switched away. It stays until you answer it, and
+  counts in that workdesk's number (the menu, the Hub, the left bar, the dock).
+  Answering needs its workdesk open: the Hub, a notification or a count takes
+  you there first.
+- **The Hub** lists, under each workdesk, a line for each thing waiting on you
+  there: a task's question, a drawing request, an agent waiting. A line takes you
+  to its workdesk, then its card (`HubWaiting.tsx`).
+- **Activity** has one line for each request: who asked to do what, and how it
+  ended (allowed once or always, denied with your words, allowed but couldn't be
+  done, or its agent closed first). The record keeps the asking and the end as
+  two entries (`drawing_request`); Activity shows them as one.
 - A whole call waits if any of it needs a yes. Only me refuses it.
 - The answer reaches the agent as a message when its turn is over.
 - Settings are at the foot of the rail (`AccessControls.tsx`); the default for

@@ -4,8 +4,8 @@ import { useProjectStore } from "../stores/projectStore";
 import { useTerminalRuntimeStore } from "../terminal/terminalRuntimeStore";
 import { useCompletionSeenStore } from "../stores/completionSeenStore";
 import { buildCanvasTerminalSections, buildProjectTree } from "../components/sessionPanelModel";
-import { useCanvasRequests, useWaitingAgents } from "../board/canvasRequests";
-import { useTasksNeedingYou } from "../tasks/taskStore";
+import { useWaitingAgents } from "../board/canvasRequests";
+import { useWaitingHere } from "../attention/waiting";
 import { useMemoryPendingCount } from "../components/MemoryView";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 
@@ -42,17 +42,12 @@ export function useLiveTree() {
   }, [projects, runtimeTerminals, liveSessions, historySessions, seenTerminalIds, waiting]);
 }
 
-/** What's waiting on you (terminals, and tasks an agent asked about), for the amber dots. */
+/**
+ * What's waiting on you on this workdesk, for the chat button's dot: the
+ * workdesk's number (attention/waiting.ts), and the notes in its memory
+ * waiting for your approval, so nothing waits for you unseen.
+ */
 export function useNeedsYouCount(): number {
-  const projects = useProjectStore((s) => s.projects);
-  const runtimeTerminals = useTerminalRuntimeStore((s) => s.terminals);
-  const tasks = useTasksNeedingYou().length + useCanvasRequests().length;
-  // Notes waiting for approval count too: nothing waits for you unseen.
   const notes = useMemoryPendingCount(useCanvasRegistryStore((s) => s.activeCanvasId));
-  const terminals = useMemo(() => {
-    const telemetry = new Map<string, (typeof runtimeTerminals)[string]["telemetry"]>();
-    for (const [id, runtime] of Object.entries(runtimeTerminals)) telemetry.set(id, runtime.telemetry);
-    return buildCanvasTerminalSections(projects, telemetry, new Map()).attention.length;
-  }, [projects, runtimeTerminals]);
-  return terminals + tasks + notes;
+  return useWaitingHere() + notes;
 }

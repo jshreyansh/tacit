@@ -256,7 +256,36 @@ export interface CanvasRequest {
   targets: string[];
   titles: string[];
   at: number;
+  /**
+   * The task its agent was on when it asked, kept so the request stays with
+   * that task even if the agent moves on before you answer.
+   */
+  task?: { id: string; try: string };
 }
+/** What it wants, as a verb: to rename (only new words), to delete, or to change. */
+export function requestVerb(r: Pick<CanvasRequest, "kind" | "changes">): "rename" | "delete" | "change" {
+  if (r.kind === "delete") return "delete";
+  return (r.changes ?? []).every((c) => Object.keys(c).every((k) => k === "id" || k === "text")) ? "rename" : "change";
+}
+
+/** What a request and its end are in the record (shared/capture.ts, drawing_request). */
+export function drawingRequestEntry(r: CanvasRequest, state: "asked" | "allowed" | "allowed_always" | "denied" | "failed" | "dropped", note?: string | null) {
+  const what = requestVerb(r);
+  const to = what === "rename" && r.changes?.length === 1 ? r.changes[0].text : undefined;
+  return {
+    kind: "drawing_request" as const,
+    node: `terminal:${r.terminalId}` as const,
+    request: r.id,
+    state,
+    what,
+    targets: r.targets,
+    titles: r.titles,
+    ...(to !== undefined ? { to } : {}),
+    ...(note ? { note } : {}),
+    by: state === "asked" ? (`terminal:${r.terminalId}` as const) : state === "dropped" ? ("system" as const) : ("user" as const),
+  };
+}
+
 /** What the window says a call needs: a yes for these. */
 export type CanvasAsk = Omit<CanvasRequest, "id" | "at">;
 export type CanvasDecision = "once" | "always" | "deny";

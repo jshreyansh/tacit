@@ -158,6 +158,11 @@ export class TaskRunner {
     const newest = (xs: Array<{ task: Task; try: Try }>) => xs.sort((a, b) => b.try.at.localeCompare(a.try.at))[0] ?? null;
     return newest(this.triesAt(terminal, (t) => T.isLive(t.state) || t.state === "sending")) ?? newest(this.triesAt(terminal, (t) => T.canResume(t.state)));
   }
+  /** The task a terminal is working on now, if any: what a drawing request it makes belongs to. */
+  workingOn(terminal: string): { id: string; try: string } | null {
+    const on = this.at(terminal);
+    return on && T.isLive(on.try.state) ? { id: on.task.id, try: on.try.id } : null;
+  }
   private occupied(terminal: string): boolean {
     return this.triesAt(terminal, (t) => T.isLive(t.state) || t.state === "sending").length > 0;
   }

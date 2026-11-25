@@ -638,3 +638,17 @@ test("an agent in chat mode has no terminal process, and that isn't its ending",
   await settle();
   assert.equal(state(x.get(task.id)), "failed");
 });
+
+test("the task a terminal is working on is what a drawing request it makes stays with", async (t) => {
+  const x = world(t as unknown as Ctx);
+  const task = x.make({});
+  assert.equal(x.runner.workingOn("a"), null, "nothing handed to it yet");
+  await x.give(task.id);
+  x.snap("a", { turn_state: "in_turn" });
+  const on = x.runner.workingOn("a");
+  assert.equal(on?.id, task.id);
+  assert.equal(on?.try, x.get(task.id).tries.at(-1)?.id);
+  assert.equal(x.runner.workingOn("b"), null, "another terminal isn't on it");
+  await x.runner.close("w", task.id, "done", "user");
+  assert.equal(x.runner.workingOn("a"), null, "once it's closed, nothing");
+});

@@ -13,6 +13,8 @@ import { AskButton, AskFoot, AskHead, AskWords } from "../components/ask/AskCard
 import { useAutoGrow } from "../hooks/useAutoGrow";
 import { AgentMark, HandOverButton } from "./HandOver";
 import { ReportFacts, TaskAsks } from "./TaskAsks";
+import { BoardAskCard } from "../board/CanvasAskCard";
+import { useShownColumn, useTaskCanvasRequests } from "../attention/waiting";
 import { Dot, RunRow, useFolderName } from "./TaskCard";
 import { useTaskStore } from "./taskStore";
 import { ago, partTry, runLines, sortRequests, timeAndUse, waitsForYou } from "./taskWords";
@@ -24,8 +26,10 @@ import "./tasks.css";
 /** One task: the brief an agent works from, then what came of it, then a line to say something. */
 export function TaskPage({ task, onBack }: { task: Task; onBack?: () => void }) {
   const t = useT();
-  const column = columnOf(task);
+  const column = useShownColumn(task);
   const requests = sortRequests(task);
+  // Drawings its agent asked to change while on it.
+  const drawings = useTaskCanvasRequests(task);
   // Looked at: no longer new.
   useEffect(() => {
     if (!task.seen) void changeTask(task, { op: "seen" });
@@ -57,6 +61,9 @@ export function TaskPage({ task, onBack }: { task: Task; onBack?: () => void }) 
             <Meta task={task} />
           </div>
           <Runs task={task} />
+          {drawings.map((r) => (
+            <BoardAskCard key={r.id} request={r} inTask />
+          ))}
           {requests.length > 0 && (
             <div className="tc-tk-card tc-tk-asks">
               <TaskAsks task={task} requests={requests} />

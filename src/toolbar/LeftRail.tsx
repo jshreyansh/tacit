@@ -5,7 +5,7 @@ import { useSettingsModalStore } from "../stores/settingsModalStore";
 import { useHubStore } from "../stores/hubStore";
 import { useChatDockStore } from "../stores/chatDockStore";
 import { useNeedsYouCount } from "./LiveSessions";
-import { useNeedsYouOnOtherWorkdesks } from "../tasks/taskStore";
+import { useWaitingElsewhere } from "../attention/waiting";
 import { IconChat } from "../components/rightPanelTabs";
 import { ViewControls } from "./ViewControls";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
@@ -137,7 +137,7 @@ export function LeftRail() {
   const chatShortcut = useShortcutStore((s) => s.shortcuts.toggleManagerChat);
   const chatLabel = t.rail_chat(formatShortcut(chatShortcut, isMac));
   const needsYou = useNeedsYouCount();
-  const waitingElsewhere = Object.values(useNeedsYouOnOtherWorkdesks()).reduce((sum, n) => sum + n, 0);
+  const waitingElsewhere = useWaitingElsewhere();
 
 
   const openSettings = useSettingsModalStore((s) => s.openSettings);

@@ -22,7 +22,8 @@ import { useProjectStore } from "../stores/projectStore";
 import { taskTry, useTasks } from "../tasks/taskStore";
 import { usePreferencesStore } from "../stores/preferencesStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
-import { useNeedsYouOnOtherWorkdesks } from "../tasks/taskStore";
+import { useWaitingItems } from "../attention/waiting";
+import { HubWaiting } from "./HubWaiting";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
 import { useIdentityManagerStore } from "../stores/identityManagerStore";
 import {
@@ -472,7 +473,8 @@ export function Hub() {
   const isMac = detectIsMac();
   const canvases = useCanvasRegistryStore((s) => s.canvases);
   const activeCanvasId = useCanvasRegistryStore((s) => s.activeCanvasId);
-  const needsYouElsewhere = useNeedsYouOnOtherWorkdesks();
+  // What waits on you, by workdesk: a number on its row, and a line for each under it.
+  const waitingItems = useWaitingItems();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -908,9 +910,10 @@ export function Hub() {
             {canvases.map((canvas) => {
               const isActive = canvas.id === activeCanvasId;
               const projectsCount = canvas.scene.projects.length;
-              const waiting = needsYouElsewhere[canvas.id] ?? 0;
+              const waiting = waitingItems.get(canvas.id)?.length ?? 0;
               return (
-                <li key={canvas.id} className="group relative">
+                <li key={canvas.id}>
+                  <div className="group relative">
                   <button
                     type="button"
                     onClick={() => {
@@ -954,7 +957,7 @@ export function Hub() {
                         {isActive && (
                           <StatusChip>{t["hub.canvases.activeBadge"]}</StatusChip>
                         )}
-                        {/* Tasks there waiting on you, in the amber the Needs you dots use. */}
+                        {/* What waits on you there (attention/waiting.ts), in the amber the Needs you dots use. */}
                         {waiting > 0 && (
                           <span
                             className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums"
@@ -999,6 +1002,8 @@ export function Hub() {
                       <path d="M11 2.5l2.5 2.5L6 12.5H3.5V10L11 2.5z" />
                     </svg>
                   </button>
+                  </div>
+                  <HubWaiting workdesk={canvas.id} items={waitingItems.get(canvas.id) ?? []} />
                 </li>
               );
             })}

@@ -8,8 +8,11 @@ import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useProjectStore } from "../stores/projectStore";
 import { AgentLoad, AgentMark } from "./HandOver";
 import type { CanvasRequest } from "../../shared/canvas-ops";
-import { CanvasAskCard } from "../board/CanvasAskCard";
-import { useCanvasRequestStore, useCanvasRequests } from "../board/canvasRequests";
+import { BoardAskCard } from "../board/CanvasAskCard";
+import { useCanvasRequestStore } from "../board/canvasRequests";
+import { useCanvasRequestsByTask, useWaitingItems } from "../attention/waiting";
+import { AgentWaitCard } from "./AgentWaitCard";
+import { shownColumn } from "../attention/waitingCount";
 import { changeTask, handOver, newTask, openTask } from "./taskActions";
 import { NewTask } from "./NewTask";
 import { Dot, TASK_DRAG, TaskCard, useFolderName } from "./TaskCard";
@@ -58,6 +61,7 @@ export function TasksView() {
 function Board() {
   const t = useT();
   const tasks = useTasks();
+  const workdesk = useCanvasRegistryStore((s) => s.activeCanvasId);
   const loaded = useTaskStore((s) => s.loaded);
   const view = useTaskStore((s) => s.view);
   const query = useTaskStore((s) => s.query);
@@ -78,24 +82,40 @@ function Board() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const shown = useMemo(() => tasks.filter((x) => matches(x, query, folder)), [tasks, query, folder]);
+  // What agents ask to change on the canvas: on the card of the task its agent
+  // was on when it asked, else a card of its own, though it's not a task.
+  const { byTask, alone: asks } = useCanvasRequestsByTask(tasks);
+  // A task is found by what's on its card, its drawing requests included.
+  const shown = useMemo(
+    () => tasks.filter((x) => matches(x, query, folder) || (matches(x, "", folder) && (byTask.get(x.id) ?? []).some((r) => askMatches(r, query)))),
+    [tasks, query, folder, byTask],
+  );
+  // A drawing request is something to approve.
+  const has = (x: Task, kind: RequestKind) => x.requests.some((r) => r.kind === kind) || (kind === "approve" && byTask.has(x.id));
   const by = useMemo(() => {
     const out = new Map<Column, Task[]>();
     for (const x of shown) {
-      const c = columnOf(x);
-      if (c === "needs" && reason && !x.requests.some((r) => r.kind === reason)) continue;
+      const c = shownColumn(x, byTask.has(x.id));
+      if (c === "needs" && reason && !has(x, reason)) continue;
       out.set(c, [...(out.get(c) ?? []), x]);
     }
     return out;
-  }, [shown, reason]);
-  // What agents ask to change on the canvas waits here too, though it's not a task.
-  const asks = useCanvasRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, reason, byTask]);
   const requests = useMemo(() => {
     if (folder !== null || (reason && reason !== "approve")) return [];
-    const q = query.trim().toLowerCase();
-    return q ? asks.filter((x) => [x.name, ...x.titles].some((w) => w.toLowerCase().includes(q))) : asks;
+    return query.trim() ? asks.filter((x) => askMatches(x, query)) : asks;
   }, [asks, folder, reason, query]);
-  const reasons = REASONS.map((k) => ({ kind: k, n: shown.filter((x) => x.requests.some((r) => r.kind === k)).length + (k === "approve" && folder === null ? asks.length : 0) })).filter((r) => r.n > 0);
+  // Agents waiting on you that aren't on a task: a card each, answered there or in their terminal.
+  const waitingHere = useWaitingItems().get(workdesk);
+  const agentsWaiting = useMemo(() => (waitingHere ?? []).flatMap((x) => (x.kind === "agent" ? [x.terminalId] : [])), [waitingHere]);
+  const agents = folder !== null || query.trim() || (reason && reason !== "allow") ? NO_AGENTS : agentsWaiting;
+  const reasons = REASONS.map((k) => ({ kind: k, n: shown.filter((x) => shownColumn(x, byTask.has(x.id)) === "needs" && has(x, k)).length + (k === "approve" && folder === null ? asks.length : 0) + (k === "allow" && folder === null ? agentsWaiting.length : 0) })).filter((r) => r.n > 0);
+  // Brought here to see one request: nothing you'd narrowed the board to hides it.
+  const showing = useCanvasRequestStore((s) => s.shown);
+  useEffect(() => {
+    if (showing) setReason(null);
+  }, [showing]);
   // Its last one was answered: back to all of them, not an empty column.
   useEffect(() => {
     if (reason && !reasons.some((r) => r.kind === reason)) setReason(null);
@@ -141,16 +161,16 @@ function Board() {
           {t.tb.add}
         </button>
       </div>
-      {loaded && tasks.length === 0 && asks.length === 0 ? (
+      {loaded && tasks.length === 0 && asks.length === 0 && agents.length === 0 ? (
         <p className="tc-tk-empty-board">{t.tb.emptyBoard}</p>
-      ) : loaded && shown.length === 0 && requests.length === 0 ? (
+      ) : loaded && shown.length === 0 && requests.length === 0 && agents.length === 0 ? (
         <p className="tc-tk-empty-board">{t.tb.noneMatch}</p>
       ) : list ? (
-        <List columns={columns} by={by} requests={requests} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
+        <List columns={columns} by={by} requests={requests} agents={agents} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
       ) : (
         <Columns template={columns.map((c) => width(c, !by.get(c)?.length && !(c === "needs" && requests.length))).join(" ")}>
           {columns.map((c) => (
-            <ColumnView key={c} column={c} tasks={by.get(c) ?? []} requests={c === "needs" ? requests : NONE} dragging={dragging} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
+            <ColumnView key={c} column={c} tasks={by.get(c) ?? []} requests={c === "needs" ? requests : NONE} agents={c === "needs" ? agents : NO_AGENTS} dragging={dragging} reason={reason} reasons={reasons} setReason={setReason} onDrag={setDragging} />
           ))}
         </Columns>
       )}
@@ -201,26 +221,18 @@ function Columns({ template, children }: { template: string; children: ReactNode
 }
 
 const NONE: CanvasRequest[] = [];
+const NO_AGENTS: readonly string[] = [];
 
-/** An agent asking to change something on the canvas. Brought into view when that's what you came for. */
-function RequestCard({ request }: { request: CanvasRequest }) {
-  const shown = useCanvasRequestStore((s) => s.shown === request.id);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!shown) return;
-    ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    const timer = window.setTimeout(() => useCanvasRequestStore.setState({ shown: null }), 2_500);
-    return () => window.clearTimeout(timer);
-  }, [shown]);
-  return (
-    <div ref={ref} className="tc-tk-request" data-shown={shown || undefined}>
-      <CanvasAskCard request={request} />
-    </div>
-  );
-}
+/** A drawing request found by its agent's name or the drawings' names. */
+const askMatches = (r: CanvasRequest, query: string): boolean => {
+  const q = query.trim().toLowerCase();
+  return !q || [r.name, ...r.titles].some((w) => w.toLowerCase().includes(q));
+};
 
 interface ColumnProps {
   requests: CanvasRequest[];
+  /** Agents on no task waiting on you: Needs you only. */
+  agents: readonly string[];
   reason: RequestKind | null;
   reasons: Array<{ kind: RequestKind; n: number }>;
   setReason: (reason: RequestKind | null) => void;
@@ -230,7 +242,7 @@ interface ColumnProps {
 /** Nothing is dragged into Needs you, and Working starts at an agent. */
 const ACCEPTS: ReadonlySet<Column> = new Set(["later", "next", "done", "dropped"]);
 
-function ColumnView({ column, tasks, requests, dragging, reason, reasons, setReason, onDrag }: ColumnProps & { column: Column; tasks: Task[]; dragging: string | null }) {
+function ColumnView({ column, tasks, requests, agents, dragging, reason, reasons, setReason, onDrag }: ColumnProps & { column: Column; tasks: Task[]; dragging: string | null }) {
   const t = useT();
   const [over, setOver] = useState(false);
   const all = useTaskStore((s) => s.tasks);
@@ -270,7 +282,7 @@ function ColumnView({ column, tasks, requests, dragging, reason, reasons, setRea
       <header className="tc-tk-column-head">
         <Dot column={column} />
         <h3>{t.tb.columns[column]}</h3>
-        <span className="tc-tk-count">{tasks.length + requests.length}</span>
+        <span className="tc-tk-count">{tasks.length + requests.length + agents.length}</span>
         <span className="flex-1" />
         {(column === "later" || column === "next") && (
           <button type="button" className="tc-tk-add" aria-label={t.tb.addTo(t.tb.columns[column])} title={t.tb.addTo(t.tb.columns[column])} onClick={() => newTask({ wait: column })}>
@@ -283,13 +295,16 @@ function ColumnView({ column, tasks, requests, dragging, reason, reasons, setRea
       {column === "needs" && reasons.length > 1 && <Reasons reason={reason} reasons={reasons} setReason={setReason} />}
       <div className="tc-tk-column-body">
         {held && over && !accepts && columnOf(held) !== column && <p className="tc-tk-hint">{column === "needs" ? t.tb.cantDropHere.needs : t.tb.cantDropHere.working}</p>}
+        {agents.map((id) => (
+          <AgentWaitCard key={id} terminalId={id} />
+        ))}
         {requests.map((x) => (
-          <RequestCard key={x.id} request={x} />
+          <BoardAskCard key={x.id} request={x} />
         ))}
         {tasks.slice(0, column === "done" || column === "dropped" ? DONE_SHOWN : undefined).map((x) => (
           <TaskCard key={x.id} task={x} reason={column === "needs" ? reason : null} onDrag={onDrag} />
         ))}
-        {tasks.length === 0 && requests.length === 0 && <p className="tc-tk-empty">{t.tb.empty[column]}</p>}
+        {tasks.length === 0 && requests.length === 0 && agents.length === 0 && <p className="tc-tk-empty">{t.tb.empty[column]}</p>}
       </div>
     </section>
   );
@@ -311,7 +326,7 @@ function Reasons({ reason, reasons, setReason }: Pick<ColumnProps, "reason" | "r
   );
 }
 
-function List({ columns, by, requests, reason, reasons, setReason, onDrag }: ColumnProps & { columns: readonly Column[]; by: Map<Column, Task[]> }) {
+function List({ columns, by, requests, agents, reason, reasons, setReason, onDrag }: ColumnProps & { columns: readonly Column[]; by: Map<Column, Task[]> }) {
   const t = useT();
   // What needs you first, when there isn't room to see it all.
   const order = [...columns].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
@@ -320,19 +335,23 @@ function List({ columns, by, requests, reason, reasons, setReason, onDrag }: Col
       {order.map((c) => {
         const tasks = by.get(c) ?? [];
         const asks = c === "needs" ? requests : NONE;
-        if (tasks.length === 0 && asks.length === 0) return null;
+        const waiting = c === "needs" ? agents : NO_AGENTS;
+        if (tasks.length === 0 && asks.length === 0 && waiting.length === 0) return null;
         return (
           <section key={c} className="mb-4" aria-label={t.tb.columns[c]}>
             <header className="tc-tk-column-head">
               <Dot column={c} />
               <h3>{t.tb.columns[c]}</h3>
-              <span className="tc-tk-count">{tasks.length + asks.length}</span>
+              <span className="tc-tk-count">{tasks.length + asks.length + waiting.length}</span>
             </header>
             {c === "needs" && reasons.length > 1 && <Reasons reason={reason} reasons={reasons} setReason={setReason} />}
             {c === "needs" ? (
               <div className="flex flex-col gap-2">
+                {waiting.map((id) => (
+                  <AgentWaitCard key={id} terminalId={id} />
+                ))}
                 {asks.map((x) => (
-                  <RequestCard key={x.id} request={x} />
+                  <BoardAskCard key={x.id} request={x} />
                 ))}
                 {tasks.map((x) => (
                   <TaskCard key={x.id} task={x} reason={reason} onDrag={onDrag} />

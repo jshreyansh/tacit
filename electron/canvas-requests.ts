@@ -10,6 +10,9 @@ import type { CanvasRequest } from "../shared/canvas-ops";
 /** The most that can wait at once. One more is refused: an agent that was told "they've been asked" is never dropped. */
 export const REQUESTS_MAX = 100;
 
+const isTaskRef = (v: unknown): v is { id: string; try: string } =>
+  !!v && typeof v === "object" && typeof (v as { id?: unknown }).id === "string" && typeof (v as { try?: unknown }).try === "string";
+
 export class CanvasRequests {
   private list: CanvasRequest[] = [];
   private counter = 0;
@@ -35,7 +38,9 @@ export class CanvasRequests {
     try {
       const saved = JSON.parse(raw) as { list?: CanvasRequest[]; counter?: number };
       if (!Array.isArray(saved.list)) throw new Error("it has no list");
-      this.list = saved.list.filter((r) => r && typeof r.id === "string" && typeof r.terminalId === "string" && (r.kind === "change" || r.kind === "delete"));
+      this.list = saved.list
+        .filter((r) => r && typeof r.id === "string" && typeof r.terminalId === "string" && (r.kind === "change" || r.kind === "delete"))
+        .map((r) => (r.task === undefined || isTaskRef(r.task) ? r : (({ task: _bad, ...rest }) => rest)(r)));
       if (typeof saved.counter === "number") this.counter = saved.counter;
     } catch (err) {
       // Kept aside, said in the window, and its ids aren't given again: an agent may still name one.
@@ -78,6 +83,7 @@ export class CanvasRequests {
         same.changes = [...byId.values()];
       }
       same.titles = req.titles;
+      same.task ??= req.task;
       same.at = this.now();
       this.save();
       return same;

@@ -1,4 +1,5 @@
 import { useWorkdeskViewStore } from "./stores/workdeskViewStore";
+import { shownColumnsNow } from "./attention/waiting";
 import { WorkdeskView } from "./workdesk/WorkdeskView";
 import { useEffect } from "react";
 import { CanvasRoot } from "./canvas/CanvasRoot";
@@ -926,7 +927,8 @@ export function App() {
           });
         }
 
-        const columns = new Map(placedTasks().map(({ task }) => [task.id, columnOf(task)]));
+        // Where each shows: Needs you while a drawing request waits on it, as the person sees it.
+        const columns = shownColumnsNow(placedTasks().map(({ task }) => task));
         for (const end of noteEnds()) {
           nodes.push({
             kind: end.role,

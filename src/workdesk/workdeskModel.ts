@@ -1,4 +1,5 @@
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
+import { shownColumn } from "../attention/waitingCount";
 import { columnOf, sortTasks, type Column, type Task } from "../../shared/task";
 import { findAgentAdapter } from "../../shared/agent-adapters";
 import type { ProjectData, TerminalData } from "../types/index.ts";
@@ -136,6 +137,8 @@ export interface WorkdeskInputs {
   browsers: ReadonlyArray<{ id: string; url: string; title: string; identityId: string; favicon?: string }>;
   identityNames: Readonly<Record<string, string>>;
   tasks: readonly Task[];
+  /** Tasks whose agent asked to change a drawing while on them: what it asked, in a line. */
+  drawingAsks?: ReadonlyMap<string, string>;
   notes: ReadonlyArray<{ id: string; title: string; text: string }>;
   managerTerminalId: string | null;
 }
@@ -224,17 +227,19 @@ export function buildWorkdeskSections(input: WorkdeskInputs): WorkdeskSections {
 
   const notes: NoteCard[] = input.notes.map((n) => ({ kind: "note", id: n.id, title: n.title, body: n.text }));
   const ORDER: Column[] = ["needs", "working"];
-  const tasks: TaskCard[] = ORDER.flatMap((column) => sortTasks(input.tasks.filter((t) => columnOf(t) === column))).map((t) => {
+  // A drawing request waiting on a task puts it in Needs you, as on the board.
+  const columnOfTask = (t: Task) => shownColumn(t, !!input.drawingAsks?.has(t.id));
+  const tasks: TaskCard[] = ORDER.flatMap((column) => sortTasks(input.tasks.filter((t) => columnOfTask(t) === column))).map((t) => {
     const done = t.parts.filter((x) => x.state === "done").length;
     return {
       kind: "task",
       id: t.id,
       n: t.n,
       title: t.title,
-      column: columnOf(t),
+      column: columnOfTask(t),
       progress: t.parts.length ? `${done}/${t.parts.length}` : "",
       percent: t.parts.length ? Math.round((done / t.parts.length) * 100) : 0,
-      note: t.requests[0]?.text ?? null,
+      note: t.requests[0]?.text ?? input.drawingAsks?.get(t.id) ?? null,
     };
   });
 

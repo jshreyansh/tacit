@@ -14,6 +14,8 @@ interface Deps {
   apply: (request: CanvasRequest, always: boolean) => Promise<{ text: string } | { error: string }>;
   /** Into the agent's terminal or chat, when its turn is over. */
   tell: (terminalId: string, text: string) => Promise<void>;
+  /** How it ended, for Activity. */
+  ended: (request: CanvasRequest, state: "allowed" | "allowed_always" | "denied" | "failed" | "dropped", note?: string | null) => void;
 }
 
 const id = (v: unknown): string | null => (typeof v === "string" && /^cr-\d{1,12}$/.test(v) ? v : null);
@@ -26,7 +28,7 @@ export const answerWords = (r: Pick<CanvasRequest, "id" | "kind" | "titles">, ou
   return `${about}: the user allowed it, and it's done. ${outcome.text}`;
 };
 
-export function registerCanvasIpc({ handle, allowed, requests, apply, tell }: Deps): void {
+export function registerCanvasIpc({ handle, allowed, requests, apply, tell, ended }: Deps): void {
   /** Being answered: a second press does nothing. */
   const answering = new Set<string>();
   handle("canvas-requests:list", (event) => (allowed(event) ? requests.all() : []));
@@ -41,6 +43,9 @@ export function registerCanvasIpc({ handle, allowed, requests, apply, tell }: De
     try {
       const outcome = decision === "deny" ? { denied: note || null } : await apply(request, decision === "always");
       requests.remove(which);
+      if ("denied" in outcome) ended(request, "denied", outcome.denied);
+      else if ("error" in outcome) ended(request, "failed", outcome.error);
+      else ended(request, decision === "always" ? "allowed_always" : "allowed");
       await tell(request.terminalId, answerWords(request, outcome)).catch((err) => console.warn("[canvas-requests] couldn't tell the agent:", err));
       return "error" in outcome ? { ok: false, error: outcome.error } : { ok: true };
     } finally {
@@ -50,6 +55,8 @@ export function registerCanvasIpc({ handle, allowed, requests, apply, tell }: De
   // Its agent is gone: there's nobody to answer.
   handle("canvas-requests:drop", (event, rawId) => {
     const which = id(rawId);
-    if (allowed(event) && which && !answering.has(which)) requests.remove(which);
+    if (!allowed(event) || !which || answering.has(which)) return;
+    const gone = requests.remove(which);
+    if (gone) ended(gone, "dropped");
   });
 }

@@ -10,6 +10,8 @@ import { agentIcon } from "../../toolbar/agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { flyToBounds, panToTerminal } from "../../utils/panToTerminal";
 import { BrowserTabIcon } from "../../workdesk/BrowserTabIcon";
+import { showDrawing } from "../../board/agentOps";
+import { useBoardStore } from "../../stores/boardStore";
 
 /**
  * One line of the Activity feed: an icon for what happened on a timeline,
@@ -31,6 +33,7 @@ export const KIND_COLOR: Record<string, string> = {
   edit_wire: "var(--purple)",
   tracked_handoff: "var(--purple)",
   rename: "var(--text-muted)",
+  drawing_request: "var(--amber)",
   manager: "var(--amber)",
   browser_action: "var(--cyan)",
   journal_write: "var(--purple)",
@@ -87,6 +90,10 @@ function KindGlyph({ kind }: { kind: string }) {
       break;
     case "rename":
       body = p("M10.5 3l2.5 2.5L6 12.5H3.5V10z");
+      break;
+    case "drawing_request":
+      // The shield the request's own card carries.
+      body = p("M8 2l5 2v3.5c0 3-2.2 5.4-5 6.5-2.8-1.1-5-3.5-5-6.5V4z");
       break;
     case "manager":
       body = p("M2.5 11.5l1-6 3 2.5L8 4l1.5 4 3-2.5 1 6z");
@@ -243,10 +250,25 @@ export function ActivityRow({ entry, time, isLast }: { entry: CaptureEntryView; 
             )}
           </div>
         ) : (
-          <div className="mt-0.5 break-words text-[12px] leading-[1.55] text-[var(--text-primary)]">{withChips(sentence(entry))}</div>
+          <div className="mt-0.5 break-words text-[12px] leading-[1.55] text-[var(--text-primary)]">
+            {withChips(sentence(entry))}
+            {entry.drawings && <ShowDrawing ids={entry.drawings} />}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** Goes to the drawing a request was about, while it's still on the canvas; its name stays in the line either way. */
+function ShowDrawing({ ids }: { ids: readonly string[] }) {
+  const t = useT();
+  const there = useBoardStore((s) => ids.find((id) => s.elements.some((e) => e.id === id)) ?? null);
+  if (!there) return null;
+  return (
+    <button type="button" className="ml-1.5 text-[11px] text-[var(--text-muted)] underline decoration-[var(--border-hover)] underline-offset-2 hover:text-[var(--text-primary)]" onClick={() => showDrawing(there)}>
+      {t.agent_canvas_show}
+    </button>
   );
 }
 

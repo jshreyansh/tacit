@@ -88,6 +88,7 @@ import {
   partitionForBrowserIdentity,
 } from "../shared/browser-profile-import";
 import { registerCanvasIpc } from "./canvas-ipc";
+import { drawingRequestEntry } from "../shared/canvas-ops";
 import { CanvasRequests } from "./canvas-requests";
 import { TaskStore } from "./task-store";
 import { TaskRunner, type TaskTerminal } from "./task-runner";
@@ -862,7 +863,10 @@ const taskEvidence = new TaskEvidence({
   now: () => Date.now(),
 });
 /** What agents have asked to change on the canvas (electron/canvas-requests.ts). */
-const canvasRequests = new CanvasRequests(path.join(TACIT_DIR, "canvas-requests.json"), (list) => sendToWindow(mainWindow, "canvas-requests:changed", list), Date.now, (request) => attention.observeCanvasRequest(request));
+const canvasRequests = new CanvasRequests(path.join(TACIT_DIR, "canvas-requests.json"), (list) => sendToWindow(mainWindow, "canvas-requests:changed", list), Date.now, (request) => {
+  attention.observeCanvasRequest(request);
+  captureService.record(drawingRequestEntry(request, "asked"), request.workdesk, new Date(), { method: "main" });
+});
 const taskRunner: TaskRunner = new TaskRunner({
   store: taskStore,
   terminal: async (id): Promise<TaskTerminal | null> => {
@@ -1398,6 +1402,7 @@ const TITLE_STRIP_HEIGHT = 28;
     });
     mainWindow = null;
     rendererReady = false;
+    attention.windowGone();
   });
   mainWindow.on("focus", () => {
     handoffs?.windowFocusChanged(true, clipboardText());
@@ -1493,6 +1498,8 @@ const TITLE_STRIP_HEIGHT = 28;
   }
 
   let rendererReady = false;
+  // Reloading: its count is gone until it has loaded what it counts again.
+  mainWindow.webContents.on("did-start-loading", () => attention.windowGone());
   mainWindow.webContents.on("did-finish-load", async () => {
     renderDiagnostics.recordMainEvent("renderer_did_finish_load", {
       renderer_ready_before_load: rendererReady,
@@ -3014,6 +3021,7 @@ function setupIpc() {
     allowed: isMainWindowSender,
     requests: canvasRequests,
     apply: (request, always) => apiServer.applyCanvasRequest(request, always),
+    ended: (request, state, note) => captureService.record(drawingRequestEntry(request, state, note), request.workdesk, new Date(), { method: "main" }),
     tell: async (terminalId, text) => {
       if (chatEngine.isRunning(terminalId)) {
         chatEngine.send(terminalId, text);

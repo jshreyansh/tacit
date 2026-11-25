@@ -157,18 +157,33 @@ test("a task notifies once for each thing it needs, and not for a permission its
   assert.equal(requested.length, 2);
 });
 
-test("the badge counts agents waiting and tasks needing the person, and clears as they're answered", () => {
+test("the badge is the window's count of what waits on the person, agents included, so it's the number Tacit shows", () => {
   const { notifier, badges } = setup({ focused: true });
+  // An agent waiting is counted by the window, once, with its task's card if it's on one.
   notifier.observeTerminal("a", waitingSnap, [{ kind: "waiting_for_human" }]);
-  notifier.observeTerminal("b", waitingSnap, [{ kind: "waiting_for_human" }]);
   notifier.observeTerminal("sh", waitingSnap, []);
-  notifier.configure({ prefs: DEFAULT_ATTENTION_PREFS, needsYouTasks: 2 });
-  assert.equal(notifier.badgeCount(), 4);
+  assert.equal(notifier.badgeCount(), 1, "until the window counts, the agent main sees; a shell isn't one");
+  notifier.configure({ prefs: DEFAULT_ATTENTION_PREFS, needsYouTasks: 3 });
+  assert.equal(notifier.badgeCount(), 3);
   notifier.observeTerminal("a", alive, []);
-  notifier.observeTerminal("b", { pty_alive: false }, [{ kind: "closed" }]);
   notifier.configure({ prefs: DEFAULT_ATTENTION_PREFS, needsYouTasks: 0 });
   assert.equal(notifier.badgeCount(), 0);
-  assert.deepEqual(badges, [1, 2, 4, 3, 2, 0]);
+  assert.deepEqual(badges, [1, 3, 0]);
+});
+
+test("with no window to count (closed, reloading, not loaded yet), the badge is the agents main sees waiting", () => {
+  const { notifier } = setup({ focused: true });
+  notifier.observeTerminal("a", waitingSnap, [{ kind: "waiting_for_human" }]);
+  notifier.observeTerminal("b", waitingSnap, [{ kind: "waiting_for_human" }]);
+  assert.equal(notifier.badgeCount(), 2, "before the window has counted");
+  notifier.configure({ prefs: DEFAULT_ATTENTION_PREFS, needsYouTasks: 5 });
+  assert.equal(notifier.badgeCount(), 5);
+  notifier.windowGone();
+  assert.equal(notifier.badgeCount(), 2, "the window closed: it can't count any more");
+  notifier.observeTerminal("b", { pty_alive: false }, [{ kind: "closed" }]);
+  assert.equal(notifier.badgeCount(), 1, "and it keeps up without it");
+  notifier.configure({ prefs: DEFAULT_ATTENTION_PREFS, needsYouTasks: null });
+  assert.equal(notifier.badgeCount(), 1, "a window still loading doesn't count yet");
 });
 
 test("only a notice main issued is shown, once, with its words masked and kept short", () => {

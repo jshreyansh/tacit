@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasRequest } from "../../shared/canvas-ops";
 import { AskBadge, AskButton, AskFoot, AskHead, AskReply } from "../components/ask/AskCard";
 import { useT } from "../i18n/useT";
@@ -6,14 +6,14 @@ import { useBoardStore } from "../stores/boardStore";
 import { ago } from "../tasks/taskWords";
 import { useNow } from "../tasks/useNow";
 import { openTask } from "../tasks/taskActions";
-import { useTaskOfTerminal } from "../tasks/taskStore";
+import { useTask, useTaskOfTerminal } from "../tasks/taskStore";
 import { answerCanvasRequest, beforeAndAfter, changeWords, onlyWords, openCanvasRequest, showCanvasRequest, useCanvasRequestStore, useCanvasRequests, wantsTo } from "./canvasRequests";
 
 /**
  * An agent asking to change something of yours: what, as it is and as it would
  * be, and your answer. The chat's own anatomy, on the canvas and in its chat.
  */
-export function CanvasAskCard({ request, show = true, onClose }: { request: CanvasRequest; /** A way to the drawing, when it isn't beside it. */ show?: boolean; /** It can be put away, beside its drawing. */ onClose?: () => void }) {
+export function CanvasAskCard({ request, show = true, onClose, inTask = false }: { request: CanvasRequest; /** A way to the drawing, when it isn't beside it. */ show?: boolean; /** It can be put away, beside its drawing. */ onClose?: () => void; /** On its task's card, which needs no line naming it. */ inTask?: boolean }) {
   const t = useT();
   const now = useNow();
   const [denying, setDenying] = useState(false);
@@ -22,7 +22,9 @@ export function CanvasAskCard({ request, show = true, onClose }: { request: Canv
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const pictures = useMemo(() => beforeAndAfter(request), [request, elements]);
   const words = changeWords(request);
-  const task = useTaskOfTerminal(request.terminalId);
+  const current = useTaskOfTerminal(request.terminalId);
+  const kept = useTask(request.task?.id ?? null);
+  const task = request.task ? kept : current;
   const plain = onlyWords(request);
   // A rename says it in one: "maza" → "jazz".
   const renamed = wantsTo(request) === "rename" && words.length === 1;
@@ -32,7 +34,7 @@ export function CanvasAskCard({ request, show = true, onClose }: { request: Canv
       <AskHead kind="approval" label={t.canvas_ask_wants[wantsTo(request)](request.name)} title={renamed ? words[0] : name} meta={<span className="inline-flex items-center gap-1.5">{ago(new Date(request.at).toISOString(), now)}{onClose && <CloseButton onClick={onClose} />}</span>} />
       <p className="px-3 pb-2 pl-[46px] text-[12.5px] leading-snug text-[var(--text-secondary)] empty:hidden [overflow-wrap:anywhere]">
         {renamed ? null : words.join(", ")}
-        {task && (
+        {task && !inTask && (
           <button type="button" className="mt-1 block text-[12px] text-[var(--text-metadata)] hover:underline" onClick={() => openTask(task.id)}>
             {t.canvas_ask_on_task(`T-${task.n} ${task.title}`)}
           </button>
@@ -74,6 +76,23 @@ export function CanvasAskCard({ request, show = true, onClose }: { request: Canv
           )}
         </AskFoot>
       )}
+    </div>
+  );
+}
+
+/** On the board, alone or on its task's card: brought into view when that's what you came for. */
+export function BoardAskCard({ request, inTask = false }: { request: CanvasRequest; inTask?: boolean }) {
+  const shown = useCanvasRequestStore((s) => s.shown === request.id);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!shown) return;
+    ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const timer = window.setTimeout(() => useCanvasRequestStore.setState({ shown: null }), 2_500);
+    return () => window.clearTimeout(timer);
+  }, [shown]);
+  return (
+    <div ref={ref} className="tc-tk-request" data-shown={shown || undefined}>
+      <CanvasAskCard request={request} inTask={inTask} />
     </div>
   );
 }

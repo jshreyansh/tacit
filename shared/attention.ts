@@ -68,8 +68,12 @@ export interface AttentionNotice {
   question?: string;
 }
 
-/** What the window tells main: its settings and how many tasks wait on the person. */
+/** What the window tells main: its settings and how many things wait on the person. */
 export interface AttentionState {
   prefs: AttentionPrefs;
-  needsYouTasks: number;
+  /**
+   * Every card in Needs you, every workdesk added up (src/attention/waitingCount.ts):
+   * the dock's number. Null until the window has loaded what it counts.
+   */
+  needsYouTasks: number | null;
 }

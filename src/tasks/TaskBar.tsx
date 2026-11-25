@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useT } from "../i18n/useT";
 import type { Task } from "../types";
-import { columnOf } from "../../shared/task";
+import { useShownColumn } from "../attention/waiting";
 import { TaskAsks } from "./TaskAsks";
 import { Dot, RunRow, TaskParts } from "./TaskCard";
 import { runLines, sortRequests } from "./taskWords";
@@ -11,12 +11,13 @@ import "./tasks.css";
 export function TaskBar({ task, onOpen }: { task: Task; onOpen: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const column = useShownColumn(task);
   const done = task.parts.filter((p) => p.state === "done").length;
   return (
     <div className="tc-tk-card mx-3 mb-2">
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--text-metadata)]">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
-          <Dot column={columnOf(task)} />
+          <Dot column={column} />
           <span className="tc-tk-id">{`T-${task.n}`}</span>
           {task.parts.length > 0 && <span className="tabular-nums">{`${done}/${task.parts.length}`}</span>}
           <span className="min-w-0 flex-1 truncate text-[12.5px] text-[var(--text-primary)]">{task.title}</span>

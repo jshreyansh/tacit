@@ -1814,7 +1814,9 @@ export class ApiServer {
       if ("error" in done) throw refuse(done.error);
       if (!("ask" in done)) return done;
       // Not its own: the person is asked, and the agent told that. It hears the answer as a message.
-      const request = this.deps.canvasRequests.ask(done.ask);
+      // Kept with the task its agent is on now, in case it moves on before the answer.
+      const task = this.deps.tasks.workingOn(terminalId);
+      const request = this.deps.canvasRequests.ask({ ...done.ask, ...(task ? { task } : {}) });
       if (!request) throw refuse(`Not asked: ${REQUESTS_MAX} changes already wait on the user, the most there can be, so this one wasn't added. Nothing has changed. Don't retry now; tell the user Needs you is full.`, 409);
       const names = request.titles.slice(0, 3).map((t) => JSON.stringify(t)).join(", ");
       return { text: `Not yet: ${request.kind === "delete" ? "deleting" : "changing"} ${names} needs the user's yes, and they've been asked (${request.id}). Nothing has changed. Their answer arrives here as a message, and the change is made for you if they allow it, so don't wait, ask again or do it another way. Tell the user you've asked.` };

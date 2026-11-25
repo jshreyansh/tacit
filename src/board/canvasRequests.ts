@@ -1,7 +1,7 @@
 /** What agents ask to change on the canvas, for the window (electron/canvas-requests.ts keeps them). */
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { CanvasChange, CanvasDecision, CanvasRequest } from "../../shared/canvas-ops";
+import { requestVerb, type CanvasChange, type CanvasDecision, type CanvasRequest } from "../../shared/canvas-ops";
 import { findTerminal } from "../actions/terminalLookup";
 import { getTranslations } from "../i18n/useT";
 import { useBoardStore } from "../stores/boardStore";
@@ -28,7 +28,8 @@ export const setPin = (id: string | null): void => useCanvasRequestStore.setStat
 /** Its home: Needs you, on the board. The same on the canvas and in the grid. */
 export function openCanvasRequest(id: string): void {
   useTaskStore.getState().open(null);
-  useTaskStore.setState({ composing: null });
+  // Nothing you'd narrowed the board to hides it.
+  useTaskStore.setState({ composing: null, query: "", folder: null });
   useCanvasRequestStore.setState({ shown: id });
   openBoard();
 }
@@ -133,10 +134,7 @@ export function onlyWords(r: CanvasRequest): boolean {
 }
 
 /** What it wants, as a verb: to rename, to delete, to change. */
-export function wantsTo(r: CanvasRequest): "rename" | "delete" | "change" {
-  if (r.kind === "delete") return "delete";
-  return (r.changes ?? []).every((c) => Object.keys(c).every((k) => k === "id" || k === "text")) ? "rename" : "change";
-}
+export const wantsTo = (r: CanvasRequest): "rename" | "delete" | "change" => requestVerb(r);
 
 /** What would change, in a few words each. */
 export function changeWords(r: CanvasRequest): string[] {

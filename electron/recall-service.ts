@@ -170,6 +170,9 @@ export class RecallService {
     }
 
     const out: CaptureEntryView[] = [];
+    // A drawing request is one line: how it ended, which is newer, stands
+    // for its asking too. One not answered yet shows as asked.
+    const ended = new Set<string>();
     for (const filePath of files) {
       let lines: string[];
       try {
@@ -191,6 +194,10 @@ export class RecallService {
         // Entries written before the renderer reported a canvas carry null,
         // and those belong to every canvas rather than none.
         if (canvasId && entry.canvas && entry.canvas !== canvasId) continue;
+        if (entry.kind === "drawing_request") {
+          if (entry.state === "asked" && ended.has(entry.request)) continue;
+          if (entry.state !== "asked") ended.add(entry.request);
+        }
         out.push({
           id: `${base}#${i}`,
           at: entry.at,
@@ -202,6 +209,7 @@ export class RecallService {
           actorKind: entry.actor_identity?.kind ?? "system",
           taskId: entry.task_id ?? null,
           ...(runDetail(entry) ? { run: runDetail(entry)! } : {}),
+          ...(entry.kind === "drawing_request" ? { drawings: entry.targets } : {}),
         });
         if (out.length >= limit) return out;
       }
@@ -309,6 +317,8 @@ export function summarize(entry: CaptureEntry): string {
       return `closed ${entry.node}${entry.reason ? ` — ${entry.reason.replace(/\s+/g, " ").slice(0, 160)}` : ""}`;
     case "rename":
       return `renamed ${entry.node} to "${entry.title}"`;
+    case "drawing_request":
+      return drawingRequestWords(entry);
     case "manager":
       return entry.node ? `${entry.node} became the workdesk manager` : "workdesk manager unassigned";
     case "browser_action":
@@ -336,6 +346,27 @@ export function summarize(entry: CaptureEntry): string {
   }
 }
 
+/** "terminal:x asked to rename "maza" to "jazz" — you allowed it once", whichever way it ended. */
+function drawingRequestWords(entry: Extract<CaptureEntry, { kind: "drawing_request" }>): string {
+  const names = entry.titles.length === 1 ? `"${entry.titles[0]}"` : entry.titles.length ? `${entry.titles.length} drawings (${entry.titles.slice(0, 3).map((t) => `"${t}"`).join(", ")})` : "a drawing";
+  const asked = `${entry.node} asked to ${entry.what} ${names}${entry.what === "rename" && entry.to !== undefined ? ` to "${entry.to}"` : ""}`;
+  const note = entry.note ? entry.note.replace(/\s+/g, " ").slice(0, 200) : "";
+  switch (entry.state) {
+    case "asked":
+      return `${asked} — waiting for your answer`;
+    case "allowed":
+      return `${asked} — you allowed it once`;
+    case "allowed_always":
+      return `${asked} — you allowed it, and always for ${entry.titles.length === 1 ? "that drawing" : "those drawings"}`;
+    case "denied":
+      return `${asked} — you said no${note ? `: "${note}"` : ""}`;
+    case "failed":
+      return `${asked} — you allowed it, but it couldn't be done${note ? `: ${note}` : ""}`;
+    case "dropped":
+      return `${asked} — not answered: its agent closed first`;
+  }
+}
+
 function handoffWhat(entry: Extract<CaptureEntry, { kind: "handoff" }>): string {
   if (entry.files) return entry.files.length === 1 ? entry.files[0].path : `${entry.files.length} files`;
   if (entry.from.startsWith("note:") && entry.via === "drop") return "a note";
@@ -347,6 +378,7 @@ function nodesOf(entry: CaptureEntry): CaptureNodeRef[] {
     case "spawn":
     case "close":
     case "rename":
+    case "drawing_request":
     case "browser_action":
       return [entry.node];
     case "wire":

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { type NodeProps } from "@xyflow/react";
-import { columnOf } from "../../shared/task";
+import { useTaskCanvasRequests } from "../attention/waiting";
+import { shownColumn } from "../attention/waitingCount";
 import { activateTaskInScene } from "../actions/sceneSelectionActions";
 import { useT } from "../i18n/useT";
 import { useRecordPlaceStore } from "../stores/recordPlaceStore";
@@ -34,8 +35,10 @@ export function TaskNode({ data, positionAbsoluteX, positionAbsoluteY, width, he
       useRecordPlaceStore.getState().place(data.taskId, { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.width), h: Math.round(p.height) }),
     [data.taskId],
   );
+  // In Needs you while a drawing its agent asked to change waits on it.
+  const drawings = useTaskCanvasRequests(task);
   if (!task) return null;
-  const column = columnOf(task);
+  const column = shownColumn(task, drawings.length > 0);
   const w = width ?? TASK_TILE.w;
   const h = height ?? TASK_TILE.h;
   const fly = () => flyToBounds(positionAbsoluteX, positionAbsoluteY, w, h);

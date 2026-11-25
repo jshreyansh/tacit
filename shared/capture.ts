@@ -188,6 +188,29 @@ export type CaptureEvent =
       reason?: string;
     }
   | { kind: "rename"; node: CaptureNodeRef; title: string; by: CaptureActor }
+  | {
+      /**
+       * An agent asked to change or delete drawings that aren't its own
+       * (src/board/boardAccess.ts), and how that ended. Written when it's
+       * asked, by the agent, and again when it ends: by you, or by the system
+       * when its agent closed first. Activity shows the two as one line.
+       */
+      kind: "drawing_request";
+      /** The agent that asked. */
+      node: CaptureNodeRef;
+      /** The request's id (cr-N), the same in both entries. */
+      request: string;
+      state: "asked" | "allowed" | "allowed_always" | "denied" | "failed" | "dropped";
+      what: "rename" | "change" | "delete";
+      /** The drawings, by id and by what they were called when it asked. */
+      targets: string[];
+      titles: string[];
+      /** A rename's new name. */
+      to?: string;
+      /** Your words on a no, or why an allowed change couldn't be made. */
+      note?: string;
+      by: CaptureActor;
+    }
   | { kind: "manager"; node: CaptureNodeRef | null; by: CaptureActor }
   | {
       /** A browser capability was exercised; page contents stay in their source. */
@@ -513,6 +536,7 @@ function eventNode(event: CaptureEvent): CaptureNodeRef | null {
     case "spawn":
     case "close":
     case "rename":
+    case "drawing_request":
     case "browser_action":
     case "worker_state":
     case "session": return event.node;
@@ -554,6 +578,9 @@ export function maskCaptureSecrets<E extends CaptureEvent>(event: E): E {
   if ((event.kind === "run_started" || event.kind === "run_named") && typeof event.goal === "string") {
     const goal = maskSecrets(event.goal);
     return goal === event.goal ? event : { ...event, goal } as E;
+  }
+  if (event.kind === "drawing_request" && (event.note || event.to)) {
+    return { ...event, ...(event.note ? { note: maskSecrets(event.note) } : {}), ...(event.to ? { to: maskSecrets(event.to) } : {}) } as E;
   }
   if (event.kind === "journal_write") {
     // A URL can carry a token in its query string.
@@ -714,6 +741,8 @@ export interface CaptureEntryView {
   taskId: string | null;
   /** For run_started / run_named / run_ended: what the task's heading shows. */
   run?: { goal?: string | null; by: string; reason?: "ended" | "superseded" | "idle" };
+  /** For drawing_request: the drawings it was about, to go to them. */
+  drawings?: string[];
 }
 
 export interface CaptureHealth {

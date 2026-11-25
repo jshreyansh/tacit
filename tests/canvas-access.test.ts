@@ -128,6 +128,22 @@ test("what can't be read is kept aside, said once, and its ids aren't given agai
   }
 });
 
+test("a request keeps the task its agent was on, and a task saved wrongly is let go of, not the request", () => {
+  const x = requests();
+  const r = x.list.ask(ask({ task: { id: "t-14", try: "y1" } }))!;
+  assert.deepEqual(r.task, { id: "t-14", try: "y1" });
+  // More of the same, asked after it moved on, stays with the task it was asked for.
+  x.list.ask(ask({ changes: [{ id: "a", color: "green" }], task: { id: "t-15", try: "y2" } }));
+  assert.deepEqual(x.list.all()[0].task, { id: "t-14", try: "y1" });
+  const saved = JSON.parse(fs.readFileSync(x.file, "utf8"));
+  saved.list[0].task = { id: 14 };
+  fs.writeFileSync(x.file, JSON.stringify(saved));
+  const again = x.make();
+  assert.equal(again.all().length, 1);
+  assert.equal(again.all()[0].task, undefined);
+  fs.rmSync(x.dir, { recursive: true });
+});
+
 test("when no more can wait, the next is refused and none is dropped", () => {
   const x = requests();
   for (let i = 0; i < REQUESTS_MAX; i++) assert.ok(x.list.ask(ask({ targets: [`d${i}`] })));
@@ -145,6 +161,7 @@ function ipc(apply: (r: CanvasRequest, always: boolean) => Promise<{ text: strin
   const handlers = new Map<string, (event: never, ...args: unknown[]) => unknown>();
   const told: string[] = [];
   const applied: Array<[string, boolean]> = [];
+  const ends: string[] = [];
   registerCanvasIpc({
     handle: (channel, fn) => void handlers.set(channel, fn as never),
     allowed: (event) => (event as unknown as { ok: boolean }).ok,
@@ -154,9 +171,10 @@ function ipc(apply: (r: CanvasRequest, always: boolean) => Promise<{ text: strin
       return apply(r, always);
     },
     tell: async (id, text) => void told.push(`${id}: ${text}`),
+    ended: (r, state, note) => void ends.push(`${r.id} ${state}${note ? ` ${note}` : ""}`),
   });
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!({ ok: true } as never, ...args);
-  return { ...x, call, stranger: (channel: string, ...args: unknown[]) => handlers.get(channel)!({ ok: false } as never, ...args), told, applied };
+  return { ...x, call, stranger: (channel: string, ...args: unknown[]) => handlers.get(channel)!({ ok: false } as never, ...args), told, applied, ends };
 }
 
 test("allowed, always, denied with words: what's done, and what the agent hears", async () => {
@@ -171,6 +189,19 @@ test("allowed, always, denied with words: what's done, and what the agent hears"
   assert.match(x.told[0], /^t1: \[Canvas\] Your request cr-1 to change "Hello": the user allowed it, and it's done\. Changed it\.$/);
   assert.match(x.told[2], /the user said no\. They said: "call it blues instead" Nothing was changed/);
   assert.equal(x.list.all().length, 0);
+  assert.deepEqual(x.ends, ["cr-1 allowed", "cr-2 allowed_always", "cr-3 denied call it blues instead"], "Activity hears how each ended");
+});
+
+test("Activity hears an allowed change that couldn't be made, and one whose agent closed first", async () => {
+  const failing = ipc(async () => ({ error: "There's no drawing with the id a." }));
+  await failing.call("canvas-requests:answer", failing.list.ask(ask()).id, "once");
+  assert.deepEqual(failing.ends, ["cr-1 failed There's no drawing with the id a."]);
+  const x = ipc();
+  const id = x.list.ask(ask()).id;
+  x.stranger("canvas-requests:drop", id);
+  x.call("canvas-requests:drop", id);
+  x.call("canvas-requests:drop", id);
+  assert.deepEqual(x.ends, ["cr-1 dropped"], "once, and only from the app's own window");
 });
 
 test("answered once, by the app's own window, with one of three answers", async () => {

@@ -1,5 +1,6 @@
 /** The open workdesk's canvas, for the main process to answer an agent with. Only reads. */
 import { useBoardStore } from "../stores/boardStore";
+import { shownColumnsNow } from "../attention/waiting";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { useFileTileStore } from "../stores/fileTileStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -18,10 +19,13 @@ export function canvasTiles(): CanvasTile[] {
   const projects = useProjectStore.getState().projects;
   const names = agentNames(agentsIn(projects));
   const terminals = projects.flatMap((p) => p.worktrees.flatMap((w) => w.terminals)).filter((t) => !t.stashed);
+  // Where each shows: Needs you while a drawing request waits on it, as you see it.
+  const placed = placedTasks();
+  const columns = shownColumnsNow(placed.map(({ task }) => task));
   return [
     ...terminals.map((t): CanvasTile => ({ id: t.id, kind: "terminal", name: t.customTitle?.trim() || names.get(t.id) || t.title, x: t.x, y: t.y, w: t.width, h: t.height, about: t.type })),
     ...Object.values(useBrowserCardStore.getState().cards).map((c): CanvasTile => ({ id: `${CARD_PREFIX}${c.id}`, kind: "browser", name: c.title || c.url, url: c.url, x: c.x, y: c.y, w: c.w, h: c.h })),
-    ...placedTasks().map(({ task, rect }): CanvasTile => ({ id: task.id, kind: "task", name: `T-${task.n} ${task.title}`.trim(), about: columnOf(task), ...rect })),
+    ...placed.map(({ task, rect }): CanvasTile => ({ id: task.id, kind: "task", name: `T-${task.n} ${task.title}`.trim(), about: columns.get(task.id) ?? columnOf(task), ...rect })),
     ...Object.values(useFileTileStore.getState().tiles).map((f): CanvasTile => ({ id: f.id, kind: "file", name: f.path.split(/[\\/]/).pop() || f.path, path: f.path, x: f.x, y: f.y, w: f.w, h: f.h })),
   ];
 }

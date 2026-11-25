@@ -9,6 +9,8 @@ import { useProjectStore } from "../stores/projectStore";
 import { changeTask, goToTerminal, openTask } from "./taskActions";
 import { AgentMark, HandOverButton } from "./HandOver";
 import { TaskAsks } from "./TaskAsks";
+import { BoardAskCard } from "../board/CanvasAskCard";
+import { useShownColumn, useTaskCanvasRequests } from "../attention/waiting";
 import { COLUMN_COLOR, PRIORITY_COLOR, ago, partTry, runLines, sortRequests, waitsForYou } from "./taskWords";
 import { useNow } from "./useNow";
 
@@ -143,7 +145,9 @@ export function TaskParts({ task }: { task: Task }) {
 export function TaskBody({ task, reason }: { task: Task; reason?: string | null }) {
   const t = useT();
   const [all, setAll] = useState(false);
-  const column = columnOf(task);
+  const column = useShownColumn(task);
+  // Drawings its agent asked to change while on it: answered here, as on their own.
+  const drawings = useTaskCanvasRequests(task);
   const requests = sortRequests(task);
   // The one you filtered for first; the rest one press away. One agent's questions are one card.
   const ordered = reason ? [...requests.filter((r) => r.kind === reason), ...requests.filter((r) => r.kind !== reason)] : requests;
@@ -182,6 +186,13 @@ export function TaskBody({ task, reason }: { task: Task; reason?: string | null 
           )}
         </div>
       )}
+      {drawings.length > 0 && (
+        <div className="tc-tk-card-asks">
+          {drawings.map((r) => (
+            <BoardAskCard key={r.id} request={r} inTask />
+          ))}
+        </div>
+      )}
       <TaskAsks task={task} requests={shown} />
       {ordered.length > shown.length && (
         <button type="button" className="tc-tk-more-asks" onClick={() => setAll(true)}>
@@ -194,7 +205,7 @@ export function TaskBody({ task, reason }: { task: Task; reason?: string | null 
 
 /** One task on the board: what it is, what's happening, and what it needs from you. */
 export function TaskCard({ task, reason, onDrag }: { task: Task; reason?: string | null; onDrag?: (id: string | null) => void }) {
-  const column = columnOf(task);
+  const column = useShownColumn(task);
   const closed = task.closed;
   return (
     <article

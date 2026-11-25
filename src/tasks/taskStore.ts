@@ -101,28 +101,6 @@ export function useTask(id: string | null | undefined): Task | null {
 
 /** Waiting on you, on one workdesk. */
 export const waitingOn = (tasks: readonly Task[]): Task[] => tasks.filter((t) => columnOf(t) === "needs");
-/** The same less permissions, which their terminals already count. */
-const beyondPermissions = (tasks: readonly Task[]) => waitingOn(tasks).filter((t) => t.requests.some((r) => r.kind !== "allow"));
-
-export function useTasksNeedingYou(): Task[] {
-  const tasks = useTasks();
-  return useMemo(() => beyondPermissions(tasks), [tasks]);
-}
-
-/** Tasks waiting on you on each other workdesk, by its id. */
-export function useNeedsYouOnOtherWorkdesks(): Record<string, number> {
-  const tasks = useTaskStore((s) => s.tasks);
-  const canvases = useCanvasRegistryStore((s) => s.canvases);
-  const active = useCanvasRegistryStore((s) => s.activeCanvasId);
-  return useMemo(
-    () => Object.fromEntries(canvases.filter((c) => c.id !== active).flatMap((c) => {
-      const n = beyondPermissions(tasksOn(c.id, tasks)).length;
-      return n ? [[c.id, n]] : [];
-    })),
-    [tasks, canvases, active],
-  );
-}
-
 /** The task a terminal is on, if any: what its tile's badge names. */
 export function useTaskOfTerminal(terminalId: string): Task | null {
   return useTaskStore((s) => {

@@ -25,7 +25,6 @@ import { useNotificationStore } from "../stores/notificationStore";
 import { flyToBounds } from "../utils/panToTerminal";
 import { PILL_GLASS, useComposerBottomOffset } from "./pillChrome";
 import { useLiveTree } from "./LiveSessions";
-import { useTasksNeedingYou } from "../tasks/taskStore";
 import { TaskBar } from "../tasks/TaskBar";
 import { openTask } from "../tasks/taskActions";
 import { useTaskOfTerminal } from "../tasks/taskStore";
