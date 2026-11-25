@@ -99,7 +99,7 @@ export function UpdateModal({ onClose }: Props) {
             ? { label: t.update_checking_short, disabled: true, onClick: () => {} }
             : checked === "up-to-date"
               ? { label: t.update_modal_done, disabled: false, onClick: onClose }
-              : checked === "failed"
+              : checked === "failed" || checked === "misplaced"
                 ? { label: t.update_modal_retry, disabled: false, onClick: handleRetry }
                 : { label: t.update_check, disabled: false, onClick: handleRetry };
 
@@ -112,7 +112,9 @@ export function UpdateModal({ onClose }: Props) {
         ? null
         : checked === "up-to-date"
           ? { line: t.update_modal_latest, hint: installed ? t.update_modal_installed(installed) : null }
-          : checked === "failed"
+          : checked === "misplaced"
+            ? { line: t.update_modal_misplaced, hint: t.update_modal_misplaced_hint }
+            : checked === "failed"
             ? { line: t.update_modal_check_failed, hint: t.update_modal_check_failed_hint }
             : { line: t.update_modal_idle, hint: installed ? t.update_modal_installed(installed) : null };
   // "Later" is for an update on its way; otherwise there's nothing to postpone.

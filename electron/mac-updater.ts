@@ -23,6 +23,7 @@ import type { BrowserWindow } from "electron";
 import { emitUpdaterEvent } from "./updater-state";
 import type { UpdateCheckOutcome } from "../shared/updater-types";
 import { UpdaterLog } from "./updater-log";
+import { fetchWithRetries } from "./update-fetch";
 import { endStream, orFailure, spawnDetached, watchFailure, writeChunk } from "./stream-safety";
 
 const GITHUB_OWNER = "jshreyansh";
@@ -520,6 +521,8 @@ export class MacCustomUpdater {
   private window: BrowserWindow;
   private pendingUpdate: PendingUpdate | null = null;
   private downloading = false;
+  /** What's downloading, to say again to a check made meanwhile. */
+  private downloadingInfo: { version: string; releaseNotes: string; releaseDate: string } | null = null;
   private installing = false;
   private locationWarningSent = false;
   private readonly log: UpdaterLog;
@@ -551,9 +554,12 @@ export class MacCustomUpdater {
 
   async checkForUpdates(): Promise<UpdateCheckOutcome> {
     const currentVersion = app.getVersion();
+    // A check you make while one is downloading: it's under way, so say so,
+    // not "couldn't check".
     if (this.downloading) {
-      this.log.record({ outcome: "skipped", reason: "already-downloading", currentVersion });
-      return "skipped";
+      this.log.record({ outcome: "newer", reason: "already-downloading", currentVersion });
+      if (this.downloadingInfo) emitUpdaterEvent(this.window, "updater:update-available", this.downloadingInfo);
+      return "newer";
     }
 
     // Skip updates when the .app is on a read-only volume (e.g. mounted DMG)
@@ -572,7 +578,7 @@ export class MacCustomUpdater {
         currentVersion,
         detail: getAppBundlePath(),
       });
-      return "skipped";
+      return "not-in-applications";
     }
 
     // Only a download that fails is an error worth showing. Not reaching
@@ -582,7 +588,9 @@ export class MacCustomUpdater {
     let downloadStarted = false;
     try {
       const ymlUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/latest-mac.yml`;
-      const yml = await fetchText(ymlUrl);
+      const yml = await fetchWithRetries(ymlUrl, fetchText, (attempt, error) =>
+        this.log.record({ outcome: "skipped", reason: "check-retrying", currentVersion, detail: `attempt ${attempt}: ${error.message}` }),
+      );
       const release = parseLatestYml(yml);
 
       if (!release.version) {
@@ -630,11 +638,8 @@ export class MacCustomUpdater {
       }
 
       downloadStarted = true;
-      emitUpdaterEvent(this.window, "updater:update-available", {
-        version: release.version,
-        releaseNotes,
-        releaseDate: release.releaseDate,
-      });
+      this.downloadingInfo = { version: release.version, releaseNotes, releaseDate: release.releaseDate };
+      emitUpdaterEvent(this.window, "updater:update-available", this.downloadingInfo);
 
       this.log.record({
         outcome: "newer",
@@ -832,6 +837,7 @@ export class MacCustomUpdater {
       throw error;
     } finally {
       this.downloading = false;
+      this.downloadingInfo = null;
     }
   }
 

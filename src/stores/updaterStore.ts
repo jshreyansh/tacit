@@ -9,7 +9,7 @@ import { zh } from "../i18n/zh";
 export type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "error";
 
 /** What the last check you asked for found, when it found nothing to download. */
-export type CheckResult = "up-to-date" | "failed" | null;
+export type CheckResult = "up-to-date" | "failed" | "misplaced" | null;
 
 interface UpdaterStore {
   status: UpdateStatus;
@@ -33,6 +33,9 @@ export const useUpdaterStore = create<UpdaterStore>((set) => ({
  * in `checked`, so whichever of the two is open can say what happened.
  */
 export async function checkForUpdates(): Promise<void> {
+  // Already on its way, or ready: that's the answer, and checking would hide it.
+  const now = useUpdaterStore.getState().status;
+  if (now === "downloading" || now === "ready") return;
   useUpdaterStore.setState({ status: "checking", errorMessage: null, checked: null });
   let outcome: UpdateCheckOutcome;
   try {
@@ -43,7 +46,7 @@ export async function checkForUpdates(): Promise<void> {
   if (useUpdaterStore.getState().status !== "checking") return;
   useUpdaterStore.setState({
     status: "idle",
-    checked: outcome === "up-to-date" ? "up-to-date" : outcome === "skipped" ? "failed" : null,
+    checked: outcome === "up-to-date" ? "up-to-date" : outcome === "not-in-applications" ? "misplaced" : outcome === "skipped" ? "failed" : null,
   });
 }
 

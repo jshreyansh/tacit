@@ -14,5 +14,7 @@
  *   in-flight download. The companion `updater:location-warning` /
  *   `updater:error` events carry the actual reason. Front-end should
  *   NOT render this as "up to date".
+ * - `not-in-applications`: Tacit is running from somewhere it can't
+ *   replace itself (the disk image, Downloads), so it doesn't look.
  */
-export type UpdateCheckOutcome = "up-to-date" | "newer" | "skipped";
+export type UpdateCheckOutcome = "up-to-date" | "newer" | "skipped" | "not-in-applications";

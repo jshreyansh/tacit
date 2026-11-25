@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Check for updates** while an update is downloading shows the download instead of "Couldn't check".
+- An update check tries again when the network changes or drops mid-check (as when a VPN or Wi-Fi reconnects); half the checks on one Mac failed this way.
+- When Tacit runs from somewhere it can't update itself (the disk image, Downloads), it says to move it to Applications instead of "Couldn't reach the update server".
+
 ## [0.44.14] - 2026-11-25
 
 ### Changed

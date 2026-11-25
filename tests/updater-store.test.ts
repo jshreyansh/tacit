@@ -222,3 +222,36 @@ test("initUpdaterListeners is a no-op without the preload updater bridge", () =>
     Object.assign(globalThis, { window: previousWindow });
   }
 });
+
+test("checking while an update downloads or waits doesn't hide it as \"couldn't check\"", async () => {
+  for (const status of ["downloading", "ready"] as const) {
+    resetStores();
+    const bridge = installUpdaterBridge();
+    let asked = 0;
+    (globalThis.window as unknown as { tacit: { updater: { check: () => Promise<string> } } }).tacit.updater.check = async () => {
+      asked++;
+      return "skipped";
+    };
+    useUpdaterStore.setState({ status, downloadPercent: 40 });
+    try {
+      await checkForUpdates();
+      assert.equal(useUpdaterStore.getState().status, status);
+      assert.equal(useUpdaterStore.getState().checked, null);
+      assert.equal(asked, 0);
+    } finally {
+      bridge.restore();
+    }
+  }
+});
+
+test("running from outside Applications says so, not that the server couldn't be reached", async () => {
+  resetStores();
+  const bridge = installUpdaterBridge();
+  (globalThis.window as unknown as { tacit: { updater: { check: () => Promise<string> } } }).tacit.updater.check = async () => "not-in-applications";
+  try {
+    await checkForUpdates();
+    assert.equal(useUpdaterStore.getState().checked, "misplaced");
+  } finally {
+    bridge.restore();
+  }
+});

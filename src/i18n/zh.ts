@@ -1048,6 +1048,9 @@ export const zh = {
   update_modal_done: "完成",
   update_modal_close: "关闭",
   update_check_failed_short: "检查失败 · 重试",
+  update_misplaced_short: "将 Tacit 移到“应用程序”后才能更新",
+  update_modal_misplaced: "Tacit 无法在当前位置自动更新。",
+  update_modal_misplaced_hint: "退出 Tacit，把它拖进“应用程序”文件夹，再从那里打开。",
 
   update_check: "检查更新",
   update_checking_short: "检查中…",

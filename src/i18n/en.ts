@@ -1064,6 +1064,9 @@ export const en = {
   update_modal_done: "Done",
   update_modal_close: "Close",
   update_check_failed_short: "Couldn't check · Retry",
+  update_misplaced_short: "Move Tacit to Applications to update",
+  update_modal_misplaced: "Tacit can't update itself from here.",
+  update_modal_misplaced_hint: "Quit Tacit, drag it into your Applications folder, and open it from there.",
 
   update_check: "Check for Updates",
   update_checking_short: "Checking\u2026",

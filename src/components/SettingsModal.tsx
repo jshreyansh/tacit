@@ -429,15 +429,15 @@ function UpdateStatusLine({ appVersion }: { appVersion: string | null }) {
         {t.update_up_to_date}
       </span>
     );
-  } else if (status === "idle" && checked === "failed") {
+  } else if (status === "idle" && (checked === "failed" || checked === "misplaced")) {
     statusEl = (
       <button
         type="button"
         className="text-[11px] text-[var(--amber)] hover:text-[var(--text-primary)] transition-colors"
         onClick={handleCheck}
-        title={t.update_modal_check_failed_hint}
+        title={checked === "misplaced" ? t.update_modal_misplaced_hint : t.update_modal_check_failed_hint}
       >
-        {t.update_check_failed_short}
+        {checked === "misplaced" ? t.update_misplaced_short : t.update_check_failed_short}
       </button>
     );
   } else if (status === "checking") {
