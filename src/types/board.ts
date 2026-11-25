@@ -97,6 +97,23 @@ export interface BoardArrow extends BoardBase {
   dash: boolean;
   weight?: BoardWeight;
   label?: string;
+  /** An elbow that leaves sideways (x) or up and down (y), whichever way its ends are. */
+  axis?: "x" | "y";
+  /**
+   * The way it was taken round the boxes of its drawing, and where its ends
+   * were then. It holds while they keep their places to each other: moved
+   * together, it goes along.
+   */
+  via?: BoardVia;
+}
+
+export interface BoardVia {
+  points: Array<{ x: number; y: number }>;
+  label?: { x: number; y: number };
+  from: BoardRect;
+  to: BoardRect;
+  /** Which way its drawing runs, for taking it round again. */
+  flow?: "down" | "right";
 }
 
 export interface BoardPoint {

@@ -81,6 +81,7 @@ import { startTasks } from "./tasks/taskStore";
 import { agentNames, agentsIn } from "./tasks/agentNames";
 import { noteEnd, noteEnds, placedTasks } from "./canvas/noteEnds";
 import { noteNotOpened, refusedUnopened } from "./actions/stateGuard";
+import { agentChanges, agentDeletes, agentDraws } from "./board/agentOps";
 import { pictureOfCanvas, readCanvas } from "./board/boardForAgents";
 import { addNote, noteById, notes } from "./board/notes";
 import { columnOf } from "../shared/task";
@@ -850,6 +851,9 @@ export function App() {
       // The canvas an agent reads (docs/architecture/workdesk-board.md).
       readCanvas,
       pictureOfCanvas,
+      agentDraws,
+      agentChanges,
+      agentDeletes,
 
       listWorkspaceNodes: (forTerminalId?: string | null, everything = true) => {
         // Seen from the asking terminal: itself, which way each node is

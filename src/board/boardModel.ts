@@ -4,6 +4,7 @@
  * arrow's ends land and the path it takes, what's under a point, what a
  * section holds, and where a linked copy goes.
  */
+import { roundedPath } from "./routeArrows";
 import type {
   BoardArrow,
   BoardElement,
@@ -179,14 +180,38 @@ export interface ArrowGeometry {
   intoB: Point;
 }
 
+/** Its way round, where its ends are now; null when they've moved apart or changed size. */
+export function viaNow(e: Pick<BoardArrow, "a" | "b" | "via">, lookup: TargetLookup): { points: Point[]; label?: Point } | null {
+  if (!e.via || !("ref" in e.a) || !("ref" in e.b) || e.via.points.length < 2) return null;
+  const a = lookup(e.a.ref)?.rect;
+  const b = lookup(e.b.ref)?.rect;
+  if (!a || !b) return null;
+  const { from, to } = e.via;
+  const dx = a.x - from.x;
+  const dy = a.y - from.y;
+  const same = (p: number, q: number) => Math.abs(p - q) < 1.5;
+  if (!same(b.x - to.x, dx) || !same(b.y - to.y, dy) || !same(a.w, from.w) || !same(a.h, from.h) || !same(b.w, to.w) || !same(b.h, to.h)) return null;
+  const move = (p: Point) => ({ x: p.x + dx, y: p.y + dy });
+  return { points: e.via.points.map(move), ...(e.via.label ? { label: move(e.via.label) } : {}) };
+}
+
 /** An arrow's path for its route: straight, a gentle curve, or an elbow leaving and entering on the facing sides. */
-export function arrowGeometry(e: Pick<BoardArrow, "a" | "b" | "route">, lookup: TargetLookup): ArrowGeometry {
+export function arrowGeometry(e: Pick<BoardArrow, "a" | "b" | "route" | "axis" | "via">, lookup: TargetLookup): ArrowGeometry {
+  const way = e.via && viaNow(e, lookup);
+  if (way) {
+    const p = way.points;
+    const a = p[0];
+    const b = p[p.length - 1];
+    const half = p[Math.floor((p.length - 1) / 2)];
+    const next = p[Math.floor((p.length - 1) / 2) + 1];
+    return { d: roundedPath(p), a, b, mid: way.label ?? { x: (half.x + next.x) / 2, y: (half.y + next.y) / 2 }, intoA: p[1], intoB: p[p.length - 2] };
+  }
   if (e.route === "elbow") {
     const ea = endPoint(e.a, lookup);
     const eb = endPoint(e.b, lookup);
     if (Number.isNaN(ea.at.x)) ea.at = Number.isNaN(eb.at.x) ? { x: 0, y: 0 } : eb.at;
     if (Number.isNaN(eb.at.x)) eb.at = ea.at;
-    const horizontal = Math.abs(eb.at.x - ea.at.x) >= Math.abs(eb.at.y - ea.at.y);
+    const horizontal = e.axis ? e.axis === "x" : Math.abs(eb.at.x - ea.at.x) >= Math.abs(eb.at.y - ea.at.y);
     const side = (t: Target | null, c: Point, to: Point): Point => {
       if (!t) return c;
       const r = t.rect;

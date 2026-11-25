@@ -10,6 +10,7 @@
 import { updateBrowserCardInScene } from "../actions/sceneCardActions";
 import { contentsOf, regroup, translate } from "../board/boardModel";
 import { CARD_PREFIX, boardTargetLookup, tileRects } from "../board/boardTargets";
+import { rerouteBroken } from "../board/boardReroute";
 import { tileDropped } from "../board/boardMembership";
 import { registerTilePlaces, useBoardStore, type TilePlaces } from "../stores/boardStore";
 import { useBrowserCardStore } from "../stores/browserCardStore";
@@ -178,6 +179,7 @@ export function startGroupMove(items: readonly SelectedItem[], options: { live?:
       const board = useBoardStore.getState();
       const regrouped = regroup(moving.selectedElements, board.elements, boardTargetLookup());
       if (Object.keys(regrouped).length) board.patch(regrouped);
+      rerouteBroken();
       // A tile selected on its own may land in a section, or leave one; a
       // tile whose section moves with it stays in it.
       const heldTiles = new Set(useBoardStore.getState().elements.flatMap((e) => (e.type === "section" && moving.elements.has(e.id) ? (e.tiles ?? []) : [])));

@@ -43,6 +43,8 @@ export function drawingName(e: BoardElement): string {
 }
 
 export interface CanvasPart {
+  /** The agent's drawing that was asked for; any other is one line. */
+  open?: string | null;
   elements: BoardElement[];
   tiles: CanvasTile[];
   area: BoardRect | null;
@@ -51,6 +53,13 @@ export interface CanvasPart {
 /** Arrows that point at something that's there, or at a place. */
 const drawn = (e: BoardElement, lookup: TargetLookup) =>
   e.type !== "arrow" || [e.a, e.b].some((end) => !("ref" in end) || lookup(end.ref) !== null);
+
+/** The drawing (an agent's frame) a thing is in, or is. */
+export function frameOf(e: BoardElement, elements: readonly BoardElement[]): string | null {
+  const byId = new Map(elements.map((x) => [x.id, x]));
+  for (let at: BoardElement | undefined = e; at; at = at.parent ? byId.get(at.parent) : undefined) if (at.type === "frame") return at.id;
+  return null;
+}
 
 /** All of it, or one section with what it holds, or one thing with what's around it. Null when there's no such thing. */
 export function partOf(id: string | null, elements: readonly BoardElement[], tiles: readonly CanvasTile[], lookup: TargetLookup): CanvasPart | null {
@@ -78,7 +87,7 @@ export function partOf(id: string | null, elements: readonly BoardElement[], til
   }
   const els = shown.filter((e) => held.has(e.id));
   const ts = tiles.filter((t) => held.has(t.id));
-  return { elements: els, tiles: ts, area: area(els, ts) };
+  return { open: element ? frameOf(element, elements) : null, elements: els, tiles: ts, area: area(els, ts) };
 }
 
 /** Where one drawing or tile is, and how big: `745,3326 588×465`. */
@@ -131,7 +140,21 @@ export function readPart(part: CanvasPart, all: readonly BoardElement[], me: str
     }
   };
   const out: string[] = [];
-  const shown = part.elements.slice(0, READ_MAX);
+  // An agent's finished drawing is one line until it's asked for: reading the canvas mustn't cost every drawing on it.
+  const inFrame = (e: BoardElement) => {
+    const f = frameOf(e, all);
+    return f !== null && f !== part.open ? f : null;
+  };
+  const closed = [...new Set(part.elements.map(inFrame).filter((f): f is string => f !== null))];
+  const closedLine = (id: string) => {
+    const e = all.find((x) => x.id === id)!;
+    const things = contentsOf(e, all).elements.filter((x) => x.type !== "arrow");
+    const named = things.filter((x) => x.type !== "pen").map(drawingName);
+    const some = named.slice(0, 4).map((x) => JSON.stringify(x.length > 40 ? `${x.slice(0, 40)}…` : x));
+    return `${line(e)}: ${things.length} things${some.length ? `, such as ${some.join(", ")}` : ""}. Read it by its id.`;
+  };
+  const visible = part.elements.filter((e) => inFrame(e) === null);
+  const shown = visible.slice(0, READ_MAX);
   const listed = new Set<string>();
   const here = new Set(shown.map((e) => e.id));
   const add = (e: BoardElement, depth: number) => {
@@ -146,7 +169,8 @@ export function readPart(part: CanvasPart, all: readonly BoardElement[], me: str
   // What a section holds comes under it; anything left, after.
   for (const e of shown) if (!e.parent || !here.has(e.parent)) add(e, 0);
   for (const e of shown) add(e, 0);
-  const more = part.elements.length - shown.length;
+  for (const id of closed) out.push(closedLine(id));
+  const more = visible.length - shown.length;
   const tiles = part.tiles.map((t) => `${tileIdFor(t.id)} ${t.kind} ${JSON.stringify(t.name)}${t.kind === "terminal" && t.id === me ? " (you)" : ""} ${at(t)}${t.path ? ` ${t.path}` : t.url ? ` ${t.url}` : ""}${t.kind === "task" && t.about ? ` ${t.about}` : ""}`);
   return [
     out.length ? `Drawings (id, what, x,y w×h; the user's unless marked):\n${out.join("\n")}` : "Nothing is drawn here.",

@@ -294,8 +294,19 @@ async function runTaskCommand(command: string | undefined, rest: string[]): Prom
 }
 
 async function runCanvasCommand(command: string | undefined, rest: string[]): Promise<void> {
-  if (command !== "read") return console.log("Usage: tacit canvas read [<id>] [--picture]");
   const terminal = process.env.TACIT_TERMINAL_ID?.trim() || stop("tacit canvas reads the canvas this terminal is on: run it in one of Tacit's terminals.");
+  if (command === "draw" || command === "change" || command === "delete") {
+    const text = rest[0] === "-" || rest[0] === undefined ? fs.readFileSync(0, "utf8") : rest[0];
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      stop(`tacit canvas ${command} takes JSON, as the ${{ draw: "draw", change: "change_drawing", delete: "delete_drawing" }[command]} tool does: an argument, or - to read it from standard input.`);
+    }
+    console.log((await request("POST", `/terminal/${encodeURIComponent(terminal)}/canvas/${command}`, body)).text);
+    return;
+  }
+  if (command !== "read") return console.log("Usage: tacit canvas read [<id>] [--picture]   |   tacit canvas draw|change|delete '<json>'");
   const id = rest.find((a) => !a.startsWith("--"));
   const read = await request("POST", `/terminal/${encodeURIComponent(terminal)}/canvas/read`, { ...(id ? { id } : {}), ...(rest.includes("--picture") ? { picture: true } : {}) });
   console.log(read.canvas);
@@ -1021,6 +1032,7 @@ async function main() {
       console.log("  task list | show <id>                      Read the board");
       console.log("  task take|part|say|ask|approve|finish <id> Work on one, from a terminal on the workdesk");
       console.log("  canvas read [<id>] [--picture]             What's drawn on the canvas, from a terminal on it");
+      console.log("  canvas draw|change|delete '<json>'          Draw on it; change or delete what you drew");
       console.log('  note add "<text>" | list | show <id>       Notes on the canvas');
       console.log(
         "  browser add <url> [--x N] [--y N]          Add a browser tile to the canvas",

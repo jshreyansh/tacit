@@ -7,7 +7,7 @@ import { columnOf } from "../../shared/task";
 import { fileTileKindByName } from "../../shared/file-tiles";
 import { agentNames, agentsIn } from "../tasks/agentNames";
 import { placedTasks } from "../canvas/noteEnds";
-import { BOARD_COLORS } from "./boardModel";
+import { BOARD_COLORS, bounds, isContainer } from "./boardModel";
 import { CARD_PREFIX, boardTargetLookup } from "./boardTargets";
 import { partOf, pictureOf, readPart, type CanvasPart, type CanvasTile } from "./boardRead";
 import { PICTURE_MAX, partSvg, type PicturePalette } from "./boardPicture";
@@ -62,6 +62,17 @@ function palette(): PicturePalette {
     stickyInk: v("--board-sticky-ink", "#1f1d1a"),
     colors: Object.fromEntries(BOARD_COLORS.map((c) => [c, v(`--board-${c}`, "#888888")])),
   };
+}
+
+/** A drawing as a small picture for a chat card: an SVG data URL. Null when it isn't there. */
+export function thumbnailOf(id: string): string | null {
+  const found = part(id);
+  const el = useBoardStore.getState().elements.find((e) => e.id === id);
+  if (!found || !el) return null;
+  // Its own contents, not what its arrows reach.
+  const own = isContainer(el) ? { ...found.part, elements: found.part.elements.filter((e) => e.id === id || found.part.elements.some((x) => x.id === e.parent) || e.type === "arrow"), tiles: [] } : { ...found.part, elements: [el], tiles: [] };
+  const drawn = partSvg({ ...own, area: bounds(el, found.lookup) }, { palette: palette(), lookup: found.lookup, me: "" });
+  return drawn && `data:image/svg+xml;charset=utf-8,${encodeURIComponent(drawn.svg)}`;
 }
 
 /** A PNG of it, as a data URL. `pictures` are the picture files main opened, by tile id. Null when it's empty. */

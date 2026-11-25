@@ -16,7 +16,8 @@ import { toolVerb } from "../../components/transcriptModel";
 import { agentIcon } from "../agentIcons";
 import { findAgentAdapter } from "../../../shared/agent-adapters";
 import { panToTerminal } from "../../utils/panToTerminal";
-import { createdTaskId, memoryTool, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type MemoryToolView, type TaskToolView } from "./threadMessages";
+import { DrawCard } from "./DrawCard";
+import { canvasTool, createdTaskId, memoryTool, spawnedTerminalId, taskTool, toolRunSummary, isAwaitingReply, toThreadMessages, workerSpawn, type MemoryToolView, type TaskToolView } from "./threadMessages";
 import { currentFolderPath, openFolderTool, workdeskMemoryTool } from "../../actions/folderTools";
 import { useCanvasRegistryStore } from "../../stores/canvasRegistryStore";
 import { askedView, isAskedTool, type AskedView } from "./askedModel";
@@ -435,6 +436,9 @@ const ToolCard: FC<ToolCardProps> = (props) => {
   if (taskView) return <TaskToolCard props={props} view={taskView} t={t} />;
   const memoryView = memoryTool(props.toolName, props.args, props.result);
   if (memoryView) return <MemoryToolCard props={props} view={memoryView} t={t} />;
+  const drawn = canvasTool(props.toolName, props.args, props.result);
+  // A refused one is a plain row: what it tried, and why not.
+  if (drawn && statusOf(props) !== "error") return <DrawCard view={drawn} running={statusOf(props) === "running"} />;
   const asked = askedView(props.toolName, props.args, props.result);
   if (asked) return <AskedCard props={props} view={asked} t={t} />;
   // Claude's todo list reads as its plan, as it does live.
@@ -513,6 +517,7 @@ const ToolRun: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> =
   const isWorker = (p: RunPart | undefined) => {
     if (!p?.toolName) return false;
     if (workerSpawn(p.toolName, p.args ?? {}) !== null || isAskedTool(p.toolName)) return true;
+    if (canvasTool(p.toolName, p.args ?? {})?.kind === "draw") return true;
     const view = taskTool(p.toolName, p.args ?? {});
     if (memoryTool(p.toolName, p.args ?? {})?.kind === "remember") return true;
     return view?.kind === "create" || view?.kind === "ask";

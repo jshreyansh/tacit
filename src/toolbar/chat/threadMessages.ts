@@ -129,6 +129,23 @@ export function toThreadMessages(messages: readonly ChatMessage[]): ThreadMessag
   });
 }
 
+export interface CanvasToolView {
+  kind: "draw" | "change" | "delete";
+  title: string;
+  /** The drawing it made, or the thing it did, as the result names it. */
+  id: string | null;
+}
+
+/** A Tacit tool that draws, and what to show for it. */
+export function canvasTool(toolName: string, args: JsonObject, result?: unknown): CanvasToolView | null {
+  const tool = /^mcp__tacit__(.+)$/.exec(toolName)?.[1];
+  const kind = ({ draw: "draw", change_drawing: "change", delete_drawing: "delete" } as const)[tool ?? ""];
+  if (!kind) return null;
+  const text = typeof result === "string" ? result : result === undefined ? "" : JSON.stringify(result);
+  const id = kind === "draw" ? /\(id ([\w-]+)\)/.exec(text)?.[1] : /\((op-[\w-]+)\)/.exec(text)?.[1];
+  return { kind, title: typeof args.title === "string" ? args.title.slice(0, 140) : "", id: id ?? null };
+}
+
 /** A Tacit tool that starts a worker, and what to show for it. */
 export function workerSpawn(toolName: string, args: JsonObject): { agent: string | null; title: string } | null {
   const tool = /^mcp__tacit__(.+)$/.exec(toolName)?.[1];

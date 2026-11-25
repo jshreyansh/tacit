@@ -953,6 +953,7 @@ const apiServer = new ApiServer({
     const small = image.getSize().width > 700 ? image.resize({ width: 700 }) : image;
     return `data:image/jpeg;base64,${small.toJPEG(80).toString("base64")}`;
   },
+  fileOnWorkdesk: (filePath) => fileTiles.inspect(filePath).ok,
   canvasPicturesDir: path.join(TACIT_DIR, "canvas-pictures"),
   recallService,
   connectedBrowserBroker,

@@ -220,7 +220,7 @@ still lays out diagrams, which agents place badly by hand.
 | Tool | Does |
 |---|---|
 | `read_canvas({ id?, picture? })` | What's on the canvas, or one drawing or section, as structured content: text, shapes, arrows and what they join, stickies, sections and what they hold, pen strokes, and the tiles (terminals, tasks, browsers, files with their paths). With `picture`, also an image of it. Always allowed. |
-| `draw({ title?, near?, items?, flowchart?, table? })` | New things of its own. `items` are your tools: text, shape, sticky, section, arrow, pen. `flowchart` and `table` are laid out by Tacit. Returns the ids. |
+| `draw({ title?, flowchart?, table?, items?, near?, into?, size?, exact? })` | New things of its own. `items` are your tools: text, shape, sticky, section, arrow, pen. `flowchart` and `table` are laid out by Tacit. Returns the ids. |
 | `change_drawing({ changes })` | Moves, resizes, restyles, renames or joins. Its own freely; yours by Permissions. |
 | `delete_drawing({ ids })` | Its own. Yours always asks. |
 
@@ -268,7 +268,26 @@ agent's name. With Reduce Motion they fade in, with no cursor.
   Show flies to it with the afterglow.
 - A drawing by an agent you aren't talking to shows a notice, with Show.
 - The canvas never jumps on its own.
-- ⌘Z undoes only your changes. Each agent drawing has its own **Undo**.
+- ⌘Z undoes only your changes. Each agent drawing has its own **Undo**. What
+  an agent does goes into every step of your history (`amend`), and Undo is a
+  step of yours. Undo is kept until Tacit closes; deleting the frame is always
+  there.
+- **All or none:** a call with one thing wrong draws nothing and says what. The
+  answer names things left over each other, so the agent can fix them without a
+  picture.
+- **Arrows go round** (`routeArrows.ts`): a grid of lanes beside every box, and
+  the cheapest way over it for each arrow, never through a box and never along
+  another with no end in common. The way is kept on the arrow (`BoardArrow.via`)
+  with where its ends were: moved together it goes along, moved apart it's a
+  plain elbow until the drop, then found again (`boardReroute.ts`). Subgraphs
+  are laid out by themselves and placed beside each other, tops level.
+- **Why it's tested on real diagrams:** the first layout passed on one flow I
+  wrote. Real agents' had 16 arrows through boxes; Claude redrew its by hand at
+  6,500 tokens, Codex's was "broken" to the user. `tests/fixtures/agent-drawings.json`.
+- **Databases** are Mermaid's erDiagram (`erDiagram.ts`): each table a section
+  with a row for each field.
+- **Reading stays cheap:** an agent's drawing is one line until it's read by its
+  id. The canvas it was tried on went from 24,170 characters to 3,106.
 
 ## Permissions
 
@@ -361,7 +380,9 @@ app.
 2. **Agents look** (T21.2a): `read_canvas`, the picture, the CLI. Built 25 Nov
    (`boardRead.ts`, `penWords.ts`, `boardPicture.ts`, `boardForAgents.ts`).
 3. **Agents draw** (T21.2b): `draw` and changing their own, layout,
-   cursor, chat card, notices, Undo.
+   cursor, chat card, notices, Undo. Built 25 Nov: `shared/canvas-ops.ts`
+   (what may be sent), `flowchart.ts` (Mermaid, layered layout), `agentDraw.ts`
+   (what it becomes, and whose it is), `agentOps.ts` (onto the board, Undo).
 4. **Permissions** (T21.3):
    - the Agents setting, defaults and inheritance;
    - approval cards and Needs you;

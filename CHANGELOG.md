@@ -4,6 +4,11 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Agents draw on the canvas**: text, boxes, stickies, sections, arrows, pen strokes, pictures and files, plus flowcharts and tables that Tacit lays out. They can mark up what you drew: a loop round it, a line under it, a note beside it. It lands in free space by the agent, one piece at a time with its named cursor, and your view stays where it is. A card in its chat, or a notice, has Show and Undo.
+- **Diagrams that read cleanly**: arrows go round boxes and each other, and are found again when you move a box. A database is drawn with a row for each field. The diagrams real agents sent while trying it are tests.
+- **Only their own**: an agent changes and deletes what it drew, never yours or another agent's. ⌘Z undoes only what you did.
+
 ## [0.44.12] - 2026-11-25
 
 ### Changed

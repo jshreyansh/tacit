@@ -11,7 +11,7 @@ import type {
   BoardTextSize,
   BoardWeight,
 } from "../types/board";
-import type { BoardColor } from "../board/boardModel";
+import { contentsOf, type BoardColor } from "../board/boardModel";
 import { useSelectionStore } from "./selectionStore";
 import { useWorkspaceStore } from "./workspaceStore";
 
@@ -188,8 +188,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const gone = new Set(ids);
     // A frame takes its contents with it (an agent's drawing is one thing).
     // A section doesn't: what was in it stays, loose on the canvas.
-    const frames = new Set(get().elements.filter((e) => e.type === "frame" && gone.has(e.id)).map((e) => e.id));
-    for (const e of get().elements) if (e.parent && frames.has(e.parent)) gone.add(e.id);
+    // All of it: its sections' contents too.
+    for (const e of get().elements) if (e.type === "frame" && gone.has(e.id)) for (const held of contentsOf(e, get().elements).elements) gone.add(held.id);
     const freed = new Set(get().elements.filter((e) => e.parent && gone.has(e.parent) && !gone.has(e.id)).map((e) => e.id));
     // An arrow attached to something removed goes too.
     for (const e of get().elements) {

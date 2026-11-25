@@ -1,0 +1,600 @@
+{
+ "claude_flow": {
+  "title": "Email + password: sign up and log in",
+  "flowchart": "flowchart TD\n  Start((Open app)) --> HasAcct{Have an account?}\n  HasAcct -->|no| S1\n  HasAcct -->|yes| L1\n\n  subgraph signup [Sign up]\n    S1[Enter email and password] --> S2{Email and password valid?}\n    S2 -->|no| S3[Show field errors]\n    S3 --> S1\n    S2 -->|yes| S4{Email already registered?}\n    S4 -->|yes| S5[Email owner: you already have an account]\n    S4 -->|no| S6[Hash password, save unverified account]\n    S6 --> S7[Email a verification link]\n    S5 --> S8[Show: check your inbox]\n    S7 --> S8\n    S8 --> S9{Link opened and still valid?}\n    S9 -->|no, expired| S10[Resend link]\n    S10 --> S8\n    S9 -->|yes| S11[Mark email verified]\n  end\n\n  subgraph login [Log in]\n    L1[Enter email and password] --> L2{Too many attempts?}\n    L2 -->|yes| L3[Wait, then try again]\n    L3 --> L1\n    L2 -->|no| L4{Email and password match?}\n    L4 -->|no| L5[Show: wrong email or password]\n    L5 -->|retry| L1\n    L4 -->|yes| L6{Email verified?}\n    L6 -->|yes| L7[Create session]\n  end\n\n  subgraph reset [Forgot password]\n    R1[Enter email] --> R2[Show: if the account exists, we sent a link]\n    R2 --> R3{Link opened and still valid?}\n    R3 -->|no, expired| R1\n    R3 -->|yes| R4[Set new password]\n    R4 --> R5[Sign out all other sessions]\n  end\n\n  L5 -->|forgot password| R1\n  L6 -->|no| S10\n  S11 --> L1\n  R5 --> L1\n  L7 --> Home((Signed in))"
+ },
+ "claude_hand": {
+  "title": "Email + password: sign up and log in",
+  "items": [
+   {
+    "type": "section",
+    "key": "su",
+    "text": "Sign up",
+    "x": 50,
+    "y": 270,
+    "w": 1120,
+    "h": 2090,
+    "color": "blue"
+   },
+   {
+    "type": "section",
+    "key": "li",
+    "text": "Log in",
+    "x": 1260,
+    "y": 800,
+    "w": 1160,
+    "h": 1560,
+    "color": "violet"
+   },
+   {
+    "type": "section",
+    "key": "rp",
+    "text": "Forgot password",
+    "x": 2560,
+    "y": 1340,
+    "w": 800,
+    "h": 1300,
+    "color": "teal"
+   },
+   {
+    "type": "ellipse",
+    "key": "start",
+    "text": "Open app",
+    "x": 1710,
+    "y": 55,
+    "w": 220,
+    "h": 90,
+    "color": "green",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "has",
+    "text": "Have an account?",
+    "x": 1675,
+    "y": 270,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s1",
+    "in": "su",
+    "text": "Enter email and password",
+    "x": 480,
+    "y": 320,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "s2",
+    "in": "su",
+    "text": "Email and password valid?",
+    "x": 455,
+    "y": 540,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s3",
+    "in": "su",
+    "text": "Show field errors",
+    "x": 880,
+    "y": 590,
+    "w": 240,
+    "h": 100,
+    "color": "clay",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "s4",
+    "in": "su",
+    "text": "Email already in use?",
+    "x": 455,
+    "y": 810,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s5",
+    "in": "su",
+    "text": "Email owner: you already have an account",
+    "x": 100,
+    "y": 1120,
+    "w": 260,
+    "h": 120,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s6",
+    "in": "su",
+    "text": "Hash password, save account, email a link",
+    "x": 470,
+    "y": 1120,
+    "w": 260,
+    "h": 120,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s8",
+    "in": "su",
+    "text": "Show: check your inbox",
+    "x": 480,
+    "y": 1400,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "s9",
+    "in": "su",
+    "text": "Link still valid?",
+    "x": 455,
+    "y": 1620,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s10",
+    "in": "su",
+    "text": "Resend link",
+    "x": 880,
+    "y": 1670,
+    "w": 240,
+    "h": 100,
+    "color": "clay",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "s11",
+    "in": "su",
+    "text": "Mark email verified",
+    "x": 480,
+    "y": 1940,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "ellipse",
+    "key": "sEnd",
+    "in": "su",
+    "text": "Go to Log in",
+    "x": 480,
+    "y": 2210,
+    "w": 240,
+    "h": 100,
+    "color": "violet",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "l1",
+    "in": "li",
+    "text": "Enter email and password",
+    "x": 1700,
+    "y": 860,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "l2",
+    "in": "li",
+    "text": "Too many attempts?",
+    "x": 1675,
+    "y": 1080,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "l3",
+    "in": "li",
+    "text": "Wait, then try again",
+    "x": 1320,
+    "y": 1130,
+    "w": 240,
+    "h": 100,
+    "color": "clay",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "l4",
+    "in": "li",
+    "text": "Email and password match?",
+    "x": 1675,
+    "y": 1350,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "l5",
+    "in": "li",
+    "text": "Show: wrong email or password",
+    "x": 2120,
+    "y": 1390,
+    "w": 240,
+    "h": 120,
+    "color": "clay",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "l6",
+    "in": "li",
+    "text": "Email verified?",
+    "x": 1675,
+    "y": 1620,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "l7",
+    "in": "li",
+    "text": "Create session",
+    "x": 1700,
+    "y": 1940,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "ellipse",
+    "key": "home",
+    "in": "li",
+    "text": "Signed in",
+    "x": 1700,
+    "y": 2210,
+    "w": 240,
+    "h": 100,
+    "color": "green",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "r1",
+    "in": "rp",
+    "text": "Enter email",
+    "x": 2640,
+    "y": 1400,
+    "w": 240,
+    "h": 100,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "r2",
+    "in": "rp",
+    "text": "Show: if the account exists, we sent a link",
+    "x": 2630,
+    "y": 1660,
+    "w": 260,
+    "h": 120,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "diamond",
+    "key": "r3",
+    "in": "rp",
+    "text": "Link still valid?",
+    "x": 2615,
+    "y": 1890,
+    "w": 290,
+    "h": 200,
+    "color": "amber",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "rx",
+    "in": "rp",
+    "text": "Show: link expired",
+    "x": 3080,
+    "y": 1940,
+    "w": 240,
+    "h": 100,
+    "color": "clay",
+    "fill": "soft"
+   },
+   {
+    "type": "rect",
+    "key": "r4",
+    "in": "rp",
+    "text": "Set new password, end other sessions",
+    "x": 2630,
+    "y": 2200,
+    "w": 260,
+    "h": 120,
+    "color": "blue",
+    "fill": "soft"
+   },
+   {
+    "type": "ellipse",
+    "key": "rEnd",
+    "in": "rp",
+    "text": "Go to Log in",
+    "x": 2640,
+    "y": 2480,
+    "w": 240,
+    "h": 100,
+    "color": "violet",
+    "fill": "soft"
+   },
+   {
+    "type": "arrow",
+    "from": "start",
+    "to": "has",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "has",
+    "to": "s1",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "has",
+    "to": "l1",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s1",
+    "to": "s2",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s2",
+    "to": "s3",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s3",
+    "to": "s1",
+    "route": "straight",
+    "dashed": true
+   },
+   {
+    "type": "arrow",
+    "from": "s2",
+    "to": "s4",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s4",
+    "to": "s5",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s4",
+    "to": "s6",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s5",
+    "to": "s8",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s6",
+    "to": "s8",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s8",
+    "to": "s9",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s9",
+    "to": "s10",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s10",
+    "to": "s8",
+    "route": "straight",
+    "dashed": true
+   },
+   {
+    "type": "arrow",
+    "from": "s9",
+    "to": "s11",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "s11",
+    "to": "sEnd",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l1",
+    "to": "l2",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l2",
+    "to": "l3",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l3",
+    "to": "l1",
+    "route": "straight",
+    "dashed": true
+   },
+   {
+    "type": "arrow",
+    "from": "l2",
+    "to": "l4",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l4",
+    "to": "l5",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l5",
+    "to": "l1",
+    "text": "retry",
+    "route": "straight",
+    "dashed": true
+   },
+   {
+    "type": "arrow",
+    "from": "l5",
+    "to": "r1",
+    "text": "forgot password",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l4",
+    "to": "l6",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l6",
+    "to": "s10",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l6",
+    "to": "l7",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "l7",
+    "to": "home",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "r1",
+    "to": "r2",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "r2",
+    "to": "r3",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "r3",
+    "to": "rx",
+    "text": "no",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "rx",
+    "to": "r1",
+    "route": "straight",
+    "dashed": true
+   },
+   {
+    "type": "arrow",
+    "from": "r3",
+    "to": "r4",
+    "text": "yes",
+    "route": "straight"
+   },
+   {
+    "type": "arrow",
+    "from": "r4",
+    "to": "rEnd",
+    "route": "straight"
+   }
+  ]
+ },
+ "codex_1": {
+  "title": "Proposed template selection \u2192 usable workdesk",
+  "flowchart": "flowchart TD\nsubgraph discover [1. Find a template]\n A([New workdesk]) --> B[\"Choose a starting point\"]\n B -->|From template| C[\"Template gallery: search, categories, preview cards\"]\n B -->|Start blank| Z([Open empty workdesk])\n C --> D[\"Template preview: canvas, purpose, included files and tools, setup needed\"]\n D -->|Back to gallery| C\n C -->|No results| E[\"Clear filters or start blank\"]\n E --> C\n E --> Z\nend\nsubgraph create [2. Make your copy]\n D -->|Use template| F[\"Create workdesk: suggested name and destination folder\"]\n F -->|Cancel| D\n F --> G{\"Name and folder valid?\"}\n G -->|No| H[\"Show field error; keep entered values\"]\n H --> F\n G -->|Yes: Create workdesk| I[\"Creating your workdesk: copy layout, files and template instructions\"]\n I --> J{\"Copy created?\"}\n J -->|No| K[\"Explain failure; preserve choices; retry without duplicates\"]\n K --> I\nend\nsubgraph use [3. Start using it]\n J -->|Yes| L[\"Open the new workdesk: show starter guide and first action\"]\n L --> M{\"Required setup remaining?\"}\n M -->|Yes| N[\"Setup checklist: choose project folder, connect accounts, fill required inputs\"]\n N --> O{\"Ready to run?\"}\n O -->|Not yet| P[\"Keep workdesk editable; show what is needed for blocked actions\"]\n P --> N\n O -->|Yes| Q[\"User starts the first task\"]\n M -->|No| Q\n Q --> R([Workdesk ready to use])\nend\n I -.-> S[\"Copy rule: independent workdesk; preserve source template; exclude secrets, live sessions and running tasks\"]\n"
+ },
+ "codex_2": {
+  "title": "Proposed template selection \u2192 usable workdesk",
+  "flowchart": "flowchart TD\nsubgraph discover [1. Find a template]\n A([New workdesk]) --> B[Choose a starting point]\n B -->|From template| C[Template gallery: search, categories, preview cards]\n B -->|Start blank| Z([Open empty workdesk])\n C --> D[Template preview: canvas, purpose, included files and tools, setup needed]\n D -->|Back to gallery| C\n C -->|No results| E[Clear filters or start blank]\n E --> C\n E --> Z\nend\nsubgraph create [2. Make your copy]\n D -->|Use template| F[Create workdesk: suggested name and destination folder]\n F -->|Cancel| D\n F --> G{Name and folder valid?}\n G -->|No| H[Show field error and keep entered values]\n H --> F\n G -->|Yes - Create workdesk| I[Creating your workdesk: copy layout, files and template instructions]\n I --> J{Copy created?}\n J -->|No| K[Explain failure and preserve choices - retry without duplicates]\n K --> I\nend\nsubgraph use [3. Start using it]\n J -->|Yes| L[Open new workdesk: starter guide and first action]\n L --> M{Required setup remaining?}\n M -->|Yes| N[Setup checklist: choose project folder, connect accounts, fill required inputs]\n N --> O{Ready to run?}\n O -->|Not yet| P[Keep workdesk editable and show what blocked actions need]\n P --> N\n O -->|Yes| Q[User starts the first task]\n M -->|No| Q\n Q --> R([Workdesk ready to use])\nend\n I --> S[Copy rule: independent workdesk - preserve source template - exclude secrets, live sessions and running tasks]\n"
+ },
+ "codex_3": {
+  "title": "Template selection \u2014 simplified flow",
+  "flowchart": "flowchart TD\n A([New workdesk]) --> B[Browse templates]\n B --> C[Preview selected template]\n C -->|Use template| D[Name workdesk and choose folder]\n D -->|Create workdesk| E[Clone template]\n E --> F[Open your new workdesk]\n F --> G[Complete required setup]\n G --> H([Start first task])\n B -->|No matches| X[Clear search or start blank]\n D -->|Invalid input| Y[Show inline error and keep values]\n E -->|Copy failed| Z[Keep choices and offer Retry]\n G -->|Nothing required| W([Ready immediately])\n"
+ },
+ "opencode": {
+  "title": "Auth database",
+  "flowchart": "flowchart TB\n  U[\"USERS \u00b7 id PK \u00b7 email UNIQUE \u00b7 password_hash \u00b7 email_verified \u00b7 status \u00b7 failed_attempts \u00b7 locked_until \u00b7 created_at \u00b7 updated_at\"]\n  S[\"SESSIONS \u00b7 id PK \u00b7 user_id FK \u00b7 token_hash UNIQUE \u00b7 created_at \u00b7 expires_at \u00b7 ip \u00b7 user_agent \u00b7 revoked_at\"]\n  T[\"AUTH_TOKENS \u00b7 id PK \u00b7 user_id FK \u00b7 token_hash \u00b7 type: verify/reset \u00b7 expires_at \u00b7 used_at \u00b7 created_at\"]\n  A[\"LOGIN_AUDIT \u00b7 id PK \u00b7 user_id FK \u00b7 email \u00b7 ip \u00b7 success \u00b7 created_at\"]\n  P[\"PROFILES \u00b7 user_id PK/FK \u00b7 display_name \u00b7 avatar_url \u00b7 timezone\"]\n  R[\"ROLES \u00b7 id PK \u00b7 name UNIQUE\"]\n  UR[\"USER_ROLES \u00b7 user_id FK \u00b7 role_id FK\"]\n\n  U -->|\"1 : N\"| S\n  U -->|\"1 : N\"| T\n  U -->|\"1 : N\"| A\n  U -->|\"1 : 1\"| P\n  U -->|\"1 : N\"| UR\n  R -->|\"1 : N\"| UR"
+ }
+}

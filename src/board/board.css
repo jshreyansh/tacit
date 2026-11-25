@@ -139,14 +139,20 @@
 @keyframes tc-bd-qc-in { from { opacity: 0; transform: scale(calc(var(--inv) * 0.6)); } }
 
 /* What's new comes in one piece at a time. */
-.is-born { animation: tc-bd-born 300ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+.is-born { animation: tc-bd-born 300ms cubic-bezier(0.05, 0.7, 0.1, 1) var(--born-delay, 0ms) both; }
 @keyframes tc-bd-born { from { opacity: 0; transform: scale(0.94); } }
 .tc-bd-arrow.is-born { animation: none; }
-.tc-bd-arrow.is-born .tc-bd-line[pathLength] { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tc-bd-draw 360ms cubic-bezier(0.05, 0.7, 0.1, 1) forwards; }
-.tc-bd-arrow.is-born .tc-bd-head, .tc-bd-arrow.is-born .tc-bd-label { animation: tc-bd-fade 200ms ease-out 240ms both; }
-.tc-bd-arrow.is-born.dashed { animation: tc-bd-fade 300ms ease-out both; }
+.tc-bd-arrow.is-born .tc-bd-line[pathLength] { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tc-bd-draw 360ms cubic-bezier(0.05, 0.7, 0.1, 1) var(--born-delay, 0ms) forwards; }
+.tc-bd-arrow.is-pen .tc-bd-line[pathLength] { animation-duration: 700ms; animation-timing-function: ease-in-out; }
+.tc-bd-arrow.is-born .tc-bd-head, .tc-bd-arrow.is-born .tc-bd-label { animation: tc-bd-fade 200ms ease-out calc(240ms + var(--born-delay, 0ms)) both; }
+.tc-bd-arrow.is-born.dashed { animation: tc-bd-fade 300ms ease-out var(--born-delay, 0ms) both; }
 @keyframes tc-bd-draw { to { stroke-dashoffset: 0; } }
 @keyframes tc-bd-fade { from { opacity: 0; } }
+
+/* An agent drawing: its cursor, the same size however far you're zoomed. */
+.tc-bd-cursor { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; opacity: 0; }
+.tc-bd-cursor > svg { display: block; transform: scale(var(--inv)); transform-origin: 0 0; fill: var(--c); stroke: var(--bg); stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35)); }
+.tc-bd-cursor > span { position: absolute; left: calc(15px * var(--inv)); top: calc(15px * var(--inv)); transform: scale(var(--inv)); transform-origin: 0 0; padding: 2px 7px; border-radius: 8px; corner-shape: squircle; background: var(--c); color: var(--bg); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 
 /* While a drawing tool is in hand, the canvas is paper. */
 .tc-board-paper { position: absolute; inset: 0; z-index: 35; touch-action: none; }

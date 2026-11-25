@@ -30,6 +30,9 @@ import {
   type Point,
   type TargetLookup,
 } from "./boardModel";
+import { rerouteBroken } from "./boardReroute";
+import { AgentCursors } from "./AgentCursors";
+import { useAgentOps } from "./agentOps";
 import { boardTargetLookup, collectTileRects, publishTileRects, tileRects } from "./boardTargets";
 import { useBrowserCardStore } from "../stores/browserCardStore";
 import { SizeReadout } from "../canvas/SizeReadout";
@@ -163,8 +166,11 @@ function EditableText({ id, initial, className, style }: { id: string; initial: 
   );
 }
 
+/** What an agent draws comes one piece at a time. */
+const after = (delay: number | undefined) => (delay ? ({ "--born-delay": `${delay}ms` } as React.CSSProperties) : undefined);
+
 /** A text box reports its laid-out size, so selection and arrows fit it. */
-function MeasuredText({ e, editing, selected, hovered, born }: { e: Extract<BoardElement, { type: "text" }>; editing: boolean; selected: boolean; hovered: boolean; born: boolean }) {
+function MeasuredText({ e, editing, selected, hovered, born, delay }: { e: Extract<BoardElement, { type: "text" }>; editing: boolean; selected: boolean; hovered: boolean; born: boolean; delay?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const node = ref.current;
@@ -182,7 +188,7 @@ function MeasuredText({ e, editing, selected, hovered, born }: { e: Extract<Boar
       className={`tc-bd-el tc-bd-text tc-bd-size-${e.size}${selected ? " is-sel" : ""}${hovered ? " is-hov" : ""}${born ? " is-born" : ""}`}
       data-board-el={e.id}
       data-scene-box-select-block=""
-      style={{ left: e.x, top: e.y, color: cssColor(e.color), fontSize: TEXT_SIZES[e.size] }}
+      style={{ left: e.x, top: e.y, color: cssColor(e.color), fontSize: TEXT_SIZES[e.size], ...after(delay) }}
     >
       {editing ? <EditableText id={e.id} initial={e.text} /> : e.text}
     </div>
@@ -196,6 +202,7 @@ const Boxed = memo(function Boxed({
   hovered,
   editing,
   born,
+  delay,
   part = "body",
 }: {
   e: BoxedElement;
@@ -204,24 +211,25 @@ const Boxed = memo(function Boxed({
   hovered: boolean;
   editing: boolean;
   born: boolean;
+  delay?: number;
   /** A section or frame is drawn twice: its area behind the tiles, its name in front, so a tile never hides the handle you move it by. */
   part?: "body" | "title";
 }) {
   const cls = `${selected ? " is-sel" : ""}${hovered ? " is-hov" : ""}${born ? " is-born" : ""}`;
-  const pos = { left: e.x, top: e.y, width: e.w, height: e.h, "--c": cssColor(e.color) } as React.CSSProperties;
+  const pos = { left: e.x, top: e.y, width: e.w, height: e.h, "--c": cssColor(e.color), ...after(delay) } as React.CSSProperties;
   if (e.type === "text") return null;
   if (e.type === "section" || e.type === "frame") {
     const agent = e.author?.kind === "agent" ? e.author : null;
     if (part === "title") {
       return (
-        <div className="tc-bd-title-anchor" style={{ left: e.x, top: e.y, "--c": cssColor(e.color) } as React.CSSProperties}>
+        <div className={`tc-bd-title-anchor${born ? " is-born" : ""}`} style={{ left: e.x, top: e.y, "--c": cssColor(e.color), ...after(delay) } as React.CSSProperties}>
           <div className={`tc-bd-title${selected ? " is-sel" : ""}`} data-board-el={e.id} data-scene-box-select-block="">
             {editing ? (
               <EditableText id={e.id} initial={e.title} className="tc-bd-title-text" />
             ) : (
               <span className="tc-bd-title-text">{e.title || (e.type === "section" ? "Section" : "Drawing")}</span>
             )}
-            {agent && <span className="tc-bd-byline">drawn by {agent.name}</span>}
+            {agent && !e.parent && <span className="tc-bd-byline">drawn by {agent.name}</span>}
           </div>
         </div>
       );
@@ -266,12 +274,12 @@ const Boxed = memo(function Boxed({
   );
 });
 
-const ArrowSvg = memo(function ArrowSvg({ e, lookup, selected, born, handles }: { e: Extract<BoardElement, { type: "arrow" }>; lookup: TargetLookup; selected: boolean; born: boolean; handles: boolean }) {
+const ArrowSvg = memo(function ArrowSvg({ e, lookup, selected, born, delay, handles }: { e: Extract<BoardElement, { type: "arrow" }>; lookup: TargetLookup; selected: boolean; born: boolean; delay?: number; handles: boolean }) {
   const g = arrowGeometry(e, lookup);
   const color = cssColor(e.color);
   const width = e.weight ? WEIGHTS[e.weight] * 0.75 : 2.4;
   return (
-    <g className={`tc-bd-arrow${born ? " is-born" : ""}${e.dash ? " dashed" : ""}`}>
+    <g className={`tc-bd-arrow${born ? " is-born" : ""}${e.dash ? " dashed" : ""}`} style={after(delay)}>
       {selected && <path className="tc-bd-halo" d={g.d} style={{ strokeWidth: `calc(${width}px + 7px * var(--inv))` }} />}
       <path d={g.d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={e.dash ? "8 6" : undefined} pathLength={born && !e.dash ? 1 : undefined} className="tc-bd-line" />
       {e.ends !== "none" && <polygon className="tc-bd-head" points={arrowHead(g.b, g.intoB)} fill={color} />}
@@ -291,13 +299,13 @@ const ArrowSvg = memo(function ArrowSvg({ e, lookup, selected, born, handles }: 
   );
 });
 
-const PenSvg = memo(function PenSvg({ e, selected }: { e: Extract<BoardElement, { type: "pen" }>; selected: boolean }) {
+const PenSvg = memo(function PenSvg({ e, selected, born, delay }: { e: Extract<BoardElement, { type: "pen" }>; selected: boolean; born: boolean; delay?: number }) {
   const d = penPath(e.points);
   const w = WEIGHTS[e.weight];
   return (
-    <g>
+    <g className={`tc-bd-arrow${born ? " is-born is-pen" : ""}`} style={after(delay)}>
       {selected && <path className="tc-bd-halo" d={d} strokeWidth={w + 7} />}
-      <path d={d} fill="none" stroke={cssColor(e.color)} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} className="tc-bd-line" pathLength={born ? 1 : undefined} fill="none" stroke={cssColor(e.color)} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
       <path d={d} className="tc-bd-hit" data-board-el={e.id} data-scene-box-select-block="" />
     </g>
   );
@@ -388,6 +396,7 @@ export const BoardLayer = memo(function BoardLayer() {
   const hoverId = useBoardStore((s) => s.hoverId);
   const bornAt = useBoardStore((s) => s.bornAt);
   const boardTool = useBoardStore((s) => s.tool);
+  const delays = useAgentOps((s) => s.delays);
   const canvasTool = useCanvasToolStore((s) => s.tool);
   const spaceHeld = useCanvasToolStore((s) => s.spaceHeld);
   const dragging = useBoardDraft((s) => s.dragging);
@@ -419,16 +428,16 @@ export const BoardLayer = memo(function BoardLayer() {
   for (const e of elements) {
     const isSel = selected.has(e.id);
     if (e.type === "arrow") {
-      ink.push(<ArrowSvg key={e.id} e={e} lookup={lookup} selected={isSel} born={born(e.id)} handles={isSel && single && interactive && !editingId} />);
+      ink.push(<ArrowSvg key={e.id} e={e} lookup={lookup} selected={isSel} born={born(e.id)} delay={delays[e.id]} handles={isSel && single && interactive && !editingId} />);
     } else if (e.type === "pen") {
-      ink.push(<PenSvg key={e.id} e={e} selected={isSel} />);
+      ink.push(<PenSvg key={e.id} e={e} selected={isSel} born={delays[e.id] !== undefined && born(e.id)} delay={delays[e.id]} />);
     } else if (e.type === "text") {
-      mid.push(<MeasuredText key={e.id} e={e} editing={editingId === e.id} selected={isSel} hovered={hoverId === e.id} born={born(e.id)} />);
+      mid.push(<MeasuredText key={e.id} e={e} editing={editingId === e.id} selected={isSel} hovered={hoverId === e.id} born={born(e.id)} delay={delays[e.id]} />);
     } else {
-      const node = <Boxed key={e.id} e={e} selected={isSel} single={single} hovered={hoverId === e.id && !isSel} editing={editingId === e.id} born={born(e.id)} />;
+      const node = <Boxed key={e.id} e={e} selected={isSel} single={single} hovered={hoverId === e.id && !isSel} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} />;
       if (e.type === "section" || e.type === "frame") {
         back.push(node);
-        titles.push(<Boxed key={`${e.id}-title`} e={e} part="title" selected={isSel} single={single} hovered={false} editing={editingId === e.id} born={born(e.id)} />);
+        titles.push(<Boxed key={`${e.id}-title`} e={e} part="title" selected={isSel} single={single} hovered={false} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} />);
       }
       else if (e.type === "shape") mid.push(node);
       else top.push(node);
@@ -567,6 +576,7 @@ export const BoardLayer = memo(function BoardLayer() {
           () => {
             // What it now covers comes in; what's left outside goes.
             if (checkpointed && el.type === "section") regroupAfterResize(id);
+            if (checkpointed) rerouteBroken();
           },
           (e) => {
             const p = toWorld(e);
@@ -681,6 +691,7 @@ export const BoardLayer = memo(function BoardLayer() {
           </svg>
           {titles}
           {top}
+          <AgentCursors />
           {resizable && <ResizeZones e={resizable} />}
           {qcSource &&
             DIRS.map((d) => {

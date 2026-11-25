@@ -28,6 +28,7 @@ import {
   type Point,
 } from "./boardModel";
 import { boardTargetLookup, tileRects } from "./boardTargets";
+import { rerouteBroken } from "./boardReroute";
 import { roomForWords } from "./boardText";
 
 const board = () => useBoardStore.getState();
@@ -159,6 +160,7 @@ export function commitText(id: string, text: string): void {
     board().patch({ [id]: { text: clean } });
   } else if (e.type === "shape" || e.type === "sticky") {
     board().patch({ [id]: { text: clean, ...roomForWords({ ...e, text: clean }) } });
+    rerouteBroken();
   } else if (e.type === "section" || e.type === "frame") {
     board().patch({ [id]: { title: clean.trim() || e.title || "Section" } });
   }
@@ -337,6 +339,7 @@ export function setStyleProp<K extends keyof BoardStyle>(prop: K, value: BoardSt
   if (Object.keys(changes).length === 0) return;
   board().checkpoint();
   board().patch(changes);
+  if (prop === "label" || prop === "shape") rerouteBroken();
   // A text's size changes how it lays out; let it measure again.
   if (prop === "size") for (const e of selected) if (e.type === "text") measureText(e.id, estimateTextRect(e.text, value as BoardStyle["size"]).w, estimateTextRect(e.text, value as BoardStyle["size"]).h);
 }

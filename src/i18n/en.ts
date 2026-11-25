@@ -706,6 +706,17 @@ export const en = {
 
   terminal_api_unavailable:
     "Terminal API not available. Not running in Electron.",
+  agent_canvas_label: "Canvas",
+  agent_canvas_notice: (name: string, kind: "draw" | "change" | "delete", title: string) => (kind === "draw" ? (title ? `${name} drew "${title}"` : `${name} drew on the canvas`) : kind === "change" ? `${name} changed its drawing` : `${name} deleted what it drew`),
+  agent_canvas_show: "Show",
+  agent_canvas_undo: "Undo",
+  agent_canvas_undone: "Undone",
+  agent_canvas_drawing: "Drawing…",
+  agent_canvas_drew: "Drew on the canvas",
+  agent_canvas_changed: "Changed its drawing",
+  agent_canvas_deleted: "Deleted what it drew",
+  agent_canvas_gone: "That drawing isn't on this canvas any more.",
+  agent_canvas_elsewhere: "That was drawn on another workdesk. Open it to undo there.",
   state_not_opened_label: "Your workdesks couldn't be opened",
   state_not_opened_body: "They're still saved, and nothing will be saved over them. Restarting Tacit may open them. Or go back to an earlier snapshot, or start empty; what's saved now is kept either way.",
   state_not_opened_history: "Show history",

@@ -15,7 +15,7 @@ import {
 } from "../hydra/src/spawn";
 import type { TaskStore } from "./task-store";
 import type { TaskRunner, TaskTerminal } from "./task-runner";
-import { parseCanvasRead } from "../shared/canvas-ops";
+import { parseCanvasChange, parseCanvasDelete, parseCanvasDraw, parseCanvasRead } from "../shared/canvas-ops";
 import { TaskError, columnOf, sortTasks } from "../shared/task";
 import { parseNewTask } from "../shared/task-ops";
 import { sendToWindow } from "./window-events";
@@ -86,6 +86,8 @@ interface ApiServerDeps {
   dataUrlToPngBuffer: (dataUrl: string) => Buffer;
   /** A picture in one of the workdesk's folders, small, as a data URL; null when it isn't one. */
   pictureDataUrl: (filePath: string) => string | null;
+  /** Whether a file is in one of the workdesk's folders, so it may be shown on its canvas. */
+  fileOnWorkdesk: (filePath: string) => boolean;
   /** Where the last picture of the canvas each agent asked for is kept. */
   canvasPicturesDir: string;
   recallService: RecallService;
@@ -130,6 +132,7 @@ const CANVAS_PICTURE_FAR = 0.4;
 const CANVAS_PICTURES_MAX = 24;
 const WAIT_NODES_ROUTE = /^\/terminal\/[^/]+\/wait-nodes$/;
 const CANVAS_READ_ROUTE = /^\/terminal\/[A-Za-z0-9._-]{1,128}\/canvas\/read$/;
+const CANVAS_DO_ROUTE = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/canvas\/(draw|change|delete)$/;
 const START_TASK_ROUTE = /^\/terminal\/[^/]+\/start-task$/;
 const END_TASK_ROUTE = /^\/terminal\/[^/]+\/end-task$/;
 
@@ -593,6 +596,8 @@ export class ApiServer {
     if (method === "POST" && CANVAS_READ_ROUTE.test(pathname)) {
       return this.readCanvas(pathname.split("/")[2], body);
     }
+    const canvasDo = method === "POST" ? CANVAS_DO_ROUTE.exec(pathname) : null;
+    if (canvasDo) return this.changeCanvas(canvasDo[1], canvasDo[2] as "draw" | "change" | "delete", body);
     // Tasks, for an agent: always its own workdesk's, and its changes are its own.
     const taskRoute = /^\/terminal\/([A-Za-z0-9._-]{1,128})\/tasks(?:\/([A-Za-z0-9-]{1,128})(?:\/([a-z-]+))?)?$/.exec(pathname);
     if (taskRoute) {
@@ -1786,6 +1791,41 @@ export class ApiServer {
     );
   }
 
+  /** Agents read and draw on their own workdesk's canvas, and it has to be the open one. */
+  private async requireOpenWorkdesk(terminalId: string): Promise<void> {
+    const { here } = (await this.execRenderer(`window.__tcApi.workdeskManager(${JSON.stringify(terminalId)})`)) as { here: boolean };
+    if (!here) throw Object.assign(new Error("Your workdesk isn't open in Tacit, so its canvas can't be reached."), { status: 403 });
+  }
+
+  /**
+   * Backs draw, change_drawing and delete_drawing. Any agent, on its own
+   * workdesk; it changes and deletes only what it drew (src/board/agentDraw.ts
+   * refuses the rest). Drawing new things doesn't ask: it can always be undone.
+   */
+  private async changeCanvas(terminalId: string, what: "draw" | "change" | "delete", body: unknown) {
+    const refuse = (message: string, status = 400) => Object.assign(new Error(message), { status });
+    const run = async (fn: string, args: unknown) => {
+      await this.requireOpenWorkdesk(terminalId);
+      const done = (await this.execRenderer(`window.__tcApi.${fn}(${JSON.stringify(terminalId)}, ${JSON.stringify(args)})`)) as { text: string } | { error: string };
+      if ("error" in done) throw refuse(done.error);
+      return done;
+    };
+    if (what === "draw") {
+      const req = parseCanvasDraw(body);
+      if ("error" in req) throw refuse(req.error);
+      for (const item of req.items) if (item.path && !this.deps.fileOnWorkdesk(item.path)) throw refuse(`${item.path} isn't a file in one of this workdesk's folders.`);
+      return run("agentDraws", req);
+    }
+    if (what === "change") {
+      const req = parseCanvasChange(body);
+      if ("error" in req) throw refuse(req.error);
+      return run("agentChanges", req.changes);
+    }
+    const req = parseCanvasDelete(body);
+    if ("error" in req) throw refuse(req.error);
+    return run("agentDeletes", req.ids);
+  }
+
   /**
    * Backs read_canvas: any agent, its own workdesk's canvas only. The picture
    * is also kept as a file, one per terminal, for a CLI that can't show one.
@@ -1795,8 +1835,7 @@ export class ApiServer {
     if ("error" in ask) throw Object.assign(new Error(ask.error), { status: 400 });
     const me = JSON.stringify(terminalId);
     const id = JSON.stringify(ask.id);
-    const { here } = (await this.execRenderer(`window.__tcApi.workdeskManager(${me})`)) as { here: boolean };
-    if (!here) throw Object.assign(new Error("Your workdesk isn't open in Tacit, so its canvas can't be read."), { status: 403 });
+    await this.requireOpenWorkdesk(terminalId);
     const read = (await this.execRenderer(`window.__tcApi.readCanvas(${me}, ${id})`)) as { canvas: string; pictures: Array<{ id: string; path: string }> } | null;
     if (!read) throw Object.assign(new Error(`There's nothing on the canvas with the id ${ask.id}.`), { status: 404 });
     if (!ask.picture) return { canvas: read.canvas };
