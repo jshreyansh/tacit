@@ -84,6 +84,12 @@ These follow the prototype, and tldraw and Excalidraw where it is silent.
   - Shift snaps the angle.
 
   An arrow drawn within one shape stays loose.
+
+  Which side of the tiles a drawing is on (`boardLayers.ts`): sections,
+  frames, shapes and text are behind. An arrow between drawings that are
+  behind, and anything in an agent's frame, is behind with them, so a tile
+  over a diagram covers all of it. What marks tiles (an arrow to a tile, a
+  loose sticky or pen stroke) stays in front.
 - **Sections:**
   - a titled area; dragging its title moves everything inside;
   - drawn behind tiles;

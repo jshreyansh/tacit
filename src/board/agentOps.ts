@@ -11,6 +11,8 @@ import { findTerminal } from "../actions/terminalLookup";
 import { agentNames, agentsIn } from "../tasks/agentNames";
 import { activeWorkdesk } from "../tasks/taskStore";
 import { boardId, useBoardStore } from "../stores/boardStore";
+import { chatDockOffset, useChatDockStore } from "../stores/chatDockStore";
+import { CHROME_GAP } from "../stores/canvasStore";
 import { useCanvasPageStore } from "../stores/canvasPageStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useFileTileStore } from "../stores/fileTileStore";
@@ -113,6 +115,8 @@ function remember(op: Omit<AgentOp, "id" | "workdesk" | "undone">): AgentOp {
 
 function inView(r: BoardRect): boolean {
   if (useWorkdeskViewStore.getState().mode === "grid") return false;
+  const chat = useChatDockStore.getState();
+  if (chat.open && chat.placement === "full") return false;
   const { viewport: v } = useCanvasStore.getState();
   const x = r.x * v.scale + v.x;
   const y = r.y * v.scale + v.y;
@@ -328,11 +332,27 @@ export function showDrawing(id: string): void {
   }
   if (useWorkdeskViewStore.getState().mode === "grid") useWorkdeskViewStore.getState().setMode("canvas");
   useCanvasPageStore.getState().close();
+  // The manager's chat over everything would hide it: beside it, as in the grid.
+  const chat = useChatDockStore.getState();
+  const covered = chat.open && chat.placement === "full";
+  if (covered) chat.setPlacement("dock");
   useSelectionStore.setState({ selectedItems: [] });
   useAgentOps.setState((s) => ({ delays: { ...s.delays, [id]: 450 } }));
   useBoardStore.setState((s) => ({ bornAt: { ...s.bornAt, [id]: performance.now() + 450 } }));
   // A small thing with some of what's round it, not filling the window.
   const w = Math.max(rect.w, 1100);
   const h = Math.max(rect.h + 40, 700);
-  flyToBounds(rect.x - (w - rect.w) / 2, rect.y - 40 - (h - rect.h - 40) / 2, w, h);
+  const fly = () => void flyToBounds(rect.x - (w - rect.w) / 2, rect.y - 40 - (h - rect.h - 40) / 2, w, h);
+  if (!covered) return fly();
+  // The navigator and the chat come back beside the rail a moment later: it's
+  // centred again in the room they leave, each time that room changes.
+  fly();
+  let room = chatDockOffset(useChatDockStore.getState(), CHROME_GAP);
+  const off = useChatDockStore.subscribe((s) => {
+    const now = chatDockOffset(s, CHROME_GAP);
+    if (now === room) return;
+    room = now;
+    fly();
+  });
+  window.setTimeout(off, 800);
 }

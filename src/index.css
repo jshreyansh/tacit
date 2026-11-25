@@ -1959,193 +1959,166 @@ a.tc-kbd[data-dragover="true"] {
    paints its own dot grid, so this only needs the scrim. */
 .tc-onboarding-scrim { position: absolute; inset: 0; background: var(--scrim); }
 .tc-onboarding-card {
-  position: relative; width: min(820px, 100%);
+  position: relative; width: min(940px, 100%); max-height: 100%;
   background: var(--bg); border: 1px solid var(--border);
-  border-radius: 14px; box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
+  border-radius: 20px; corner-shape: squircle; box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
   overflow: hidden; display: flex; flex-direction: column;
 }
-/* Centred, because left-ragged content in a wide card left a dead quarter on
-   the right — worst on step two, where five tiles in threes leave the last row
-   hanging off one edge. On a centre axis the short row sits under the middle of
-   the row above it. The footer keeps its own left/right split: it is a chrome
-   bar with its own border and fill, not part of the content column. */
-.tc-onboarding-stage {
-  display: flex; flex-direction: column; align-items: center; text-align: center;
-  padding: 30px 30px 26px;
+/* You choose on the left; on the right is the workdesk you're about to open. */
+.tc-onboarding-split { display: grid; grid-template-columns: minmax(0, 1fr) 384px; height: 430px; min-height: 0; }
+@media (max-width: 860px) {
+  .tc-onboarding-split { grid-template-columns: minmax(0, 1fr); }
+  .tc-onboarding-view { display: none !important; }
 }
-@media (max-width: 820px) { .tc-onboarding-stage { padding: 26px 22px 22px; } }
+.tc-onboarding-stage { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 34px 32px 24px 36px; }
+.tc-onboarding-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; color: var(--text-primary); }
+.tc-onboarding-body { margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: var(--text-metadata); text-wrap: pretty; }
 
-.tc-onboarding-title {
-  margin: 0; font-size: 23px; font-weight: 600; letter-spacing: -0.02em;
-  line-height: 1.2; text-wrap: balance; max-width: 30ch; margin-inline: auto;
-  color: var(--text-primary);
+.tc-onboarding-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px;
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  color: var(--text-primary); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; corner-shape: squircle;
+  transition: background .14s ease, border-color .14s ease;
 }
-.tc-onboarding-body {
-  margin: 9px auto 0; font-size: 14px; color: var(--text-secondary);
-  max-width: 46ch; text-wrap: pretty;
-}
+.tc-onboarding-btn:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+.tc-onboarding-btn[data-primary] { background: var(--accent); border-color: transparent; color: var(--accent-foreground); font-weight: 600; }
+.tc-onboarding-btn[data-primary]:hover { background: color-mix(in srgb, var(--accent) 88%, var(--text-primary)); }
+.tc-onboarding-btn:disabled { opacity: .5; cursor: default; }
+
+.tc-setup-folder { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; height: 26px; padding: 0 10px 0 7px; border-radius: 8px; corner-shape: squircle; font-size: 12.5px; color: var(--text-primary); background: var(--surface-hover); }
+.tc-setup-folder img { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; }
+.tc-setup-folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-setup-folder.is-add { padding: 0 10px; color: var(--text-metadata); background: none; }
+.tc-setup-folder.is-add:hover { color: var(--text-primary); }
 
 /* ── Step 1: folders, plural ─────────────────────────────────────── */
-/* Fixed tracks rather than 1fr, so a short final row centres under the one
-   above it instead of stretching to the edges. */
-.tc-onboarding-choices {
-  display: grid; grid-template-columns: repeat(2, 252px);
-  justify-content: center; gap: 10px; margin-top: 22px;
+.tc-onboarding-drop {
+  flex: 1; min-height: 0; margin-top: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  border: 1.5px dashed var(--border-hover); border-radius: 16px; corner-shape: squircle; transition: border-color .14s ease, background .14s ease;
 }
-@media (max-width: 640px) {
-  .tc-onboarding-choices { grid-template-columns: minmax(0, 300px); }
-}
+.tc-onboarding-drop img { width: 52px; height: 52px; object-fit: contain; transition: transform .22s cubic-bezier(.2, .7, .3, 1); }
+.tc-onboarding-drop .t { font-size: 14px; color: var(--text-metadata); }
+.tc-onboarding-drop .acts { display: flex; gap: 8px; margin-top: 4px; }
+.tc-onboarding-drop[data-over] { border-color: var(--board-blue); background: color-mix(in srgb, var(--board-blue) 8%, transparent); }
+.tc-onboarding-drop[data-over] img { transform: translateY(-4px) scale(1.06); }
 
-.tc-onboarding-choice {
-  /* The badge ring must be the colour of the card behind it or it reads as a
-     cut-out, so every state that changes the background republishes it. */
-  --tc-card-bg: var(--surface);
-  text-align: left; font: inherit; cursor: pointer; position: relative;
-  background: var(--surface); color: var(--text-primary);
-  border: 1px solid var(--border); border-radius: 11px;
-  padding: 15px 15px 16px; display: grid; gap: 11px;
-  grid-template-columns: 34px minmax(0, 1fr); align-items: start;
-  transition: border-color .14s ease, background .14s ease, transform .14s ease;
-}
-.tc-onboarding-choice:hover {
-  border-color: var(--border-hover); background: var(--surface-hover);
-  transform: translateY(-1px); --tc-card-bg: var(--surface-hover);
-}
-.tc-onboarding-choice:active { transform: translateY(0); }
-.tc-onboarding-choice:disabled { opacity: .5; cursor: default; transform: none; }
-.tc-onboarding-choice[data-primary] {
-  border-color: var(--accent); background: var(--accent-soft); --tc-card-bg: #2a2926;
-}
-[data-theme="light"] .tc-onboarding-choice[data-primary] { --tc-card-bg: #eae8e3; }
-.tc-onboarding-choice .mark {
-  position: relative; width: 34px; height: 34px; display: grid; place-items: center;
-}
-.tc-onboarding-choice .mark img {
-  width: 30px; height: 30px; display: block; object-fit: contain;
-  transition: transform .18s cubic-bezier(.2, .7, .3, 1);
-}
-.tc-onboarding-choice:hover .mark img { transform: scale(1.07); }
-.tc-onboarding-choice .txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.tc-onboarding-choice .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-.tc-onboarding-choice .d { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
-.tc-onboarding-choice .plus {
-  position: absolute; right: -3px; bottom: -3px;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--pin); box-shadow: 0 0 0 2px var(--tc-card-bg);
-  display: flex; align-items: center; justify-content: center;
-  transition: box-shadow .14s ease, transform .18s cubic-bezier(.2, .7, .3, 1);
-}
-.tc-onboarding-choice .plus svg { display: block; width: 8px; height: 8px; }
-.tc-onboarding-choice .plus svg rect { fill: var(--pin-foreground); }
-.tc-onboarding-choice:hover .plus { transform: scale(1.08); }
-
-/* What has been added, under the buttons that added it. There is no standing
-   summary panel: an empty one spent a third of the card on two "None yet"
-   labels before you had done anything. The paths themselves stay left-ragged
-   inside the centred block — centred paths are unreadable. */
+/* What has been added. It scrolls; the buttons stay. */
 .tc-onboarding-picked {
-  list-style: none; margin: 22px auto 0; padding: 0; display: grid; gap: 2px;
-  width: 514px; max-width: 100%; text-align: left;
+  list-style: none; margin: 20px 0 0; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; corner-shape: squircle;
+  transition: border-color .14s ease;
 }
+.tc-onboarding-picked[data-over] { border-color: var(--board-blue); }
 .tc-onboarding-row {
-  display: grid; grid-template-columns: 24px minmax(0, 1fr) 18px; gap: 10px;
-  align-items: center; padding: 6px 8px 6px 10px; margin-left: -10px;
-  border-radius: 8px; transition: background .2s ease;
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 12px; align-items: center; flex-shrink: 0;
+  padding: 8px 6px 8px 10px; border-radius: 10px; corner-shape: squircle;
 }
-.tc-onboarding-row img { width: 20px; height: 20px; display: block; object-fit: contain; }
-.tc-onboarding-row .label {
-  font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px;
-  color: var(--text-metadata);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.tc-onboarding-row:hover { background: var(--surface-hover); }
+.tc-onboarding-row img { width: 26px; height: 26px; display: block; object-fit: contain; }
+.tc-onboarding-row .info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tc-onboarding-row .label { font-size: 14px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-onboarding-row .path { font-size: 12px; color: var(--text-metadata); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-onboarding-row .drop {
-  opacity: 0; background: none; border: 0; cursor: pointer; padding: 0;
-  color: var(--text-muted); font: inherit; font-size: 15px; line-height: 1;
-  transition: opacity .14s ease, color .14s ease;
+  width: 28px; height: 28px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; cursor: pointer; padding: 0;
+  color: var(--text-muted); transition: color .14s ease, background .14s ease;
 }
-.tc-onboarding-row:hover .drop { opacity: 1; }
-.tc-onboarding-row .drop:hover { color: var(--text-primary); }
-.tc-onboarding-row .drop:focus-visible {
-  opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
-}
-/* The one moment of motion: a row lighting up when you add a folder. */
-.tc-onboarding-row[data-just] { background: var(--pin-soft); }
+.tc-onboarding-row .drop svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+.tc-onboarding-row .drop:hover { color: var(--text-primary); background: var(--border); }
+/* The one moment of motion: the folder you just added arrives. */
 .tc-onboarding-row[data-just] img { animation: tc-onboarding-pop .42s cubic-bezier(.2, .7, .3, 1); }
 @keyframes tc-onboarding-pop {
   0% { transform: scale(.82); }
   55% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
+.tc-onboarding-more { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-shrink: 0; }
+.tc-onboarding-more .hint { font-size: 12.5px; color: var(--text-muted); margin-left: 4px; }
 
 /* ── Step 2: agents, plural ──────────────────────────────────────── */
-/* A grid, not a list. Agents down a column read as a settings panel and
-   scroll; laid out as tiles they are scannable at a glance and the whole set
-   fits without the card outgrowing the window. Four across is one clean row —
-   three columns would leave the fourth stranded on a row of its own. */
-.tc-onboarding-agents {
-  display: grid; grid-template-columns: repeat(4, 150px);
-  justify-content: center; gap: 10px; margin-top: 22px;
-}
-@media (max-width: 760px) {
-  .tc-onboarding-agents { grid-template-columns: repeat(2, 150px); }
-}
+.tc-onboarding-agents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
 .tc-onboarding-agent {
-  position: relative; text-align: center; font: inherit; cursor: pointer;
-  background: var(--surface); color: var(--text-primary);
-  border: 1px solid var(--border); border-radius: 11px;
-  padding: 16px 12px 14px; display: flex; flex-direction: column;
-  align-items: center; gap: 10px;
-  transition: border-color .14s ease, background .14s ease, transform .14s ease;
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) 20px; gap: 12px; align-items: center; text-align: left;
+  font: inherit; cursor: pointer; color: var(--text-primary); padding: 14px 14px 14px 13px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; corner-shape: squircle;
+  transition: border-color .14s ease, background .14s ease;
 }
-.tc-onboarding-agent:hover {
-  border-color: var(--border-hover); background: var(--surface-hover);
-  transform: translateY(-1px);
-}
-.tc-onboarding-agent:active { transform: translateY(0); }
-.tc-onboarding-agent:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-onboarding-agent:hover { border-color: var(--border-hover); background: var(--surface-hover); }
 .tc-onboarding-agent[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
-.tc-onboarding-agent:disabled { opacity: 0.45; cursor: not-allowed; }
+.tc-onboarding-agent:disabled { cursor: not-allowed; background: transparent; border-style: dashed; }
+.tc-onboarding-agent:disabled img { opacity: .4; filter: grayscale(1); }
+.tc-onboarding-agent:disabled .t { color: var(--text-muted); }
 /* Not every mark is square — OpenCode's is 4:5 — so contain rather than
-   stretch. Kimi and OpenCode carry their own opaque ground where the rest are
-   transparent, and need a radius so the edge does not read as a raw rectangle. */
-.tc-onboarding-agent img {
-  width: 30px; height: 30px; display: block; object-fit: contain;
-  transition: transform .18s cubic-bezier(.2, .7, .3, 1);
-}
-.tc-onboarding-agent img.tile { border-radius: 6px; }
-.tc-onboarding-agent:hover img { transform: scale(1.06); }
-.tc-onboarding-agent .info {
-  display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%;
-}
+   stretch. OpenCode carries its own opaque ground where the rest are
+   transparent, and needs a radius so the edge doesn't read as a raw rectangle. */
+.tc-onboarding-agent img { width: 34px; height: 34px; display: block; object-fit: contain; justify-self: center; }
+.tc-onboarding-agent img.tile { border-radius: 7px; }
+.tc-onboarding-agent .info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .tc-onboarding-agent .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-.tc-onboarding-agent .d {
-  font-size: 12px; color: var(--text-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Drawn, not typed — a tick glyph at this size lands wherever the font's
-   metrics put it. */
+.tc-onboarding-agent .d { font-size: 12.5px; color: var(--text-metadata); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-onboarding-agent .check {
-  position: absolute; top: 9px; right: 9px;
-  width: 18px; height: 18px; border-radius: 50%;
-  border: 1.5px solid var(--border-hover); display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border-hover); display: grid; place-items: center;
   transition: background .16s ease, border-color .16s ease;
 }
 .tc-onboarding-agent[aria-pressed="true"] .check { background: var(--accent); border-color: var(--accent); }
-.tc-onboarding-agent .check svg { width: 10px; height: 10px; opacity: 0; transition: opacity .16s ease; }
+.tc-onboarding-agent .check svg { width: 11px; height: 11px; opacity: 0; transition: opacity .16s ease; }
 .tc-onboarding-agent[aria-pressed="true"] .check svg { opacity: 1; }
-.tc-onboarding-agent .check svg path {
-  stroke: var(--accent-foreground); stroke-width: 2.2; fill: none;
-  stroke-linecap: round; stroke-linejoin: round;
+.tc-onboarding-agent .check svg path { stroke: var(--accent-foreground); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tc-onboarding-note { margin: 14px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-metadata); }
+.tc-onboarding-into { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 18px; min-height: 0; overflow-y: auto; }
+.tc-onboarding-into .lead { font-size: 13px; color: var(--text-metadata); min-width: 62px; }
+.tc-onboarding-into + .tc-onboarding-into { margin-top: 10px; }
+.tc-onboarding-into button {
+  font: inherit; font-size: 13px; cursor: pointer; height: 28px; padding: 0 11px; border-radius: 9px; corner-shape: squircle; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-metadata); background: none; border: 1px solid var(--border);
 }
+.tc-onboarding-into button:hover { color: var(--text-primary); border-color: var(--border-hover); }
+.tc-onboarding-into button[aria-checked="true"] { color: var(--text-primary); border-color: var(--accent); background: var(--accent-soft); }
+
+/* ── The workdesk you're about to open ───────────────────────────── */
+.tc-onboarding-view {
+  position: relative; display: flex; flex-direction: column; min-height: 0; padding: 24px 22px 14px; border-left: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--bg) 70%, black); background-image: radial-gradient(color-mix(in srgb, var(--text-primary) 13%, transparent) 1px, transparent 1.2px); background-size: 18px 18px;
+}
+[data-theme="light"] .tc-onboarding-view { background-color: color-mix(in srgb, var(--bg) 96%, black); }
+.tc-onboarding-desk { flex: 1; min-height: 0; display: grid; gap: 22px 14px; padding-top: 12px; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
+.tc-onboarding-desk[data-cells="3"], .tc-onboarding-desk[data-cells="4"], .tc-onboarding-desk[data-cells="5"], .tc-onboarding-desk[data-cells="6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tc-onboarding-desk[data-cells="3"] > :first-child, .tc-onboarding-desk[data-cells="5"] > :first-child { grid-column: 1 / -1; }
+.tc-onboarding-desk .ghost { border: 1.5px dashed var(--border-hover); border-radius: 14px; corner-shape: squircle; margin: 34px 28px 22px; transition: border-color .14s ease, background .14s ease; }
+.tc-onboarding-desk .ghost[data-over] { border-color: var(--board-blue); background: color-mix(in srgb, var(--board-blue) 8%, transparent); }
+.tc-onboarding-desk .place {
+  position: relative; min-height: 0; min-width: 0; padding: 18px 10px 10px; border-radius: 13px; corner-shape: squircle;
+  background: color-mix(in srgb, var(--c) 7%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 42%, transparent);
+  animation: tc-onboarding-place .34s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-desk .place .name {
+  position: absolute; left: 10px; top: -11px; max-width: calc(100% - 20px); padding: 3px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 600; line-height: 16px;
+  color: var(--text-primary); background: color-mix(in srgb, var(--c) 26%, var(--surface)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tc-onboarding-desk .more { display: grid; place-items: center; border: 1.5px dashed var(--border-hover); border-radius: 13px; corner-shape: squircle; font-size: 12.5px; color: var(--text-metadata); }
+.tc-onboarding-desk .agents { height: 100%; display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: hidden; }
+.tc-onboarding-desk .agents[data-n="1"] { grid-template-columns: minmax(0, 1fr); }
+.tc-onboarding-desk .term {
+  min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
+  animation: tc-onboarding-place .3s cubic-bezier(.2, .7, .3, 1);
+}
+.tc-onboarding-desk .term .bar { display: flex; align-items: center; gap: 5px; padding: 4px 7px; font-size: 10.5px; font-weight: 500; color: var(--text-metadata); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; }
+.tc-onboarding-desk .term .bar img { width: 12px; height: 12px; object-fit: contain; flex-shrink: 0; }
+.tc-onboarding-desk .term .bar img.tile { border-radius: 3px; }
+.tc-onboarding-desk .term .bar .runs { margin-left: auto; padding: 0 5px; border-radius: 4px; font-size: 9.5px; line-height: 14px; color: var(--pin); background: var(--pin-soft); }
+.tc-onboarding-desk .term .line { flex-shrink: 0; height: 4px; width: 62%; margin-left: 7px; border-radius: 2px; background: color-mix(in srgb, var(--text-primary) 16%, transparent); }
+.tc-onboarding-desk .term .line.short { width: 36%; }
+.tc-onboarding-view .cap { flex-shrink: 0; margin-top: 12px; text-align: center; font-size: 12.5px; color: var(--text-metadata); font-variant-numeric: tabular-nums; }
+@keyframes tc-onboarding-place { from { opacity: 0; transform: scale(.95); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .tc-onboarding-choice, .tc-onboarding-agent, .tc-onboarding-row { transition: none; }
-  .tc-onboarding-row[data-just] img { animation: none; }
+  .tc-onboarding-btn, .tc-onboarding-drop, .tc-onboarding-drop img, .tc-onboarding-agent { transition: none; }
+  .tc-onboarding-row[data-just] img, .tc-onboarding-desk .place, .tc-onboarding-desk .term { animation: none; }
 }
 
 .tc-onboarding-foot {
   display: flex; align-items: center; gap: 16px;
-  padding: 13px 30px; border-top: 1px solid var(--border);
+  padding: 13px 30px 13px 36px; border-top: 1px solid var(--border);
   background: var(--surface);
 }
 @media (max-width: 820px) { .tc-onboarding-foot { padding: 13px 22px; } }

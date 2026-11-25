@@ -55,12 +55,14 @@ import {
   selectBoard,
   startEditing,
 } from "./boardActions";
+import { drawingsBehindTiles } from "./boardLayers";
 import "./board.css";
 
 /**
  * The board, drawn inside the canvas so it pans and zooms with the tiles
- * (docs/architecture/workdesk-board.md). Sections, frames, shapes and text
- * sit behind tiles; stickies, arrows and pen strokes in front.
+ * (docs/architecture/workdesk-board.md). Sections, frames, shapes, text and
+ * the arrows of a diagram sit behind tiles; what marks tiles, in front
+ * (boardLayers.ts).
  * In Select, drawings are picked, moved, resized and typed into here; the
  * drawing tools themselves work through BoardDrawOverlay.
  */
@@ -418,6 +420,7 @@ export const BoardLayer = memo(function BoardLayer() {
   // Arrows resolve their ends against elements and tiles as they are now.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lookup = useMemo(() => boardTargetLookup(elements), [elements, nodes]);
+  const behind = useMemo(() => drawingsBehindTiles(elements), [elements]);
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     // Entrances run once: after they've played, re-render without them.
@@ -434,12 +437,15 @@ export const BoardLayer = memo(function BoardLayer() {
   const top: React.ReactNode[] = [];
   const titles: React.ReactNode[] = [];
   const ink: React.ReactNode[] = [];
+  const backInk: React.ReactNode[] = [];
+  const backTop: React.ReactNode[] = [];
   for (const e of elements) {
     const isSel = selected.has(e.id);
+    const isBehind = behind.has(e.id);
     if (e.type === "arrow") {
-      ink.push(<ArrowSvg key={e.id} e={e} lookup={lookup} selected={isSel} born={born(e.id)} delay={delays[e.id]} handles={isSel && single && interactive && !editingId} />);
+      (isBehind ? backInk : ink).push(<ArrowSvg key={e.id} e={e} lookup={lookup} selected={isSel} born={born(e.id)} delay={delays[e.id]} handles={isSel && single && interactive && !editingId} />);
     } else if (e.type === "pen") {
-      ink.push(<PenSvg key={e.id} e={e} selected={isSel} born={delays[e.id] !== undefined && born(e.id)} delay={delays[e.id]} />);
+      (isBehind ? backInk : ink).push(<PenSvg key={e.id} e={e} selected={isSel} born={delays[e.id] !== undefined && born(e.id)} delay={delays[e.id]} />);
     } else if (e.type === "text") {
       mid.push(<MeasuredText key={e.id} e={e} editing={editingId === e.id} selected={isSel} hovered={hoverId === e.id} born={born(e.id)} delay={delays[e.id]} />);
     } else {
@@ -449,7 +455,7 @@ export const BoardLayer = memo(function BoardLayer() {
         titles.push(<Boxed key={`${e.id}-title`} e={e} part="title" selected={isSel} single={single} hovered={false} editing={editingId === e.id} born={born(e.id)} delay={delays[e.id]} />);
       }
       else if (e.type === "shape") mid.push(node);
-      else top.push(node);
+      else (isBehind ? backTop : top).push(node);
     }
   }
 
@@ -692,6 +698,10 @@ export const BoardLayer = memo(function BoardLayer() {
         <div className="tc-board-back">
           {back}
           {mid}
+          <svg className="tc-board-ink" width="1" height="1">
+            {backInk}
+          </svg>
+          {backTop}
         </div>
         <div className="tc-board-top">
           <svg className="tc-board-ink" width="1" height="1">

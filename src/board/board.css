@@ -34,7 +34,7 @@
 /* ---------- on the canvas ---------- */
 
 .tc-board { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; font-family: "Geist", ui-sans-serif, system-ui, sans-serif; }
-/* Behind the tiles: sections, frames, shapes, text. In front: stickies, images, arrows, ink. */
+/* Behind the tiles: sections, frames, shapes, text, and what belongs to a diagram. In front: what marks tiles (boardLayers.ts). */
 .tc-board-back { position: absolute; left: 0; top: 0; z-index: -1; }
 .tc-board-top { position: absolute; left: 0; top: 0; z-index: 10; }
 .tc-board-ink { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }

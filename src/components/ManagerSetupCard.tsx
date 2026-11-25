@@ -9,6 +9,7 @@ import { useProjectStore } from "../stores/projectStore";
 import { MANAGER_AGENTS, useMissingAgents } from "../toolbar/AssignMenu";
 import { agentIcon } from "../toolbar/agentIcons";
 import type { TerminalType } from "../types";
+import folderIcon from "../assets/dock-icons/folder.png";
 
 /**
  * "Who runs this workdesk?", asked once, right after its first folder. Sits
@@ -44,10 +45,10 @@ export function ManagerSetupCard() {
       <div
         role="dialog"
         aria-label={t.setup_who_title}
-        className="tc-enter-fade-up pointer-events-auto rounded-2xl border border-[var(--border)] p-5"
+        className="tc-enter-fade-up tc-squircle pointer-events-auto border border-[var(--border)] p-6"
         style={{
-          width: "min(460px, 86vw)",
-          background: "color-mix(in srgb, var(--surface) 92%, transparent)",
+          width: "min(520px, 86vw)",
+          background: "color-mix(in srgb, var(--bg) 94%, transparent)",
           backdropFilter: "var(--glass-filter, blur(24px))",
           WebkitBackdropFilter: "var(--glass-filter, blur(24px))",
           boxShadow: "0 18px 46px color-mix(in srgb, var(--shadow-color) 55%, transparent)",
@@ -56,28 +57,25 @@ export function ManagerSetupCard() {
           if (e.key === "Escape") skipManager();
         }}
       >
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="text-[18px] font-semibold tracking-[-0.015em] text-[var(--text-primary)]">{t.setup_who_title}</div>
+        <div className="mt-1.5 text-[13.5px] leading-snug text-[var(--text-metadata)]">{t.setup_who_body}</div>
+
+        <div className="mt-4 flex max-h-[68px] flex-wrap items-center gap-1.5 overflow-y-auto">
           {projects.map((p) => (
-            <span key={p.id} className="tc-chip" title={p.path}>
-              {p.name}
+            <span key={p.id} className="tc-setup-folder" title={p.path}>
+              <img src={folderIcon} alt="" />
+              <span>{p.name}</span>
             </span>
           ))}
-          <button
-            type="button"
-            className="ml-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            onClick={() => void promptAndAddProjectToScene(t)}
-          >
+          <button type="button" className="tc-setup-folder is-add" onClick={() => void promptAndAddProjectToScene(t)}>
             + {t.setup_add_another}
           </button>
         </div>
 
-        <div className="mt-4 text-[16px] font-semibold text-[var(--text-primary)]">{t.setup_who_title}</div>
-        <div className="mt-1 text-[13px] leading-snug text-[var(--text-secondary)]">{t.setup_who_body}</div>
-
         {available.length === 0 ? (
-          <div className="mt-4 text-[13px] leading-snug text-[var(--text-secondary)]">{t.setup_no_agents}</div>
+          <div className="mt-4 text-[13px] leading-snug text-[var(--text-metadata)]">{t.setup_no_agents}</div>
         ) : (
-          <div role="radiogroup" aria-label={t.setup_who_title} className="mt-4 grid grid-cols-4 gap-2">
+          <div role="radiogroup" aria-label={t.setup_who_title} className="tc-onboarding-agents">
             {MANAGER_AGENTS.map(({ id, displayName }) => {
               const reason = missing(id);
               const selected = id === choice;
@@ -87,24 +85,25 @@ export function ManagerSetupCard() {
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  aria-disabled={reason !== null || undefined}
+                  aria-pressed={selected}
+                  disabled={reason !== null}
                   title={reason || undefined}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl border px-1 py-3 text-[12px] transition-colors duration-instant ${
-                    reason !== null ? "opacity-40" : "hover:bg-[var(--surface-hover)]"
-                  }`}
-                  style={{
-                    borderColor: selected ? "var(--text-secondary)" : "var(--border)",
-                    background: selected ? "var(--surface-hover)" : undefined,
-                    color: "var(--text-primary)",
-                  }}
-                  onClick={() => reason === null && setPicked(id)}
-                  onDoubleClick={() => reason === null && startManager(id as TerminalType)}
+                  className="tc-onboarding-agent"
+                  onClick={() => setPicked(id)}
+                  onDoubleClick={() => startManager(id as TerminalType)}
                 >
-                  <img src={agentIcon(id)} alt="" className="h-7 w-7 object-contain" />
-                  <span className="max-w-full truncate px-1">{displayName}</span>
-                  <span className="text-[10px] text-[var(--text-muted)]">
-                    {reason !== null ? t.agent_not_installed : id === lastUsed ? t.setup_last_used : " "}
+                  <img src={agentIcon(id)} alt="" />
+                  <span className="info">
+                    <span className="t">{displayName}</span>
+                    {(reason !== null || id === lastUsed) && <span className="d">{reason !== null ? t.agent_not_installed : t.setup_last_used}</span>}
                   </span>
+                  {reason === null && (
+                    <span className="check">
+                      <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <path d="M2.5 6.4 L4.8 8.7 L9.5 3.6" />
+                      </svg>
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -116,7 +115,8 @@ export function ManagerSetupCard() {
             <button
               type="button"
               autoFocus
-              className="inline-flex h-8 items-center rounded-lg bg-[var(--text-primary)] px-3.5 text-[13px] font-medium text-[var(--bg)] hover:opacity-90"
+              className="tc-onboarding-btn"
+              data-primary=""
               onClick={() => startManager(choice as TerminalType)}
             >
               {t.setup_use(choiceName)}
@@ -124,7 +124,7 @@ export function ManagerSetupCard() {
           )}
           <button
             type="button"
-            className="inline-flex h-8 items-center rounded-lg border border-[var(--border)] px-3 text-[13px] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
+            className="tc-onboarding-btn"
             onClick={skipManager}
           >
             {t.setup_skip}
