@@ -4,6 +4,8 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.12] - 2026-11-25
+
 ### Changed
 - **The task board looks and works like the chat.** Questions, approvals, stuck agents and finishes are the chat's own cards: number keys, several questions as one stack, "Let Claude decide", Deny with a reason. A chat's permission or question can be answered on its task.
 - **A task's page is a conversation**: the brief, what it needs from you, one activity feed, and the message box at the bottom. Empty fields are small + chips. New task is a composer.
