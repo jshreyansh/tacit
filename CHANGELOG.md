@@ -4,6 +4,16 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.18] - 2026-11-27
+
+### Added
+- Agents are told when a page downloads a file (and where it went) or opens a new window.
+
+### Fixed
+- Ticking a box on Google Forms or Notion told the agent it hadn't worked, though it had. These pages tick it a moment after the click; agents now wait for it.
+- A choice with no label, such as a form's "Other:" option, had no name for agents. It's now named by the words beside it.
+- Agents now read link words inside sentences, any element's text, and lines they can drag; scrolling no longer counts as a change on the page.
+
 ## [0.44.17] - 2026-11-27
 
 ### Added
