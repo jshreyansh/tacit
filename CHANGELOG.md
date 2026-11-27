@@ -4,6 +4,24 @@ All notable changes to Tacit will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.17] - 2026-11-27
+
+### Added
+- **Agents can use browser tiles like a person.** They read the page as an outline (frames from other sites and hidden page parts included), find words, read it a page at a time and take screenshots. They act with real clicks, typing, key presses, paste, file uploads, dialogs and waits, several steps in one go. This works in Excel Online's grid.
+- **Several agents, several browsers.** An agent picks one of its browsers by name or address. A page's pop-up opens as its own tile, wired to the same agent. One agent changes a page at a time; the others can still read it.
+- **You come first.** A bar on the tile shows which agent is using it, with Stop. Clicking or typing in the page holds agents off until 15 s after you stop. Let agents back lets them continue.
+- **Each agent proves who it is.** Every terminal Tacit starts gets its own credential, so an agent can only use the browsers wired to it. Agents started before this update need their terminal restarted.
+
+### Changed
+- Agents keep working in a tile while Tacit is behind other windows or the tile is off screen. Tacit now keeps drawing when covered; minimized still stops.
+- Links that open a new tab, and pop-ups such as sign-in windows, now open from a tile's page, as a new tile or a window. Before, they were blocked without a word.
+- What an agent reads from a page is marked as the page's words, not instructions.
+
+### Fixed
+- An agent can't type into password fields, paste your own clipboard, or upload files from outside the workdesk's folders.
+- A key an agent pressed in a page that didn't have the keyboard went to whatever did. An Escape stopped the agent in its own terminal. Keys now go only to a page that has the keyboard; otherwise the agent is told to click in it first.
+- Screenshots of Excel Online stopped working after the first few.
+
 ## [0.44.16] - 2026-11-26
 
 ### Added
