@@ -1,0 +1,52 @@
+<!doctype html><meta charset="utf-8"><title>Grid</title>
+<style>body{margin:0;font:13px system-ui} canvas{display:block;cursor:cell} textarea{position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0}</style>
+<canvas id="c" width="500" height="220"></canvas>
+<textarea id="ime" aria-label="cell editor"></textarea>
+<script>
+// Like Excel's grid: a canvas, a hidden editor that takes text, and nothing from script-made events.
+const R = 4, C = 4, W = 120, H = 40, X0 = 10, Y0 = 10;
+const saved = JSON.parse(localStorage.getItem("cells") || "{}");
+const cells = saved; let cur = { r: 0, c: 0 }; const log = [];
+const ctx = c.getContext("2d");
+function draw() {
+  ctx.clearRect(0, 0, 500, 220);
+  for (let r = 0; r < R; r++) for (let k = 0; k < C; k++) {
+    const x = X0 + k * W, y = Y0 + r * H;
+    ctx.strokeStyle = "#bbb"; ctx.strokeRect(x, y, W, H);
+    ctx.fillStyle = "#111"; ctx.fillText(cells[r + "," + k] || "", x + 6, y + 24);
+  }
+  ctx.strokeStyle = "#1a7f37"; ctx.lineWidth = 2; ctx.strokeRect(X0 + cur.c * W, Y0 + cur.r * H, W, H); ctx.lineWidth = 1;
+}
+function save() { localStorage.setItem("cells", JSON.stringify(cells)); }
+c.addEventListener("mousedown", (e) => {
+  log.push("mousedown trusted=" + e.isTrusted);
+  if (!e.isTrusted) return;
+  e.preventDefault(); // as Excel's grid does: the click doesn't move focus off its editor
+  const k = Math.floor((e.offsetX - X0) / W), r = Math.floor((e.offsetY - Y0) / H);
+  if (r >= 0 && r < R && k >= 0 && k < C) cur = { r, c: k };
+  ime.focus(); draw();
+});
+ime.addEventListener("input", (e) => {
+  log.push("input trusted=" + e.isTrusted + " " + JSON.stringify(ime.value));
+  if (!e.isTrusted) { ime.value = ""; return; }
+  const key = cur.r + "," + cur.c; cells[key] = (cells[key] || "") + ime.value; ime.value = ""; save(); draw();
+});
+ime.addEventListener("keydown", (e) => {
+  log.push("keydown " + e.key + " trusted=" + e.isTrusted);
+  if (!e.isTrusted) { e.preventDefault(); return; }
+  if (e.key === "Tab") { e.preventDefault(); cur.c = Math.min(C - 1, cur.c + 1); draw(); }
+  else if (e.key === "Enter") { e.preventDefault(); cur = { r: Math.min(R - 1, cur.r + 1), c: 0 }; draw(); }
+  else if (e.key === "Backspace") { const key = cur.r + "," + cur.c; cells[key] = (cells[key] || "").slice(0, -1); save(); draw(); }
+});
+ime.addEventListener("paste", (e) => {
+  log.push("paste trusted=" + e.isTrusted);
+  if (!e.isTrusted) return;
+  e.preventDefault();
+  const rows = e.clipboardData.getData("text/plain").replace(/\r/g, "").split("\n").filter(Boolean);
+  rows.forEach((row, i) => row.split("\t").forEach((v, j) => { if (cur.r + i < R && cur.c + j < C) cells[(cur.r + i) + "," + (cur.c + j)] = v; }));
+  save(); draw();
+});
+window.__grid = () => ({ cells: { ...cells }, cur, log: log.slice(-30) });
+window.__clear = () => { for (const k in cells) delete cells[k]; log.length = 0; cur = { r: 0, c: 0 }; save(); draw(); };
+draw();
+</script>

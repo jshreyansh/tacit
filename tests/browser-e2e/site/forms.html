@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>Test forms</title>
+<style>body{font:14px system-ui;margin:16px;max-width:760px} #cookie{position:fixed;left:0;right:0;bottom:0;top:35%;background:#223;color:#fff;padding:16px;z-index:10} .tall{height:1400px} iframe{width:520px;height:220px;border:1px solid #999} .card{display:inline-block;width:120px;padding:12px;margin:4px;border:1px solid #888;background:#eef} .r{display:inline-block;width:14px;height:14px;border:1px solid #555;border-radius:50%;vertical-align:middle} .r[aria-checked=true]{background:#36c}</style>
+<h1>Sign-up</h1>
+<form id="f" onsubmit="event.preventDefault(); document.getElementById('result').textContent = 'Thanks, ' + this.name.value + ' from ' + this.country.value + (this.agree.checked ? ' (agreed)' : '') + (this.secret.value ? ' [password set]' : '');">
+  <label>Full name <input name="name" value="old value"></label><br>
+  <label>Email <input name="email" type="email" placeholder="you@example.com"></label><br>
+  <label>Country <select name="country"><option value="">Choose…</option><option value="in">India</option><option value="us">United States</option></select></label><br>
+  <label><input type="checkbox" name="agree"> I agree</label><br>
+  <label>Password <input type="password" name="secret"></label><br>
+  <button type="submit">Create account</button>
+</form>
+<p id="result"></p>
+<h2>More</h2>
+<button id="covered" onclick="document.getElementById('cov').textContent='covered button worked'">Under the banner</button> <span id="cov"></span><br>
+<button onclick="document.getElementById('dlg').textContent = confirm('Delete everything?') ? 'confirmed' : 'cancelled'">Danger</button> <span id="dlg"></span><br>
+<label>Attachment <input type="file" id="file" onchange="document.getElementById('fname').textContent=this.files[0]&&this.files[0].name"></label> <span id="fname"></span><br>
+<a href="#" onclick="window.open('{{PAGE_ORIGIN}}/popup.html','_blank'); return false;">Open the helper window</a><br>
+<button onclick="setTimeout(()=>{const p=document.createElement('p');p.id='late';p.textContent='Loaded the report';document.body.appendChild(p)},1500)">Load report</button><br>
+<p id="intro">Read the <a href="#terms">terms</a> before you <b>sign up</b>.</p>
+<div id="cards"><div class="card" draggable="true">Card one</div><div class="card" draggable="true">Card two</div></div>
+<a href="{{PAGE_ORIGIN}}/export.csv">Export CSV</a><br>
+<div role="radiogroup" aria-label="Plan" id="plan"><div><div role="radio" aria-checked="false" tabindex="0" class="r" aria-label="Basic"></div></div><div><div role="radio" aria-checked="false" tabindex="0" class="r"></div><span> Other:</span> <input aria-label="Other plan"></div></div>
+<div contenteditable="true" aria-label="Notes" style="border:1px solid #aaa;min-height:30px;padding:4px">Old note</div>
+<tc-card></tc-card>
+<script>
+let dragged = null;
+for (const c of document.querySelectorAll('.card')) {
+  c.addEventListener('dragstart', (e) => { dragged = c; e.dataTransfer.setData('text/plain', c.textContent); });
+  c.addEventListener('dragover', (e) => e.preventDefault());
+  c.addEventListener('drop', (e) => { e.preventDefault(); if (dragged && dragged !== c) c.parentNode.insertBefore(dragged, c.nextSibling); });
+}
+// Ticked a moment after the click, as Google Forms does.
+for (const r of document.querySelectorAll('#plan [role=radio]')) r.addEventListener('click', () => setTimeout(() => { for (const x of document.querySelectorAll('#plan [role=radio]')) x.setAttribute('aria-checked', String(x === r)); }, 300));
+customElements.define('tc-card', class extends HTMLElement { constructor(){ super(); const r=this.attachShadow({mode:'open'}); r.innerHTML='<p>Shadow part</p><button id="sb">Inside the shadow</button><span id="so"></span>'; r.getElementById('sb').onclick=()=>{ r.getElementById('so').textContent=' shadow button worked'; }; } });
+</script>
+<iframe title="grid" src="{{GRID_ORIGIN}}/grid.html"></iframe>
+<div class="tall"></div>
+<button onclick="this.textContent='bottom button worked'">Far down the page</button>
+<div id="cookie">We use cookies. <button onclick="document.getElementById('cookie').remove()">Accept cookies</button></div>
