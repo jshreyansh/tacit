@@ -109,6 +109,13 @@ function requestOnce(
     };
     if (data) headers["Content-Length"] = String(Buffer.byteLength(data));
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    // In one of Tacit's terminals: which one, and its proof (electron/terminal-credentials.ts).
+    const terminalId = process.env.TACIT_TERMINAL_ID?.trim();
+    const terminalToken = process.env.TACIT_TERMINAL_TOKEN?.trim();
+    if (terminalId && terminalToken) {
+      headers["X-Tacit-Terminal"] = terminalId;
+      headers["X-Tacit-Terminal-Token"] = terminalToken;
+    }
 
     const transport = protocol === "https:" ? https : http;
     const req = transport.request(

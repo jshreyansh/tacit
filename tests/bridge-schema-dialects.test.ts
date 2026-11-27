@@ -73,7 +73,7 @@ function isObjectSchema(node: Json): boolean {
  * adding it here, deliberately.
  */
 const NO_ARGUMENT_TOOLS = new Set([
-  "browser_read",
+  "browser_list",
   "get_workspace_summary",
   "list_browser_profiles",
   "end_task",
@@ -205,7 +205,7 @@ test.before(async () => {
 });
 
 test("the bridge lists its tools in-process, as an agent receives them", () => {
-  assert.equal(bridgeTools.length, 43);
+  assert.equal(bridgeTools.length, 50);
   for (const tool of bridgeTools) {
     assert.ok(tool.inputSchema && typeof tool.inputSchema === "object", tool.name);
   }

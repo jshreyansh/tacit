@@ -43,6 +43,9 @@ import { resetBrowserNodeZoom } from "../browser/browserNodeCommands";
 import { useChromeSyncStore } from "../stores/chromeSyncStore";
 import { BrowserNodeMenu, setBrowserNodeMuted } from "../browser/BrowserNodeMenu";
 import { keepableFavicon, useBrowserTabState, useBrowserTabStateStore } from "../stores/browserTabStateStore";
+import { useBrowserDrivingStore } from "../browser/browserDriving";
+import { findTerminal } from "../actions/terminalLookup";
+import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
 
 declare global {
   namespace JSX {
@@ -437,6 +440,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       data-scene-card={projectedLayout ? undefined : cardId}
       data-connect-kind="browser"
       data-connect-id={card.id}
+      data-browser-card={card.id}
       className="absolute rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-col overflow-hidden"
       style={
         projectedLayout ?? {
@@ -638,6 +642,7 @@ export function BrowserCard({ card, projectedLayout }: Props) {
       </div>
 
       <div className="flex-1 min-h-0 relative">
+        <DrivenBar cardId={card.id} />
         {connectedBinding ? (
           <div className="h-full flex flex-col items-center justify-center px-8 text-center bg-[var(--bg)]">
             <div
@@ -667,7 +672,9 @@ export function BrowserCard({ card, projectedLayout }: Props) {
           ref={webviewRef as React.Ref<HTMLElement>}
           src={mountUrl}
           partition={partitionForIdentity(card.identityId)}
-          allowpopups
+          // A string: React drops `true` for an attribute it doesn't know, and
+          // without it Chromium blocks every popup before main's handler sees it.
+          {...({ allowpopups: "true" } as Record<string, string>)}
           className="w-full h-full"
           style={{ border: "none" }}
         />}
@@ -813,5 +820,38 @@ export function SpeakerIcon({ muted, size = 12 }: { muted: boolean; size?: numbe
       <path d="M2.5 6v4h2.5l3.5 3V3L5 6z" fill="currentColor" stroke="none" />
       {muted ? <path d="M11 6l3.5 4M14.5 6L11 10" /> : <path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" />}
     </svg>
+  );
+}
+
+/**
+ * Who is driving this page, and the person's way to take it back: Stop keeps
+ * agents off it for a while, Resume lets them back on. Shown while an agent is
+ * changing the page, or while they're kept off.
+ */
+function DrivenBar({ cardId }: { cardId: string }) {
+  const t = useT();
+  const state = useBrowserDrivingStore((s) => s.byCard[cardId]);
+  if (!state || (!state.driver && !state.held)) return null;
+  const name = (() => {
+    const id = state.driver?.startsWith("terminal:") ? state.driver.slice("terminal:".length) : null;
+    const found = id ? findTerminal(id) : null;
+    return found ? found.terminal.customTitle?.trim() || TERMINAL_TYPE_CONFIG[found.terminal.type]?.label || found.terminal.title : t.browser_driven_agent;
+  })();
+  return (
+    <div className="tc-br-driven" role="status" onMouseDown={(e) => e.stopPropagation()}>
+      <span className="tc-br-driven-dot" data-held={state.held ? "true" : undefined} aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">
+        {state.held === "stopped" ? t.browser_driven_stopped : state.held === "user" ? t.browser_driven_paused : t.browser_driven_by(name)}
+      </span>
+      {state.held === "stopped" ? (
+        <button type="button" className="tc-br-driven-btn" onClick={() => void window.tacit.browser.resumeDriver(cardId)}>
+          {t.browser_driven_resume}
+        </button>
+      ) : state.driver ? (
+        <button type="button" className="tc-br-driven-btn" onClick={() => void window.tacit.browser.stopDriver(cardId)}>
+          {t.browser_driven_stop}
+        </button>
+      ) : null}
+    </div>
   );
 }

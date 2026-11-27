@@ -36,6 +36,12 @@ export class BridgeUnavailableError extends Error {
 export interface BridgeLaunchOptions {
   terminalType: string | undefined;
   terminalId: string;
+  /**
+   * The terminal's own credential (electron/terminal-credentials.ts). Only
+   * main makes them: main passes the one it made, and an agent started by
+   * typing its name in a Tacit shell passes on the one that shell has.
+   */
+  terminalToken?: string;
   /** The built tacit-bridge.js, or null when none could be found. */
   serverPath: string | null;
   portFile: string;
@@ -142,6 +148,7 @@ export function prepareBridgeLaunch(
     serverPath: options.serverPath,
     terminalId: options.terminalId,
     portFile: options.portFile,
+    ...(options.terminalToken ? { terminalToken: options.terminalToken } : {}),
   });
   let version: string | undefined;
   if (adapter.launchDependsOnVersion) {

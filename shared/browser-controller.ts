@@ -1,3 +1,4 @@
+import { validateSteps } from "./browser-act";
 import type {
   BrowserCapability,
   ConnectedBrowserFamily,
@@ -31,7 +32,20 @@ export type BrowserActionName =
   | "forward"
   | "reload"
   | "click"
-  | "eval";
+  | "eval"
+  /** The page as an outline of what can be used, with refs. */
+  | "snapshot"
+  /** Lines of the outline matching words. */
+  | "find"
+  | "screenshot"
+  /** Steps of real input: click, type, press, paste… (shared/browser-act.ts). */
+  | "act"
+  | "wait"
+  /** Answer an alert, confirm or prompt. */
+  | "dialog";
+
+/** Actions that change nothing on the page: a read-only wire allows these. */
+export const READ_ONLY_BROWSER_ACTIONS: ReadonlySet<BrowserActionName> = new Set(["read", "snapshot", "find", "screenshot", "wait"]);
 
 export interface BrowserActionRequest {
   action: BrowserActionName;
@@ -97,8 +111,13 @@ export function capabilityForBrowserAction(
   action: BrowserActionName,
 ): BrowserControllerCapability {
   switch (action) {
-    case "read": return "inspect";
+    case "read":
+    case "snapshot":
+    case "find":
+      return "inspect";
     case "eval": return "non_portable_eval";
+    case "act": return "type";
+    case "dialog": return "click";
     default: return action;
   }
 }
@@ -111,7 +130,13 @@ export function isBrowserActionName(value: unknown): value is BrowserActionName 
     value === "forward" ||
     value === "reload" ||
     value === "click" ||
-    value === "eval"
+    value === "eval" ||
+    value === "snapshot" ||
+    value === "find" ||
+    value === "screenshot" ||
+    value === "act" ||
+    value === "wait" ||
+    value === "dialog"
   );
 }
 
@@ -126,9 +151,13 @@ export function validateBrowserActionRequest(
   if (action === "navigate" && (typeof values.url !== "string" || !values.url)) {
     return "navigate requires a url";
   }
-  if (action === "click" && (typeof values.selector !== "string" || !values.selector)) {
-    return "click requires a selector";
+  if (action === "click" && (typeof values.selector !== "string" || !values.selector) && (typeof values.ref !== "string" || !values.ref)) {
+    return "click requires a ref (from browser_snapshot) or a selector";
   }
+  if (action === "act") return validateSteps(values.steps);
+  if (action === "find" && (typeof values.query !== "string" || !values.query.trim())) return "find requires a query";
+  if (action === "dialog" && typeof values.accept !== "boolean") return "dialog requires accept: true or false";
+  if (action === "wait" && ["text", "gone", "ref", "refGone", "url"].every((k) => typeof values[k] !== "string")) return "wait requires text, gone, ref, refGone or url";
   if (action === "eval" && (typeof values.script !== "string" || !values.script)) {
     return "eval requires a script";
   }

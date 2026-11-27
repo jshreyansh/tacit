@@ -142,7 +142,7 @@ test("an agent wired to a browser is told which tools reach it, and that there's
     twoWay: false,
   })!;
   assert.match(text, /"localhost:3000" \(browser b1\)/);
-  assert.match(text, /browser_read, browser_navigate, browser_click and browser_eval/);
+  assert.match(text, /browser_snapshot .*browser_act .*browser_navigate/);
   assert.match(text, /nothing to do about this now/);
 });
 

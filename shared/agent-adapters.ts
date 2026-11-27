@@ -52,6 +52,12 @@ export const TACIT_TASK_TOOLS: readonly string[] = ["list_tasks", "get_task", "c
 export const TACIT_READ_TOOLS: readonly string[] = ["list_nodes", "get_node_state", "read_canvas"];
 /** Drawing on the canvas, which touches only what that agent drew and can be undone. */
 export const TACIT_CANVAS_TOOLS: readonly string[] = ["draw", "change_drawing", "delete_drawing"];
+/**
+ * Using a browser the person wired to it: the wire is their yes, as it is for
+ * Codex, whose tools run without asking. Running a script (browser_eval) still
+ * asks, in every agent.
+ */
+export const TACIT_BROWSER_TOOLS: readonly string[] = ["browser_list", "browser_snapshot", "browser_find", "browser_screenshot", "browser_act", "browser_wait", "browser_dialog", "browser_navigate", "browser_read", "browser_click"];
 
 /** One MCP server as every agent format needs it: what to run, with what. */
 export interface BridgeDescriptor {
@@ -67,6 +73,8 @@ export function makeBridgeDescriptor(options: {
   serverPath: string;
   terminalId: string;
   portFile: string;
+  /** The terminal's own credential, so its calls to Tacit are believed (electron/terminal-credentials.ts). */
+  terminalToken?: string;
 }): BridgeDescriptor {
   return {
     command: options.execPath,
@@ -74,6 +82,7 @@ export function makeBridgeDescriptor(options: {
     env: {
       TACIT_TERMINAL_ID: options.terminalId,
       TACIT_PORT_FILE: options.portFile,
+      ...(options.terminalToken ? { TACIT_TERMINAL_TOKEN: options.terminalToken } : {}),
       // In the app, execPath is the Electron binary, and a PACKAGED Electron
       // app ignores an app path in argv — it boots its own bundled asar. So
       // without this every terminal would silently start a second copy of
@@ -223,7 +232,7 @@ const claude: AgentAdapter = {
       },
     };
     return {
-      args: ["--mcp-config", configPath, `--allowedTools=${[...TACIT_MEMORY_TOOLS, ...TACIT_TASK_TOOLS, ...TACIT_READ_TOOLS, ...TACIT_CANVAS_TOOLS].map((tool) => `mcp__${TACIT_MCP_SERVER_NAME}__${tool}`).join(",")}`],
+      args: ["--mcp-config", configPath, `--allowedTools=${[...TACIT_MEMORY_TOOLS, ...TACIT_TASK_TOOLS, ...TACIT_READ_TOOLS, ...TACIT_CANVAS_TOOLS, ...TACIT_BROWSER_TOOLS].map((tool) => `mcp__${TACIT_MCP_SERVER_NAME}__${tool}`).join(",")}`],
       // --mcp-config is variadic and consumes whatever positional value
       // follows it, including a `--`-separated initial prompt (see
       // getTerminalPromptArgs in src/terminal/cliConfig.ts), so it must land
@@ -277,7 +286,11 @@ const codex: AgentAdapter = {
     const overrides = [
       `${key}.command=${tomlString(bridge.command)}`,
       `${key}.args=[${bridge.args.map(tomlString).join(", ")}]`,
-      ...Object.entries(bridge.env).map(([name, value]) => {
+      // The terminal's credential isn't passed as a value: Codex's arguments are
+      // visible to other processes and copied into telemetry. Codex forwards it
+      // from its own environment, where Tacit put it.
+      ...(bridge.env.TACIT_TERMINAL_TOKEN ? [`${key}.env_vars=[${tomlString("TACIT_TERMINAL_TOKEN")}]`] : []),
+      ...Object.entries(bridge.env).filter(([name]) => name !== "TACIT_TERMINAL_TOKEN").map(([name, value]) => {
         if (!TOML_BARE_KEY.test(name)) {
           throw new AgentCapabilityError(
             "codex",
@@ -587,7 +600,9 @@ const antigravity: AgentAdapter = {
     };
 
     const mcpConfig = readJson(mcpPath, `Antigravity's MCP config at ${mcpPath}`);
-    const { TACIT_TERMINAL_ID, TACIT_PORT_FILE, ...entryEnv } = bridge.env;
+    // The shared file every terminal uses keeps no terminal's id or credential:
+    // those come from agy's own environment.
+    const { TACIT_TERMINAL_ID, TACIT_PORT_FILE, TACIT_TERMINAL_TOKEN, ...entryEnv } = bridge.env;
     const servers = objectOrEmpty(mcpConfig.mcpServers);
     const nextMcp = {
       ...mcpConfig,
@@ -619,7 +634,7 @@ const antigravity: AgentAdapter = {
     return {
       args: ["--log-file", antigravityLogPath(homeDir, terminalId)],
       placement: "prepend",
-      env: { TACIT_TERMINAL_ID, TACIT_PORT_FILE },
+      env: { TACIT_TERMINAL_ID, TACIT_PORT_FILE, ...(TACIT_TERMINAL_TOKEN ? { TACIT_TERMINAL_TOKEN } : {}) },
       files: [
         { path: mcpPath, contents: `${JSON.stringify(nextMcp, null, 2)}\n`, keep: true },
         { path: settingsPath, contents: `${JSON.stringify(nextSettings, null, 2)}\n`, keep: true },

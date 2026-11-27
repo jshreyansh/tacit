@@ -38,8 +38,8 @@ export function wireNoticeText(input: WireNoticeInput): string | null {
       parts.push(`A browser on the canvas is wired to you: ${name(other)}.`);
       parts.push(
         has("drive")
-          ? "Read or drive it with browser_read, browser_navigate, browser_click and browser_eval."
-          : "Read it with browser_read. The wire is read-only, so navigating, clicking and scripts are refused.",
+          ? "See it with browser_snapshot (or browser_screenshot), use it with browser_act (real clicks, typing, keys, paste), and browser_navigate to go somewhere."
+          : "See it with browser_snapshot, browser_screenshot or browser_read. The wire is read-only, so navigating, clicking, typing and scripts are refused.",
       );
       break;
     case "agent": {

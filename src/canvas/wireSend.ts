@@ -43,12 +43,12 @@ async function bodyFor(from: ConnectionEndpoint, payload: PayloadKind): Promise<
     if (!card) throw new Error("That browser is gone.");
     if (payload === "url") return card.url;
     if (payload === "selection") {
-      const data = (await driveBrowserCard(from.id, "eval", { script: "String(window.getSelection() ?? '')" }, "user")) as { result?: unknown };
+      const data = (await driveBrowserCard(from.id, "eval", { script: "String(window.getSelection() ?? '')" })) as { result?: unknown };
       const text = typeof data?.result === "string" ? data.result.trim() : "";
       if (!text) throw new Error("Nothing is selected on the page.");
       return text;
     }
-    const data = (await driveBrowserCard(from.id, "read", {}, "user")) as { url?: string; title?: string; text?: string };
+    const data = (await driveBrowserCard(from.id, "read", {})) as { url?: string; title?: string; text?: string };
     return [data.title, data.url, "", data.text ?? ""].filter((line) => line !== undefined).join("\n").trim();
   }
   if (from.kind === "note") {

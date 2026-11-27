@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { maskSecrets } from "../shared/secret-mask";
 import path from "node:path";
 import { AssignmentManager } from "../hydra/src/assignment/manager.ts";
 import type { AssignmentRecord } from "../hydra/src/assignment/types.ts";
@@ -608,6 +609,13 @@ function buildBaseSnapshot(
   };
 }
 
+/** A process as telemetry keeps it: every string in it masked (shared/secret-mask.ts). */
+export function maskProcess<T extends object>(process: T): T {
+  const out = { ...process } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(out)) if (typeof value === "string") out[key] = maskSecrets(value);
+  return out as T;
+}
+
 export class TelemetryService {
   private readonly eventLimit: number;
   private readonly now: () => number;
@@ -1187,11 +1195,10 @@ export class TelemetryService {
 
     state.lastProcessKey = processKey;
     state.snapshot.process_snapshot_at = timestamp;
-    state.snapshot.descendant_processes = snapshot.descendantProcesses.map(
-      (process) => ({
-        ...process,
-      }),
-    );
+    // Command lines can carry secrets (an agent's flags, a credential in an
+    // argument): masked before they're kept or shown to anyone.
+    const descendants = snapshot.descendantProcesses.map((process) => maskProcess(process));
+    state.snapshot.descendant_processes = descendants;
 
     // Deciding what to do with the process-derived foreground_tool is
     // subtle because agents (claude/codex/wuu) and plain shell terminals
@@ -1270,7 +1277,7 @@ export class TelemetryService {
     }
 
     this.appendEvent(state, timestamp, "process", "process_snapshot", {
-      descendant_processes: snapshot.descendantProcesses,
+      descendant_processes: descendants,
       foreground_tool: snapshot.foregroundTool,
     });
 

@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { TERMINAL_TOKEN_ENV, terminalCredentials } from "./terminal-credentials";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -67,6 +68,7 @@ const LOGIN_SHELL_ENV_BLOCKED_PREFIXES = [
 const TACIT_RUNTIME_ENV_BLOCKLIST = new Set([
   "TACIT_SOCKET",
   "TACIT_TERMINAL_ID",
+  "TACIT_TERMINAL_TOKEN",
   "TACIT_TERMINAL_TYPE",
   "TACIT_INSTANCE",
   "TACIT_PORT_FILE",
@@ -482,6 +484,9 @@ export async function buildLaunchSpec(
 
   if (options.terminalId) {
     shellEnv.TACIT_TERMINAL_ID = options.terminalId;
+    // Its own credential, so what it asks of Tacit can be told apart from
+    // another terminal's (electron/terminal-credentials.ts).
+    shellEnv[TERMINAL_TOKEN_ENV] = terminalCredentials.tokenFor(options.terminalId);
   }
   if (options.terminalType) {
     shellEnv.TACIT_TERMINAL_TYPE = options.terminalType;

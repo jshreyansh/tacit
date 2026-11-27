@@ -1,6 +1,6 @@
 import test from "node:test";
 
-const CLAUDE_ALLOW = "--allowedTools=mcp__tacit__recall,mcp__tacit__remember,mcp__tacit__forget,mcp__tacit__update_handover,mcp__tacit__query_memory,mcp__tacit__list_tasks,mcp__tacit__get_task,mcp__tacit__create_task,mcp__tacit__take_part,mcp__tacit__report_part,mcp__tacit__finish_task,mcp__tacit__ask_user,mcp__tacit__ask_approval,mcp__tacit__request_agent,mcp__tacit__withdraw_question,mcp__tacit__suggest_task_text,mcp__tacit__list_nodes,mcp__tacit__get_node_state,mcp__tacit__read_canvas,mcp__tacit__draw,mcp__tacit__change_drawing,mcp__tacit__delete_drawing";
+const CLAUDE_ALLOW = "--allowedTools=mcp__tacit__recall,mcp__tacit__remember,mcp__tacit__forget,mcp__tacit__update_handover,mcp__tacit__query_memory,mcp__tacit__list_tasks,mcp__tacit__get_task,mcp__tacit__create_task,mcp__tacit__take_part,mcp__tacit__report_part,mcp__tacit__finish_task,mcp__tacit__ask_user,mcp__tacit__ask_approval,mcp__tacit__request_agent,mcp__tacit__withdraw_question,mcp__tacit__suggest_task_text,mcp__tacit__list_nodes,mcp__tacit__get_node_state,mcp__tacit__read_canvas,mcp__tacit__draw,mcp__tacit__change_drawing,mcp__tacit__delete_drawing,mcp__tacit__browser_list,mcp__tacit__browser_snapshot,mcp__tacit__browser_find,mcp__tacit__browser_screenshot,mcp__tacit__browser_act,mcp__tacit__browser_wait,mcp__tacit__browser_dialog,mcp__tacit__browser_navigate,mcp__tacit__browser_read,mcp__tacit__browser_click";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -974,4 +974,45 @@ test("the shell shim finds the bridge in a development checkout", () => {
   assert.ok(
     tacitBridgeCandidates(shimDir).includes("/Users/me/tacit/tacit-bridge/dist/tacit-bridge.js"),
   );
+});
+
+test("a terminal's credential goes with its bridge, but never into the file every Antigravity terminal shares", () => {
+  const withToken = makeBridgeDescriptor({
+    execPath: "/Applications/Tacit.app/Contents/MacOS/Tacit",
+    serverPath: "/Applications/Tacit.app/Contents/Resources/tacit-bridge/tacit-bridge.js",
+    terminalId: "term-1",
+    portFile: "/Users/me/.tacit/port",
+    terminalToken: "secret-for-term-1",
+  });
+  assert.equal(withToken.env.TACIT_TERMINAL_TOKEN, "secret-for-term-1");
+  // Claude: in its own per-terminal config file.
+  const claude = planBridgeLaunch(findAgentAdapter("claude")!, withToken, context);
+  assert.match(claude.files[0].contents, /"TACIT_TERMINAL_TOKEN":"secret-for-term-1"/);
+  // Antigravity: from agy's own environment; the shared settings files keep none.
+  const agy = planBridgeLaunch(findAgentAdapter("antigravity")!, withToken, { ...context, homeDir: "/Users/me", readFile: () => null });
+  assert.equal(agy.env.TACIT_TERMINAL_TOKEN, "secret-for-term-1");
+  for (const file of agy.files) assert.doesNotMatch(file.contents, /secret-for-term-1|TACIT_TERMINAL_TOKEN/, file.path);
+});
+
+test("Codex forwards a terminal's credential from its own environment: it never appears in Codex's arguments", () => {
+  const withToken = makeBridgeDescriptor({
+    execPath: "/Applications/Tacit.app/Contents/MacOS/Tacit",
+    serverPath: "/Applications/Tacit.app/Contents/Resources/tacit-bridge/tacit-bridge.js",
+    terminalId: "term-1",
+    portFile: "/Users/me/.tacit/port",
+    terminalToken: "secret-for-term-1",
+  });
+  const plan = planBridgeLaunch(findAgentAdapter("codex")!, withToken, context);
+  const args = plan.args.join(" ");
+  assert.doesNotMatch(args, /secret-for-term-1/);
+  assert.match(args, /mcp_servers\.tacit\.env_vars=\["TACIT_TERMINAL_TOKEN"\]/);
+  assert.match(args, /mcp_servers\.tacit\.env\.TACIT_TERMINAL_ID="term-1"/);
+});
+
+test("only main makes credentials: a launch passes on the one it's given, and makes none of its own", () => {
+  const base = { terminalType: "claude", terminalId: "term-1", serverPath: "/b/tacit-bridge.js", portFile: "/p", tempFile: (n: string) => `/tmp/${n}`, readFile: () => null, writeFile: () => {} };
+  const given = prepareBridgeLaunch({ ...base, terminalToken: "from-the-shell" });
+  assert.match(given!.files[0].contents, /"TACIT_TERMINAL_TOKEN":"from-the-shell"/);
+  const none = prepareBridgeLaunch(base);
+  assert.doesNotMatch(none!.files[0].contents, /TACIT_TERMINAL_TOKEN/);
 });

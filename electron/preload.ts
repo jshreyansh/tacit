@@ -1244,6 +1244,18 @@ contextBridge.exposeInMainWorld("tacit", {
       ipcRenderer.invoke("wire:reply-answered", input) as Promise<boolean>,
   },
   browser: {
+    /** A browser action the person starts from the window (Send on a wire), done in main (electron/browser-service.ts). */
+    drive: (cardId: string, action: string, params: Record<string, unknown> = {}) =>
+      ipcRenderer.invoke("browser:drive", cardId, action, params) as Promise<unknown>,
+    /** Who is driving a tile now, as main changes it (electron/browser-service.ts DriverState). */
+    onDriver: (callback: (state: { cardId: string; driver: string | null; held: "user" | "stopped" | null }) => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, state: { cardId: string; driver: string | null; held: "user" | "stopped" | null }) => callback(state);
+      ipcRenderer.on("browser:driver", listener);
+      return () => ipcRenderer.removeListener("browser:driver", listener);
+    },
+    /** Stop on a driven tile: agents kept off it a while; Resume lets them back. */
+    stopDriver: (cardId: string) => ipcRenderer.invoke("browser:stop-driver", cardId) as Promise<void>,
+    resumeDriver: (cardId: string) => ipcRenderer.invoke("browser:resume-driver", cardId) as Promise<void>,
     notifyWired: (
       target: {
         terminalId: string;

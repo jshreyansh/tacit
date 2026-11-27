@@ -88,6 +88,8 @@ import {
   partitionForBrowserIdentity,
 } from "../shared/browser-profile-import";
 import { registerCanvasIpc } from "./canvas-ipc";
+import { STOP_HOLD_MS, type GuestPage } from "./browser-service";
+import { terminalCredentials } from "./terminal-credentials";
 import { drawingRequestEntry } from "../shared/canvas-ops";
 import { CanvasRequests } from "./canvas-requests";
 import { TaskStore } from "./task-store";
@@ -306,15 +308,23 @@ if (isDev && /^\d{4,5}$/.test(process.env.TACIT_DEV_UI_CDP_PORT ?? "")) {
   app.commandLine.appendSwitch("remote-debugging-port", process.env.TACIT_DEV_UI_CDP_PORT!);
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 }
-// Development only: keep rendering at full rate while the window is hidden,
-// so a recording or test can run behind other windows.
+// Tacit's window keeps drawing while other windows cover it, so an agent can
+// still drive a browser tile then. Without it, Chromium hides every frame from
+// another site in a covered window (Excel Online's grid is one), and they drop
+// input; a tile's own page can be kept drawing per page, those frames can't
+// (electron/browser-service.ts keepAwake). Minimized still stops drawing.
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+// Development only: also keep timers and rendering at full rate in the
+// background, so a recording or test runs as if in front.
 if (isDev && process.env.TACIT_DEV_RECORDING === "1") {
-  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
   app.commandLine.appendSwitch("disable-background-timer-throttling");
 }
 if (isDev) {
-  app.setPath("userData", path.join(app.getPath("appData"), "tacit-dev"));
+  // A throwaway copy for testing gets its own folder, so it never shares
+  // browser profiles, cookies or locks with the dev app the person uses.
+  const own = process.env.TACIT_DEV_USER_DATA;
+  app.setPath("userData", own && path.isAbsolute(own) ? own : path.join(app.getPath("appData"), "tacit-dev"));
 }
 
 // Capture main / renderer / GPU process crashes into local minidumps. Required
@@ -570,6 +580,7 @@ const chatEngine = new ChatEngine({
       terminalId,
       serverPath: getTacitBridgeCliPath(),
       portFile: PORT_FILE,
+      terminalToken: terminalCredentials.tokenFor(terminalId),
       inheritedEnv: await getLoginShellEnv(),
       memoryBrief: await memoryBriefText(terminalId, agent, cwd),
     });
@@ -947,6 +958,50 @@ const apiServer = new ApiServer({
   memoryStore,
   wireStatePath: path.join(TACIT_DIR, "wire-state.json"),
   getWindow: () => mainWindow,
+  pageById: (id) => (webContents.fromId(id) as unknown as GuestPage | undefined) ?? null,
+  markWindowActive: () => throttlingCoordinator?.markActivity("browser-agent"),
+  // The window's focused element is the tile's <webview>, which keeps it while the window
+  // is covered. Asked of the window because the page's own focus says "no" whenever the
+  // window isn't in front, and its webContents' focus says "yes" whenever it is.
+  // A tile's screenshot comes at the screen's density, and see-through where the page has
+  // no background: agents get it on white, as the person sees it, at the page's own size.
+  jpegOf: (pngBase64, width, quality) => {
+    let image = nativeImage.createFromBuffer(Buffer.from(pngBase64, "base64"));
+    if (image.isEmpty()) throw new Error("The page's picture couldn't be read.");
+    if (image.getSize().width > width) image = image.resize({ width: Math.round(width), quality: "good" });
+    const size = image.getSize();
+    // Premultiplied BGRA: on white, each channel gains what the pixel lets through.
+    const px = image.toBitmap();
+    for (let i = 0; i < px.length; i += 4) {
+      const through = 255 - px[i + 3];
+      if (through === 0) continue;
+      px[i] = Math.min(255, px[i] + through);
+      px[i + 1] = Math.min(255, px[i + 1] + through);
+      px[i + 2] = Math.min(255, px[i + 2] + through);
+      px[i + 3] = 255;
+    }
+    const flat = nativeImage.createFromBitmap(px, size);
+    return { data: flat.toJPEG(Math.max(1, Math.min(100, Math.round(quality)))).toString("base64"), width: size.width, height: size.height };
+  },
+  pageHasKeyboard: async (pageId) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    const id = Number(pageId);
+    if (!Number.isInteger(id)) return false;
+    const has = await mainWindow.webContents.executeJavaScript(
+      `(() => { const a = document.activeElement; return !!a && a.tagName === "WEBVIEW" && typeof a.getWebContentsId === "function" && a.getWebContentsId() === ${id}; })()`,
+    );
+    return has === true;
+  },
+  // An agent's paste goes through the clipboard as a person's does; what was
+  // there (text, rich text, a picture) is put back right after.
+  clipboardFor: (text) => {
+    const was = { text: clipboard.readText(), html: clipboard.readHTML(), rtf: clipboard.readRTF(), image: clipboard.readImage() };
+    clipboard.writeText(text);
+    return () => {
+      if (!was.image.isEmpty()) clipboard.write({ image: was.image, ...(was.text ? { text: was.text } : {}) });
+      else clipboard.write({ text: was.text, ...(was.html ? { html: was.html } : {}), ...(was.rtf ? { rtf: was.rtf } : {}) });
+    };
+  },
   ptyManager,
   projectScanner,
   telemetryService,
@@ -1373,6 +1428,11 @@ const TITLE_STRIP_HEIGHT = 28;
     webPreferences.preload = guestObserverPreloadPath();
     rememberGuestPartition(webPreferences.partition);
   });
+  // From the moment a tile's page exists, the person's own clicks and keys on it are
+  // seen, so an agent arriving later waits for them too (electron/browser-service.ts).
+  mainWindow.webContents.on("did-attach-webview", (_event, guest) => {
+    apiServer.browser.watch(guest as unknown as GuestPage, guest.id);
+  });
 
   mainWindow.webContents.on("before-input-event", (event, input) => {
     if (!isDev && isReloadShortcutInput(input)) {
@@ -1580,6 +1640,7 @@ function setupIpc() {
           const plan = prepareBridgeLaunch({
             terminalType: options.terminalType,
             terminalId: options.terminalId,
+            terminalToken: terminalCredentials.tokenFor(options.terminalId),
             serverPath: getTacitBridgeCliPath(),
             portFile: PORT_FILE,
             inheritedEnv: await getLoginShellEnv(),
@@ -3358,18 +3419,37 @@ function setupIpc() {
   ipcMain.handle(
     "browser-connect:execute",
     async (
-      _event,
+      event,
       input: {
         bindingId: string;
         action: import("../shared/browser-controller").BrowserActionName;
         params: Record<string, unknown>;
       },
-    ) => connectedBrowserBroker.execute(
-      input.bindingId,
-      input.action,
-      input.params,
-    ),
+    ) => {
+      if (!isMainWindowSender(event)) throw new Error("browser-connect:execute is only for the app's window");
+      if (!input || typeof input.bindingId !== "string") throw new Error("A connected tab's binding is required");
+      return connectedBrowserBroker.execute(input.bindingId, input.action, input.params);
+    },
   );
+
+  // Stop / Resume on a tile an agent is driving.
+  ipcMain.handle("browser:stop-driver", (event, cardId: unknown) => {
+    if (!isMainWindowSender(event) || typeof cardId !== "string") return;
+    apiServer.browser.hold(cardId, "stopped", STOP_HOLD_MS);
+  });
+  ipcMain.handle("browser:resume-driver", (event, cardId: unknown) => {
+    if (!isMainWindowSender(event) || typeof cardId !== "string") return;
+    apiServer.browser.release(cardId);
+  });
+
+  // The person's own browser actions from the window (Send on a wire): run in
+  // main like an agent's, through the same profile check and into the record.
+  ipcMain.handle("browser:drive", async (event, cardId: unknown, action: unknown, params: unknown) => {
+    if (!isMainWindowSender(event)) throw new Error("browser:drive is only for the app's window");
+    if (typeof cardId !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(cardId) || typeof action !== "string") throw new Error("A browser tile and an action are required");
+    const p = params && typeof params === "object" && !Array.isArray(params) ? (params as Record<string, unknown>) : {};
+    return apiServer.browser.drive(cardId, action, p, "user");
+  });
 
   const IMAGE_EXTS_FS = new Set([
     ".png",

@@ -37,3 +37,10 @@ test("a masked line of JSON is still JSON", () => {
   assert.ok(!masked.includes("123456"));
   assert.equal(maskSecrets("nothing secret here"), "nothing secret here");
 });
+
+test("a Tacit terminal's credential is masked when an agent prints its environment", () => {
+  const out = maskSecrets("TACIT_TERMINAL_ID=t1\nTACIT_TERMINAL_TOKEN=FhiUl-abcdefghijklmnopqrstuvwxyz0123456789\nX-Tacit-Terminal-Token: Zm9vYmFyYmF6cXV4");
+  assert.match(out, /TACIT_TERMINAL_ID=t1/, "the id isn't a secret");
+  assert.doesNotMatch(out, /FhiUl-abc|Zm9vYmFy/);
+  assert.match(out, /TACIT_TERMINAL_TOKEN=\[masked:token\]/);
+});

@@ -29,6 +29,9 @@ import type { RecallService } from "./recall-service";
 import type { RecallDoc, RecallQuery } from "../shared/recall";
 import { createApiAuthToken, isAuthorizedBearer } from "./api-auth";
 import type { ConnectedBrowserBroker } from "./connected-browser-broker";
+import { BrowserService, checkBrowserCaller, type BrowserTileContext, type GuestPage } from "./browser-service";
+import { READ_ONLY_BROWSER_ACTIONS } from "../shared/browser-controller";
+import { TERMINAL_ID_HEADER, TERMINAL_TOKEN_HEADER, terminalCredentials } from "./terminal-credentials";
 import { CONNECTED_BROWSER_PROTOCOL_VERSION } from "../shared/browser-connection";
 import { NodePromptSender, type PromptTargetNode } from "./node-prompt";
 import {
@@ -79,6 +82,16 @@ import type { WorkerCaps } from "../shared/worker-cap";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
+  /** A webContents by id (Electron's webContents.fromId): a browser tile's page. */
+  pageById: (id: number) => GuestPage | null;
+  /** Puts text on the clipboard for an agent's paste; returns how to put back what was there. */
+  clipboardFor: (text: string) => () => void;
+  /** An agent is driving a browser tile: Tacit's window keeps drawing at full rate a while. */
+  markWindowActive?: () => void;
+  /** Whether the window's keyboard is on this tile's page: its focused element is that tile. */
+  pageHasKeyboard?: (pageId: number) => Promise<boolean>;
+  /** A screenshot's PNG (base64) on white, as a JPEG at most this wide (Electron's nativeImage). */
+  jpegOf?: (pngBase64: string, width: number, quality: number) => { data: string; width: number; height: number };
   ptyManager: PtyManager;
   projectScanner: ProjectScanner;
   telemetryService: TelemetryService;
@@ -152,7 +165,7 @@ function isBrowserConnectorRoute(method: string, pathname: string): boolean {
 }
 
 /** What a read-only wire to a browser still allows. */
-const READ_ONLY_BROWSER_ACTIONS: ReadonlySet<string> = new Set(["read", "screenshot"]);
+
 
 interface BrowserBinding {
   browserId: string | null;
@@ -163,6 +176,8 @@ export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
   private readonly authToken = createApiAuthToken();
+  /** Agents' browser actions, carried out here in main (electron/browser-service.ts). */
+  readonly browser: BrowserService;
 
   private readonly nodePrompts = new NodePromptSender({
     findNode: (id) => this.findNode(id),
@@ -217,6 +232,21 @@ export class ApiServer {
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+    this.browser = new BrowserService({
+      context: async (cardId) => (await this.execRenderer(`window.__tcApi.browserActionContext(${JSON.stringify(cardId)})`)) as BrowserTileContext,
+      pageById: (id) => this.deps.pageById(id),
+      hostWebContents: () => this.deps.getWindow()?.webContents ?? null,
+      connected: (bindingId, action, params) => this.deps.connectedBrowserBroker.execute(bindingId, action, params),
+      record: (entry) => this.deps.recordDecision({ kind: "browser_action", ...entry } as CaptureEvent),
+      fileAllowed: (filePath) => this.deps.fileOnWorkdesk(filePath),
+      clipboardFor: (text) => this.deps.clipboardFor(text),
+      windowActive: () => this.deps.markWindowActive?.(),
+      ...(this.deps.pageHasKeyboard ? { pageHasKeyboard: this.deps.pageHasKeyboard } : {}),
+      ...(this.deps.jpegOf ? { jpegOf: this.deps.jpegOf } : {}),
+      notify: (cardId, state) => sendToWindow(this.deps.getWindow(), "browser:driver", { cardId, ...state }),
+      wake: async (cardId) => { await this.execRenderer(`window.__tcApi.wakeBrowserTile(${JSON.stringify(cardId)})`); },
+      sleep: async (cardId) => { await this.execRenderer(`window.__tcApi.sleepBrowserTile(${JSON.stringify(cardId)})`).catch(() => {}); },
+    });
     this.wireStateFile = new WireStateFile(deps.wireStatePath);
     const loaded = this.wireStateFile.load();
     this.savedWireState = loaded.state;
@@ -401,7 +431,9 @@ export class ApiServer {
         method === "POST" || method === "PUT" || method === "DELETE"
           ? await this.readBody(req)
           : null;
-      const result = await this.route(method, pathname, url, body);
+      // Which terminal is calling, when it proved it (electron/terminal-credentials.ts).
+      const caller = terminalCredentials.verify(req.headers[TERMINAL_ID_HEADER], req.headers[TERMINAL_TOKEN_HEADER]);
+      const result = await this.route(method, pathname, url, body, caller);
       res.writeHead(200);
       res.end(JSON.stringify(result));
     } catch (err: any) {
@@ -423,6 +455,8 @@ export class ApiServer {
     pathname: string,
     url: URL,
     body: any,
+    /** The terminal the request proved it comes from; null when it didn't. */
+    caller: string | null = null,
   ): Promise<any> {
     if (method === "POST" && pathname === "/browser-connect/complete") {
       return this.browserConnectComplete(body);
@@ -538,15 +572,23 @@ export class ApiServer {
     }
     if (method === "PUT" && pathname.match(/^\/browser\/[^/]+$/)) {
       const id = pathname.split("/")[2];
-      return this.browserUpdate(id, body);
+      return this.browserUpdate(id, body, caller);
     }
     if (method === "DELETE" && pathname.match(/^\/browser\/[^/]+$/)) {
       const id = pathname.split("/")[2];
       return this.browserRemove(id);
     }
+    // An agent's browser action, on the browser it names among those wired to it
+    // (or the one wired most recently); and the list of them.
+    if (method === "POST" && pathname === "/browser/action") {
+      return this.browserActionOnMine(body, caller);
+    }
+    if (method === "GET" && pathname === "/browser/mine") {
+      return this.myBrowsers(caller);
+    }
     if (method === "POST" && pathname.match(/^\/browser\/[^/]+\/action$/)) {
       const id = pathname.split("/")[2];
-      return this.browserAction(id, body);
+      return this.browserAction(id, body, caller);
     }
     if (method === "GET" && pathname.match(/^\/terminal\/[^/]+\/browser-binding$/)) {
       const id = pathname.split("/")[2];
@@ -554,7 +596,7 @@ export class ApiServer {
     }
     if (method === "POST" && pathname.match(/^\/node\/[^/]+\/[^/]+\/emit$/)) {
       const parts = pathname.split("/");
-      return this.nodeEmit(parts[2], parts[3], body);
+      return this.nodeEmit(parts[2], parts[3], body, caller);
     }
     if (method === "POST" && pathname.match(/^\/terminal\/[^/]+\/remember$/)) {
       const id = pathname.split("/")[2];
@@ -1234,10 +1276,32 @@ export class ApiServer {
     return { id };
   }
 
-  private async browserUpdate(id: string, body: any) {
-    await this.execRenderer(
-      `window.__tcApi.updateBrowserCard(${JSON.stringify(id)}, ${JSON.stringify(body ?? {})})`,
-    );
+  /**
+   * Moves or resizes a tile, or sends it to a URL. Going somewhere is a
+   * browser action like any other: only a terminal that proved who it is,
+   * along a wire that may drive the page. Its profile is the person's to
+   * change, never this route's.
+   */
+  private async browserUpdate(id: string, body: any, caller: string | null) {
+    const patch = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const unknown = Object.keys(patch).filter((k) => !["x", "y", "w", "h", "url"].includes(k));
+    if (unknown.length) {
+      throw Object.assign(new Error(`Only x, y, w, h and url can be changed here, not ${unknown.join(", ")}. A tile's profile is changed by the person in Tacit.`), { status: 400, code: "field_not_allowed" });
+    }
+    const place: Record<string, number> = {};
+    for (const k of ["x", "y", "w", "h"]) {
+      if (patch[k] === undefined) continue;
+      if (typeof patch[k] !== "number" || !Number.isFinite(patch[k] as number)) throw Object.assign(new Error(`${k} must be a number`), { status: 400 });
+      place[k] = patch[k] as number;
+    }
+    if (patch.url !== undefined) {
+      if (typeof patch.url !== "string" || !patch.url) throw Object.assign(new Error("url must be a URL"), { status: 400 });
+      const actor = await this.resolveBrowserActionActor(id, caller, undefined, "navigate");
+      await this.browser.drive(id, "navigate", { url: patch.url }, actor);
+    }
+    if (Object.keys(place).length) {
+      await this.execRenderer(`window.__tcApi.updateBrowserCard(${JSON.stringify(id)}, ${JSON.stringify(place)})`);
+    }
     return { ok: true };
   }
 
@@ -1248,7 +1312,7 @@ export class ApiServer {
     return { ok: true };
   }
 
-  private async browserAction(id: string, body: any) {
+  private async browserAction(id: string, body: any, caller: string | null) {
     const action = body?.action;
     if (typeof action !== "string") {
       throw Object.assign(new Error("action is required"), { status: 400 });
@@ -1257,7 +1321,7 @@ export class ApiServer {
     if (!params || typeof params !== "object" || Array.isArray(params)) {
       throw Object.assign(new Error("params must be an object"), { status: 400 });
     }
-    const actor = await this.resolveBrowserActionActor(id, body?.actor, action);
+    const actor = await this.resolveBrowserActionActor(id, caller, body?.actor, action);
 
     // Lets the canvas visually pulse the connection while a browser-bridge
     // tool call is actually in flight (see src/canvas/ConnectionLayer.tsx,
@@ -1274,9 +1338,7 @@ export class ApiServer {
     });
 
     try {
-      const result = await this.execRenderer(
-        `window.__tcApi.driveBrowserCard(${JSON.stringify(id)}, ${JSON.stringify(action)}, ${JSON.stringify(params)}, ${JSON.stringify(actor)})`,
-      );
+      const result = await this.browser.drive(id, action, params, actor);
       sendToWindow(win, "browser-bridge:call", {
         phase: "end",
         requestId,
@@ -1298,27 +1360,33 @@ export class ApiServer {
     }
   }
 
-  private async resolveBrowserActionActor(browserId: string, candidate: unknown, action: string): Promise<string> {
-    if (typeof candidate !== "string" || !candidate.startsWith("terminal:")) return "system";
-    const terminalId = candidate.slice("terminal:".length);
-    if (!terminalId || terminalId.includes(":")) return "system";
-    const binding = (await this.terminalBrowserBinding(terminalId)) as BrowserBinding | null;
-    // The wire is the permission: a terminal reaches only the browser it is
+  /**
+   * Who may drive this browser: only an agent's terminal that proved who it
+   * is (electron/terminal-credentials.ts), and only along a wire to it. A
+   * call that doesn't prove its terminal, or names another one than it
+   * proved, is refused: the launch token alone says nothing about which
+   * terminal is asking.
+   */
+  private async resolveBrowserActionActor(browserId: string, caller: string | null, claimed: unknown, action: string): Promise<string> {
+    const actor = checkBrowserCaller(caller, claimed);
+    const terminalId = actor.slice("terminal:".length);
+    const binding = (await this.terminalBrowsers(terminalId)).find((b) => b.browserId === browserId);
+    // The wire is the permission: a terminal reaches only the browsers it is
     // wired to, along the wire's direction, and a read-only wire allows
     // reading and nothing that changes the page.
-    if (binding?.browserId !== browserId) {
+    if (!binding) {
       throw Object.assign(
         new Error("This terminal isn't wired to that browser. Ask the user to draw a wire from it to the browser."),
         { status: 403, code: "not_wired" },
       );
     }
-    if (binding.access === "read" && !READ_ONLY_BROWSER_ACTIONS.has(action)) {
+    if (binding.access === "read" && !READ_ONLY_BROWSER_ACTIONS.has(action as never)) {
       throw Object.assign(
         new Error(`The wire to this browser is read-only, so "${action}" is refused. browser_read still works; ask the user to let the wire drive the page if you need to.`),
         { status: 403, code: "read_only" },
       );
     }
-    return candidate;
+    return `terminal:${terminalId}`;
   }
 
   private browserConnectComplete(body: any) {
@@ -1404,6 +1472,42 @@ export class ApiServer {
     );
   }
 
+  /** Every browser a terminal is wired to, the most recently wired first. */
+  private async terminalBrowsers(terminalId: string): Promise<Array<{ browserId: string; access: "read" | "drive"; title: string; url: string }>> {
+    return ((await this.execRenderer(`window.__tcApi.getBrowserBindingsForTerminal(${JSON.stringify(terminalId)})`)) ?? []) as Array<{ browserId: string; access: "read" | "drive"; title: string; url: string }>;
+  }
+
+  private async myBrowsers(caller: string | null) {
+    const actor = checkBrowserCaller(caller, undefined);
+    const mine = await this.terminalBrowsers(actor.slice("terminal:".length));
+    return {
+      browsers: mine.map((b, i) => {
+        const state = this.browser.driverOf(b.browserId);
+        return { browser: b.browserId, title: b.title, url: b.url, access: b.access, ...(i === 0 ? { default: true } : {}), ...(state.driver ? { driving: state.driver === actor ? "you" : state.driver } : {}), ...(state.held ? { held: state.held } : {}) };
+      }),
+    };
+  }
+
+  /** browser: a tile's id, or words from its title or address; none means the one wired most recently. */
+  private async browserActionOnMine(body: any, caller: string | null) {
+    const actor = checkBrowserCaller(caller, body?.actor);
+    const mine = await this.terminalBrowsers(actor.slice("terminal:".length));
+    if (!mine.length) throw Object.assign(new Error("No browser is wired to this terminal. Ask the user to draw a wire from it to a browser, or open one with spawn_browser."), { status: 403, code: "not_wired" });
+    const want = typeof body?.browser === "string" ? body.browser.trim() : "";
+    let chosen = mine[0];
+    if (want) {
+      const exact = mine.find((b) => b.browserId === want);
+      const words = want.toLowerCase();
+      const loose = mine.filter((b) => b.title.toLowerCase().includes(words) || b.url.toLowerCase().includes(words));
+      const list = mine.map((b) => `${b.browserId} "${b.title || b.url}"`).join("; ");
+      if (exact) chosen = exact;
+      else if (loose.length === 1) chosen = loose[0];
+      else if (loose.length > 1) throw Object.assign(new Error(`"${want}" matches more than one of your browsers: ${list}. Name one by its id.`), { status: 400, code: "ambiguous_browser" });
+      else throw Object.assign(new Error(`None of your browsers is "${want}". Yours: ${list}.`), { status: 404, code: "no_such_browser" });
+    }
+    return this.browserAction(chosen.browserId, { ...body, actor }, caller);
+  }
+
   /**
    * Backs the emit_event MCP tool (tacit-bridge/src/mcp-server.ts): fans a
    * named event out to every node connected to `kind`/`id` on the canvas,
@@ -1414,7 +1518,7 @@ export class ApiServer {
    * tile has no agent of its own to decide to — but the route stays kind-
    * general rather than hardcoding "terminal" as the only valid source.
    */
-  private async nodeEmit(kind: string, id: string, body: any) {
+  private async nodeEmit(kind: string, id: string, body: any, caller: string | null) {
     if (kind !== "terminal" && kind !== "browser") {
       throw Object.assign(new Error(`Unsupported node kind: ${kind}`), {
         status: 400,
@@ -1549,7 +1653,8 @@ export class ApiServer {
               reason: "the wire to this browser is read-only",
             });
           } else {
-            await this.browserUpdate(target.id, { url });
+            // Checked as the caller's own navigation: its wire to this browser, its credential.
+            await this.browserUpdate(target.id, { url }, caller);
             notified.push({ kind: "browser", id: target.id, ok: true });
           }
         }

@@ -97,6 +97,8 @@ export function runAgentShim(provider: AgentShimProvider): never {
       const plan = prepareBridgeLaunch({
         terminalType: provider,
         terminalId,
+        // The shell's own, from Tacit; this shim can't make one.
+        terminalToken: process.env.TACIT_TERMINAL_TOKEN?.trim() || undefined,
         serverPath: resolveTacitBridgeCliPath(),
         portFile: process.env.TACIT_PORT_FILE ?? "",
         inheritedEnv: process.env,

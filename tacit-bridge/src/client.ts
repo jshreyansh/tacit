@@ -40,6 +40,8 @@ export async function apiRequest<T = unknown>(
     method,
     headers: {
       Authorization: `Bearer ${authToken}`,
+      // Which terminal this is, and its proof (electron/terminal-credentials.ts).
+      ...terminalHeaders(),
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -49,6 +51,12 @@ export async function apiRequest<T = unknown>(
     throw new Error(`Tacit API ${method} ${path} failed: ${res.status} ${text}`);
   }
   return (await res.json()) as T;
+}
+
+function terminalHeaders(): Record<string, string> {
+  const id = process.env.TACIT_TERMINAL_ID?.trim();
+  const token = process.env.TACIT_TERMINAL_TOKEN?.trim();
+  return id && token ? { "X-Tacit-Terminal": id, "X-Tacit-Terminal-Token": token } : {};
 }
 
 export function getTerminalId(): string | null {

@@ -1425,6 +1425,11 @@ export interface TacitAPI {
     replyAnswered: (input: { from: string; to: string; key: string }) => Promise<boolean>;
   };
   browser: {
+    /** A browser action the person starts from the window (Send on a wire), done in main. */
+    drive: (cardId: string, action: string, params?: Record<string, unknown>) => Promise<unknown>;
+    onDriver: (callback: (state: { cardId: string; driver: string | null; held: "user" | "stopped" | null }) => void) => () => void;
+    stopDriver: (cardId: string) => Promise<void>;
+    resumeDriver: (cardId: string) => Promise<void>;
     notifyWired: (
       target: {
         terminalId: string;

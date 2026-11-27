@@ -316,41 +316,47 @@ function recordRedirect(id: string, by: CaptureActor): void {
 }
 
 /**
- * Wire a freshly-spawned browser to the agent that asked for it, dropping
- * that agent's previous browser wire first.
- *
- * The replace is deliberate rather than additive: getBrowserBindingForTerminal
- * (src/App.tsx) resolves the drivable browser as the *most recently
- * connected* one, so leaving older browsers wired would mean an agent that
- * opened several pages silently drives only the newest while the canvas
- * shows it connected to all of them. Replacing keeps "the agent drives the
- * browser it just opened" true and visible.
+ * Wire a freshly-spawned browser to the agent that asked for it, keeping its
+ * other browser wires: an agent names which browser it acts on (the browser
+ * tools take `browser`), and one it doesn't name is the one wired most
+ * recently, so "the agent drives the browser it just opened" stays true.
  */
 export function wireSpawnedBrowser(
   spawnerTerminalId: string,
   browserId: string,
 ): string | null {
-  const { connections } = useConnectionStore.getState();
-  for (const connection of connectionsInvolving(
-    connections,
-    "terminal",
-    spawnerTerminalId,
-  )) {
-    const other =
-      connection.from.kind === "terminal" ? connection.to : connection.from;
-    if (other.kind === "browser") {
-      // Recorded as an unwire by the agent, not a silent side effect: from the
-      // record's point of view the agent dropped one browser in favour of
-      // another, and losing that leaves the later wire looking unexplained.
-      removeConnectionFromScene(connection.id, `terminal:${spawnerTerminalId}`);
-    }
-  }
-
   return createConnectionInScene(
     { kind: "terminal", id: spawnerTerminalId },
     { kind: "browser", id: browserId },
     { origin: "spawn", by: `terminal:${spawnerTerminalId}` },
   );
+}
+
+/**
+ * A page's pop-up (a sign-in, a share dialog, a link that opens a new tab) is
+ * a new tile; the agents wired to the page that opened it get the same wire
+ * to it, the same way round and with the same limits, so an agent that clicked
+ * the link can carry on in what it opened. Quiet: the agent learns of it from
+ * browser_list, not a message in the middle of its turn.
+ */
+export function wirePopupLikeOpener(openerId: string, popupId: string): string[] {
+  const store = useConnectionStore.getState();
+  const made: string[] = [];
+  for (const c of connectionsInvolving(store.connections, "browser", openerId)) {
+    const other = c.from.kind === "browser" && c.from.id === openerId ? c.to : c.from;
+    if (other.kind !== "terminal") continue;
+    const openerIsFrom = c.from.kind === "browser" && c.from.id === openerId;
+    const id = createConnectionInScene(
+      openerIsFrom ? { kind: "browser", id: popupId } : c.from,
+      openerIsFrom ? c.to : { kind: "browser", id: popupId },
+      { origin: "spawn", announce: false, by: "user" },
+    );
+    if (!id) continue;
+    if (c.limits) useConnectionStore.getState().setConnectionLimits(id, c.limits);
+    useConnectionStore.getState().setConnectionTwoWay(id, isTwoWay(c));
+    made.push(id);
+  }
+  return made;
 }
 
 /**

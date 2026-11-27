@@ -2395,6 +2395,16 @@ button.tc-br-in:hover { background: color-mix(in srgb, var(--text-primary) 9%, t
 .tc-br-profile { display: inline-flex; height: 30px; min-width: 30px; flex: none; align-items: center; justify-content: center; gap: 7px; border-radius: 999px; font-size: 12px; color: var(--text-metadata); }
 .tc-br-profile[data-wide] { max-width: 170px; padding: 0 10px 0 4px; }
 .tc-br-profile:hover { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
+/* An agent driving this page (electron/browser-service.ts): who, and Stop. */
+.tc-br-driven { position: absolute; z-index: 3; top: 6px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 16px); padding: 4px 4px 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 0 0 1px var(--border), 0 4px 14px rgb(0 0 0 / 0.18); font-size: 12px; color: var(--text-primary); backdrop-filter: blur(8px); }
+.tc-br-driven-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--cyan, #22b8cf); animation: tc-br-driven-pulse 1.6s ease-in-out infinite; }
+.tc-br-driven-dot[data-held] { background: var(--amber); animation: none; }
+.tc-br-driven-btn { flex: none; border-radius: 999px; padding: 2px 10px; background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-primary); font-weight: 500; }
+.tc-br-driven-btn:hover { background: color-mix(in srgb, var(--text-primary) 14%, transparent); }
+@keyframes tc-br-driven-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .tc-br-driven-dot { animation: none; } }
+/* Kept drawn while driven though off screen or behind the grid: inside the window, nearly invisible, behind everything (src/browser/browserDriving.ts). */
+[data-browser-card][data-awake="1"] { translate: var(--tc-awake-x, 0) var(--tc-awake-y, 0) !important; opacity: 0.01 !important; z-index: -1 !important; visibility: visible !important; }
 .tc-br-loading { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
 .tc-br-loading::after { content: ""; position: absolute; inset: 0; width: 32%; background: var(--accent); animation: tc-br-load 1.1s var(--ease-out-soft) infinite; }
 @keyframes tc-br-load { from { transform: translateX(-100%); } to { transform: translateX(320%); } }

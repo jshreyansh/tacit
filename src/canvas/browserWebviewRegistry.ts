@@ -1,8 +1,8 @@
 /**
  * Plain (non-reactive) registry mapping a browser tile's id to its live
- * Electron `<webview>` element, so `window.__tcApi.driveBrowserCard` (called
- * from the main process via `executeJavaScript`, see electron/api-server.ts's
- * /browser/:id/action route) can reach the actual guest page. Mirrors the
+ * Electron `<webview>` element, so the window can tell main which guest page
+ * is which tile (src/browser/driveBrowserCard.ts browserActionContext; main
+ * then acts on the page itself, electron/browser-service.ts). Mirrors the
  * existing `terminalGeometryRegistry` pattern — a plain Map is enough here,
  * nothing needs to re-render off registration changes.
  */

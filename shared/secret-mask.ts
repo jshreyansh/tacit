@@ -35,6 +35,13 @@ const RULES: readonly MaskRule[] = [
   // JSON web tokens: three base64url parts, the first two starting `eyJ`.
   { kind: "token", pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g },
   { kind: "token", pattern: new RegExp(String.raw`(\bBearer\s+)(${VALUE})`, "gi"), group: 2 },
+  // A Tacit terminal's own credential, if an agent prints its environment
+  // (electron/terminal-credentials.ts), or a header carrying it.
+  {
+    kind: "token",
+    pattern: new RegExp(String.raw`(\b(?:TACIT_TERMINAL_TOKEN|X-Tacit-Terminal-Token)["']?\s*[:=]\s*["']?)(${VALUE})`, "gi"),
+    group: 2,
+  },
   // "password: hunter2", "pwd=…", "my password is …".
   {
     kind: "password",

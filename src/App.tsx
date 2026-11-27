@@ -69,7 +69,8 @@ import { installWireMailbox, wiresWindowReady } from "./stores/wireMailboxStore"
 import { installRereadNotes } from "./canvas/rereadNotes";
 import { RulePrompts } from "./components/RulePrompts";
 import { findTerminal, getLivePtyId } from "./actions/terminalLookup";
-import { driveBrowserCard } from "./browser/driveBrowserCard";
+import { browserActionContext } from "./browser/driveBrowserCard";
+import { browserBindingsForTerminal, sleepBrowserTile, startBrowserDriving, wakeBrowserTile } from "./browser/browserDriving";
 import {
   checkAgentActionOnCard,
   decideSpawnProfile,
@@ -96,6 +97,7 @@ import {
   createConnectionInScene,
   wireSpawnedBrowser,
   setConnectionTwoWayInScene,
+  wirePopupLikeOpener,
 } from "./actions/sceneConnectionActions";
 import type { ConnectionEndpoint } from "./stores/connectionStore";
 import type { HydraIdentity, TerminalType } from "./types";
@@ -453,6 +455,8 @@ export function App() {
     return initCanvasBridgeEventIPC();
   }, []);
   useEffect(() => startAgentAvailability(), []);
+  // Who drives each browser tile, for the bar on it (src/browser/browserDriving.ts).
+  useEffect(() => startBrowserDriving(), []);
   useEffect(() => {
     if (!window.tacit?.terminal?.onToolsUnavailable) return;
     return window.tacit.terminal.onToolsUnavailable(({ terminalType, reason }) => {
@@ -498,7 +502,9 @@ export function App() {
         const position = source
           ? { x: source.x + 48, y: source.y + 48 }
           : undefined;
-        addPopupBrowserCardToScene({ url, identityId: profileId, sourceCardId, position });
+        const popupId = addPopupBrowserCardToScene({ url, identityId: profileId, sourceCardId, position });
+        // The agents driving the page that opened it can carry on in it.
+        if (sourceCardId) wirePopupLikeOpener(sourceCardId, popupId);
       },
     );
   }, []);
@@ -1323,8 +1329,14 @@ export function App() {
         return { ok: id !== null, id };
       },
 
-      // Backs the browser_* tools (src/browser/driveBrowserCard.ts).
-      driveBrowserCard,
+      // What main asks about a tile before it does an agent's browser action
+      // (electron/browser-service.ts); the action itself runs in main.
+      browserActionContext,
+      // Every browser a terminal may use, newest wire first (src/browser/browserDriving.ts).
+      getBrowserBindingsForTerminal: browserBindingsForTerminal,
+      // Keeps a driven tile drawn while it's off screen or behind the grid, then lets it go.
+      wakeBrowserTile,
+      sleepBrowserTile,
     };
 
     (window as any).__tcApi = api;

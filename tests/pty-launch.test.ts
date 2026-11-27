@@ -1,4 +1,5 @@
 import test from "node:test";
+import { terminalCredentials } from "../electron/terminal-credentials";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
@@ -105,6 +106,7 @@ test("sanitizeEnv strips inherited Tacit runtime identity", () => {
       PATH: "/custom/bin",
       TACIT_SOCKET: "/tmp/tacit-prod.sock",
       TACIT_TERMINAL_ID: "prod-terminal",
+      TACIT_TERMINAL_TOKEN: "prod-terminal-credential",
       TACIT_TERMINAL_TYPE: "codex",
       TACIT_INSTANCE: "prod",
       TACIT_PORT_FILE: "/Users/test/.tacit/port",
@@ -115,6 +117,7 @@ test("sanitizeEnv strips inherited Tacit runtime identity", () => {
   assert.equal(env.HOME, "/Users/test");
   assert.ok(!("TACIT_SOCKET" in env));
   assert.ok(!("TACIT_TERMINAL_ID" in env));
+  assert.ok(!("TACIT_TERMINAL_TOKEN" in env), "a terminal never inherits another's credential");
   assert.ok(!("TACIT_TERMINAL_TYPE" in env));
   assert.ok(!("TACIT_INSTANCE" in env));
   assert.ok(!("TACIT_PORT_FILE" in env));
@@ -285,6 +288,8 @@ test("buildLaunchSpec injects Tacit instance routing into the PTY environment", 
     );
 
     assert.equal(launch.env.TACIT_TERMINAL_ID, "terminal-42");
+    // Its own credential, which this launch's secret proves (electron/terminal-credentials.ts).
+    assert.equal(terminalCredentials.verify("terminal-42", launch.env.TACIT_TERMINAL_TOKEN), "terminal-42");
     assert.equal(launch.env.TACIT_TERMINAL_TYPE, "codex");
     assert.equal(launch.env.TACIT_INSTANCE, "dev");
     assert.equal(
