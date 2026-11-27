@@ -24,7 +24,8 @@ import {
   type BrowserControllerCapability,
   type BrowserNodeBinding,
 } from "../shared/browser-controller";
-import { DriverError, PageDriver, type DriverPage } from "./browser-driver";
+import { DriverError, PageDriver, type DriverPage, type ReportedInput } from "./browser-driver";
+import { pageEvents, type DownloadEvent, type PageEvent, type PageEvents } from "./browser-page-events";
 
 /** What main needs of a tile's page; an Electron guest webContents in the app. */
 export interface GuestPage {
@@ -40,7 +41,7 @@ export interface GuestPage {
   readonly navigationHistory: { goBack(): void; goForward(): void };
   reload(): void;
   readonly debugger?: DriverPage["debugger"];
-  on?(event: "input-event", listener: (event: unknown, input: { type: string }) => void): unknown;
+  on?(event: "input-event", listener: (event: unknown, input: ReportedInput) => void): unknown;
   once?(event: "destroyed", listener: () => void): unknown;
   /** Off, the page keeps drawing and taking input though its window is covered or in the background. */
   setBackgroundThrottling?(allowed: boolean): void;
@@ -125,9 +126,14 @@ export interface ManagedDeps {
   fileAllowed(path: string): boolean;
   /** Puts text on the clipboard for a paste; returns how to put back what was there. */
   clipboardFor(text: string): () => void;
+  /** What pages downloaded and opened (electron/browser-page-events.ts). */
+  events?: PageEvents;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** How long a check step waits for the page to show the box ticked. */
+const CHECK_SETTLE_MS = 1000;
+const CHECK_SETTLE_STEP_MS = 100;
 
 /**
  * The clipboard is the whole computer's: one paste at a time across every tile, each
@@ -193,7 +199,9 @@ export function managedAdapter(deps: ManagedDeps): BrowserBackendAdapter {
           return { result: await page.executeJavaScript(p.script as string) };
         case "snapshot": {
           const s = await driver().snapshot({ maxChars: num(p.maxChars), since: p.since === true });
-          return { url: s.url, title: s.title, snapshot: s.text, truncated: s.truncated, ...(s.changes ? { changes: s.changes } : {}) };
+          // A download or a window that came after the agent's last act, told now.
+          const did = await pageDid(deps.events, page.id, Number.POSITIVE_INFINITY, false);
+          return { url: s.url, title: s.title, snapshot: s.text, truncated: s.truncated, ...(s.changes ? { changes: s.changes } : {}), ...did };
         }
         case "find":
           return { matches: await driver().find(p.query as string) };
@@ -204,7 +212,7 @@ export function managedAdapter(deps: ManagedDeps): BrowserBackendAdapter {
         case "dialog":
           return { ok: true, result: await driver().handleDialog(p.accept === true, str(p.promptText)) };
         case "act":
-          return runSteps(driver(), p.steps as ActStep[], deps);
+          return runSteps(driver(), p.steps as ActStep[], deps, page.id);
       }
     },
   };
@@ -217,15 +225,53 @@ async function pointFor(d: Driver, t: Target, enabled = false): Promise<{ x: num
   return "ref" in t ? d.pointOf(t.ref, { enabled }) : d.pointFromShot(t.screenshot, t.x, t.y);
 }
 
+/** A download, as the agent is told of it. */
+function downloadNote(e: DownloadEvent) {
+  return {
+    file: e.file,
+    path: e.path,
+    state: e.state,
+    bytes: e.bytes,
+    ...(e.total > 0 && e.state === "progressing" ? { of: e.total } : {}),
+  };
+}
+
+const OPENED_AS = {
+  tile: "a new browser tile (browser_list shows it; it's now your default browser)",
+  window: "a separate window (a sign-in or a pop-up): the person finishes what's in it",
+  outside: "the person's own browser, outside Tacit",
+} as const;
+
+/** How long an act waits at its end for a download its steps started to finish. */
+const SETTLE_DOWNLOAD_MS = 15_000;
+
+/** What the page did besides change: downloads (waiting a little for them to finish) and windows opened. */
+async function pageDid(events: PageEvents | undefined, pageId: number | undefined, since: number, settle = true) {
+  if (!events || pageId === undefined) return {};
+  if (settle) await events.waitFor(pageId, since, (evs) => (evs.some((e) => e.kind === "download" && e.state === "progressing") ? null : true), SETTLE_DOWNLOAD_MS);
+  const evs = events.take(pageId, since);
+  const downloads = evs.filter((e): e is DownloadEvent => e.kind === "download").map(downloadNote);
+  const opened = evs.filter((e): e is Extract<PageEvent, { kind: "opened" }> => e.kind === "opened").map((e) => ({ url: e.url, as: OPENED_AS[e.as] }));
+  return { ...(downloads.length ? { downloads } : {}), ...(opened.length ? { opened } : {}) };
+}
+
+/** Where a run of steps is: its page and when it began, for what the page did since. */
+interface RunContext {
+  events?: PageEvents;
+  pageId?: number;
+  since: number;
+}
+
 /** Steps in order, stopping at the first that fails; then what changed on the page. */
-export async function runSteps(d: Driver, steps: ActStep[], deps: ManagedDeps) {
+export async function runSteps(d: Driver, steps: ActStep[], deps: ManagedDeps, pageId?: number) {
+  const ctx: RunContext = { events: deps.events, pageId, since: deps.events?.now() ?? Date.now() };
   const done: Array<{ step: number; do: string; ok: boolean; note?: string; error?: string; reason?: string }> = [];
   for (const [i, s] of steps.slice(0, MAX_STEPS).entries()) {
     try {
       // Stop, the person's hands, another agent: checked before each step too, so a step that
       // sends no key or click (choosing an option, giving a file) is stopped as well.
       if (!isReadOnlyStep(s)) d.checkpoint?.();
-      const note = await runStep(d, s, deps);
+      const note = await runStep(d, s, deps, ctx);
       done.push({ step: i + 1, do: s.do, ok: true, ...(note ? { note } : {}) });
       if (!isReadOnlyStep(s)) await sleep(60);
     } catch (e) {
@@ -234,6 +280,7 @@ export async function runSteps(d: Driver, steps: ActStep[], deps: ManagedDeps) {
     }
   }
   const ok = done.length === steps.length && done.every((x) => x.ok);
+  const did = await pageDid(ctx.events, ctx.pageId, ctx.since);
   let after: Awaited<ReturnType<Driver["snapshot"]>> | null = null;
   try {
     after = await d.snapshot({ maxChars: 1, since: true });
@@ -246,10 +293,34 @@ export async function runSteps(d: Driver, steps: ActStep[], deps: ManagedDeps) {
     ...(after ? { url: after.url, title: after.title } : {}),
     ...(after?.changes ? { changes: after.changes } : { note: "Take browser_snapshot to see the page." }),
     ...(d.dialog ? { dialog: { type: d.dialog.type, message: d.dialog.message.slice(0, 300) } } : {}),
+    ...did,
   };
 }
 
-async function runStep(d: Driver, s: ActStep, deps: ManagedDeps): Promise<string | void> {
+/** How long a wait for a download gives it to start, and to finish. */
+const DOWNLOAD_START_MS = 10_000;
+const DOWNLOAD_FINISH_MS = 120_000;
+
+/** Waits for a download these steps started (or one that starts now) to finish. */
+async function waitForDownload(ctx: RunContext): Promise<string> {
+  const { events, pageId, since } = ctx;
+  if (!events || pageId === undefined) throw new DriverError("Downloads can't be watched on this page.", "unsupported");
+  const latest = (evs: PageEvent[]) => evs.filter((e): e is DownloadEvent => e.kind === "download").pop();
+  const started = await events.waitFor(pageId, since, latest, DOWNLOAD_START_MS);
+  if (!started) throw new DriverError("No download started. Click the link or button that downloads the file first, in the same browser_act.", "no_download");
+  const ended = await events.waitFor(pageId, since, (evs) => {
+    const e = evs.find((x): x is DownloadEvent => x.kind === "download" && x.id === started.id);
+    return e && e.state !== "progressing" ? e : null;
+  }, DOWNLOAD_FINISH_MS);
+  if (!ended) {
+    const now = latest(events.since(pageId, since));
+    return `still downloading ${started.file} (${now?.bytes ?? 0} of ${now?.total || "?"} bytes) after ${DOWNLOAD_FINISH_MS / 1000} s`;
+  }
+  if (ended.state !== "completed") throw new DriverError(`The download of ${ended.file} was ${ended.state}.`, "download_failed");
+  return `downloaded ${ended.file} (${ended.bytes} bytes) to ${ended.path}`;
+}
+
+async function runStep(d: Driver, s: ActStep, deps: ManagedDeps, ctx: RunContext): Promise<string | void> {
   switch (s.do) {
     case "click": {
       const at = await pointFor(d, s, true);
@@ -318,7 +389,11 @@ async function runStep(d: Driver, s: ActStep, deps: ManagedDeps): Promise<string
       if ((await d.isChecked(s.ref)) === s.checked) return "already so";
       const at = await d.pointOf(s.ref, { enabled: true });
       await d.mouse(at.x, at.y);
-      if ((await d.isChecked(s.ref)) !== s.checked) throw new DriverError("Clicking it didn't change it.", "unchanged");
+      // Some pages tick it a moment after the click (Google Forms, Notion's to-dos).
+      for (let waited = 0; (await d.isChecked(s.ref)) !== s.checked; waited += CHECK_SETTLE_STEP_MS) {
+        if (waited >= CHECK_SETTLE_MS) throw new DriverError("Clicking it didn't change it.", "unchanged");
+        await sleep(CHECK_SETTLE_STEP_MS);
+      }
       return;
     }
     case "scroll": {
@@ -339,6 +414,7 @@ async function runStep(d: Driver, s: ActStep, deps: ManagedDeps): Promise<string
       return `gave ${s.paths.length} file${s.paths.length === 1 ? "" : "s"}`;
     }
     case "wait":
+      if (s.download) return waitForDownload(ctx);
       if (s.ms !== undefined) await sleep(s.ms);
       else return d.waitFor({ text: s.text, gone: s.gone }, 10_000);
       return;
@@ -467,6 +543,7 @@ export class BrowserService {
     this.controller.register(managedAdapter({
       fileAllowed: deps.fileAllowed ?? (() => false),
       clipboardFor: deps.clipboardFor ?? (() => () => {}),
+      events: deps.events ?? pageEvents,
     }));
     this.controller.register(connectedTabAdapter(deps.connected));
   }
@@ -512,7 +589,7 @@ export class BrowserService {
     this.watched.add(pageId);
     page.on?.("input-event", (_e, input) => {
       if (input.type !== "mouseDown" && input.type !== "keyDown" && input.type !== "rawKeyDown") return;
-      if (this.drivers.get(pageId)?.isOwnInput(input.type)) return;
+      if (this.drivers.get(pageId)?.isOwnInput(input)) return;
       this.personAtPage.set(pageId, this.now());
       const card = this.cardOfPage.get(pageId);
       if (card) this.personUsed(card);

@@ -68,6 +68,7 @@ import {
 } from "./browser-partition-store";
 import { BrowserObservationStore } from "./browser-observation-store";
 import { resolvePopupDisposition } from "./browser-popup";
+import { pageEvents } from "./browser-page-events";
 import {
   chromeIdentity,
   parseAcceptCh,
@@ -1283,6 +1284,12 @@ function installGuestDownloads(guestSession: Electron.Session): void {
       url,
       sourceWebContentsId,
     });
+    // For an agent driving the tile: what came down, where it went, and when it's done.
+    const agentDownload = sourceWebContentsId === null ? null : pageEvents.downloadStarted(sourceWebContentsId, { file: filename, path: filePath, url, total: item.getTotalBytes() });
+    if (sourceWebContentsId !== null && agentDownload !== null) {
+      item.on("updated", () => pageEvents.downloadUpdated(sourceWebContentsId, agentDownload, { bytes: item.getReceivedBytes(), total: item.getTotalBytes() }));
+      item.once("done", (_e, state) => pageEvents.downloadUpdated(sourceWebContentsId, agentDownload, { state, bytes: item.getReceivedBytes(), total: item.getTotalBytes() }));
+    }
     item.once("done", (_doneEvent, state) => {
       // The renderer is told a token, never the path — so "Show in Finder"
       // can work without an absolute path ever reaching renderer state, logs
@@ -4517,6 +4524,7 @@ app.whenReady().then(async () => {
           isAuthBlocked: isSignInSentOut,
           isSafeExternal: isSafeExternalUrl,
         });
+        if (disposition.action !== "ignore") pageEvents.opened(contents.id, disposition.url, disposition.action === "child-window" ? "window" : disposition.action === "canvas-node" ? "tile" : "outside");
         if (disposition.action === "child-window") return "child-window";
         if (disposition.action === "canvas-node") {
           sendToWindow(mainWindow, "browser:popup-requested", {

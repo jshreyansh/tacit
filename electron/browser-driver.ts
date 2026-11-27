@@ -28,6 +28,16 @@ export interface DriverPage {
   isDestroyed(): boolean;
   getURL(): string;
   getTitle(): string;
+  /** The page's zoom: the positions it reports for clicks are ours times this. */
+  getZoomFactor?(): number;
+}
+
+/** A press as the page reports it (Electron's input-event): where, or which key. */
+export interface ReportedInput {
+  type: string;
+  x?: number;
+  y?: number;
+  key?: string;
 }
 
 export class DriverError extends Error {
@@ -78,14 +88,14 @@ export class PageDriver {
   private refFloor = 1;
   private listening = false;
   private lastLines: string[] | null = null;
-  private shots = new Map<string, { scale: number; pageX: number; pageY: number }>();
+  private shots = new Map<string, { scale: number; pageX: number; pageY: number; w: number; h: number }>();
   private shotSeq = 0;
   dialog: Dialog | null = null;
   /**
    * Input the agent sent that the page hasn't reported yet: a mouse press or key press the
    * page reports is the agent's while one is owed, and otherwise the person's.
    */
-  private owed: Array<{ kind: "mouse" | "key"; until: number }> = [];
+  private owed: Array<{ kind: "mouse" | "key"; until: number; x?: number; y?: number; key?: string }> = [];
   /** Called before each input event: throws to stop an agent mid-way (the person pressed Stop). */
   checkpoint: (() => void) | null = null;
   /**
@@ -413,11 +423,20 @@ export class PageDriver {
     }
   }
 
-  /** A point from a screenshot, in its image pixels, as page CSS pixels. */
-  pointFromShot(id: string | undefined, x: number, y: number): { x: number; y: number } {
+  /**
+   * A point from a screenshot, in its image pixels, as page CSS pixels. Only while the page
+   * is the size it was: resized or zoomed since, the same spot is somewhere else.
+   */
+  async pointFromShot(id: string | undefined, x: number, y: number): Promise<{ x: number; y: number }> {
     if (!id) return { x, y };
     const s = this.shots.get(id);
     if (!s) throw new DriverError(`Screenshot ${id} is from before the page changed. Take a new one.`, "stale");
+    const m = await this.send("Page.getLayoutMetrics");
+    const v = m.cssVisualViewport ?? m.visualViewport;
+    if (Math.abs(v.clientWidth - s.w) > 1 || Math.abs(v.clientHeight - s.h) > 1) {
+      this.shots.delete(id);
+      throw new DriverError(`Screenshot ${id} is from before the page changed size or zoom. Take a new one.`, "stale");
+    }
     return { x: x / s.scale, y: y / s.scale };
   }
 
@@ -432,7 +451,9 @@ export class PageDriver {
     const releases = type === "keyUp" || type === "mouseReleased";
     if (!releases) this.checkpoint?.();
     const kind = method === "Input.dispatchMouseEvent" && type === "mousePressed" ? "mouse" : method === "Input.dispatchKeyEvent" && (type === "keyDown" || type === "rawKeyDown") ? "key" : null;
-    const token = kind ? { kind, until: Date.now() + 2000 } as const : null;
+    const p = params as { x?: number; y?: number; key?: string };
+    // Where it went, or which key: a press of the person's elsewhere is never taken for it.
+    const token: PageDriver["owed"][number] | null = kind === "mouse" ? { kind, until: Date.now() + 2000, x: p.x, y: p.y } : kind === "key" ? { kind, until: Date.now() + 2000, key: p.key } : null;
     if (token) this.owed.push(token);
     let opened: () => void = () => {};
     const dialog = new Promise<void>((r) => { opened = r; this.dialogWaiters.push(r); });
@@ -447,13 +468,20 @@ export class PageDriver {
     }
   }
 
-  /** Whether a press the page reports (Electron's input-event type) is one the agent sent. */
-  isOwnInput(type: string): boolean {
-    const kind = type === "mouseDown" ? "mouse" : type === "keyDown" || type === "rawKeyDown" ? "key" : null;
+  /**
+   * Whether a press the page reports is one the agent sent: a click at the same spot (the
+   * page reports it scaled by its zoom), or the same key, sent in the last 2 s.
+   */
+  isOwnInput(input: ReportedInput): boolean {
+    const kind = input.type === "mouseDown" ? "mouse" : input.type === "keyDown" || input.type === "rawKeyDown" ? "key" : null;
     if (!kind) return false;
     const now = Date.now();
     this.owed = this.owed.filter((o) => o.until > now);
-    const i = this.owed.findIndex((o) => o.kind === kind);
+    const zoom = this.page.getZoomFactor?.() ?? 1;
+    const near = (sent: number | undefined, got: number | undefined) => sent === undefined || got === undefined || Math.abs(sent * zoom - got) <= 2;
+    const i = this.owed.findIndex((o) =>
+      o.kind === kind &&
+      (kind === "mouse" ? near(o.x, input.x) && near(o.y, input.y) : o.key === undefined || input.key === undefined || o.key === input.key));
     if (i < 0) return false;
     this.owed.splice(i, 1);
     return true;
@@ -495,8 +523,10 @@ export class PageDriver {
     try {
       const steps = 10;
       for (let i = 1; i <= steps; i++) {
-        at = { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps };
-        await this.input("Input.dispatchMouseEvent", { type: "mouseMoved", ...at, button: "left", buttons: 1 });
+        const next = { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps };
+        await this.input("Input.dispatchMouseEvent", { type: "mouseMoved", ...next, button: "left", buttons: 1 });
+        // Only once it's there: stopped before, the button goes up where it last was.
+        at = next;
       }
     } finally {
       // The button goes up wherever the drag stopped.
@@ -513,12 +543,17 @@ export class PageDriver {
    * wherever the keyboard is in Tacit's window. A click in the page gives it the keyboard at
    * once; a moment's grace covers the window catching up.
    */
-  private async mustHaveKeyboard(): Promise<void> {
+  private async hasKeyboard(): Promise<boolean> {
     const here = this.keyboardHere;
-    if (!here) return;
+    if (!here) return true;
+    // A window that doesn't answer counts as no: a key is never sent on a guess.
+    return Promise.race([here().catch(() => false), new Promise<boolean>((r) => setTimeout(() => r(false), 1000))]);
+  }
+
+  private async mustHaveKeyboard(): Promise<void> {
     const until = Date.now() + 200;
     for (;;) {
-      if (await here()) return;
+      if (await this.hasKeyboard()) return;
       if (Date.now() >= until) break;
       await new Promise((r) => setTimeout(r, 20));
     }
@@ -533,8 +568,10 @@ export class PageDriver {
     const down = new Map<string, KeyEventParams>();
     try {
       for (const ev of events) {
-        // Each press, not just the first: the person can click elsewhere mid-way.
+        // Each press, not just the first: the person can click elsewhere mid-way. A release
+        // with the keyboard gone elsewhere isn't sent either: it would land there too.
         if (ev.type !== "keyUp") await this.mustHaveKeyboard();
+        else if (!(await this.hasKeyboard())) { down.delete(ev.code || ev.key); continue; }
         await this.input("Input.dispatchKeyEvent", ev);
         if (ev.type === "keyUp") down.delete(ev.code || ev.key);
         else down.set(ev.code || ev.key, ev);
@@ -542,6 +579,7 @@ export class PageDriver {
     } catch (e) {
       // Stopped mid-chord: whatever is still down (a modifier) goes up, last first.
       for (const ev of [...down.values()].reverse()) {
+        if (!(await this.hasKeyboard())) break;
         await this.input("Input.dispatchKeyEvent", { type: "keyUp", key: ev.key, code: ev.code, windowsVirtualKeyCode: ev.windowsVirtualKeyCode, modifiers: 0 }).catch(() => {});
       }
       throw e;
@@ -593,7 +631,7 @@ export class PageDriver {
     const img = jpegOf(raw.data, Math.max(1, Math.round(v.clientWidth * scale)), quality);
     const used = img.width / v.clientWidth;
     const id = `s${++this.shotSeq}`;
-    this.shots.set(id, { scale: used, pageX: v.pageX, pageY: v.pageY });
+    this.shots.set(id, { scale: used, pageX: v.pageX, pageY: v.pageY, w: v.clientWidth, h: v.clientHeight });
     if (this.shots.size > 20) this.shots.delete(this.shots.keys().next().value as string);
     return { id, data: img.data, mimeType: "image/jpeg", width: img.width, height: img.height, scale: used };
   }

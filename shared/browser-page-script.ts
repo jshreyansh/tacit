@@ -21,7 +21,6 @@ export const PAGE_SCRIPT = String.raw`
 
   const INTERACTIVE = new Set(["link","button","textbox","searchbox","checkbox","radio","combobox","listbox","option","slider","spinbutton","switch","tab","menuitem","menuitemcheckbox","menuitemradio","treeitem","gridcell","columnheader","rowheader"]);
   const STRUCTURE = new Set(["heading","img","dialog","alertdialog","alert","navigation","main","form","search","banner","contentinfo","complementary","region","table","row","grid","tablist","menu","menubar","toolbar","tree","list","status","iframe","canvas","progressbar","separator"]);
-  const TEXT_TAGS = new Set(["P","LI","TD","TH","DT","DD","BLOCKQUOTE","PRE","FIGCAPTION","CAPTION","LEGEND","SUMMARY","SPAN","DIV","EM","STRONG","SMALL","B","I","CODE"]);
 
   function implicitRole(e) {
     const t = e.tagName;
@@ -87,8 +86,23 @@ export const PAGE_SCRIPT = String.raw`
     }
     if (t === "IMG") return clean(e.getAttribute("alt") || e.getAttribute("title") || "", 120);
     if (t === "IFRAME") return clean(e.getAttribute("title") || e.getAttribute("name") || "", 120);
-    if (r === "link" || r === "button" || r === "heading" || r === "tab" || r === "menuitem" || r === "option" || r === "gridcell" || r === "columnheader" || r === "rowheader" || r === "treeitem" || r === "checkbox" || r === "radio" || r === "switch") return clean(textOf(e) || e.getAttribute("title") || "", 120);
+    if (r === "checkbox" || r === "radio" || r === "switch") return clean(textOf(e) || e.getAttribute("title") || besideText(e), 120);
+    if (r === "link" || r === "button" || r === "heading" || r === "tab" || r === "menuitem" || r === "option" || r === "gridcell" || r === "columnheader" || r === "rowheader" || r === "treeitem") return clean(textOf(e) || e.getAttribute("title") || "", 120);
     return clean(e.getAttribute("title") || "", 120);
+  }
+  // A tick box with no label of its own, its words beside it (Google Forms' "Other:"):
+  // the nearest wrapper's text, while that wrapper holds no other choice it could be about.
+  const CHOICE = "input[type=checkbox],input[type=radio],[role=checkbox],[role=radio],[role=switch]";
+  function besideText(e) {
+    let p = e.parentElement;
+    for (let i = 0; i < 3 && p; i++, p = p.parentElement) {
+      if (p.querySelectorAll(CHOICE).length > 1) return "";
+      const c = p.cloneNode(true);
+      c.querySelectorAll("input,select,textarea,button,option,script,style,[role=textbox],[contenteditable]").forEach((x) => x.remove());
+      const t = clean(c.textContent, 200);
+      if (t) return t.length <= 80 ? t : "";
+    }
+    return "";
   }
   function visible(e) {
     const s = getComputedStyle(e);
@@ -122,11 +136,34 @@ export const PAGE_SCRIPT = String.raw`
     if (r === "slider" || r === "spinbutton" || r === "progressbar") return clean(e.getAttribute("aria-valuenow") || e.value || "", 40);
     return "";
   }
-  function ownText(e) {
-    let s = "";
-    for (const n of e.childNodes) if (n.nodeType === 3) s += n.textContent;
-    return clean(s, 160);
+  const SKIP_TAGS = new Set(["SCRIPT","STYLE","NOSCRIPT","TEMPLATE"]);
+  const flows = (e) => { const d = getComputedStyle(e).display; return d.startsWith("inline") || d === "contents"; };
+  // The words of a block as a person reads them: its own text and that of everything
+  // inside it that runs on the same line (links, bold, code, kbd), up to the next
+  // block. "plain" is the part that isn't a link's own words.
+  function lineText(e) {
+    let all = "", plain = "";
+    for (const n of kids(e)) {
+      if (n.nodeType === 3) { all += n.textContent; plain += n.textContent; continue; }
+      if (n.nodeType !== 1 || SKIP_TAGS.has(n.tagName) || n.getAttribute("aria-hidden") === "true") continue;
+      if (n.tagName === "BR") { all += " "; plain += " "; continue; }
+      if (!flows(n)) continue;
+      const s = getComputedStyle(n);
+      if (s.display === "none" || s.visibility === "hidden") continue;
+      // A field's label is its name already.
+      if (n.tagName === "LABEL" && n.control) continue;
+      const r = role(n);
+      // A link is part of the sentence it's in; a button or a field has its own line.
+      if (r === "link") { all += name(n, r) || n.textContent; continue; }
+      if (r && INTERACTIVE.has(r)) continue;
+      if (n.tagName === "IMG") { const a = n.getAttribute("alt") || ""; all += a; plain += a; continue; }
+      const inner = lineText(n);
+      all += inner.all; plain += inner.plain;
+    }
+    return { all, plain };
   }
+  // Worth a line: has a letter or a digit (not a lone "|" or "·").
+  const wordy = (t) => /[\p{L}\p{N}]/u.test(t);
   function kids(e) {
     if (e.shadowRoot) return Array.from(e.shadowRoot.childNodes);
     if (e.tagName === "SLOT") { const a = e.assignedNodes({ flatten: true }); return a.length ? a : Array.from(e.childNodes); }
@@ -139,33 +176,51 @@ export const PAGE_SCRIPT = String.raw`
     const entries = [];
     const vw = innerWidth, vh = innerHeight;
     let truncated = false;
-    function walk(node, depth, insideInteractive) {
+    const offscreen = (e) => { const rect = e.getBoundingClientRect(); return rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw; };
+    // said: the words here were already given, as an ancestor's name or line of text.
+    function walk(node, depth, insideInteractive, said) {
       if (entries.length >= max) { truncated = true; return; }
       if (node.nodeType !== 1) return;
       const e = node;
-      if (e.getAttribute("aria-hidden") === "true" || e.tagName === "SCRIPT" || e.tagName === "STYLE" || e.tagName === "NOSCRIPT" || e.tagName === "TEMPLATE") return;
+      if (e.getAttribute("aria-hidden") === "true" || SKIP_TAGS.has(e.tagName)) return;
       if (!visible(e) && e.tagName !== "SLOT" && !e.shadowRoot && getComputedStyle(e).display === "none") return;
       const r = role(e);
       const show = visible(e);
       let included = false;
+      let saysText = false;
       if (show && r && (INTERACTIVE.has(r) || STRUCTURE.has(r))) {
-        const rect = e.getBoundingClientRect();
         const entry = { ref: refOf(e), depth, role: r, name: name(e, r), value: value(e, r), states: states(e, r) };
         if (r === "heading") entry.level = e.getAttribute("aria-level") || (e.tagName.match(/^H([1-6])$/) || [])[1] || "";
-        if (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw) entry.offscreen = true;
+        if (offscreen(e)) entry.offscreen = true;
         if (r === "iframe") entry.iframe = true;
         if (e.tagName === "INPUT" && (e.getAttribute("type") || "").toLowerCase() === "file") entry.file = true;
         entries.push(entry);
         included = true;
-      } else if (show && !insideInteractive && TEXT_TAGS.has(e.tagName)) {
-        const t = ownText(e);
-        if (t && t.length > 1) entries.push({ ref: refOf(e), depth, role: "text", name: t, value: "", states: [] });
+        saysText = r === "heading" && !!entry.name;
+      } else if (show && !insideInteractive && !said && e.getAttribute("draggable") === "true") {
+        // Something to drag that isn't a link or a picture (a card, a column, a list item).
+        const entry = { ref: refOf(e), depth, role: "draggable", name: clean(e.getAttribute("aria-label") || textOf(e), 80), value: "", states: [] };
+        if (offscreen(e)) entry.offscreen = true;
+        entries.push(entry);
+        included = true;
+        saysText = true;
+      } else if (show && !insideInteractive && !said && !flows(e) && !(e.tagName === "LABEL" && e.control)) {
+        // A block of text: one line, links and all. Not when it's only a link's or a button's words.
+        const { all, plain } = lineText(e);
+        const t = clean(all, 200);
+        if (t && wordy(plain)) {
+          const entry = { ref: refOf(e), depth, role: "text", name: t, value: "", states: [] };
+          if (getComputedStyle(e).cursor === "pointer") entry.states.push("clickable");
+          entries.push(entry);
+          saysText = true;
+        }
       }
       const interactive = insideInteractive || (included && INTERACTIVE.has(r) && r !== "gridcell");
       if (r === "iframe" || (included && (r === "button" || r === "link" || r === "textbox" || r === "combobox" || r === "searchbox" || r === "option"))) return;
-      for (const k of kids(e)) walk(k, included ? depth + 1 : depth, interactive);
+      // Below a line of text, only what's on its own line again (another block) speaks for itself.
+      for (const k of kids(e)) walk(k, included ? depth + 1 : depth, interactive, said || (saysText && included));
     }
-    walk(document.documentElement, 0, false);
+    walk(document.documentElement, 0, false, false);
     return { gen, url: location.href, title: document.title, entries, truncated, focused: document.activeElement && document.activeElement !== document.body ? refOf(document.activeElement) : null };
   }
 

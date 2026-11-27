@@ -17,7 +17,7 @@ export type ActStep =
   | { do: "scroll"; ref?: string; dx?: number; dy?: number }
   | { do: "drag"; from: Target; to: Target }
   | { do: "upload"; ref: string; paths: string[] }
-  | { do: "wait"; ms?: number; text?: string; gone?: string };
+  | { do: "wait"; ms?: number; text?: string; gone?: string; download?: boolean };
 
 export const MAX_STEPS = 20;
 const MAX_TEXT = 20_000;
@@ -117,7 +117,8 @@ export function validateSteps(steps: unknown): string | null {
         break;
       case "wait":
         if (s.ms !== undefined && !(isNum(s.ms) && s.ms >= 0 && s.ms <= 10_000)) return `${at} (wait): ms is 0 to 10000`;
-        if (s.ms === undefined && typeof s.text !== "string" && typeof s.gone !== "string") return `${at} (wait) needs ms, text or gone`;
+        if (s.download !== undefined && s.download !== true) return `${at} (wait): download is true or left out`;
+        if (s.ms === undefined && typeof s.text !== "string" && typeof s.gone !== "string" && s.download !== true) return `${at} (wait) needs ms, text, gone or download`;
         break;
       default:
         return `${at}: "${s.do}" isn't a step (click, hover, fill, type, press, paste, select, check, scroll, drag, upload, wait)`;

@@ -58,6 +58,15 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
   elements, and go on numbering across documents and frames: a handle from a
   page that's gone never names something on the new one. Password fields are
   marked and their values never read.
+- **Text as a person reads it.** A block of text is one line with the words
+  of the links, bold, code and so on inside it ("the free encyclopedia that
+  anyone can edit."), its links listed again under it to click. Any element
+  holding text counts (a `<label>` naming a to-do item, a `<header>`), down to
+  one letter or digit; lone punctuation doesn't. A button's or a field's name
+  isn't repeated in the text around it, nor a field's `<label>`. Something
+  marked `draggable` is a `draggable` line; text with a pointing-hand cursor
+  is marked `clickable`. "What changed" ignores lines that only scrolled into
+  or out of view.
 - `browser_find` finds lines by words; `browser_read` reads the page's text a
   page at a time; `browser_screenshot` returns a picture (JPEG, scaled) whose
   points can be clicked.
@@ -91,7 +100,11 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
   window whether its focused element is this tile; if not, nothing is sent and
   the agent is told to click in the page first. The page's own focus can't
   tell (it says "no" whenever the window is covered), nor can its webContents'
-  (it says "yes" whenever the window is in front).
+  (it says "yes" whenever the window is in front). A key release is held back
+  too once the keyboard has gone, and a window that doesn't answer within 1 s
+  counts as no. Left open: the few milliseconds between the check and the key;
+  Electron sends the page's unused keys on without passing them through the
+  window's `before-input-event`, so there's nowhere to catch one later.
 - **`browser_act`**: up to 20 steps (click, fill, type, press, select, check,
   hover, drag, scroll, upload, paste, wait), checked before any runs; the first
   that fails stops the rest and says why. It answers with what changed in the
@@ -108,7 +121,16 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
   a grid or canvas); uploading a file that isn't in the workdesk's folders.
 - **Dialogs**: an alert or confirm doesn't hang the step that opened it; it's
   reported, everything but `browser_dialog` is refused while it's open, and
-  `browser_dialog` accepts or dismisses it.
+  `browser_dialog` accepts or dismisses it. A `prompt()` never opens:
+  Electron doesn't have one, and the page gets an error (for the person too).
+- **Downloads and new windows** (`electron/browser-page-events.ts`): main
+  notes each file a tile's page downloads (saved to the Downloads folder as
+  before; see `browser-downloads.ts`) and each window it opens (a tile, a
+  sign-in window, or the person's own browser). `browser_act` lists what its
+  steps caused, waiting up to 15 s for a download to finish; one that starts
+  after the act returned is told in the agent's next act or snapshot, once.
+  `{"do":"wait","download":true}` waits up to 2 minutes for one, and says where
+  it was saved. The path goes to the agent, never into the record.
 - `browser_eval` stays, and is the one browser tool Claude Code still asks
   about.
 
@@ -125,8 +147,9 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
 - **The person wins**: their own click or key press in the tile keeps agents
   off until 15 s after the last one, whether or not an agent was on the page
   (the bar says so only when one is). A press the page reports is the agent's
-  only if the driver sent one it hasn't reported yet; everything else is the
-  person's. Stop on the tile's bar keeps agents off until Resume (or 120 s)
+  only if the driver sent the same one in the last 2 s: a click at the same
+  spot (the page reports it times its zoom) or the same key. Everything else
+  is the person's, so an agent click the page never reported can't hide theirs. Stop on the tile's bar keeps agents off until Resume (or 120 s)
   and stops one mid-way: Stop, the person's hands and another agent's lease are
   checked before every input event. The person's own Send still works. The bar
   shows which agent is driving.
@@ -158,6 +181,33 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
 - Use a page's own auto-attached targets, never `Target.getTargets`, which
   lists every page in the app.
 
+## On real sites (2026-11-27)
+
+Driven step by step as an agent would, in a throwaway Tacit, with no sign-in:
+Wikipedia (search, Enter, wait, read), GitHub issues (search box, results),
+TodoMVC (add, double-click to rename, tick off), the TinyMCE editor in a
+frame (type, select all, Bold), CodeMirror (typing code), Excalidraw (draw a
+rectangle and write in it, aimed by screenshot), and the-internet.herokuapp.com
+(HTML5 drag and drop, hovers, alert and confirm, Escape and Shift+Tab, a link
+opening a new window, an upload chosen but not sent, downloads). All worked.
+They showed the gaps fixed above: text inside links and labels missing from
+the outline, draggable things not listed, downloads and new windows not told,
+and scroll noise in "what changed".
+
+Signed in, in the owner's own dev app (an agent terminal wired to their
+tiles): Google Sheets (paste a table, a SUM, bold, sort through Data → Sort
+range and its dialog), Gmail (read the inbox, open an email, write a reply
+left as a draft), a Google Form they own (fill every kind of field; not
+submitted), Excel Online (read a workbook through Office's cross-site frame;
+File → New → Blank workbook opened as a tile and was told; paste, SUM,
+drag-select, bold, aimed by screenshot), Notion (new page, title, heading, a
+to-do list, tick one). All worked. Two gaps, fixed: Google Forms and Notion
+tick a box a moment after the click, so `check` now waits up to a second
+before saying it didn't change; a radio with no label of its own (Forms'
+"Other:") is named by the words beside it. Once, Excel's new-workbook tile
+stayed blank (its page never loaded) until the agent sent it to its address;
+it didn't happen again.
+
 ## Stages
 
 0. Spike: prove real input from main, Excel Online. Done.
@@ -173,3 +223,20 @@ separately and merged, is the "Agents in browsers" page shared on 2026-11-26.
    before sensitive steps (purchases, sending), redacting secrets in what the
    page shows.
 5. Prove it against Playwright MCP and Chrome DevTools MCP on a fixed task set.
+
+## Checking it end to end
+
+`pnpm test:browser-e2e` (macOS) starts a throwaway Tacit from the checkout,
+with its own home, data and ports, and a workdesk in a temp folder. It serves
+the pages in `tests/browser-e2e/site/` (the grid from 127.0.0.1, the page from
+localhost, so the grid is a frame from another site). Two shell terminals are
+wired to one tile. Each agent is the built tool server run with its terminal's
+own credential, which the shell writes into the run's temp folder. It checks,
+against what the pages say happened: forms, a covered button, passwords,
+dialogs, uploads, waits, editable text, shadow roots, the grid (all with the
+window covered), a sentence with a link in it, dragging, a download (into
+the run's own folder, never the person's), screenshot size and aimed clicks,
+screenshots during actions, keys refused while the keyboard is in a terminal,
+two agents, the person's click, Stop and Resume, a pop-up as a tile (and the
+click saying so), and a tile off screen.
+About 4 minutes; `--keep` keeps the temp folder.

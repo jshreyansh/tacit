@@ -84,19 +84,22 @@ export function capLines(lines: readonly string[], maxChars: number): { text: st
   return { text, truncated, shown };
 }
 
-/** What changed between two outlines of the same page: lines that went, lines that came. */
+/**
+ * What changed between two outlines of the same page: lines that went, lines that came.
+ * A line that only scrolled into or out of view (its ↓) hasn't changed.
+ */
 export function diffLines(before: readonly string[], after: readonly string[], max = 40): { added: string[]; removed: string[]; more: number } {
-  const was = new Map<string, number>();
-  for (const l of before) was.set(l.trim(), (was.get(l.trim()) ?? 0) + 1);
+  const keyOf = (l: string) => l.trim().replace(/ ↓$/, "");
+  const was = new Map<string, string[]>();
+  for (const l of before) was.set(keyOf(l), [...(was.get(keyOf(l)) ?? []), l.trim()]);
   const added: string[] = [];
   for (const l of after) {
-    const k = l.trim();
-    const n = was.get(k) ?? 0;
-    if (n > 0) was.set(k, n - 1);
-    else added.push(k);
+    const left = was.get(keyOf(l));
+    if (left?.length) left.pop();
+    else added.push(l.trim());
   }
   const removed: string[] = [];
-  for (const [k, n] of was) for (let i = 0; i < n; i++) removed.push(k);
+  for (const lines of was.values()) removed.push(...lines);
   const more = Math.max(0, added.length + removed.length - max);
   return { added: added.slice(0, max), removed: removed.slice(0, Math.max(0, max - Math.min(max, added.length))), more };
 }

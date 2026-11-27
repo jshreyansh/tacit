@@ -64,6 +64,9 @@ test("what changed between two outlines, and finding lines by words", () => {
   const d = diffLines(['- button "Save" [e1]', '- text: "Draft" [e2]'], ['- button "Save" [e1]', '- text: "Saved" [e4]']);
   assert.deepEqual(d.added, ['- text: "Saved" [e4]']);
   assert.deepEqual(d.removed, ['- text: "Draft" [e2]']);
+  // Scrolling a line into or out of view isn't a change.
+  const scrolled = diffLines(['- link "Home" [e1] ↓', '- link "Help" [e2]'], ['- link "Home" [e1]', '- link "Help" [e2] ↓']);
+  assert.deepEqual([scrolled.added, scrolled.removed], [[], []]);
   assert.deepEqual(findLines(['- button "Save draft" [e1]', '- link "Help" [e2]'], "save"), ['- button "Save draft" [e1]']);
   assert.deepEqual(parseRef("f12e5"), { prefix: "f12", ref: "e5" });
   assert.equal(parseRef("button"), null);
@@ -78,7 +81,9 @@ test("steps are checked before any runs, and wrong ones say how to fix them", ()
   assert.match(validateSteps([{ do: "click", ref: "button.save" }])!, /isn't a ref/);
   assert.match(validateSteps([{ do: "fly" }])!, /isn't a step/);
   assert.match(validateSteps([{ do: "check", ref: "e1" }])!, /checked: true or false/);
-  assert.match(validateSteps([{ do: "wait" }])!, /needs ms, text or gone/);
+  assert.match(validateSteps([{ do: "wait" }])!, /needs ms, text, gone or download/);
+  assert.equal(validateSteps([{ do: "wait", download: true }]), null);
+  assert.match(validateSteps([{ do: "wait", download: "yes" }])!, /download is true/);
 });
 
 // A key the page doesn't take goes back to Tacit's window, to whatever has the keyboard
@@ -111,7 +116,7 @@ test("keys go only to a page that has the window's keyboard: otherwise nothing i
   assert.deepEqual(sent.map((s) => s.params.type), ["rawKeyDown", "keyUp"]);
 });
 
-test("the keyboard is checked at every press: taken away mid-way, the rest isn't sent and held keys go up", async () => {
+test("the keyboard is checked at every press: taken away mid-way, nothing more is sent, not even a release that would land outside", async () => {
   const { page, sent } = fakePage();
   const d = new PageDriver(page as unknown as DriverPage);
   let downs = 0;
@@ -123,7 +128,7 @@ test("the keyboard is checked at every press: taken away mid-way, the rest isn't
     return send(method, params);
   };
   await assert.rejects(d.press("Meta+a"), (e: unknown) => e instanceof DriverError && e.code === "no_keyboard");
-  assert.deepEqual(sent.map((s) => [s.params.type, s.params.key]), [["rawKeyDown", "Meta"], ["keyUp", "Meta"]]);
+  assert.deepEqual(sent.map((s) => [s.params.type, s.params.key]), [["rawKeyDown", "Meta"]]);
 });
 
 test("a click's handover is waited for a moment before keys are refused", async () => {
@@ -139,9 +144,10 @@ test("a click's handover is waited for a moment before keys are refused", async 
 // did, and that capture and every one after it timed out.
 test("a screenshot is what's on screen, with no clip, brought to the page's size on white", async () => {
   const { page, sent } = fakePage();
+  let width = 800;
   page.debugger.sendCommand = async (method: string, params: any) => {
     sent.push({ method, params });
-    if (method === "Page.getLayoutMetrics") return { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } };
+    if (method === "Page.getLayoutMetrics") return { cssVisualViewport: { clientWidth: width, clientHeight: 600, pageX: 0, pageY: 0 } };
     if (method === "Page.captureScreenshot") return { data: "PNG" };
     return {};
   };
@@ -154,5 +160,59 @@ test("a screenshot is what's on screen, with no clip, brought to the page's size
   assert.deepEqual(capture.params, { format: "png" });
   assert.deepEqual(asked, [["PNG", 400, 70]]);
   assert.equal(shot.scale, 0.5);
-  assert.deepEqual(d.pointFromShot(shot.id, 100, 50), { x: 200, y: 100 });
+  assert.deepEqual(await d.pointFromShot(shot.id, 100, 50), { x: 200, y: 100 });
+  // Resized (or zoomed) since: that spot is somewhere else now.
+  width = 700;
+  await assert.rejects(d.pointFromShot(shot.id, 100, 50), (e: unknown) => e instanceof DriverError && e.code === "stale");
+});
+
+// An agent click the page never reported stayed owed for 2 s, and the person's next click
+// anywhere was taken for it: the agent wasn't held off.
+test("a press is the agent's only if it's at the same spot (scaled by the page's zoom), or the same key", async () => {
+  const { page } = fakePage();
+  let zoom = 1;
+  (page as any).getZoomFactor = () => zoom;
+  const d = new PageDriver(page as unknown as DriverPage);
+  d.keyboardHere = async () => true;
+  await d.mouse(30, 30);
+  await d.mouse(120, 60);
+  assert.equal(d.isOwnInput({ type: "mouseDown", x: 300, y: 200 }), false, "the person's click elsewhere");
+  assert.equal(d.isOwnInput({ type: "mouseDown", x: 120, y: 60 }), true);
+  assert.equal(d.isOwnInput({ type: "mouseDown", x: 120, y: 60 }), false, "each owed press is matched once");
+  zoom = 1.5;
+  assert.equal(d.isOwnInput({ type: "mouseDown", x: 45, y: 45 }), true, "a zoomed page reports our 30,30 as 45,45");
+  await d.press("Tab");
+  assert.equal(d.isOwnInput({ type: "rawKeyDown", key: "a" }), false, "the person's key");
+  assert.equal(d.isOwnInput({ type: "rawKeyDown", key: "Tab" }), true);
+});
+
+test("a key release isn't sent once the keyboard has gone elsewhere; a drag stopped mid-way lets go where it got to", async () => {
+  const { page, sent } = fakePage();
+  const d = new PageDriver(page as unknown as DriverPage);
+  let downs = 0;
+  d.keyboardHere = async () => downs < 1;
+  const send = page.debugger.sendCommand;
+  page.debugger.sendCommand = async (method: string, params: any) => {
+    if (method === "Input.dispatchKeyEvent" && params?.type !== "keyUp") downs++;
+    return send(method, params);
+  };
+  await d.press("Escape");
+  assert.deepEqual(sent.filter((s) => s.method === "Input.dispatchKeyEvent").map((s) => s.params.type), ["rawKeyDown"], "the release would have landed outside the page");
+
+  const { page: p2, sent: s2 } = fakePage();
+  const d2 = new PageDriver(p2 as unknown as DriverPage);
+  let moves = 0;
+  d2.checkpoint = () => { if (++moves > 4) throw new DriverError("stopped", "stopped_by_user"); };
+  await assert.rejects(d2.drag({ x: 0, y: 0 }, { x: 100, y: 0 }));
+  const moved = s2.filter((s) => s.params.type === "mouseMoved").map((s) => s.params.x);
+  const released = s2.find((s) => s.params.type === "mouseReleased")!.params.x;
+  assert.equal(released, moved[moved.length - 1]);
+});
+
+test("a window that doesn't answer whether the page has the keyboard counts as no", async () => {
+  const { page, sent } = fakePage();
+  const d = new PageDriver(page as unknown as DriverPage);
+  d.keyboardHere = () => new Promise(() => {});
+  await assert.rejects(d.press("a"), (e: unknown) => e instanceof DriverError && e.code === "no_keyboard");
+  assert.deepEqual(sent, []);
 });

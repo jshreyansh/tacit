@@ -11,6 +11,7 @@ import {
   type GuestPage,
 } from "../electron/browser-service";
 import { managedBrowserBinding, normalizeBrowserNodeBinding } from "../shared/browser-controller";
+import { PageEvents } from "../electron/browser-page-events";
 
 const managed: BrowserTarget = { binding: managedBrowserBinding("identity-default"), page: null };
 
@@ -127,7 +128,7 @@ function fakeDriver(over: Partial<Driver> = {}): Driver & { inputs: string[] } {
   return drv;
 }
 
-function service(opts: { ctx?: Partial<BrowserTileContext>; pages?: Record<number, GuestPage>; host?: unknown; driver?: Driver; now?: () => number } = {}) {
+function service(opts: { ctx?: Partial<BrowserTileContext>; pages?: Record<number, GuestPage>; host?: unknown; driver?: Driver; now?: () => number; events?: PageEvents } = {}) {
   const records: Array<Record<string, unknown>> = [];
   const connected: unknown[] = [];
   const s = new BrowserService({
@@ -138,6 +139,7 @@ function service(opts: { ctx?: Partial<BrowserTileContext>; pages?: Record<numbe
     record: (e) => void records.push(e),
     makeDriver: () => opts.driver ?? fakeDriver(),
     ...(opts.now ? { now: opts.now } : {}),
+    events: opts.events ?? new PageEvents(),
   });
   return { s, records, connected };
 }
@@ -474,4 +476,65 @@ test("uploads only of the workdesk's files", async () => {
   assert.match(bad.steps[0].error!, /workdesk's folders/);
   await s.drive("browser-1", "act", { steps: [{ do: "upload", ref: "e3", paths: ["/work/a.pdf"] }] }, "terminal:a");
   assert.deepEqual(given, [["/work/a.pdf"]]);
+});
+
+test("a file a step downloads is in the result: its name, where it went, and that it finished", async () => {
+  const events = new PageEvents();
+  const d = fakeDriver({
+    mouse: async () => {
+      const id = events.downloadStarted(7, { file: "report.csv", path: "/Users/me/Downloads/report.csv", url: "https://x.test/r.csv", total: 120 });
+      setTimeout(() => events.downloadUpdated(7, id, { state: "completed", bytes: 120 }), 30);
+    },
+  });
+  const { s } = service({ pages: { 7: page({ id: 7 }) }, driver: d, events });
+  const r = (await s.drive("browser-1", "act", { steps: [{ do: "click", ref: "e1" }] }, "terminal:t1")) as { ok: boolean; downloads?: unknown[] };
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.downloads, [{ file: "report.csv", path: "/Users/me/Downloads/report.csv", state: "completed", bytes: 120 }], "the act waits a little for it to finish");
+});
+
+test("waiting for a download: it finishes, it never starts, or it fails", async () => {
+  const events = new PageEvents();
+  let state: "completed" | "interrupted" = "completed";
+  const d = fakeDriver({
+    mouse: async () => {
+      setTimeout(() => {
+        const id = events.downloadStarted(7, { file: "big.zip", path: "/d/big.zip", url: "https://x.test/big.zip", total: 0 });
+        setTimeout(() => events.downloadUpdated(7, id, { state, bytes: 5 }), 40);
+      }, 40);
+    },
+  });
+  const { s } = service({ pages: { 7: page({ id: 7 }) }, driver: d, events });
+  type R = { ok: boolean; steps: Array<{ ok: boolean; note?: string; reason?: string }> };
+  let r = (await s.drive("browser-1", "act", { steps: [{ do: "click", ref: "e1" }, { do: "wait", download: true }] }, "terminal:t1")) as R;
+  assert.equal(r.ok, true);
+  assert.equal(r.steps[1].note, "downloaded big.zip (5 bytes) to /d/big.zip");
+  state = "interrupted";
+  r = (await s.drive("browser-1", "act", { steps: [{ do: "click", ref: "e1" }, { do: "wait", download: true }] }, "terminal:t1")) as R;
+  assert.equal(r.steps[1].reason, "download_failed");
+});
+
+test("a window a click opens is in the result, saying where it went", async () => {
+  const events = new PageEvents();
+  const d = fakeDriver({ mouse: async () => events.opened(7, "https://x.test/help", "tile") });
+  const { s } = service({ pages: { 7: page({ id: 7 }) }, driver: d, events });
+  const r = (await s.drive("browser-1", "act", { steps: [{ do: "click", ref: "e1" }] }, "terminal:t1")) as { opened?: Array<{ url: string; as: string }> };
+  assert.equal(r.opened?.[0].url, "https://x.test/help");
+  assert.match(r.opened![0].as, /new browser tile/);
+  // What another page did isn't this one's.
+  events.opened(8, "https://x.test/other", "tile");
+  const r2 = (await s.drive("browser-1", "act", { steps: [{ do: "press", keys: ["Tab"] }] }, "terminal:t1")) as { opened?: unknown };
+  assert.equal(r2.opened, undefined);
+});
+
+test("a download that starts after the act returned is told in the next result, once", async () => {
+  const events = new PageEvents();
+  const { s } = service({ pages: { 7: page({ id: 7 }) }, driver: fakeDriver(), events });
+  const first = (await s.drive("browser-1", "act", { steps: [{ do: "click", ref: "e1" }] }, "terminal:t1")) as { downloads?: unknown };
+  assert.equal(first.downloads, undefined);
+  const id = events.downloadStarted(7, { file: "late.txt", path: "/d/late.txt", url: "https://x.test/late.txt", total: 4 });
+  events.downloadUpdated(7, id, { state: "completed", bytes: 4 });
+  const look = (await s.drive("browser-1", "snapshot", {}, "terminal:t1")) as { downloads?: Array<{ file: string }> };
+  assert.equal(look.downloads?.[0].file, "late.txt");
+  const again = (await s.drive("browser-1", "snapshot", {}, "terminal:t1")) as { downloads?: unknown };
+  assert.equal(again.downloads, undefined, "told once");
 });

@@ -87,7 +87,13 @@ function browserText(result: unknown): string {
   if (result && typeof result === "object") {
     const r = result as Record<string, unknown>;
     if (typeof r.snapshot === "string") {
-      return [`Page: ${r.title ?? ""} (${r.url ?? ""})`, r.snapshot, ...(r.changes ? [`Changed since your last look: ${JSON.stringify(r.changes)}`] : [])].join("\n");
+      return [
+        `Page: ${r.title ?? ""} (${r.url ?? ""})`,
+        r.snapshot,
+        ...(r.changes ? [`Changed since your last look: ${JSON.stringify(r.changes)}`] : []),
+        ...(r.downloads ? [`Downloaded since your last act: ${JSON.stringify(r.downloads)}`] : []),
+        ...(r.opened ? [`Opened since your last act: ${JSON.stringify(r.opened)}`] : []),
+      ].join("\n");
     }
     if (typeof r.text === "string" && typeof r.pages === "number") {
       return [`Page: ${r.title ?? ""} (${r.url ?? ""}), text ${r.page} of ${r.pages}${(r.page as number) < r.pages ? " (ask for the next page with page)" : ""}`, r.text].join("\n");
@@ -144,6 +150,7 @@ const stepSchema = z
     paths: z.array(z.string()).optional(),
     ms: z.number().optional(),
     gone: z.string().optional(),
+    download: z.boolean().optional().describe("wait: true waits for the file a step downloaded to finish"),
   })
   .describe("One step");
 
@@ -221,7 +228,8 @@ export function createTacitBridgeServer(): McpServer {
       title: "Use the page",
       description: [
         "Does up to 20 steps in order with real mouse and keyboard input, stopping at the first that fails, then says what changed on the page.",
-        "Steps: click {ref | x,y,screenshot}, hover, fill {ref, text} (replaces a field's text: forms, search boxes), type {text, ref?} (key by key, as typed: spreadsheets and other canvas editors, where you click the cell first), press {keys: [\"Enter\"]}, paste {text, ref?} (through the clipboard: the fast way to put a table into a spreadsheet, tab-separated), select {ref, values}, check {ref, checked}, scroll {ref? | dy}, drag {from, to}, upload {ref, paths} (files in this workdesk's folders), wait {ms | text | gone}.",
+        "Steps: click {ref | x,y,screenshot}, hover, fill {ref, text} (replaces a field's text: forms, search boxes), type {text, ref?} (key by key, as typed: spreadsheets and other canvas editors, where you click the cell first), press {keys: [\"Enter\"]}, paste {text, ref?} (through the clipboard: the fast way to put a table into a spreadsheet, tab-separated), select {ref, values}, check {ref, checked}, scroll {ref? | dy}, drag {from, to}, upload {ref, paths} (files in this workdesk's folders), wait {ms | text | gone | download: true}.",
+        "Files the steps download are listed in the result (name, where saved, done or not); after a click that downloads a big file, add {\"do\":\"wait\",\"download\":true}. Windows a click opens are listed too.",
         "A target is scrolled into view and must be shown, still and not covered; if something covers it the step says what. In Excel or Sheets: go to a cell by clicking it (or the name box, then click the cell), type, and move with Tab/Enter; Enter after Tabs doesn't return to the row's start, so click each row's first cell.",
         "Before anything that can't be undone or leaves this machine (sending, buying, publishing, deleting), ask the user first. Never type passwords: the user does.",
       ].join(" "),
